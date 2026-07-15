@@ -12,12 +12,14 @@ from app.config import Settings, get_settings
 from app.core.catalogs import (
     Catalog,
     load_registry,
+    refresh_catalog_clone,
     save_registry,
     validate_catalog_name,
     validate_catalog_url,
     validate_local_path,
     validate_ref,
 )
+from app.core.jobs import JobContext, JobQueue
 
 router = APIRouter(prefix="/api/v1/catalogs")
 
@@ -147,9 +149,35 @@ async def refresh_catalog(
 ) -> dict[str, str]:
     verify_csrf(request)
     registry = load_registry(settings.papaia_config_dir)
-    if not any(c.name == name for c in registry.catalogs):
+    catalog = next((c for c in registry.catalogs if c.name == name), None)
+    if catalog is None:
         raise HTTPException(status_code=404, detail=f"catalog {name!r} not found")
-    return {"job_id": "not-implemented-yet", "status": "queued"}
+
+    from app.main import _job_queue  # noqa: PLC0415
+
+    if _job_queue is None:
+        raise HTTPException(status_code=503, detail="job queue not initialized")
+
+    _catalog = catalog
+    _username = user.preferred_username or user.sub
+
+    async def _callback(ctx: JobContext) -> None:
+        if _catalog.type == "local":
+            ctx.log("[info] local catalog — no git refresh needed")
+            return
+        ctx.log(f"[info] refreshing catalog {_catalog.name!r} from {_catalog.url}")
+        lines = await refresh_catalog_clone(_catalog, settings.papaia_workspace_dir)
+        for line in lines:
+            ctx.log(line)
+        ctx.log("[info] done")
+
+    job = await _job_queue.enqueue(
+        action="catalog:refresh",
+        target=name,
+        user=_username,
+        callback=_callback,
+    )
+    return {"job_id": job.id, "status": "queued"}
 
 
 def _catalog_summary(c: Catalog) -> dict[str, Any]:
