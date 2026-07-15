@@ -1,0 +1,41 @@
+# Local development compose for papaia-manager.
+# Copy docker/.env.example to docker/.env, fill in real values, then:
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# NOTE: This compose is for local development only. Production deployment
+# uses the papaia core compose fragment at papaia/src/manager/docker-compose.yml.
+services:
+  papaia-manager:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: papaia-manager:dev
+    container_name: papaia-manager-dev
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "127.0.0.1:8120:8000"
+    volumes:
+      # docker.sock: required for papaia-ctl compose operations
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Workspace and config: mounted at identical host paths (path-parity requirement)
+      - ${PAPAIA_WORKSPACE_DIR}:${PAPAIA_WORKSPACE_DIR}
+      - ${PAPAIA_CONFIG_DIR}:${PAPAIA_CONFIG_DIR}
+      # CA certificate for internal TLS (optional)
+      - ${PAPAIA_CONFIG_DIR}/certs:/certs:ro
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    security_opt: [no-new-privileges:true]
+    labels:
+      de.fidonis.module: papaia-manager
+      de.fidonis.role: addon-manager

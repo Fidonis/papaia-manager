@@ -1,0 +1,57 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+categories:
+  - title: '🚀 Features'
+    labels:
+      - 'type: feature'
+  - title: '🐛 Bug Fixes'
+    labels:
+      - 'type: bug'
+  - title: '📖 Documentation'
+    labels:
+      - 'type: documentation'
+  - title: '🛠 Maintenance'
+    labels:
+      - 'type: core'
+
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+change-title-escapes: '\<*_&'
+
+version-resolver:
+  major:
+    labels:
+      - 'breaking'
+  minor:
+    labels:
+      - 'type: feature'
+  patch:
+    labels:
+      - 'type: bug'
+      - 'type: documentation'
+      - 'type: core'
+  default: patch
+
+template: |
+  ## What's Changed
+
+  $CHANGES
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
+
+autolabeler:
+  - label: 'type: feature'
+    title:
+      - '/^feat(\(.+\))?!?:/i'
+  - label: 'type: bug'
+    title:
+      - '/^fix(\(.+\))?!?:/i'
+  - label: 'type: documentation'
+    title:
+      - '/^docs(\(.+\))?!?:/i'
+  - label: 'type: core'
+    title:
+      - '/^(refactor|perf|style|ci|build|chore|test|revert)(\(.+\))?!?:/i'
+  - label: 'breaking'
+    title:
+      - '/^[a-z]+(\(.+\))?!:/i'

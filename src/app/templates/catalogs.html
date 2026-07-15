@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Catalogs — papaia manager{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Catalogs</h1>
+  <button
+    class="btn btn-primary btn-sm"
+    onclick="document.getElementById('add-catalog-modal').showModal()"
+  >Add catalog</button>
+</div>
+
+<div
+  id="catalog-list"
+  hx-get="/partials/catalogs"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-16">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+
+<!-- Add catalog modal -->
+<dialog id="add-catalog-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="text-lg font-bold mb-4">Add catalog</h3>
+    <form
+      hx-post="/api/v1/catalogs"
+      hx-target="#catalog-list"
+      hx-swap="innerHTML"
+      hx-on::after-request="document.getElementById('add-catalog-modal').close()"
+    >
+      <div class="form-control mb-3">
+        <label class="label"><span class="label-text">Name</span></label>
+        <input name="name" type="text" class="input input-bordered" required
+               placeholder="my-catalog" pattern="[a-z0-9][a-z0-9\-]{0,31}">
+      </div>
+      <div class="form-control mb-3">
+        <label class="label"><span class="label-text">Type</span></label>
+        <select name="type" class="select select-bordered">
+          <option value="git">Git</option>
+          <option value="local">Local</option>
+        </select>
+      </div>
+      <div class="form-control mb-3">
+        <label class="label"><span class="label-text">URL (git catalogs)</span></label>
+        <input name="url" type="url" class="input input-bordered"
+               placeholder="https://github.com/example/addons.git">
+      </div>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost"
+                onclick="document.getElementById('add-catalog-modal').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endblock %}

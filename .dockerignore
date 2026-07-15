@@ -1,0 +1,33 @@
+# Keep the Docker build context minimal — the image only needs src/.
+
+# VCS, CI and Docker config
+.git
+.gitattributes
+.github
+.dockerignore
+
+# Tests and documentation are not part of the server image.
+tests
+docker
+*.md
+
+# Python / uv artifacts
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.python-version
+
+# Secrets and local config
+**/.env
+**/.env.local
+*.pem
+*.key
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db

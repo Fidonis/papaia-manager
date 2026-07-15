@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job_id }} — papaia manager{% endblock %}
+{% block content %}
+<div class="mb-4">
+  <a href="/" class="link link-hover text-sm opacity-70">← Back to addons</a>
+</div>
+
+<div class="card bg-base-200 shadow">
+  <div class="card-body">
+    <h2 class="card-title text-lg">Job log</h2>
+    <div
+      id="job-status"
+      hx-get="/partials/jobs/{{ job_id }}"
+      hx-trigger="load, every 2s"
+      hx-swap="outerHTML"
+    >
+      <span class="loading loading-dots loading-sm"></span>
+    </div>
+    <pre
+      id="job-log"
+      class="bg-base-300 rounded p-4 text-sm font-mono overflow-x-auto max-h-[60vh] overflow-y-auto"
+      hx-get="/api/v1/jobs/{{ job_id }}/log"
+      hx-trigger="load, every 2s"
+      hx-swap="innerHTML"
+    ></pre>
+  </div>
+</div>
+{% endblock %}

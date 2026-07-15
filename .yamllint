@@ -1,0 +1,16 @@
+extends: default
+
+ignore: |
+  .venv/
+
+rules:
+  line-length: disable
+  comments-indentation: disable
+  document-start: disable
+  truthy:
+    check-keys: false
+  colons:
+    max-spaces-after: -1
+  comments:
+    require-starting-space: false
+    min-spaces-from-content: 1

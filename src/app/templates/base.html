@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf" content="{{ csrf_token }}">
+  <title>{% block title %}papaia manager{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/alpine.min.js" defer></script>
+</head>
+<body
+  class="bg-base-100 text-base-content min-h-screen"
+  hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'
+  x-data
+>
+  <!-- Navbar -->
+  <div class="navbar bg-base-200 shadow-sm px-4">
+    <div class="flex-1">
+      <a href="/" class="text-xl font-bold tracking-tight">papaia manager</a>
+    </div>
+    <div class="flex-none gap-2">
+      <a href="/addons" class="btn btn-ghost btn-sm">Addons</a>
+      <a href="/catalogs" class="btn btn-ghost btn-sm">Catalogs</a>
+      {% if user %}
+      <div class="dropdown dropdown-end">
+        <div tabindex="0" role="button" class="btn btn-ghost btn-sm">
+          {{ user.preferred_username }}
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+        <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-10 w-40 p-2 shadow">
+          <li>
+            <form method="post" action="/auth/logout">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="w-full text-left">Sign out</button>
+            </form>
+          </li>
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Flash messages (HTMX out-of-band) -->
+  <div id="toasts" class="toast toast-top toast-end z-50"></div>
+
+  <!-- Page content -->
+  <main class="container mx-auto px-4 py-6 max-w-7xl">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

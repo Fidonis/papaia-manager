@@ -1,0 +1,58 @@
+[project]
+name = "papaia-manager"
+version = "1.0.0"
+description = "Web-based addon management for the papAIa stack"
+readme = "../README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "fidonis" }]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "jinja2>=3.1.4",
+    "python-multipart>=0.0.12",
+    "httpx>=0.27.0",
+    "python-jose[cryptography]>=3.3.0",
+    "itsdangerous>=2.2.0",
+    "pyyaml>=6.0.2",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.5.0",
+    "anyio>=4.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "types-pyyaml>=6.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "RET", "SIM", "ASYNC"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+# Stubs for pyyaml types are incomplete; suppress missing-import noise.
+[[tool.mypy.overrides]]
+module = ["jose.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# Tests live outside the uv project; pythonpath keeps `from app import ...` resolvable.
+pythonpath = ["."]
+testpaths = ["../tests"]

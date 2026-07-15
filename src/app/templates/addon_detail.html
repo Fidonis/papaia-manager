@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ addon_name }} — papaia manager{% endblock %}
+{% block content %}
+<div class="mb-4">
+  <a href="/" class="link link-hover text-sm opacity-70">← Back to addons</a>
+</div>
+
+<div
+  id="addon-detail"
+  hx-get="/partials/addons/{{ addon_name }}"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-16">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+{% endblock %}

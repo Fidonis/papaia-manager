@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the fields below so we can investigate efficiently.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the issue.
+      placeholder: When I do X, Y happens — but I expected Z.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to trigger the bug.
+      placeholder: |
+        1. Open the manager UI at https://manager.example.com
+        2. Navigate to ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit SHA
+      placeholder: v1.0.0 / 0ad5fae
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Docker version, papAIa core version.
+      placeholder: |
+        - Host OS: Ubuntu 24.04
+        - Docker: 27.0.3
+        - papAIa core version: 1.0.0
+        - Behind reverse proxy: yes/no
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant logs or error output (redact secrets before pasting).
+      render: shell
+    validations:
+      required: false

@@ -1,0 +1,27 @@
+name: Documentation
+description: Report a documentation issue or improvement
+title: "[Docs]: "
+labels: ["type: documentation"]
+body:
+  - type: textarea
+    id: location
+    attributes:
+      label: Where in the docs?
+      description: File path or URL of the affected section.
+      placeholder: README.md, AGENTS.md, ...
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: Issue
+      description: What is wrong, missing, or unclear?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested change
+      description: How should it be fixed or improved?
+    validations:
+      required: false

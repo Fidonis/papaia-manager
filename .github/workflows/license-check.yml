@@ -1,0 +1,136 @@
+name: License check
+
+# Two responsibilities:
+#   1. Generate THIRD_PARTY_LICENSES.md from the locked dependency set on
+#      every push to main and propose a PR if it has drifted.
+#   2. Fail any pull request that introduces a direct or transitive
+#      dependency under a copyleft license (GPL / LGPL / AGPL / OSL /
+#      EUPL / SSPL).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  copyleft-check:
+    name: Reject copyleft dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install src dependencies into a venv
+        working-directory: src
+        run: uv sync --frozen
+
+      - name: Install pip-licenses
+        working-directory: src
+        run: uv pip install pip-licenses
+
+      - name: Scan for copyleft licenses
+        working-directory: src
+        run: |
+          set -euo pipefail
+          uv run pip-licenses --format=json > /tmp/licenses.json
+          python - <<'PY'
+          import json, re, sys
+          with open("/tmp/licenses.json") as f:
+              entries = json.load(f)
+          banned = re.compile(
+              r"^(?:GNU )?"
+              r"(GPL|LGPL|AGPL|Affero|OSL|Open Software License|EUPL|"
+              r"European Union Public Licen[cs]e|SSPL|Server Side Public License)"
+              r"(?:[ -].*)?$",
+              re.IGNORECASE,
+          )
+          offenders = [
+              e for e in entries
+              if any(banned.match(part.strip())
+                     for part in str(e.get("License", "")).split(";"))
+          ]
+          if offenders:
+              print("Copyleft dependencies detected — failing the build:", file=sys.stderr)
+              for e in offenders:
+                  print(f"  - {e['Name']} {e['Version']}: {e['License']}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK — scanned {len(entries)} packages, no copyleft dependencies found.")
+          PY
+
+  third-party-licenses:
+    name: Refresh THIRD_PARTY_LICENSES.md
+    needs: copyleft-check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install src dependencies into a venv
+        working-directory: src
+        run: uv sync --frozen
+
+      - name: Install pip-licenses
+        working-directory: src
+        run: uv pip install pip-licenses
+
+      - name: Generate THIRD_PARTY_LICENSES.md
+        working-directory: src
+        run: |
+          set -euo pipefail
+          {
+            cat <<'HEADER'
+          # Third-party licenses
+
+          This file is generated automatically by
+          [`.github/workflows/license-check.yml`](.github/workflows/license-check.yml)
+          on every push to `main`. Do not edit it by hand — the next CI run
+          will overwrite manual changes.
+
+          The list below covers the runtime Python dependencies bundled with
+          the `src/` server. Development-only dependencies are excluded.
+
+          HEADER
+            uv run pip-licenses \
+                --format=markdown \
+                --with-urls --with-authors
+          } > ../THIRD_PARTY_LICENSES.md.new
+
+      - name: Commit if changed
+        run: |
+          set -euo pipefail
+          if ! diff -q THIRD_PARTY_LICENSES.md THIRD_PARTY_LICENSES.md.new >/dev/null 2>&1; then
+            mv THIRD_PARTY_LICENSES.md.new THIRD_PARTY_LICENSES.md
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add THIRD_PARTY_LICENSES.md
+            git commit -m "chore(licenses): refresh THIRD_PARTY_LICENSES.md"
+            git push
+          else
+            echo "THIRD_PARTY_LICENSES.md unchanged."
+            rm THIRD_PARTY_LICENSES.md.new
+          fi

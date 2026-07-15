@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — papaia manager{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Addons</h1>
+  <a href="/catalogs" class="btn btn-outline btn-sm">Manage catalogs</a>
+</div>
+
+<!-- Addon gallery — loaded via HTMX on page ready -->
+<div
+  id="addon-gallery"
+  hx-get="/partials/addons"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-16">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+{% endblock %}

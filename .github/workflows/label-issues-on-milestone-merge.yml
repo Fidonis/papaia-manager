@@ -1,0 +1,52 @@
+name: Label Issues on Milestone Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - 'releases/[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  label-issues:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Find and label linked issues
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            const branch = context.payload.pull_request.base.ref;
+            const prNumber = context.payload.pull_request.number;
+            const prTitle = context.payload.pull_request.title;
+
+            const issueRegex = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi;
+            const issues = [...body.matchAll(issueRegex)].map(m => parseInt(m[1]));
+
+            if (issues.length === 0) {
+              console.log('No linked issues found in PR body.');
+              return;
+            }
+
+            for (const issueNumber of issues) {
+              console.log(`Processing issue #${issueNumber}`);
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['merged-to-milestone']
+              });
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `✅ Merged into milestone branch \`${branch}\` via PR #${prNumber} (_${prTitle}_).\n\nWill be closed when \`${branch}\` is merged into \`main\`.`
+              });
+
+              console.log(`Labeled and commented on issue #${issueNumber}`);
+            }
