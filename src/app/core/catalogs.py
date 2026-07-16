@@ -1,6 +1,7 @@
 """Catalog registry: catalogs.yaml CRUD and git clone/fetch operations."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -99,6 +100,71 @@ def validate_local_path(path: str, workspace_dir: str) -> None:
             f"local catalog path must reside under PAPAIA_WORKSPACE_DIR "
             f"({workspace}); got {resolved}"
         )
+
+
+def scan_catalog_addons(clone_path: Path) -> list[tuple[str, dict[str, Any]]]:
+    """Return (addon_name, manifest) for every addon found in a catalog clone dir."""
+    results: list[tuple[str, dict[str, Any]]] = []
+    if not clone_path.exists() or not clone_path.is_dir():
+        return results
+    for entry in sorted(clone_path.iterdir()):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        manifest_file = entry / "papaia-app.yaml"
+        if not manifest_file.exists():
+            continue
+        try:
+            manifest: dict[str, Any] = (
+                yaml.safe_load(manifest_file.read_text(encoding="utf-8")) or {}
+            )
+            results.append((entry.name, manifest))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("skipping addon %r in %s: %s", entry.name, clone_path, exc)
+    return results
+
+
+async def clone_catalog_clone(catalog: Catalog, workspace_dir: str) -> list[str]:
+    """Shallow-clone a git catalog into the workspace browse area."""
+    dest = Path(workspace_dir) / "addons" / "_catalogs" / catalog.name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "git", "clone", "--depth", "1",
+        "--branch", catalog.ref,
+        catalog.url or "",
+        str(dest),
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    out, _ = await proc.communicate()
+    lines = out.decode(errors="replace").splitlines()
+    if proc.returncode != 0:
+        raise RuntimeError(f"git clone failed ({proc.returncode}): " + "\n".join(lines))
+    return lines
+
+
+async def refresh_catalog_clone(catalog: Catalog, workspace_dir: str) -> list[str]:
+    """Fetch + reset the catalog clone; clones from scratch if not present."""
+    dest = Path(workspace_dir) / "addons" / "_catalogs" / catalog.name
+    if not dest.exists():
+        return await clone_catalog_clone(catalog, workspace_dir)
+    lines: list[str] = []
+    for cmd in (
+        ["git", "-C", str(dest), "fetch", "--depth", "1", "origin", catalog.ref],
+        ["git", "-C", str(dest), "reset", "--hard", "FETCH_HEAD"],
+    ):
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        out, _ = await proc.communicate()
+        lines.extend(out.decode(errors="replace").splitlines())
+        if proc.returncode != 0:
+            raise RuntimeError(f"{cmd[2]} failed ({proc.returncode}): " + "\n".join(lines))
+    return lines
 
 
 def _registry_path(config_dir: str) -> Path:
