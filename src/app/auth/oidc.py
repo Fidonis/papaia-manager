@@ -195,17 +195,6 @@ class OIDCClient:
         alg = _algorithm_for_key(key)
 
         try:
-            unverified = jwt.get_unverified_claims(id_token)
-            logger.info(
-                "id_token claims: aud=%r iss=%r sub=%r",
-                unverified.get("aud"),
-                unverified.get("iss"),
-                unverified.get("sub"),
-            )
-        except JWTError:
-            pass
-
-        try:
             payload = jwt.decode(
                 id_token,
                 key,
