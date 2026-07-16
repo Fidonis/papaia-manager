@@ -1,0 +1,42 @@
+{% if job is none %}
+<div id="job-status" class="alert alert-error">
+  <span>Job not found.</span>
+</div>
+{% else %}
+<div
+  id="job-status"
+  {% if not terminal %}
+  hx-get="/partials/jobs/{{ job.id }}"
+  hx-trigger="every 2s"
+  hx-swap="outerHTML"
+  {% endif %}
+  class="flex items-center gap-3 flex-wrap"
+>
+  {% if job.status.value == "running" %}
+    <span class="loading loading-spinner loading-sm text-info"></span>
+    <span class="badge badge-info">running</span>
+  {% elif job.status.value == "succeeded" %}
+    <span class="badge badge-success">succeeded</span>
+  {% elif job.status.value == "failed" %}
+    <span class="badge badge-error">failed</span>
+  {% else %}
+    <span class="badge badge-ghost">queued</span>
+  {% endif %}
+
+  <span class="text-sm opacity-60">
+    {{ job.action }} &rarr; {{ job.target }}
+  </span>
+
+  {% if job.started_at %}
+  <span class="text-xs opacity-40">
+    started {{ job.started_at.strftime("%H:%M:%S") }}
+  </span>
+  {% endif %}
+
+  {% if job.finished_at %}
+  <span class="text-xs opacity-40">
+    finished {{ job.finished_at.strftime("%H:%M:%S") }}
+  </span>
+  {% endif %}
+</div>
+{% endif %}

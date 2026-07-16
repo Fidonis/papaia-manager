@@ -1,6 +1,8 @@
 """OIDC Authorization Code Flow routes: login, callback, logout."""
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 from typing import Annotated
 
@@ -8,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response
 
 from app.auth.csrf import verify_csrf
-from app.auth.oidc import OIDCClient, OIDCError
+from app.auth.oidc import OIDCClient, OIDCError, _pkce_pair
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,28 @@ def _oidc_client(settings: Settings) -> OIDCClient:
     )
 
 
+def _make_state(secret: str, verifier: str) -> str:
+    """Embed the PKCE verifier in an HMAC-signed state token.
+
+    Format: <sha256_hex_64chars>.<verifier_43chars>
+    The verifier uses only [A-Za-z0-9-_] so the single dot is an unambiguous
+    separator. Signing prevents state forgery without relying on the session cookie.
+    """
+    mac = hmac.new(secret.encode(), verifier.encode(), hashlib.sha256).hexdigest()
+    return f"{mac}.{verifier}"
+
+
+def _parse_state(secret: str, state: str) -> str | None:
+    """Verify state signature and return the embedded verifier, or None on failure."""
+    if "." not in state:
+        return None
+    mac_part, verifier = state.split(".", 1)
+    expected = hmac.new(secret.encode(), verifier.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(mac_part, expected):
+        return None
+    return verifier
+
+
 @router.get("/login")
 async def login(
     request: Request,
@@ -36,9 +60,10 @@ async def login(
 ) -> RedirectResponse:
     """Redirect the browser to Keycloak with a PKCE challenge."""
     client = _oidc_client(settings)
-    auth_url, state, code_verifier = client.build_auth_redirect()
-    request.session["oidc_state"] = state
-    request.session["oidc_verifier"] = code_verifier
+    verifier, challenge = _pkce_pair()
+    state = _make_state(settings.manager_session_secret, verifier)
+    auth_url = client.build_auth_url(state, challenge)
+    logger.info("auth/login: redirecting, state=%s...", state[:8])
     return RedirectResponse(auth_url, status_code=status.HTTP_302_FOUND)
 
 
@@ -58,18 +83,12 @@ async def callback(
             detail=f"authentication error: {error}",
         )
 
-    session_state: str | None = request.session.pop("oidc_state", None)
-    code_verifier: str | None = request.session.pop("oidc_verifier", None)
-
-    if not session_state or not code_verifier:
+    code_verifier = _parse_state(settings.manager_session_secret, state)
+    if not code_verifier:
+        logger.warning("auth/callback: invalid or missing state parameter")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="missing OIDC session state — please start login again",
-        )
-    if state != session_state:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="state mismatch — possible CSRF attempt",
         )
     if not code:
         raise HTTPException(

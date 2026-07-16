@@ -1,0 +1,48 @@
+{% if not addons %}
+<div class="flex flex-col items-center py-20 gap-4 opacity-60">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+  </svg>
+  <p class="text-lg font-medium">No addons found</p>
+  <p class="text-sm">Add a catalog and refresh it to browse addons.</p>
+  <a href="/catalogs" class="btn btn-outline btn-sm">Manage catalogs</a>
+</div>
+{% else %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  {% for addon in addons %}
+  <a href="/addons/{{ addon.name }}" class="card bg-base-200 shadow hover:shadow-md transition-shadow cursor-pointer">
+    <div class="card-body p-4">
+      <div class="flex items-start justify-between gap-2">
+        <h2 class="card-title text-base">{{ addon.name }}</h2>
+        {% set s = addon.status %}
+        {% if s == "running" %}
+          <span class="badge badge-success badge-sm">running</span>
+        {% elif s == "installed" %}
+          <span class="badge badge-info badge-sm">installed</span>
+        {% elif s == "inactive" %}
+          <span class="badge badge-warning badge-sm">inactive</span>
+        {% elif s == "unmanaged" %}
+          <span class="badge badge-neutral badge-sm">unmanaged</span>
+        {% else %}
+          <span class="badge badge-ghost badge-sm">available</span>
+        {% endif %}
+      </div>
+      {% if addon.description %}
+      <p class="text-sm opacity-70 line-clamp-2">{{ addon.description }}</p>
+      {% endif %}
+      <div class="flex items-center gap-2 mt-2 flex-wrap">
+        {% if addon.catalog %}
+          <span class="text-xs opacity-50">{{ addon.catalog }}</span>
+        {% endif %}
+        {% if addon.catalog_version %}
+          <span class="badge badge-outline badge-xs">v{{ addon.catalog_version }}</span>
+        {% endif %}
+        {% if addon.update_available %}
+          <span class="badge badge-warning badge-xs">update</span>
+        {% endif %}
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
