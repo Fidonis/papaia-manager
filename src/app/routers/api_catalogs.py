@@ -19,7 +19,7 @@ from app.core.catalogs import (
     validate_local_path,
     validate_ref,
 )
-from app.core.jobs import JobContext, JobQueue
+from app.core.jobs import JobContext
 
 router = APIRouter(prefix="/api/v1/catalogs")
 

@@ -287,7 +287,11 @@ async def install(
 
         if _env:
             env_file = dest / ".env"
-            existing = _parse_env_file(env_file.read_text(encoding="utf-8")) if env_file.exists() else {}
+            existing = (
+                _parse_env_file(env_file.read_text(encoding="utf-8"))
+                if env_file.exists()
+                else {}
+            )
             existing.update(_env)
             env_file.write_text(
                 "\n".join(f"{k}={v}" for k, v in existing.items()) + "\n",
@@ -529,7 +533,11 @@ async def update(
 
         if _env:
             env_file = dest / ".env"
-            existing = _parse_env_file(env_file.read_text(encoding="utf-8")) if env_file.exists() else {}
+            existing = (
+                _parse_env_file(env_file.read_text(encoding="utf-8"))
+                if env_file.exists()
+                else {}
+            )
             existing.update(_env)
             env_file.write_text(
                 "\n".join(f"{k}={v}" for k, v in existing.items()) + "\n",

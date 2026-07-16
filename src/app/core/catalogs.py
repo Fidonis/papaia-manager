@@ -114,7 +114,9 @@ def scan_catalog_addons(clone_path: Path) -> list[tuple[str, dict[str, Any]]]:
         if not manifest_file.exists():
             continue
         try:
-            manifest: dict[str, Any] = yaml.safe_load(manifest_file.read_text(encoding="utf-8")) or {}
+            manifest: dict[str, Any] = (
+                yaml.safe_load(manifest_file.read_text(encoding="utf-8")) or {}
+            )
             results.append((entry.name, manifest))
         except Exception as exc:  # noqa: BLE001
             logger.warning("skipping addon %r in %s: %s", entry.name, clone_path, exc)
