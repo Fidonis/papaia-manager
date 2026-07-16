@@ -73,6 +73,20 @@ def load_deployment_yaml(config_dir: str) -> dict[str, Any]:
     return raw
 
 
+def deployment_addons_by_name(deployment: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Deployment ``addons`` entries indexed by name.
+
+    ``deployment["addons"]`` is a list of entry dicts (see
+    ``lib/deployment.py``'s ``active_addons()``), not a mapping — index it
+    here once so callers can do ``.get(name)`` / ``.items()`` as if it were.
+    """
+    return {
+        entry["name"]: entry
+        for entry in (deployment.get("addons") or [])
+        if entry.get("name")
+    }
+
+
 def load_running_compose_projects() -> set[str]:
     """Return the set of running Docker Compose project names via docker ps.
 

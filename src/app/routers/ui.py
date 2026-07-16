@@ -15,7 +15,12 @@ from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core.catalogs import load_registry, scan_catalog_addons
 from app.core.snapshots import catalog_clone_path, load_installed, managed_snapshot_path
-from app.core.state import compute_status, load_deployment_yaml, load_running_compose_projects
+from app.core.state import (
+    compute_status,
+    deployment_addons_by_name,
+    load_deployment_yaml,
+    load_running_compose_projects,
+)
 
 router = APIRouter()
 
@@ -145,6 +150,8 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
         None, load_running_compose_projects
     )
 
+    deployment_addons = deployment_addons_by_name(deployment)
+
     addons: dict[str, dict[str, Any]] = {}
     for catalog in registry.catalogs:
         if not catalog.enabled:
@@ -153,7 +160,7 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
         for addon_name, manifest in scan_catalog_addons(clone):
             if addon_name in addons:
                 continue
-            deploy_entry = deployment.get("addons", {}).get(addon_name)
+            deploy_entry = deployment_addons.get(addon_name)
             inst = installed_map.get(addon_name)
             st = compute_status(
                 name=addon_name,
@@ -179,7 +186,7 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
                 "managed": inst.managed if inst else True,
             }
 
-    for addon_name, deploy_entry in deployment.get("addons", {}).items():
+    for addon_name, deploy_entry in deployment_addons.items():
         if addon_name in addons:
             continue
         inst = installed_map.get(addon_name)
@@ -227,7 +234,7 @@ async def _get_addon(name: str, settings: Settings) -> dict[str, Any]:
             break
 
     inst = installed_map.get(name)
-    deploy_entry = deployment.get("addons", {}).get(name)
+    deploy_entry = deployment_addons_by_name(deployment).get(name)
     st = compute_status(
         name=name,
         deployment_entry=deploy_entry,

@@ -28,6 +28,7 @@ from app.core.snapshots import (
 )
 from app.core.state import (
     compute_status,
+    deployment_addons_by_name,
     load_deployment_yaml,
     load_running_compose_projects,
 )
@@ -128,6 +129,8 @@ async def list_addons(
         None, load_running_compose_projects
     )
 
+    deployment_addons = deployment_addons_by_name(deployment)
+
     addons: dict[str, dict[str, Any]] = {}
 
     for catalog in registry.catalogs:
@@ -137,14 +140,14 @@ async def list_addons(
         for addon_name, manifest in scan_catalog_addons(clone):
             if addon_name in addons:
                 continue
-            deploy_entry = deployment.get("addons", {}).get(addon_name)
+            deploy_entry = deployment_addons.get(addon_name)
             inst = installed_map.get(addon_name)
             addons[addon_name] = _addon_summary(
                 addon_name, manifest, catalog.name, inst, deploy_entry,
                 running, settings.papaia_workspace_dir,
             )
 
-    for addon_name, deploy_entry in deployment.get("addons", {}).items():
+    for addon_name, deploy_entry in deployment_addons.items():
         if addon_name in addons:
             continue
         inst = installed_map.get(addon_name)
@@ -182,7 +185,7 @@ async def addon_detail(
             catalog_name = catalog.name
             break
 
-    deploy_entry = deployment.get("addons", {}).get(name)
+    deploy_entry = deployment_addons_by_name(deployment).get(name)
     inst = installed_map.get(name)
     summary = _addon_summary(
         name, manifest, catalog_name, inst, deploy_entry,
