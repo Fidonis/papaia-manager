@@ -37,6 +37,25 @@ RUN mkdir -p /static \
         "https://unpkg.com/alpinejs@${ALPINE_VERSION}/dist/cdn.min.js" \
         -o /static/alpine.min.js
 
+# ---- css-builder: compile Tailwind + daisyUI (Node only in build, not runtime) ----
+FROM node:20-slim AS css-builder
+
+WORKDIR /build
+
+# Pin versions so the CSS output is reproducible.
+RUN npm install --save-dev tailwindcss@3.4.17 daisyui@4.12.23 2>/dev/null
+
+# Tailwind config: scan all Jinja2 templates for class names.
+COPY docker/tailwind.config.js ./tailwind.config.js
+COPY docker/tailwind.input.css ./tailwind.input.css
+COPY src/app/templates/ ./templates/
+
+RUN npx tailwindcss \
+        -c tailwind.config.js \
+        -i tailwind.input.css \
+        -o /static/app.css \
+        --minify
+
 # ---- runtime: minimal image with Docker CLI, git, and the venv ----
 FROM python:3.12-slim AS runtime
 
@@ -77,6 +96,7 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY src/app/ /app/app/
 COPY --from=assets /static/ /app/app/static/
+COPY --from=css-builder /static/app.css /app/app/static/app.css
 
 # GIT_ASKPASS helper: echoes $GIT_TOKEN; used for private catalog authentication.
 # The token appears in no argv and no log — only in the subprocess environment.

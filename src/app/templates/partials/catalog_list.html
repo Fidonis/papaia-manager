@@ -1,0 +1,55 @@
+{% if not catalogs %}
+<div class="flex flex-col items-center py-16 gap-3 opacity-60">
+  <p class="text-lg font-medium">No catalogs configured</p>
+  <p class="text-sm">Add a catalog to browse addons.</p>
+</div>
+{% else %}
+<div class="flex flex-col gap-3">
+  {% for c in catalogs %}
+  <div class="card bg-base-200 shadow-sm">
+    <div class="card-body p-4">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-2">
+          <span class="font-semibold">{{ c.name }}</span>
+          {% if c.enabled %}
+            <span class="badge badge-success badge-sm">enabled</span>
+          {% else %}
+            <span class="badge badge-neutral badge-sm">disabled</span>
+          {% endif %}
+          <span class="badge badge-outline badge-sm">{{ c.type }}</span>
+        </div>
+
+        <div class="flex gap-2">
+          {% if c.type == "git" %}
+          <form hx-post="/api/v1/catalogs/{{ c.name }}/refresh"
+                hx-target="#catalog-list"
+                hx-swap="innerHTML">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-outline btn-xs">Refresh</button>
+          </form>
+          {% endif %}
+
+          <form hx-delete="/api/v1/catalogs/{{ c.name }}"
+                hx-target="#catalog-list"
+                hx-swap="innerHTML"
+                hx-confirm="Delete catalog {{ c.name }}?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-error btn-outline btn-xs">Delete</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="text-sm opacity-60 mt-1">
+        {% if c.type == "git" %}
+          <span class="font-mono">{{ c.url }}</span>
+          <span class="opacity-50 ml-2">@ {{ c.ref }}</span>
+          {% if c.auth %}<span class="badge badge-warning badge-xs ml-2">private</span>{% endif %}
+        {% else %}
+          <span class="font-mono">{{ c.path }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

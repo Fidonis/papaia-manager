@@ -1,0 +1,184 @@
+{% set s = addon.status %}
+
+<!-- Status bar -->
+<div class="flex items-center gap-3 mb-6 flex-wrap">
+  {% if s == "running" %}
+    <span class="badge badge-success">running</span>
+  {% elif s == "installed" %}
+    <span class="badge badge-info">installed</span>
+  {% elif s == "inactive" %}
+    <span class="badge badge-warning">inactive</span>
+  {% elif s == "unmanaged" %}
+    <span class="badge badge-neutral">unmanaged</span>
+  {% else %}
+    <span class="badge badge-ghost">available</span>
+  {% endif %}
+
+  {% if addon.update_available %}
+    <span class="badge badge-warning">update available</span>
+  {% endif %}
+
+  <span class="text-sm opacity-60">
+    {% if addon.catalog %}catalog: {{ addon.catalog }}{% endif %}
+    {% if addon.catalog_version %} &middot; v{{ addon.catalog_version }}{% endif %}
+    {% if addon.installed_version and addon.installed_version != addon.catalog_version %}
+      &middot; installed: v{{ addon.installed_version }}
+    {% endif %}
+  </span>
+</div>
+
+{% if addon.description %}
+<p class="mb-6 opacity-80">{{ addon.description }}</p>
+{% endif %}
+
+<!-- Action buttons -->
+<div class="flex flex-wrap gap-2 mb-8">
+  {% if s == "available" and addon.catalog %}
+    <button
+      class="btn btn-primary btn-sm"
+      onclick="document.getElementById('install-modal-{{ addon.name }}').showModal()"
+    >Install</button>
+  {% endif %}
+
+  {% if s == "installed" or s == "inactive" %}
+    <form hx-post="/api/v1/addons/{{ addon.name }}/start"
+          hx-target="#addon-detail" hx-swap="innerHTML"
+          hx-on::before-request="this.querySelector('button').disabled=true">
+      <button class="btn btn-success btn-sm">Start</button>
+    </form>
+  {% endif %}
+
+  {% if s == "running" %}
+    <form hx-post="/api/v1/addons/{{ addon.name }}/stop"
+          hx-target="#addon-detail" hx-swap="innerHTML">
+      <button class="btn btn-warning btn-sm">Stop</button>
+    </form>
+  {% endif %}
+
+  {% if s in ("installed", "inactive", "running") %}
+    <form hx-post="/api/v1/addons/{{ addon.name }}/remove"
+          hx-target="#addon-detail" hx-swap="innerHTML"
+          hx-confirm="Remove {{ addon.name }}? The data volumes are kept.">
+      <button class="btn btn-error btn-outline btn-sm">Remove</button>
+    </form>
+  {% endif %}
+
+  {% if addon.installed_version %}
+    <form hx-post="/api/v1/addons/{{ addon.name }}/uninstall"
+          hx-target="#addon-detail" hx-swap="innerHTML"
+          hx-confirm="Uninstall {{ addon.name }}? The snapshot will be removed.">
+      <button class="btn btn-ghost btn-sm">Uninstall</button>
+    </form>
+  {% endif %}
+
+  {% if addon.update_available %}
+    <form hx-post="/api/v1/addons/{{ addon.name }}/update"
+          hx-target="#addon-detail" hx-swap="innerHTML">
+      <button class="btn btn-secondary btn-sm">Update</button>
+    </form>
+  {% endif %}
+</div>
+
+<!-- Env form (only if there are fields to fill) -->
+{% if addon.env_fields %}
+<div class="card bg-base-200 mb-6">
+  <div class="card-body">
+    <h3 class="card-title text-base">Configuration</h3>
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Key</th>
+            <th>Value</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in addon.env_fields %}
+          <tr>
+            <td class="font-mono text-xs">{{ f.key }}</td>
+            <td class="text-xs">
+              {% if f.auto_handled %}
+                <span class="opacity-50 italic">auto (Keycloak)</span>
+              {% elif f.current_set %}
+                {% if f.is_secret %}
+                  <span class="opacity-50">••••</span>
+                {% else %}
+                  {{ f.default }}
+                {% endif %}
+              {% else %}
+                <span class="opacity-40">{{ f.default }}</span>
+              {% endif %}
+              {% if f.hint %}<br><span class="opacity-50">{{ f.hint }}</span>{% endif %}
+            </td>
+            <td>
+              {% if f.auto_handled %}
+                <span class="badge badge-neutral badge-xs">auto</span>
+              {% elif f.current_set %}
+                <span class="badge badge-success badge-xs">set</span>
+              {% elif f.required %}
+                <span class="badge badge-error badge-xs">required</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Install modal -->
+{% if s == "available" and addon.catalog %}
+<dialog id="install-modal-{{ addon.name }}" class="modal">
+  <div class="modal-box">
+    <h3 class="text-lg font-bold mb-4">Install {{ addon.name }}</h3>
+    <form
+      hx-post="/api/v1/addons/{{ addon.name }}/install"
+      hx-target="#addon-detail"
+      hx-swap="innerHTML"
+      hx-on::after-request="document.getElementById('install-modal-{{ addon.name }}').close()"
+    >
+      <input type="hidden" name="catalog" value="{{ addon.catalog }}">
+
+      {% for f in addon.env_fields %}
+      {% if not f.auto_handled %}
+      <div class="form-control mb-3">
+        <label class="label">
+          <span class="label-text">{{ f.label }}{% if f.required %} *{% endif %}</span>
+        </label>
+        <input
+          name="env[{{ f.key }}]"
+          type="{% if f.is_secret %}password{% else %}text{% endif %}"
+          class="input input-bordered input-sm"
+          {% if f.required %}required{% endif %}
+          placeholder="{{ f.default }}"
+          {% if f.current_set and not f.is_secret %}value="{{ f.default }}"{% endif %}
+        >
+        {% if f.hint %}
+        <label class="label"><span class="label-text-alt opacity-60">{{ f.hint }}</span></label>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+
+      <div class="form-control mb-4">
+        <label class="label cursor-pointer">
+          <span class="label-text">Start after install</span>
+          <input type="checkbox" name="start" value="true" checked class="checkbox checkbox-sm">
+        </label>
+      </div>
+
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost btn-sm"
+                onclick="document.getElementById('install-modal-{{ addon.name }}').close()">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary btn-sm">Install</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endif %}
