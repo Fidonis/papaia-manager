@@ -143,7 +143,8 @@ class OIDCClient:
         id_token = token_response.get("id_token")
         if not isinstance(id_token, str) or not id_token:
             raise OIDCError("Token response missing id_token")
-        return await self._validate_id_token(id_token)
+        access_token: str | None = token_response.get("access_token") or None
+        return await self._validate_id_token(id_token, access_token=access_token)
 
     async def _fetch_tokens(self, *, code: str, code_verifier: str) -> dict[str, Any]:
         data = {
@@ -164,7 +165,7 @@ class OIDCClient:
         result: dict[str, Any] = response.json()
         return result
 
-    async def _validate_id_token(self, id_token: str) -> OIDCClaims:
+    async def _validate_id_token(self, id_token: str, *, access_token: str | None = None) -> OIDCClaims:
         try:
             header = jwt.get_unverified_header(id_token)
         except JWTError as exc:
@@ -194,6 +195,7 @@ class OIDCClient:
                 key,
                 algorithms=[alg],
                 audience=self._client_id,
+                access_token=access_token,
                 options={
                     "verify_signature": True,
                     "verify_aud": True,
