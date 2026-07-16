@@ -178,6 +178,17 @@ class OIDCClient:
         alg = _algorithm_for_key(key)
 
         try:
+            unverified = jwt.get_unverified_claims(id_token)
+            logger.info(
+                "id_token claims: aud=%r iss=%r sub=%r",
+                unverified.get("aud"),
+                unverified.get("iss"),
+                unverified.get("sub"),
+            )
+        except JWTError:
+            pass
+
+        try:
             payload = jwt.decode(
                 id_token,
                 key,
@@ -192,7 +203,12 @@ class OIDCClient:
         except ExpiredSignatureError as exc:
             raise OIDCError("id_token expired") from exc
         except JWTError as exc:
-            logger.info("id_token validation failed: %s", exc.__class__.__name__)
+            logger.warning(
+                "id_token validation failed: %s: %s (client_id=%r)",
+                exc.__class__.__name__,
+                exc,
+                self._client_id,
+            )
             raise OIDCError("id_token validation failed") from exc
 
         return _extract_claims(payload, self._role_claim)
