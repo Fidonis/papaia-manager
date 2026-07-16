@@ -181,7 +181,9 @@ class OIDCClient:
         result: dict[str, Any] = response.json()
         return result
 
-    async def _validate_id_token(self, id_token: str, *, access_token: str | None = None) -> OIDCClaims:
+    async def _validate_id_token(
+        self, id_token: str, *, access_token: str | None = None
+    ) -> OIDCClaims:
         try:
             header = jwt.get_unverified_header(id_token)
         except JWTError as exc:
