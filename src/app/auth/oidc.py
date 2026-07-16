@@ -124,6 +124,19 @@ class OIDCClient:
         url = f"{self._auth_endpoint}?{urlencode(params)}"
         return url, state, verifier
 
+    def build_auth_url(self, state: str, challenge: str) -> str:
+        """Return an authorization URL with caller-supplied state and PKCE challenge."""
+        params = {
+            "response_type": "code",
+            "client_id": self._client_id,
+            "redirect_uri": self._redirect_uri,
+            "scope": "openid profile",
+            "state": state,
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        }
+        return f"{self._auth_endpoint}?{urlencode(params)}"
+
     async def exchange_code(self, *, code: str, code_verifier: str) -> OIDCClaims:
         """Exchange an authorization code for validated OIDC claims."""
         token_response = await self._fetch_tokens(code=code, code_verifier=code_verifier)
