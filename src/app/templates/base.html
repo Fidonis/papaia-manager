@@ -1,10 +1,23 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <script>
+    (function () {
+      var KEY = "papaia-theme";
+      var stored = localStorage.getItem(KEY);
+      var theme = stored === "fidonis-light" || stored === "fidonis-dark"
+        ? stored
+        : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "fidonis-dark" : "fidonis-light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf" content="{{ csrf_token }}">
-  <title>{% block title %}papaia manager{% endblock %}</title>
+  <meta name="theme-color" content="#0a2f4d">
+  <title>{% block title %}papAIa manager by Fidonis{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/alpine.min.js" defer></script>
@@ -17,11 +30,40 @@
   <!-- Navbar -->
   <div class="navbar bg-base-200 shadow-sm px-4">
     <div class="flex-1">
-      <a href="/" class="text-xl font-bold tracking-tight">papaia manager</a>
+      <a href="/" class="flex items-center gap-2">
+        <svg viewBox="0 0 72 72" fill="none" aria-hidden="true" class="brand-mark h-7 w-7 shrink-0">
+          <rect x="43.5" y="19.5" width="18" height="18" rx="3" transform="rotate(22.5 52.5 28.5)" fill="#C8972A"/>
+          <rect class="brand-mark-ink" x="19.5" y="9.5" width="18" height="18" rx="3" transform="rotate(22.5 28.5 18.5)"/>
+          <rect class="brand-mark-ink" x="9.5" y="33.5" width="18" height="18" rx="3" transform="rotate(22.5 18.5 42.5)"/>
+          <rect class="brand-mark-ink" x="33.5" y="43.5" width="18" height="18" rx="3" transform="rotate(22.5 42.5 52.5)"/>
+        </svg>
+        <span class="font-brand font-extrabold text-xl tracking-tight leading-none">
+          papAIa manager <span class="font-medium text-sm opacity-60">by Fidonis</span>
+        </span>
+      </a>
     </div>
     <div class="flex-none gap-2">
       <a href="/addons" class="btn btn-ghost btn-sm">Addons</a>
       <a href="/catalogs" class="btn btn-ghost btn-sm">Catalogs</a>
+
+      <label
+        class="swap swap-rotate btn btn-ghost btn-sm btn-circle"
+        x-data="{ dark: document.documentElement.getAttribute('data-theme') === 'fidonis-dark' }"
+        x-init="$watch('dark', (value) => {
+          var theme = value ? 'fidonis-dark' : 'fidonis-light';
+          document.documentElement.setAttribute('data-theme', theme);
+          localStorage.setItem('papaia-theme', theme);
+        })"
+      >
+        <input type="checkbox" x-model="dark" aria-label="Toggle dark mode">
+        <svg class="swap-off h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M5.64 17l-.71.71a1 1 0 001.41 1.41l.71-.71A1 1 0 005.64 17zM5 12a1 1 0 00-1-1H3a1 1 0 000 2h1a1 1 0 001-1zm7-7a1 1 0 001-1V3a1 1 0 00-2 0v1a1 1 0 001 1zm5.36 2.71a1 1 0 001.41-1.41l-.71-.71a1 1 0 10-1.41 1.41zM17 12a5 5 0 11-5-5 5 5 0 015 5zm4-1h1a1 1 0 010 2h-1a1 1 0 010-2zm-2.36 6.29a1 1 0 00-1.41 1.41l.71.71a1 1 0 001.41-1.41zM12 20a1 1 0 00-1 1v1a1 1 0 002 0v-1a1 1 0 00-1-1z"/>
+        </svg>
+        <svg class="swap-on h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M21.64 13a1 1 0 00-1.05-.14 8.05 8.05 0 01-3.37.73 8.15 8.15 0 01-8.14-8.14 8.05 8.05 0 01.73-3.37 1 1 0 00-1.32-1.32A10.14 10.14 0 1022.96 14.32 1 1 0 0021.64 13z"/>
+        </svg>
+      </label>
+
       {% if user %}
       <div class="dropdown dropdown-end">
         <div tabindex="0" role="button" class="btn btn-ghost btn-sm">
