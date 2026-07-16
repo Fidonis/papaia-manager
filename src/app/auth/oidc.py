@@ -144,7 +144,23 @@ class OIDCClient:
         if not isinstance(id_token, str) or not id_token:
             raise OIDCError("Token response missing id_token")
         access_token: str | None = token_response.get("access_token") or None
-        return await self._validate_id_token(id_token, access_token=access_token)
+        claims = await self._validate_id_token(id_token, access_token=access_token)
+
+        # In a default Keycloak setup roles live in the access token under
+        # realm_access.roles, not the ID token. Fall back to the access token
+        # when the ID token carries no roles at the configured claim path.
+        if not claims.roles and access_token:
+            fallback_paths = [self._role_claim, "realm_access.roles"]
+            roles = _roles_from_unverified_jwt(access_token, fallback_paths)
+            if roles:
+                claims = OIDCClaims(
+                    sub=claims.sub,
+                    preferred_username=claims.preferred_username,
+                    roles=roles,
+                    exp=claims.exp,
+                )
+
+        return claims
 
     async def _fetch_tokens(self, *, code: str, code_verifier: str) -> dict[str, Any]:
         data = {
@@ -290,13 +306,37 @@ def _algorithm_for_key(key: dict[str, Any]) -> str:
     return str(alg)
 
 
+def _roles_from_unverified_jwt(token: str, claim_paths: list[str]) -> list[str]:
+    """Return the first non-empty role list found at any of the given dotted paths."""
+    try:
+        payload = jwt.get_unverified_claims(token)
+    except JWTError:
+        return []
+    for path in claim_paths:
+        node: Any = payload
+        for part in path.split("."):
+            if not isinstance(node, dict):
+                node = None
+                break
+            node = node.get(part)
+        if isinstance(node, list) and node:
+            return [str(r) for r in node if r]
+    return []
+
+
 def _extract_claims(payload: dict[str, Any], role_claim: str) -> OIDCClaims:
     sub = payload.get("sub")
     if not isinstance(sub, str) or not sub:
         raise OIDCError("id_token missing required sub claim")
 
-    raw_roles = payload.get(role_claim, [])
-    roles: list[str] = [str(r) for r in raw_roles] if isinstance(raw_roles, list) else []
+    # Support dotted paths like "realm_access.roles"
+    node: Any = payload
+    for part in role_claim.split("."):
+        if not isinstance(node, dict):
+            node = []
+            break
+        node = node.get(part, [])
+    roles: list[str] = [str(r) for r in node] if isinstance(node, list) else []
 
     exp = payload.get("exp")
     if not isinstance(exp, (int, float)):
