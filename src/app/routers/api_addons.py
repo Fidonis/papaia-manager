@@ -308,6 +308,7 @@ async def install(
             name=name,
             workspace_dir=settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
+            extra_flags=[f"--path={dest}"],
         )
         async for line in gen:
             ctx.log(line)
@@ -554,6 +555,7 @@ async def update(
             name=name,
             workspace_dir=settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
+            extra_flags=[f"--path={dest}"],
         )
         async for line in gen:
             ctx.log(line)
