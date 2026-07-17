@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Annotated, Any
 
 import yaml
@@ -254,10 +255,13 @@ async def _get_addon(name: str, settings: Settings) -> dict[str, Any]:
     if addon_path and addon_path.exists():
         from app.core.envforms import build_form  # noqa: PLC0415
 
+        # The config bundle's .env is canonical for papaia-ctl (seed_addon_env /
+        # materialize_addon_env both read/write it, not the checkout copy at
+        # addon_path/.env) -- mirror that here so "current_set" reflects reality.
         bundle_env: dict[str, str] | None = None
-        env_file = addon_path / ".env"
-        if env_file.exists():
-            bundle_env = _quick_parse_env(env_file.read_text(encoding="utf-8"))
+        bundle_env_file = Path(settings.papaia_config_dir) / "addons" / name / ".env"
+        if bundle_env_file.exists():
+            bundle_env = _quick_parse_env(bundle_env_file.read_text(encoding="utf-8"))
         fields = build_form(addon_path, bundle_env=bundle_env)
         env_fields = [
             {

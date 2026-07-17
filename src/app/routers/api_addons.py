@@ -224,9 +224,9 @@ async def env_form(
 
     bundle_env: dict[str, str] | None = None
     if inst:
-        env_file = addon_path / ".env"
-        if env_file.exists():
-            bundle_env = _parse_env_file(env_file.read_text(encoding="utf-8"))
+        bundle_env_file = Path(settings.papaia_config_dir) / "addons" / name / ".env"
+        if bundle_env_file.exists():
+            bundle_env = _parse_env_file(bundle_env_file.read_text(encoding="utf-8"))
 
     fields = build_form(addon_path, bundle_env=bundle_env)
     return [
@@ -289,7 +289,14 @@ async def install(
         ver = _manifest_version(dest)
 
         if _env:
-            env_file = dest / ".env"
+            # papaia-ctl treats the config bundle's .env as canonical: seed_addon_env
+            # only fills keys not already present there (sticky), and every start
+            # copies bundle -> checkout via materialize_addon_env, overwriting
+            # anything written to dest/.env directly. Write overrides to the bundle
+            # so they survive both seeding and the copy-back on start.
+            bundle_env_dir = Path(settings.papaia_config_dir) / "addons" / name
+            bundle_env_dir.mkdir(parents=True, exist_ok=True)
+            env_file = bundle_env_dir / ".env"
             existing = (
                 _parse_env_file(env_file.read_text(encoding="utf-8"))
                 if env_file.exists()
@@ -300,7 +307,7 @@ async def install(
                 "\n".join(f"{k}={v}" for k, v in existing.items()) + "\n",
                 encoding="utf-8",
             )
-            ctx.log(f"[info] wrote {len(_env)} env value(s) to .env")
+            ctx.log(f"[info] wrote {len(_env)} env value(s) to config bundle .env")
 
         ctx.log(f"[ctl] papaia-ctl addon install {name}")
         gen = await run_addon_verb(
@@ -536,7 +543,14 @@ async def update(
         ver = _manifest_version(dest)
 
         if _env:
-            env_file = dest / ".env"
+            # papaia-ctl treats the config bundle's .env as canonical: seed_addon_env
+            # only fills keys not already present there (sticky), and every start
+            # copies bundle -> checkout via materialize_addon_env, overwriting
+            # anything written to dest/.env directly. Write overrides to the bundle
+            # so they survive both seeding and the copy-back on start.
+            bundle_env_dir = Path(settings.papaia_config_dir) / "addons" / name
+            bundle_env_dir.mkdir(parents=True, exist_ok=True)
+            env_file = bundle_env_dir / ".env"
             existing = (
                 _parse_env_file(env_file.read_text(encoding="utf-8"))
                 if env_file.exists()
@@ -547,7 +561,7 @@ async def update(
                 "\n".join(f"{k}={v}" for k, v in existing.items()) + "\n",
                 encoding="utf-8",
             )
-            ctx.log(f"[info] wrote {len(_env)} env value(s) to .env")
+            ctx.log(f"[info] wrote {len(_env)} env value(s) to config bundle .env")
 
         ctx.log(f"[ctl] papaia-ctl addon install {name}")
         gen = await run_addon_verb(
