@@ -105,6 +105,7 @@ async def materialize_snapshot(
 
     archive_cmd = [
         "git",
+        "-c", f"safe.directory={catalog_clone}",
         "-C",
         str(catalog_clone),
         "archive",
@@ -145,7 +146,7 @@ async def materialize_snapshot(
 
 async def _get_head_sha(repo: Path) -> str:
     proc = await asyncio.create_subprocess_exec(
-        "git", "-C", str(repo), "rev-parse", "HEAD",
+        "git", "-c", f"safe.directory={repo}", "-C", str(repo), "rev-parse", "HEAD",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
