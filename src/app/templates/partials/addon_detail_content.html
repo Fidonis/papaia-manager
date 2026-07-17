@@ -135,10 +135,33 @@
   <div class="modal-box">
     <h3 class="text-lg font-bold mb-4">Install {{ addon.name }}</h3>
     <form
-      hx-post="/api/v1/addons/{{ addon.name }}/install"
-      hx-target="#addon-detail"
-      hx-swap="innerHTML"
-      hx-on::after-request="document.getElementById('install-modal-{{ addon.name }}').close()"
+      @submit.prevent="
+        const fd = new FormData($el);
+        const env = {};
+        for (const [k, v] of fd.entries()) {
+          const m = k.match(/^env\[(.+)\]$/);
+          if (m) env[m[1]] = v;
+        }
+        fetch('/api/v1/addons/{{ addon.name }}/install', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name=csrf]').content
+          },
+          body: JSON.stringify({
+            catalog: fd.get('catalog'),
+            env,
+            start: $el.querySelector('[name=start]').checked
+          })
+        }).then(r => {
+          if (r.ok) {
+            htmx.trigger(document.getElementById('addon-detail'), 'load');
+            document.getElementById('install-modal-{{ addon.name }}').close();
+          } else {
+            r.json().then(e => alert('Install failed (' + r.status + '): ' + (e.detail || JSON.stringify(e))));
+          }
+        });
+      "
     >
       <input type="hidden" name="catalog" value="{{ addon.catalog }}">
 
