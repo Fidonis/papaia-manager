@@ -21,6 +21,36 @@
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/alpine.min.js" defer></script>
+  <script>
+    // POST a JSON body to an addon action endpoint. The install endpoints
+    // expect application/json (Pydantic body models); an HTMX form would
+    // send form-urlencoded and be rejected with 422. On success the addon
+    // detail panel is reloaded; on failure the error detail is surfaced.
+    function addonAction(name, verb, body) {
+      return fetch("/api/v1/addons/" + name + "/" + verb, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": document.querySelector("meta[name=csrf]").content,
+        },
+        body: JSON.stringify(body || {}),
+      }).then(async (r) => {
+        if (!r.ok) {
+          let detail = r.status;
+          try {
+            const e = await r.json();
+            detail = e.detail || JSON.stringify(e);
+          } catch (_) {
+            /* non-JSON error body */
+          }
+          alert(verb + " failed: " + detail);
+          return false;
+        }
+        htmx.trigger(document.getElementById("addon-detail"), "load");
+        return true;
+      });
+    }
+  </script>
 </head>
 <body
   class="bg-base-100 text-base-content"
