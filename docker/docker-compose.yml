@@ -24,6 +24,13 @@ services:
       - ${PAPAIA_CONFIG_DIR}:${PAPAIA_CONFIG_DIR}
       # CA certificate for internal TLS (optional)
       - ${PAPAIA_CONFIG_DIR}/certs:/certs:ro
+    # The container runs as the non-root 'app' user (see Dockerfile), which has
+    # no membership in whatever group owns docker.sock on the host. Without this
+    # every papaia-ctl call that shells out to `docker` fails with
+    # "permission denied while trying to connect to the docker API". Set
+    # DOCKER_GID to the docker.sock owning group (see docker/.env.example).
+    group_add:
+      - "${DOCKER_GID}"
     restart: unless-stopped
     healthcheck:
       test:

@@ -33,49 +33,36 @@
 
 <!-- Action buttons -->
 <div class="flex flex-wrap gap-2 mb-8">
-  {% if s == "available" and addon.catalog %}
+  {% if s in ("available", "inactive") and addon.catalog %}
     <button
       class="btn btn-primary btn-sm"
       onclick="document.getElementById('install-modal-{{ addon.name }}').showModal()"
-    >Install</button>
+    >{% if s == "inactive" %}Reactivate{% else %}Install{% endif %}</button>
   {% endif %}
 
-  {% if s == "installed" or s == "inactive" %}
-    <form hx-post="/api/v1/addons/{{ addon.name }}/start"
-          hx-target="#addon-detail" hx-swap="innerHTML"
-          hx-on::before-request="this.querySelector('button').disabled=true">
-      <button class="btn btn-success btn-sm">Start</button>
-    </form>
+  {% if s == "installed" %}
+    <button class="btn btn-success btn-sm"
+            @click="addonAction('{{ addon.name }}', 'start', {})">Start</button>
   {% endif %}
 
   {% if s == "running" %}
-    <form hx-post="/api/v1/addons/{{ addon.name }}/stop"
-          hx-target="#addon-detail" hx-swap="innerHTML">
-      <button class="btn btn-warning btn-sm">Stop</button>
-    </form>
+    <button class="btn btn-warning btn-sm"
+            @click="addonAction('{{ addon.name }}', 'stop', {})">Stop</button>
   {% endif %}
 
   {% if s in ("installed", "inactive", "running") %}
-    <form hx-post="/api/v1/addons/{{ addon.name }}/remove"
-          hx-target="#addon-detail" hx-swap="innerHTML"
-          hx-confirm="Remove {{ addon.name }}? The data volumes are kept.">
-      <button class="btn btn-error btn-outline btn-sm">Remove</button>
-    </form>
+    <button class="btn btn-error btn-outline btn-sm"
+            @click="if (confirm('Remove {{ addon.name }}? The data volumes are kept.')) addonAction('{{ addon.name }}', 'remove', {})">Remove</button>
   {% endif %}
 
   {% if addon.installed_version %}
-    <form hx-post="/api/v1/addons/{{ addon.name }}/uninstall"
-          hx-target="#addon-detail" hx-swap="innerHTML"
-          hx-confirm="Uninstall {{ addon.name }}? The snapshot will be removed.">
-      <button class="btn btn-ghost btn-sm">Uninstall</button>
-    </form>
+    <button class="btn btn-ghost btn-sm"
+            @click="if (confirm('Uninstall {{ addon.name }}? The snapshot will be removed.')) addonAction('{{ addon.name }}', 'uninstall', {})">Uninstall</button>
   {% endif %}
 
   {% if addon.update_available %}
-    <form hx-post="/api/v1/addons/{{ addon.name }}/update"
-          hx-target="#addon-detail" hx-swap="innerHTML">
-      <button class="btn btn-secondary btn-sm">Update</button>
-    </form>
+    <button class="btn btn-secondary btn-sm"
+            @click="addonAction('{{ addon.name }}', 'update', {})">Update</button>
   {% endif %}
 </div>
 
@@ -130,15 +117,26 @@
 {% endif %}
 
 <!-- Install modal -->
-{% if s == "available" and addon.catalog %}
+{% if s in ("available", "inactive") and addon.catalog %}
 <dialog id="install-modal-{{ addon.name }}" class="modal">
   <div class="modal-box">
     <h3 class="text-lg font-bold mb-4">Install {{ addon.name }}</h3>
     <form
-      hx-post="/api/v1/addons/{{ addon.name }}/install"
-      hx-target="#addon-detail"
-      hx-swap="innerHTML"
-      hx-on::after-request="document.getElementById('install-modal-{{ addon.name }}').close()"
+      @submit.prevent="
+        const fd = new FormData($el);
+        const env = {};
+        for (const [k, v] of fd.entries()) {
+          const m = k.match(/^env\[(.+)\]$/);
+          if (m) env[m[1]] = v;
+        }
+        addonAction('{{ addon.name }}', 'install', {
+          catalog: fd.get('catalog'),
+          env,
+          start: $el.querySelector('[name=start]').checked
+        }).then(ok => {
+          if (ok) document.getElementById('install-modal-{{ addon.name }}').close();
+        });
+      "
     >
       <input type="hidden" name="catalog" value="{{ addon.catalog }}">
 
