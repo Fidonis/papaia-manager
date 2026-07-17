@@ -113,7 +113,7 @@ async def materialize_snapshot(
         "--",
         addon_subdir,
     ]
-    tar_cmd = ["tar", "-x", "-C", str(staging)]
+    tar_cmd = ["tar", "-x", "--touch", "-C", str(staging)]
 
     proc_git = await asyncio.create_subprocess_exec(
         *archive_cmd,
