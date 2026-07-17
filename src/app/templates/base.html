@@ -1,36 +1,110 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <script>
+    (function () {
+      var KEY = "papaia-theme";
+      var stored = localStorage.getItem(KEY);
+      var theme = stored === "fidonis-light" || stored === "fidonis-dark"
+        ? stored
+        : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "fidonis-dark" : "fidonis-light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf" content="{{ csrf_token }}">
-  <title>{% block title %}papaia manager{% endblock %}</title>
+  <meta name="theme-color" content="#0a2f4d">
+  <title>{% block title %}papAIa manager by Fidonis{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/alpine.min.js" defer></script>
 </head>
 <body
-  class="bg-base-100 text-base-content min-h-screen"
+  class="bg-base-100 text-base-content"
   hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'
   x-data
 >
-  <!-- Navbar -->
-  <div class="navbar bg-base-200 shadow-sm px-4">
-    <div class="flex-1">
-      <a href="/" class="text-xl font-bold tracking-tight">papaia manager</a>
+{% set path = request.url.path %}
+{% set nav_dashboard = path == "/" or path.startswith("/addons") or path.startswith("/jobs") %}
+{% set nav_catalogs  = path.startswith("/catalogs") %}
+
+<div class="flex">
+
+  <!-- ── Sidebar ───────────────────────────────────────── -->
+  <aside class="fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-base-200 border-r border-base-300">
+
+    <!-- Brand -->
+    <div class="flex items-center gap-3 px-5 py-5 border-b border-base-300">
+      <svg viewBox="0 0 72 72" fill="none" aria-hidden="true" class="brand-mark h-8 w-8 shrink-0">
+        <rect x="43.5" y="19.5" width="18" height="18" rx="3" transform="rotate(22.5 52.5 28.5)" fill="#C8972A"/>
+        <rect class="brand-mark-ink" x="19.5" y="9.5" width="18" height="18" rx="3" transform="rotate(22.5 28.5 18.5)"/>
+        <rect class="brand-mark-ink" x="9.5" y="33.5" width="18" height="18" rx="3" transform="rotate(22.5 18.5 42.5)"/>
+        <rect class="brand-mark-ink" x="33.5" y="43.5" width="18" height="18" rx="3" transform="rotate(22.5 42.5 52.5)"/>
+      </svg>
+      <div class="min-w-0 leading-tight">
+        <p class="font-brand font-extrabold text-base tracking-tight truncate">papAIa manager</p>
+        <p class="text-xs opacity-50 font-medium">by Fidonis</p>
+      </div>
     </div>
-    <div class="flex-none gap-2">
-      <a href="/addons" class="btn btn-ghost btn-sm">Addons</a>
-      <a href="/catalogs" class="btn btn-ghost btn-sm">Catalogs</a>
+
+    <!-- Navigation -->
+    <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
+
+      <a href="/"
+         class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                {{ 'bg-primary text-primary-content' if nav_dashboard else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+        </svg>
+        Dashboard
+      </a>
+
+      <a href="/catalogs"
+         class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                {{ 'bg-primary text-primary-content' if nav_catalogs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
+        </svg>
+        Catalogs
+      </a>
+
+    </nav>
+
+    <!-- Bottom: theme + user -->
+    <div class="border-t border-base-300 px-3 py-3 space-y-0.5">
+
+      <label
+        class="flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors select-none"
+        x-data="{ dark: document.documentElement.getAttribute('data-theme') === 'fidonis-dark' }"
+        x-init="$watch('dark', (v) => {
+          var t = v ? 'fidonis-dark' : 'fidonis-light';
+          document.documentElement.setAttribute('data-theme', t);
+          localStorage.setItem('papaia-theme', t);
+        })"
+      >
+        <input type="checkbox" x-model="dark" class="hidden" aria-label="Toggle dark mode">
+        <svg x-show="dark" class="h-4 w-4 shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M5.64 17l-.71.71a1 1 0 001.41 1.41l.71-.71A1 1 0 005.64 17zM5 12a1 1 0 00-1-1H3a1 1 0 000 2h1a1 1 0 001-1zm7-7a1 1 0 001-1V3a1 1 0 00-2 0v1a1 1 0 001 1zm5.36 2.71a1 1 0 001.41-1.41l-.71-.71a1 1 0 10-1.41 1.41zM17 12a5 5 0 11-5-5 5 5 0 015 5zm4-1h1a1 1 0 010 2h-1a1 1 0 010-2zm-2.36 6.29a1 1 0 00-1.41 1.41l.71.71a1 1 0 001.41-1.41zM12 20a1 1 0 00-1 1v1a1 1 0 002 0v-1a1 1 0 00-1-1z"/>
+        </svg>
+        <svg x-show="!dark" class="h-4 w-4 shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M21.64 13a1 1 0 00-1.05-.14 8.05 8.05 0 01-3.37.73 8.15 8.15 0 01-8.14-8.14 8.05 8.05 0 01.73-3.37 1 1 0 00-1.32-1.32A10.14 10.14 0 1022.96 14.32 1 1 0 0021.64 13z"/>
+        </svg>
+        <span x-text="dark ? 'Light mode' : 'Dark mode'"></span>
+      </label>
+
       {% if user %}
-      <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="btn btn-ghost btn-sm">
-          {{ user.preferred_username }}
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
+      <div class="dropdown dropdown-top w-full">
+        <div tabindex="0" role="button"
+             class="flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors w-full">
+          <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-content text-xs font-bold uppercase">
+            {{ user.preferred_username[0] }}
+          </span>
+          <span class="truncate">{{ user.preferred_username }}</span>
         </div>
-        <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-10 w-40 p-2 shadow">
+        <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-10 w-52 p-2 shadow mb-1">
           <li>
             <form method="post" action="/auth/logout">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -40,15 +114,35 @@
         </ul>
       </div>
       {% endif %}
+
     </div>
+  </aside>
+
+  <!-- ── Main ──────────────────────────────────────────── -->
+  <div class="ml-64 flex min-h-screen w-full flex-col">
+
+    <!-- Page header -->
+    <header class="sticky top-0 z-20 border-b border-base-300 bg-base-100 px-8 py-5">
+      <div class="flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <h1 class="font-brand text-2xl font-bold leading-tight">{% block page_title %}{% endblock %}</h1>
+          {% block page_subtitle %}{% endblock %}
+        </div>
+        <div class="flex items-center gap-3 shrink-0">
+          {% block page_actions %}{% endblock %}
+        </div>
+      </div>
+    </header>
+
+    <!-- Flash messages -->
+    <div id="toasts" class="toast toast-top toast-end z-50"></div>
+
+    <!-- Content -->
+    <main class="flex-1 px-8 py-6">
+      {% block content %}{% endblock %}
+    </main>
+
   </div>
-
-  <!-- Flash messages (HTMX out-of-band) -->
-  <div id="toasts" class="toast toast-top toast-end z-50"></div>
-
-  <!-- Page content -->
-  <main class="container mx-auto px-4 py-6 max-w-7xl">
-    {% block content %}{% endblock %}
-  </main>
+</div>
 </body>
 </html>

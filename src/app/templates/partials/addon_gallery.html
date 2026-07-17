@@ -1,48 +1,128 @@
 {% if not addons %}
-<div class="flex flex-col items-center py-20 gap-4 opacity-60">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+<div class="flex flex-col items-center py-24 gap-4 opacity-60">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
   </svg>
-  <p class="text-lg font-medium">No addons found</p>
-  <p class="text-sm">Add a catalog and refresh it to browse addons.</p>
-  <a href="/catalogs" class="btn btn-outline btn-sm">Manage catalogs</a>
+  <p class="text-lg font-semibold">Keine Add-Ons gefunden</p>
+  <p class="text-sm">Füge einen Katalog hinzu und aktualisiere ihn, um Add-Ons zu durchsuchen.</p>
+  <a href="/catalogs" class="btn btn-outline btn-sm">Kataloge verwalten</a>
 </div>
 {% else %}
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+{# ── Stats row ──────────────────────────────────────────────────── #}
+{% set cnt_total    = addons | length %}
+{% set cnt_running  = addons | selectattr('status', 'equalto', 'running')   | list | length %}
+{% set cnt_inactive = addons | selectattr('status', 'equalto', 'inactive')  | list | length
+                    + addons | selectattr('status', 'equalto', 'installed') | list | length %}
+{% set cnt_avail    = addons | selectattr('status', 'equalto', 'available') | list | length %}
+
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Installierte Add-Ons</p>
+    <p class="mt-1 text-3xl font-bold font-brand">{{ cnt_total }}</p>
+    <p class="text-xs opacity-40 mt-0.5">Gesamt</p>
+  </div>
+  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Aktiv</p>
+    <p class="mt-1 text-3xl font-bold font-brand text-success">{{ cnt_running }}</p>
+    <p class="text-xs opacity-40 mt-0.5">in Betrieb</p>
+  </div>
+  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Deaktiviert</p>
+    <p class="mt-1 text-3xl font-bold font-brand text-warning">{{ cnt_inactive }}</p>
+    <p class="text-xs opacity-40 mt-0.5">pausiert</p>
+  </div>
+  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Verfügbar</p>
+    <p class="mt-1 text-3xl font-bold font-brand">{{ cnt_avail }}</p>
+    <p class="text-xs opacity-40 mt-0.5">aus Katalog</p>
+  </div>
+</div>
+
+{# ── Section heading ────────────────────────────────────────────── #}
+<div class="flex items-center justify-between mb-4">
+  <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Add-Ons &nbsp;·&nbsp; {{ cnt_total }} Module</p>
+  <a href="/catalogs" class="btn btn-ghost btn-xs opacity-60">Kataloge verwalten</a>
+</div>
+
+{# ── Icon colour cycling (all classes listed literally for Tailwind) #}
+{# bg-primary text-primary-content                                   #}
+{# bg-secondary text-secondary-content                               #}
+{# bg-accent text-accent-content                                     #}
+{# bg-success text-success-content                                   #}
+{# bg-info text-info-content                                         #}
+{% set _icon_bg = ['bg-primary',   'bg-secondary',   'bg-accent',   'bg-success',   'bg-info']   %}
+{% set _icon_fg = ['text-primary-content', 'text-secondary-content', 'text-accent-content', 'text-success-content', 'text-info-content'] %}
+
+{# ── Add-on card grid ───────────────────────────────────────────── #}
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
   {% for addon in addons %}
-  <a href="/addons/{{ addon.name }}" class="card bg-base-200 shadow hover:shadow-md transition-shadow cursor-pointer">
-    <div class="card-body p-4">
-      <div class="flex items-start justify-between gap-2">
-        <h2 class="card-title text-base">{{ addon.name }}</h2>
-        {% set s = addon.status %}
-        {% if s == "running" %}
-          <span class="badge badge-success badge-sm">running</span>
-        {% elif s == "installed" %}
-          <span class="badge badge-info badge-sm">installed</span>
-        {% elif s == "inactive" %}
-          <span class="badge badge-warning badge-sm">inactive</span>
-        {% elif s == "unmanaged" %}
-          <span class="badge badge-neutral badge-sm">unmanaged</span>
-        {% else %}
-          <span class="badge badge-ghost badge-sm">available</span>
-        {% endif %}
+  {% set ci = loop.index0 % 5 %}
+  <div class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow flex flex-col">
+    <div class="card-body p-5 flex flex-col gap-3">
+
+      {# Header: icon + name/meta + badge #}
+      <div class="flex items-start gap-3">
+        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-extrabold font-brand uppercase
+                     {{ _icon_bg[ci] }} {{ _icon_fg[ci] }}">
+          {{ addon.name[0] }}
+        </span>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-2">
+            <p class="font-semibold leading-snug truncate">{{ addon.name }}</p>
+            {% set s = addon.status %}
+            {% if s == "running" %}
+              <span class="badge badge-success badge-sm shrink-0">Aktiv</span>
+            {% elif s == "installed" %}
+              <span class="badge badge-info badge-sm shrink-0">Installiert</span>
+            {% elif s == "inactive" %}
+              <span class="badge badge-warning badge-sm shrink-0">Deaktiviert</span>
+            {% elif s == "unmanaged" %}
+              <span class="badge badge-neutral badge-sm shrink-0">Unmanaged</span>
+            {% else %}
+              <span class="badge badge-ghost badge-sm shrink-0">Verfügbar</span>
+            {% endif %}
+          </div>
+          <p class="text-xs opacity-50 mt-0.5 truncate">
+            {% if addon.catalog_version %}v{{ addon.catalog_version }}{% endif %}
+            {% if addon.catalog %} · {{ addon.catalog }}{% endif %}
+          </p>
+        </div>
       </div>
-      {% if addon.description %}
-      <p class="text-sm opacity-70 line-clamp-2">{{ addon.description }}</p>
-      {% endif %}
-      <div class="flex items-center gap-2 mt-2 flex-wrap">
+
+      {# Description #}
+      <p class="text-sm opacity-70 line-clamp-2 min-h-[2.5rem]">
+        {{ addon.description if addon.description else '' }}
+      </p>
+
+      {# Tags #}
+      <div class="flex flex-wrap gap-1">
         {% if addon.catalog %}
-          <span class="text-xs opacity-50">{{ addon.catalog }}</span>
+          <span class="badge badge-outline badge-xs">{{ addon.catalog }}</span>
         {% endif %}
         {% if addon.catalog_version %}
           <span class="badge badge-outline badge-xs">v{{ addon.catalog_version }}</span>
         {% endif %}
         {% if addon.update_available %}
-          <span class="badge badge-warning badge-xs">update</span>
+          <span class="badge badge-warning badge-xs">Update</span>
         {% endif %}
       </div>
+
+      {# Actions #}
+      <div class="flex items-center gap-2 pt-2 border-t border-base-300 mt-auto">
+        <a href="/addons/{{ addon.name }}" class="btn btn-ghost btn-sm flex-1">Öffnen</a>
+        <a href="/addons/{{ addon.name }}"
+           class="btn btn-ghost btn-sm btn-square"
+           aria-label="Einstellungen">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </a>
+      </div>
+
     </div>
-  </a>
+  </div>
   {% endfor %}
 </div>
 {% endif %}

@@ -45,6 +45,27 @@ WORKDIR /build
 # Pin versions so the CSS output is reproducible.
 RUN npm install --save-dev tailwindcss@3.4.17 daisyui@4.12.23 2>/dev/null
 
+# Vendored brand fonts (self-hosted, no runtime calls to Google Fonts).
+# Fontsource ships pinned, npm-versioned woff2 files + matching @font-face
+# CSS, so exact file bytes are reproducible across rebuilds — same intent
+# as the pinned htmx/alpine curl downloads in the `assets` stage above.
+# NOTE: versions below are pinned to a placeholder; confirm against the
+# actual published @fontsource/* versions before merging (`npm view
+# @fontsource/manrope version`, `npm view @fontsource/ibm-plex-sans version`).
+ARG FONTSOURCE_MANROPE_VERSION=5.1.1
+ARG FONTSOURCE_IBM_PLEX_SANS_VERSION=5.1.1
+RUN npm install --no-save \
+        @fontsource/manrope@${FONTSOURCE_MANROPE_VERSION} \
+        @fontsource/ibm-plex-sans@${FONTSOURCE_IBM_PLEX_SANS_VERSION} \
+    && mkdir -p /static/fonts/files \
+    && cp node_modules/@fontsource/manrope/files/manrope-latin-500-normal.woff2 \
+          node_modules/@fontsource/manrope/files/manrope-latin-700-normal.woff2 \
+          node_modules/@fontsource/manrope/files/manrope-latin-800-normal.woff2 \
+          node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2 \
+          node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2 \
+          node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2 \
+          /static/fonts/files/
+
 # Tailwind config: scan all Jinja2 templates for class names.
 COPY docker/tailwind.config.js ./tailwind.config.js
 COPY docker/tailwind.input.css ./tailwind.input.css
@@ -97,6 +118,7 @@ COPY --from=builder /opt/venv /opt/venv
 COPY src/app/ /app/app/
 COPY --from=assets /static/ /app/app/static/
 COPY --from=css-builder /static/app.css /app/app/static/app.css
+COPY --from=css-builder /static/fonts/ /app/app/static/fonts/
 
 # GIT_ASKPASS helper: echoes $GIT_TOKEN; used for private catalog authentication.
 # The token appears in no argv and no log — only in the subprocess environment.

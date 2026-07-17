@@ -1,3 +1,72 @@
-﻿@tailwind base;
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  @font-face {
+    font-family: "Manrope";
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url("/static/fonts/files/manrope-latin-500-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Manrope";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("/static/fonts/files/manrope-latin-700-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Manrope";
+    font-style: normal;
+    font-weight: 800;
+    font-display: swap;
+    src: url("/static/fonts/files/manrope-latin-800-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "IBM Plex Sans";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/static/fonts/files/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "IBM Plex Sans";
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url("/static/fonts/files/ibm-plex-sans-latin-500-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "IBM Plex Sans";
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url("/static/fonts/files/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
+  }
+
+  body {
+    font-family: theme("fontFamily.body");
+  }
+  h1, h2, h3, h4, h5, h6, .font-brand {
+    font-family: theme("fontFamily.brand");
+  }
+
+  /* Logo mark: the gold square is fixed-color (matches fidonis.de); the
+     three navy squares lighten in dark mode so the mark stays legible
+     against the dark navy background. */
+  .brand-mark-ink {
+    fill: #0a2f4d;
+  }
+  [data-theme="fidonis-dark"] .brand-mark-ink {
+    fill: #d0e6f5;
+  }
+
+  [data-theme="fidonis-light"] {
+    color-scheme: light;
+  }
+  [data-theme="fidonis-dark"] {
+    color-scheme: dark;
+  }
+}
