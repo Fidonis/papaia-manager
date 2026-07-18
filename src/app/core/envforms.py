@@ -22,6 +22,7 @@ class EnvField:
     current_set: bool = False
     hint: str = ""
     auto_handled: bool = False
+    current_value: str | None = None
 
 
 def build_form(
@@ -63,6 +64,7 @@ def build_form(
         is_secret = bool(_SECRET_RE.search(key))
         current_set = bool(bundle_env and key in bundle_env and bundle_env[key] != default)
         auto = key in replace_secrets and auth_provider == "internal_keycloak"
+        current_value = bundle_env.get(key) if (bundle_env and current_set) else None
 
         fields.append(
             EnvField(
@@ -74,6 +76,7 @@ def build_form(
                 current_set=current_set,
                 hint=hint,
                 auto_handled=auto,
+                current_value=current_value,
             )
         )
 

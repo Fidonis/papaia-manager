@@ -273,6 +273,7 @@ async def _get_addon(name: str, settings: Settings) -> dict[str, Any]:
                 "current_set": f.current_set,
                 "hint": f.hint,
                 "auto_handled": f.auto_handled,
+                "current_value": f.current_value,
             }
             for f in fields
         ]

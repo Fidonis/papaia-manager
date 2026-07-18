@@ -54,11 +54,40 @@
   {{ uninstall_modal(addon, 'addonAction') }}
 </div>
 
-<!-- Env form (only if there are fields to fill) -->
+<!-- Configuration -->
 {% if addon.env_fields %}
-<div class="card bg-base-200 mb-6">
+{% set editable = s in ("running", "installed", "inactive") and addon.installed_version %}
+<div class="card bg-base-200 mb-6" x-data="{
+  busy: false,
+  collectEnv() {
+    const env = {};
+    this.$el.querySelectorAll('[data-env-key]').forEach(el => {
+      const val = el.value.trim();
+      if (el.type !== 'password' || val !== '') env[el.dataset.envKey] = val;
+    });
+    return env;
+  },
+  async doSave(restart) {
+    this.$refs.saveConfigModal.close();
+    this.busy = true;
+    const data = await _addonPost('{{ addon.name }}', 'save-config', { env: this.collectEnv(), restart });
+    if (!data) { this.busy = false; return; }
+    _pollJob(data.job_id, () => {
+      htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' });
+    });
+  }
+}">
   <div class="card-body">
-    <h3 class="card-title text-base">Configuration</h3>
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="card-title text-base">Configuration</h3>
+      {% if editable %}
+      <button class="btn btn-primary btn-sm" :disabled="busy"
+              @click="$refs.saveConfigModal.showModal()">
+        <span style="display:none" x-show="busy" class="loading loading-dots loading-xs"></span>
+        <span x-show="!busy">Speichern</span>
+      </button>
+      {% endif %}
+    </div>
     <div class="overflow-x-auto">
       <table class="table table-sm">
         <thead>
@@ -75,16 +104,36 @@
             <td class="text-xs">
               {% if f.auto_handled %}
                 <span class="opacity-50 italic">auto (Keycloak)</span>
-              {% elif f.current_set %}
-                {% if f.is_secret %}
-                  <span class="opacity-50">••••</span>
-                {% else %}
-                  {{ f.default }}
-                {% endif %}
+                {% if f.hint %}<br><span class="opacity-50">{{ f.hint }}</span>{% endif %}
+              {% elif editable %}
+                <input
+                  data-env-key="{{ f.key }}"
+                  type="{% if f.is_secret %}password{% else %}text{% endif %}"
+                  class="input input-bordered input-xs w-full"
+                  {% if f.current_set %}
+                    {% if f.is_secret %}
+                      placeholder="••••"
+                    {% else %}
+                      value="{{ f.current_value }}"
+                      placeholder="{{ f.default }}"
+                    {% endif %}
+                  {% else %}
+                    placeholder="{{ f.default }}"
+                  {% endif %}
+                >
+                {% if f.hint %}<br><span class="opacity-50">{{ f.hint }}</span>{% endif %}
               {% else %}
-                <span class="opacity-40">{{ f.default }}</span>
+                {% if f.current_set %}
+                  {% if f.is_secret %}
+                    <span class="opacity-50">••••</span>
+                  {% else %}
+                    {{ f.default }}
+                  {% endif %}
+                {% else %}
+                  <span class="opacity-40">{{ f.default }}</span>
+                {% endif %}
+                {% if f.hint %}<br><span class="opacity-50">{{ f.hint }}</span>{% endif %}
               {% endif %}
-              {% if f.hint %}<br><span class="opacity-50">{{ f.hint }}</span>{% endif %}
             </td>
             <td>
               {% if f.auto_handled %}
@@ -100,6 +149,23 @@
         </tbody>
       </table>
     </div>
+
+    {% if editable %}
+    <dialog x-ref="saveConfigModal" class="modal">
+      <div class="modal-box max-w-sm">
+        <h3 class="font-bold text-base mb-2">Konfiguration speichern</h3>
+        <p class="text-sm opacity-70 mb-4">
+          Soll das Add-On nach dem Speichern neu gestartet werden, damit die Änderungen wirksam werden?
+        </p>
+        <div class="modal-action">
+          <button class="btn btn-ghost btn-sm" @click="$refs.saveConfigModal.close()">Abbrechen</button>
+          <button class="btn btn-outline btn-sm" @click="doSave(false)">Nein</button>
+          <button class="btn btn-primary btn-sm" @click="doSave(true)">Ja, neu starten</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+    {% endif %}
   </div>
 </div>
 {% endif %}
