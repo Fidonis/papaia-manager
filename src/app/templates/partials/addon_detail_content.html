@@ -57,42 +57,7 @@
 <!-- Configuration -->
 {% if addon.env_fields %}
 {% set editable = s in ("running", "installed", "inactive") and addon.installed_version %}
-<div class="card bg-base-200 mb-6" x-data="{
-  editMode: false,
-  dirty: false,
-  busy: false,
-  checkDirty() {
-    this.dirty = Array.from(this.$el.querySelectorAll('[data-env-key]')).some(el => {
-      if (el.type === 'password') return el.value.trim() !== '';
-      return el.value !== (el.dataset.initial ?? '');
-    });
-  },
-  collectEnv() {
-    const env = {};
-    this.$el.querySelectorAll('[data-env-key]').forEach(el => {
-      const val = el.value.trim();
-      if (el.type !== 'password' || val !== '') env[el.dataset.envKey] = val;
-    });
-    return env;
-  },
-  cancelEdit() {
-    this.$el.querySelectorAll('[data-env-key]').forEach(el => {
-      if (el.type === 'password') el.value = '';
-      else el.value = el.dataset.initial ?? '';
-    });
-    this.editMode = false;
-    this.dirty = false;
-  },
-  async doSave(restart) {
-    this.$refs.saveConfigModal.close();
-    this.busy = true;
-    const data = await _addonPost('{{ addon.name }}', 'save-config', { env: this.collectEnv(), restart });
-    if (!data) { this.busy = false; return; }
-    _pollJob(data.job_id, () => {
-      htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' });
-    });
-  }
-}">
+<div class="card bg-base-200 mb-6" x-data="{ editMode: false, dirty: false, busy: false }">
   <div class="card-body">
     <div class="flex items-center justify-between mb-2">
       <h3 class="card-title text-base">Configuration</h3>
@@ -101,7 +66,13 @@
         <button class="btn btn-outline btn-sm" x-show="!editMode"
                 @click="editMode = true">Bearbeiten</button>
         <button class="btn btn-ghost btn-sm" x-show="editMode" style="display:none"
-                @click="cancelEdit()">Abbrechen</button>
+                @click="
+                  $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
+                    if (el.type === 'password') el.value = '';
+                    else el.value = el.dataset.initial ?? '';
+                  });
+                  editMode = false; dirty = false;
+                ">Abbrechen</button>
         <button class="btn btn-primary btn-sm" x-show="editMode" style="display:none"
                 :disabled="!dirty || busy"
                 @click="$refs.saveConfigModal.showModal()">
@@ -155,7 +126,7 @@
                     placeholder="{{ f.default }}"
                   {% endif %}
                   class="input input-bordered input-xs w-full"
-                  @input="checkDirty()"
+                  @input="dirty = dirty || ($el.type === 'password' ? $el.value.trim() !== '' : $el.value !== ($el.dataset.initial ?? ''))"
                 >
                 {% if f.hint %}<br><span class="opacity-50">{{ f.hint }}</span>{% endif %}
               </div>
@@ -183,9 +154,36 @@
           Soll das Add-On nach dem Speichern neu gestartet werden, damit die Änderungen wirksam werden?
         </p>
         <div class="modal-action">
-          <button class="btn btn-ghost btn-sm" @click="$refs.saveConfigModal.close()">Abbrechen</button>
-          <button class="btn btn-outline btn-sm" @click="doSave(false)">Nein</button>
-          <button class="btn btn-primary btn-sm" @click="doSave(true)">Ja, neu starten</button>
+          <button class="btn btn-ghost btn-sm"
+                  @click="$refs.saveConfigModal.close()">Abbrechen</button>
+          <button class="btn btn-outline btn-sm"
+                  @click="
+                    const env = {};
+                    $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
+                      const val = el.value.trim();
+                      if (el.type !== 'password' || val !== '') env[el.dataset.envKey] = val;
+                    });
+                    $refs.saveConfigModal.close();
+                    busy = true;
+                    _addonPost('{{ addon.name }}', 'save-config', { env, restart: false }).then(data => {
+                      if (!data) { busy = false; return; }
+                      _pollJob(data.job_id, () => htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' }));
+                    });
+                  ">Nein</button>
+          <button class="btn btn-primary btn-sm"
+                  @click="
+                    const env = {};
+                    $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
+                      const val = el.value.trim();
+                      if (el.type !== 'password' || val !== '') env[el.dataset.envKey] = val;
+                    });
+                    $refs.saveConfigModal.close();
+                    busy = true;
+                    _addonPost('{{ addon.name }}', 'save-config', { env, restart: true }).then(data => {
+                      if (!data) { busy = false; return; }
+                      _pollJob(data.job_id, () => htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' }));
+                    });
+                  ">Ja, neu starten</button>
         </div>
       </div>
       <form method="dialog" class="modal-backdrop"><button>close</button></form>
