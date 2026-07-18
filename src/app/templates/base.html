@@ -22,11 +22,12 @@
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/alpine.min.js" defer></script>
   <script>
-    // POST a JSON body to an addon action endpoint. The install endpoints
-    // expect application/json (Pydantic body models); an HTMX form would
-    // send form-urlencoded and be rejected with 422. On success the addon
-    // detail panel is reloaded; on failure the error detail is surfaced.
-    function addonAction(name, verb, body) {
+    // Shared helpers for addon lifecycle actions.
+    // _addonPost: sends the action request and returns a Promise<data|null>.
+    // _pollJob:   polls /api/v1/jobs/{id} every 2 s and calls onDone() on completion.
+    // addonAction:   reloads the detail panel after the job finishes.
+    // galleryAction: reloads the dashboard gallery after the job finishes.
+    function _addonPost(name, verb, body) {
       return fetch("/api/v1/addons/" + name + "/" + verb, {
         method: "POST",
         headers: {
@@ -40,13 +41,41 @@
           try {
             const e = await r.json();
             detail = e.detail || JSON.stringify(e);
-          } catch (_) {
-            /* non-JSON error body */
-          }
+          } catch (_) {}
           alert(verb + " failed: " + detail);
-          return false;
+          return null;
         }
-        htmx.trigger(document.getElementById("addon-detail"), "load");
+        return r.json();
+      });
+    }
+
+    function _pollJob(jobId, onDone) {
+      fetch("/api/v1/jobs/" + jobId)
+        .then(r => r.json())
+        .then(job => {
+          if (job.status === "succeeded" || job.status === "failed") {
+            onDone();
+          } else {
+            setTimeout(() => _pollJob(jobId, onDone), 2000);
+          }
+        })
+        .catch(() => setTimeout(() => _pollJob(jobId, onDone), 2000));
+    }
+
+    function addonAction(name, verb, body) {
+      return _addonPost(name, verb, body).then(data => {
+        if (!data) return false;
+        _pollJob(data.job_id, () =>
+          htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" })
+        );
+        return true;
+      });
+    }
+
+    function galleryAction(name, verb, body) {
+      return _addonPost(name, verb, body).then(data => {
+        if (!data) return false;
+        _pollJob(data.job_id, () => htmx.ajax("GET", "/partials/addons", { target: "#addon-gallery", swap: "innerHTML" }));
         return true;
       });
     }
