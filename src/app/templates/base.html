@@ -50,6 +50,43 @@
         return true;
       });
     }
+
+    function galleryAction(name, verb, body) {
+      return fetch("/api/v1/addons/" + name + "/" + verb, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": document.querySelector("meta[name=csrf]").content,
+        },
+        body: JSON.stringify(body || {}),
+      }).then(async (r) => {
+        if (!r.ok) {
+          let detail = r.status;
+          try {
+            const e = await r.json();
+            detail = e.detail || JSON.stringify(e);
+          } catch (_) {}
+          alert(verb + " failed: " + detail);
+          return false;
+        }
+        const data = await r.json();
+        _pollJobThenRefreshGallery(data.job_id);
+        return true;
+      });
+    }
+
+    function _pollJobThenRefreshGallery(jobId) {
+      fetch("/api/v1/jobs/" + jobId)
+        .then(r => r.json())
+        .then(job => {
+          if (job.status === "succeeded" || job.status === "failed") {
+            htmx.ajax("GET", "/partials/addons", { target: "#addon-gallery", swap: "innerHTML" });
+          } else {
+            setTimeout(() => _pollJobThenRefreshGallery(jobId), 2000);
+          }
+        })
+        .catch(() => setTimeout(() => _pollJobThenRefreshGallery(jobId), 2000));
+    }
   </script>
 </head>
 <body
