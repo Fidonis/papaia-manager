@@ -65,7 +65,9 @@
     function addonAction(name, verb, body) {
       return _addonPost(name, verb, body).then(data => {
         if (!data) return false;
-        _pollJob(data.job_id, () => htmx.trigger(document.getElementById("addon-detail"), "load"));
+        _pollJob(data.job_id, () =>
+          htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" })
+        );
         return true;
       });
     }
