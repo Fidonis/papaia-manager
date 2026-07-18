@@ -1,3 +1,4 @@
+{% from "partials/_addon_controls.html" import action_buttons, remove_modal, uninstall_modal %}
 {% set s = addon.status %}
 
 <!-- Status bar -->
@@ -32,38 +33,25 @@
 {% endif %}
 
 <!-- Action buttons -->
-<div class="flex flex-wrap gap-2 mb-8">
-  {% if s in ("available", "inactive") and addon.catalog %}
-    <button
-      class="btn btn-primary btn-sm"
-      onclick="document.getElementById('install-modal-{{ addon.name }}').showModal()"
-    >{% if s == "inactive" %}Reactivate{% else %}Install{% endif %}</button>
-  {% endif %}
+<div x-data="{ busy: false, activeVerb: '' }">
+  <div class="flex flex-wrap gap-2 mb-8">
+    {% if s in ("available", "inactive") and addon.catalog %}
+      <button
+        class="btn btn-primary btn-sm"
+        onclick="document.getElementById('install-modal-{{ addon.name }}').showModal()"
+      >{% if s == "inactive" %}Reactivate{% else %}Install{% endif %}</button>
+    {% endif %}
 
-  {% if s == "installed" %}
-    <button class="btn btn-success btn-sm"
-            @click="addonAction('{{ addon.name }}', 'start', {})">Start</button>
-  {% endif %}
+    {{ action_buttons(addon, s, 'addonAction') }}
 
-  {% if s == "running" %}
-    <button class="btn btn-warning btn-sm"
-            @click="addonAction('{{ addon.name }}', 'stop', {})">Stop</button>
-  {% endif %}
+    {% if addon.update_available %}
+      <button class="btn btn-secondary btn-sm"
+              @click="addonAction('{{ addon.name }}', 'update', {})">Update</button>
+    {% endif %}
+  </div>
 
-  {% if s in ("installed", "inactive", "running") %}
-    <button class="btn btn-error btn-outline btn-sm"
-            @click="if (confirm('Remove {{ addon.name }}? The data volumes are kept.')) addonAction('{{ addon.name }}', 'remove', {})">Remove</button>
-  {% endif %}
-
-  {% if addon.installed_version %}
-    <button class="btn btn-ghost btn-sm"
-            @click="if (confirm('Uninstall {{ addon.name }}? The snapshot will be removed.')) addonAction('{{ addon.name }}', 'uninstall', {})">Uninstall</button>
-  {% endif %}
-
-  {% if addon.update_available %}
-    <button class="btn btn-secondary btn-sm"
-            @click="addonAction('{{ addon.name }}', 'update', {})">Update</button>
-  {% endif %}
+  {{ remove_modal(addon, s, 'addonAction') }}
+  {{ uninstall_modal(addon, 'addonAction') }}
 </div>
 
 <!-- Env form (only if there are fields to fill) -->

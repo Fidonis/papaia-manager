@@ -1,3 +1,4 @@
+{% from "partials/_addon_controls.html" import action_buttons, remove_modal, uninstall_modal %}
 {% if not addons %}
 <div class="flex flex-col items-center py-24 gap-4 opacity-60">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -110,34 +111,7 @@
 
       {# Actions #}
       <div class="flex items-center gap-1 pt-2 border-t border-base-300 mt-auto flex-wrap">
-        {% if s == "installed" %}
-          <button class="btn btn-success btn-sm" :disabled="busy"
-                  @click="busy = true; activeVerb = 'start'; galleryAction('{{ addon.name }}', 'start', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-            <span style="display:none" x-show="activeVerb === 'start'" class="loading loading-dots loading-xs"></span>
-            <span x-show="activeVerb !== 'start'">Start</span>
-          </button>
-        {% endif %}
-        {% if s == "running" %}
-          <button class="btn btn-warning btn-sm" :disabled="busy"
-                  @click="busy = true; activeVerb = 'stop'; galleryAction('{{ addon.name }}', 'stop', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-            <span style="display:none" x-show="activeVerb === 'stop'" class="loading loading-dots loading-xs"></span>
-            <span x-show="activeVerb !== 'stop'">Stop</span>
-          </button>
-        {% endif %}
-        {% if s in ("installed", "inactive", "running") %}
-          <button class="btn btn-error btn-outline btn-sm" :disabled="busy"
-                  @click="$refs.removeModal.showModal()">
-            <span style="display:none" x-show="activeVerb === 'remove'" class="loading loading-dots loading-xs"></span>
-            <span x-show="activeVerb !== 'remove'">Remove</span>
-          </button>
-        {% endif %}
-        {% if addon.installed_version %}
-          <button class="btn btn-ghost btn-sm" :disabled="busy"
-                  @click="$refs.uninstallModal.showModal()">
-            <span style="display:none" x-show="activeVerb === 'uninstall'" class="loading loading-dots loading-xs"></span>
-            <span x-show="activeVerb !== 'uninstall'">Uninstall</span>
-          </button>
-        {% endif %}
+        {{ action_buttons(addon, s, 'galleryAction') }}
 
         <div class="flex-1"></div>
 
@@ -153,95 +127,8 @@
 
     </div>
 
-    {# Remove confirmation modal #}
-    {% if s in ("installed", "inactive", "running") %}
-    <dialog x-ref="removeModal" class="modal">
-      <div class="modal-box max-w-sm">
-        <h3 class="font-bold text-base mb-1">{{ addon.name }} entfernen</h3>
-        <p class="text-sm opacity-60 mb-4">
-          Deaktiviert das Add-On und entfernt die Docker Container. Das Add-On kann
-          anschließend über <strong>Reactivate</strong> wieder aktiviert werden.
-        </p>
-        <div class="space-y-1.5 mb-3">
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-40">Was passiert</p>
-          <div class="flex items-center gap-2 text-sm">
-            <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            Docker Container werden gestoppt und entfernt
-          </div>
-          <div class="flex items-center gap-2 text-sm">
-            <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            Compose-Integration wird deaktiviert
-          </div>
-        </div>
-        <div class="space-y-1.5 mb-5">
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-40">Was erhalten bleibt</p>
-          <div class="flex items-center gap-2 text-sm opacity-70">
-            <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-            Docker Volumes (Datenbank, Uploads, …)
-          </div>
-          <div class="flex items-center gap-2 text-sm opacity-70">
-            <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-            Konfigurationsdateien auf dem Host
-          </div>
-        </div>
-        <div class="modal-action mt-0">
-          <button class="btn btn-ghost btn-sm" @click="$refs.removeModal.close()">Abbrechen</button>
-          <button class="btn btn-error btn-sm"
-                  @click="$refs.removeModal.close(); busy = true; activeVerb = 'remove'; galleryAction('{{ addon.name }}', 'remove', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-            Entfernen
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop"><button>close</button></form>
-    </dialog>
-    {% endif %}
-
-    {# Uninstall confirmation modal #}
-    {% if addon.installed_version %}
-    <dialog x-ref="uninstallModal" class="modal">
-      <div class="modal-box max-w-sm">
-        <h3 class="font-bold text-base mb-1">{{ addon.name }} deinstallieren</h3>
-        <p class="text-sm opacity-60 mb-4">
-          Entfernt das Add-On vollständig inklusive Konfigurationspaket.
-          Das Add-On muss anschließend neu installiert werden.
-        </p>
-        <div class="space-y-1.5 mb-3">
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-40">Was passiert</p>
-          <div class="flex items-center gap-2 text-sm">
-            <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            Docker Container werden gestoppt und entfernt
-          </div>
-          <div class="flex items-center gap-2 text-sm">
-            <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            Konfigurationspaket (Snapshot) wird gelöscht
-          </div>
-          <div class="flex items-center gap-2 text-sm">
-            <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            Eintrag wird aus der Bereitstellungskonfiguration entfernt
-          </div>
-        </div>
-        <div class="space-y-1.5 mb-3">
-          <p class="text-xs font-semibold uppercase tracking-wide opacity-40">Was erhalten bleibt</p>
-          <div class="flex items-center gap-2 text-sm opacity-70">
-            <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-            Docker Volumes (Datenbank, Uploads, …)
-          </div>
-        </div>
-        <div class="alert alert-warning py-2 mb-5">
-          <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-          <span class="text-xs">Diese Aktion kann nicht rückgängig gemacht werden.</span>
-        </div>
-        <div class="modal-action mt-0">
-          <button class="btn btn-ghost btn-sm" @click="$refs.uninstallModal.close()">Abbrechen</button>
-          <button class="btn btn-error btn-sm"
-                  @click="$refs.uninstallModal.close(); busy = true; activeVerb = 'uninstall'; galleryAction('{{ addon.name }}', 'uninstall', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-            Deinstallieren
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop"><button>close</button></form>
-    </dialog>
-    {% endif %}
+    {{ remove_modal(addon, s, 'galleryAction') }}
+    {{ uninstall_modal(addon, 'galleryAction') }}
 
   </div>
   {% endfor %}
