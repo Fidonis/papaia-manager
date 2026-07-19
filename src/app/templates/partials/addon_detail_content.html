@@ -161,7 +161,8 @@
                     const env = {};
                     $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
                       const val = el.value.trim();
-                      if (el.type !== 'password' || val !== '') env[el.dataset.envKey] = val;
+                      const send = el.type === 'password' ? val !== '' : (val !== '' || el.dataset.initial !== '');
+                      if (send) env[el.dataset.envKey] = val;
                     });
                     $refs.saveConfigModal.close();
                     busy = true;
@@ -175,7 +176,8 @@
                     const env = {};
                     $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
                       const val = el.value.trim();
-                      if (el.type !== 'password' || val !== '') env[el.dataset.envKey] = val;
+                      const send = el.type === 'password' ? val !== '' : (val !== '' || el.dataset.initial !== '');
+                      if (send) env[el.dataset.envKey] = val;
                     });
                     $refs.saveConfigModal.close();
                     busy = true;
@@ -218,7 +220,7 @@
       <input type="hidden" name="catalog" value="{{ addon.catalog }}">
 
       {% for f in addon.env_fields %}
-      {% if not f.auto_handled %}
+      {% if not f.auto_handled and f.prompt_on_install %}
       <div class="form-control mb-3">
         <label class="label">
           <span class="label-text">{{ f.label }}{% if f.required %} *{% endif %}</span>
