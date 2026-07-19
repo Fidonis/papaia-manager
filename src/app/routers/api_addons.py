@@ -54,6 +54,11 @@ class UpdateBody(BaseModel):
     env: dict[str, str] = {}
 
 
+class SaveConfigBody(BaseModel):
+    env: dict[str, str] = {}
+    restart: bool = False
+
+
 def _queue() -> JobQueue:
     from app.main import _job_queue  # noqa: PLC0415
 
@@ -239,6 +244,7 @@ async def env_form(
             "current_set": f.current_set,
             "hint": f.hint,
             "auto_handled": f.auto_handled,
+            "current_value": f.current_value,
         }
         for f in fields
     ]
@@ -607,6 +613,79 @@ async def update(
     job = await queue.enqueue(
         action="update", target=name, user=_username,
         params={"catalog": _cat}, callback=_callback,
+    )
+    return {"job_id": job.id, "status": "queued"}
+
+
+@router.post("/{name}/save-config", status_code=status.HTTP_202_ACCEPTED)
+async def save_config(
+    name: str,
+    body: SaveConfigBody,
+    request: Request,
+    user: CurrentUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
+    verify_csrf(request)
+    queue = _queue()
+    _username = _user_id(user)
+    _env = dict(body.env)
+    _restart = body.restart
+
+    async def _callback(ctx: JobContext) -> None:
+        if _env:
+            bundle_env_dir = Path(settings.papaia_config_dir) / "addons" / name
+            bundle_env_dir.mkdir(parents=True, exist_ok=True)
+            env_file = bundle_env_dir / ".env"
+            existing = (
+                _parse_env_file(env_file.read_text(encoding="utf-8"))
+                if env_file.exists()
+                else {}
+            )
+            existing.update(_env)
+            env_file.write_text(
+                "\n".join(f"{k}={v}" for k, v in existing.items()) + "\n",
+                encoding="utf-8",
+            )
+            ctx.log(f"[info] wrote {len(_env)} env value(s) to config bundle .env")
+
+        if _restart:
+            ctx.log(f"[ctl] papaia-ctl addon stop {name} --clean-up")
+            gen = await run_addon_verb(
+                verb="stop",
+                name=name,
+                workspace_dir=settings.papaia_workspace_dir,
+                config_dir=settings.papaia_config_dir,
+                extra_flags=["--clean-up"],
+            )
+            async for line in gen:
+                ctx.log(line)
+
+            ctx.log(f"[ctl] papaia-ctl addon start {name}")
+            gen = await run_addon_verb(
+                verb="start",
+                name=name,
+                workspace_dir=settings.papaia_workspace_dir,
+                config_dir=settings.papaia_config_dir,
+            )
+            async for line in gen:
+                ctx.log(line)
+
+        write_audit_entry(
+            settings.papaia_config_dir,
+            user=_username,
+            action="save-config",
+            target=name,
+            params={"restart": _restart},
+            job_id=ctx.job.id,
+        )
+        ctx.log("[info] done")
+
+    job = await queue.enqueue(
+        action="save-config",
+        target=name,
+        user=_username,
+        params={"restart": _restart},
+        callback=_callback,
     )
     return {"job_id": job.id, "status": "queued"}
 

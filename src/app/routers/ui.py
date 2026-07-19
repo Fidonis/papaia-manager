@@ -90,9 +90,11 @@ async def partial_addons(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
     addons = await _gather_addons(settings)
-    return _templates.TemplateResponse(
+    resp = _templates.TemplateResponse(
         request, "partials/addon_gallery.html", _ctx(request, user, addons=addons)
     )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @router.get("/partials/addons/{name}", response_class=HTMLResponse)
@@ -103,9 +105,11 @@ async def partial_addon_detail(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
     addon = await _get_addon(name, settings)
-    return _templates.TemplateResponse(
+    resp = _templates.TemplateResponse(
         request, "partials/addon_detail_content.html", _ctx(request, user, addon=addon)
     )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @router.get("/partials/jobs/{job_id}", response_class=HTMLResponse)
@@ -273,6 +277,8 @@ async def _get_addon(name: str, settings: Settings) -> dict[str, Any]:
                 "current_set": f.current_set,
                 "hint": f.hint,
                 "auto_handled": f.auto_handled,
+                "current_value": f.current_value,
+                "prompt_on_install": f.prompt_on_install,
             }
             for f in fields
         ]

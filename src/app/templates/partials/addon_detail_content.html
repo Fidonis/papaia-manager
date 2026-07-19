@@ -54,11 +54,34 @@
   {{ uninstall_modal(addon, 'addonAction') }}
 </div>
 
-<!-- Env form (only if there are fields to fill) -->
+<!-- Configuration -->
 {% if addon.env_fields %}
-<div class="card bg-base-200 mb-6">
+{% set editable = s in ("running", "installed", "inactive") and addon.installed_version %}
+<div class="card bg-base-200 mb-6" x-data="{ editMode: false, dirty: false, busy: false }">
   <div class="card-body">
-    <h3 class="card-title text-base">Configuration</h3>
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="card-title text-base">Configuration</h3>
+      {% if editable %}
+      <div class="flex gap-2">
+        <button class="btn btn-outline btn-sm" x-show="!editMode"
+                @click="editMode = true">Bearbeiten</button>
+        <button class="btn btn-ghost btn-sm" x-show="editMode" style="display:none"
+                @click="
+                  $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
+                    if (el.type === 'password') el.value = '';
+                    else el.value = el.dataset.initial ?? '';
+                  });
+                  editMode = false; dirty = false;
+                ">Abbrechen</button>
+        <button class="btn btn-primary btn-sm" x-show="editMode" style="display:none"
+                :disabled="!dirty || busy"
+                @click="$refs.saveConfigModal.showModal()">
+          <span style="display:none" x-show="busy" class="loading loading-dots loading-xs"></span>
+          <span x-show="!busy">Speichern</span>
+        </button>
+      </div>
+      {% endif %}
+    </div>
     <div class="overflow-x-auto">
       <table class="table table-sm">
         <thead>
@@ -73,18 +96,40 @@
           <tr>
             <td class="font-mono text-xs">{{ f.key }}</td>
             <td class="text-xs">
-              {% if f.auto_handled %}
-                <span class="opacity-50 italic">auto (Keycloak)</span>
-              {% elif f.current_set %}
-                {% if f.is_secret %}
-                  <span class="opacity-50">••••</span>
+              <!-- read-only display -->
+              <div x-show="!editMode">
+                {% if f.auto_handled %}
+                  <span class="opacity-50 italic">auto (Keycloak)</span>
+                {% elif f.current_set %}
+                  {% if f.is_secret %}
+                    <span class="opacity-50">••••</span>
+                  {% else %}
+                    {{ f.current_value }}
+                  {% endif %}
                 {% else %}
-                  {{ f.default }}
+                  <span class="opacity-40">{{ f.default }}</span>
                 {% endif %}
-              {% else %}
-                <span class="opacity-40">{{ f.default }}</span>
-              {% endif %}
-              {% if f.hint %}<br><span class="opacity-50">{{ f.hint }}</span>{% endif %}
+                {% if f.hint %}<br><span class="opacity-50">{{ f.hint }}</span>{% endif %}
+              </div>
+              <!-- edit input (all fields, including auto-handled) -->
+              <div x-show="editMode" style="display:none">
+                <input
+                  data-env-key="{{ f.key }}"
+                  {% if f.auto_handled or f.is_secret %}
+                    type="password"
+                    placeholder="{{ '••••' if f.current_set else f.default }}"
+                    data-initial=""
+                  {% else %}
+                    type="text"
+                    value="{{ f.current_value if f.current_set else '' }}"
+                    data-initial="{{ f.current_value if f.current_set else '' }}"
+                    placeholder="{{ f.default }}"
+                  {% endif %}
+                  class="input input-bordered input-xs w-full"
+                  @input="dirty = dirty || ($el.type === 'password' ? $el.value.trim() !== '' : $el.value !== ($el.dataset.initial ?? ''))"
+                >
+                {% if f.hint %}<br><span class="opacity-50">{{ f.hint }}</span>{% endif %}
+              </div>
             </td>
             <td>
               {% if f.auto_handled %}
@@ -100,6 +145,52 @@
         </tbody>
       </table>
     </div>
+
+    {% if editable %}
+    <dialog x-ref="saveConfigModal" class="modal">
+      <div class="modal-box max-w-sm">
+        <h3 class="font-bold text-base mb-2">Konfiguration speichern</h3>
+        <p class="text-sm opacity-70 mb-4">
+          Soll das Add-On nach dem Speichern neu gestartet werden, damit die Änderungen wirksam werden?
+        </p>
+        <div class="modal-action">
+          <button class="btn btn-ghost btn-sm"
+                  @click="$refs.saveConfigModal.close()">Abbrechen</button>
+          <button class="btn btn-outline btn-sm"
+                  @click="
+                    const env = {};
+                    $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
+                      const val = el.value.trim();
+                      const send = el.type === 'password' ? val !== '' : (val !== '' || el.dataset.initial !== '');
+                      if (send) env[el.dataset.envKey] = val;
+                    });
+                    $refs.saveConfigModal.close();
+                    busy = true;
+                    _addonPost('{{ addon.name }}', 'save-config', { env, restart: false }).then(data => {
+                      if (!data) { busy = false; return; }
+                      _pollJob(data.job_id, () => htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' }));
+                    });
+                  ">Nein</button>
+          <button class="btn btn-primary btn-sm"
+                  @click="
+                    const env = {};
+                    $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
+                      const val = el.value.trim();
+                      const send = el.type === 'password' ? val !== '' : (val !== '' || el.dataset.initial !== '');
+                      if (send) env[el.dataset.envKey] = val;
+                    });
+                    $refs.saveConfigModal.close();
+                    busy = true;
+                    _addonPost('{{ addon.name }}', 'save-config', { env, restart: true }).then(data => {
+                      if (!data) { busy = false; return; }
+                      _pollJob(data.job_id, () => htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' }));
+                    });
+                  ">Ja, neu starten</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+    {% endif %}
   </div>
 </div>
 {% endif %}
@@ -129,7 +220,7 @@
       <input type="hidden" name="catalog" value="{{ addon.catalog }}">
 
       {% for f in addon.env_fields %}
-      {% if not f.auto_handled %}
+      {% if not f.auto_handled and f.prompt_on_install %}
       <div class="form-control mb-3">
         <label class="label">
           <span class="label-text">{{ f.label }}{% if f.required %} *{% endif %}</span>

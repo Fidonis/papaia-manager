@@ -22,6 +22,8 @@ class EnvField:
     current_set: bool = False
     hint: str = ""
     auto_handled: bool = False
+    current_value: str | None = None
+    prompt_on_install: bool = False
 
 
 def build_form(
@@ -33,9 +35,11 @@ def build_form(
 ) -> list[EnvField]:
     """Return a list of form fields derived from the addon's .env.example.
 
-    - Keys without CHANGE_ME/GENERATE_* are omitted (already seeded).
-    - env_prompts from papaia-app.yaml enrich labels and defaults.
-    - env_replace_secrets keys are marked auto_handled when internal_keycloak.
+    All keys from .env.example are included. Bundle .env values are used as
+    current_value; .env.example values serve as placeholder/suggestion.
+    env_prompts from papaia-app.yaml enrich labels and defaults.
+    env_replace_secrets keys are marked auto_handled when internal_keycloak.
+    prompt_on_install=True for CHANGE_ME/GENERATE_* fields and env_prompts keys.
     """
     env_example = addon_path / ".env.example"
     if not env_example.exists():
@@ -48,9 +52,6 @@ def build_form(
 
     fields: list[EnvField] = []
     for key, default in raw_env.items():
-        if not _CHANGE_ME_RE.match(default):
-            continue
-
         prompt: dict[str, Any] = env_prompts.get(key, {})
         label = str(prompt.get("label", key.replace("_", " ").title()))
         hint = str(prompt.get("hint", ""))
@@ -61,19 +62,27 @@ def build_form(
             resolved_default = core_env.get(core_key, default)
 
         is_secret = bool(_SECRET_RE.search(key))
-        current_set = bool(bundle_env and key in bundle_env and bundle_env[key] != default)
+        is_placeholder = bool(_CHANGE_ME_RE.match(default))
+        current_set = bool(
+            bundle_env and key in bundle_env
+            and (not is_placeholder or bundle_env[key] != default)
+        )
         auto = key in replace_secrets and auth_provider == "internal_keycloak"
+        current_value = bundle_env.get(key) if (bundle_env and current_set) else None
+        prompt_on_install = is_placeholder or key in env_prompts
 
         fields.append(
             EnvField(
                 key=key,
                 label=label,
                 default=resolved_default,
-                required=not current_set,
+                required=is_placeholder and not current_set,
                 is_secret=is_secret,
                 current_set=current_set,
                 hint=hint,
                 auto_handled=auto,
+                current_value=current_value,
+                prompt_on_install=prompt_on_install,
             )
         )
 
