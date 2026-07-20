@@ -1,4 +1,4 @@
-{% from "partials/_addon_controls.html" import action_buttons, remove_modal, uninstall_modal %}
+{% from "partials/_addon_controls.html" import action_buttons, remove_modal, uninstall_modal, install_modal %}
 {% if not addons %}
 <div class="flex flex-col items-center py-24 gap-4 opacity-60">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -129,6 +129,7 @@
 
     {{ remove_modal(addon, s, 'galleryAction') }}
     {{ uninstall_modal(addon, 'galleryAction') }}
+    {{ install_modal(addon, s, 'galleryAction') }}
 
   </div>
   {% endfor %}

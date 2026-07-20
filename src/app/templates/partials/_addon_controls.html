@@ -5,9 +5,17 @@
      addon  – addon model object
      s      – addon.status (pre-computed by caller)
      fn     – JS function to call: 'addonAction' (detail) or 'galleryAction' (dashboard)
+   Macros: action_buttons, remove_modal, uninstall_modal, install_modal
 #}
 
 {% macro action_buttons(addon, s, fn) %}
+  {% if s in ("available", "inactive") and addon.catalog %}
+    <button class="btn btn-primary btn-sm" :disabled="busy"
+            @click="$refs.installModal.showModal()">
+      <span style="display:none" x-show="activeVerb === 'install'" class="loading loading-dots loading-xs"></span>
+      <span x-show="activeVerb !== 'install'">{% if s == "inactive" %}Reactivate{% else %}Install{% endif %}</span>
+    </button>
+  {% endif %}
   {% if s == "installed" %}
     <button class="btn btn-success btn-sm" :disabled="busy"
             @click="busy = true; activeVerb = 'start'; {{ fn }}('{{ addon.name }}', 'start', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
@@ -124,6 +132,70 @@
         Deinstallieren
       </button>
     </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endif %}
+{% endmacro %}
+
+{% macro install_modal(addon, s, fn) %}
+{% if s in ("available", "inactive") and addon.catalog %}
+<dialog x-ref="installModal" class="modal">
+  <div class="modal-box">
+    <h3 class="text-lg font-bold mb-4">Install {{ addon.name }}</h3>
+    <form
+      @submit.prevent="
+        const fd = new FormData($el);
+        const env = {};
+        for (const [k, v] of fd.entries()) {
+          const m = k.match(/^env\[(.+)\]$/);
+          if (m) env[m[1]] = v;
+        }
+        const start = $el.querySelector('[name=start]').checked;
+        $refs.installModal.close();
+        busy = true; activeVerb = 'install';
+        {{ fn }}('{{ addon.name }}', 'install', { catalog: fd.get('catalog'), env, start })
+          .then(ok => { if (!ok) { busy = false; activeVerb = '' } });
+      "
+    >
+      <input type="hidden" name="catalog" value="{{ addon.catalog }}">
+
+      {% for f in addon.env_fields %}
+      {% if not f.auto_handled and f.prompt_on_install %}
+      <div class="form-control mb-3">
+        <label class="label">
+          <span class="label-text">{{ f.label }}{% if f.required %} *{% endif %}</span>
+        </label>
+        <input
+          name="env[{{ f.key }}]"
+          type="{% if f.is_secret %}password{% else %}text{% endif %}"
+          class="input input-bordered input-sm"
+          {% if f.required %}required{% endif %}
+          placeholder="{{ f.default }}"
+          {% if f.current_set and not f.is_secret %}value="{{ f.default }}"{% endif %}
+        >
+        {% if f.hint %}
+        <label class="label"><span class="label-text-alt opacity-60">{{ f.hint }}</span></label>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+
+      <div class="form-control mb-4">
+        <label class="label cursor-pointer">
+          <span class="label-text">Start after install</span>
+          <input type="checkbox" name="start" value="true" checked class="checkbox checkbox-sm">
+        </label>
+      </div>
+
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost btn-sm"
+                @click="$refs.installModal.close()">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary btn-sm">Install</button>
+      </div>
+    </form>
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
