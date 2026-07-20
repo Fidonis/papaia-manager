@@ -269,10 +269,7 @@ async def install(
     _start = body.start
     _username = _user_id(user)
 
-    if body.env:
-        _env = _validate_env(build_form(clone / name), dict(body.env))
-    else:
-        _env = {}
+    _env = _validate_env(build_form(clone / name), dict(body.env)) if body.env else {}
 
     async def _callback(ctx: JobContext) -> None:
         dest = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)

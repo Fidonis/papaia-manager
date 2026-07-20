@@ -9,7 +9,6 @@ import yaml
 from app.core.envforms import build_form
 from app.core.envvalidate import EnvValidationError, coerce_env_values
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -66,7 +65,9 @@ def test_declared_integer_rejected(tmp_path: Path) -> None:
 
 
 def test_declared_integer_min_rejected(tmp_path: Path) -> None:
-    _make_addon(tmp_path, ["PORT=8080"], {"env_prompts": {"PORT": {"type": "integer", "min": 1024}}})
+    _make_addon(
+        tmp_path, ["PORT=8080"], {"env_prompts": {"PORT": {"type": "integer", "min": 1024}}}
+    )
     fields = build_form(tmp_path)
     with pytest.raises(EnvValidationError) as exc_info:
         coerce_env_values(fields, {"PORT": "80"})

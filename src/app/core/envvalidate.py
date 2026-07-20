@@ -4,7 +4,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
-from app.core.envforms import MARKER_NONE, EnvField
+from app.core.envforms import EnvField
 
 
 class EnvValidationError(Exception):

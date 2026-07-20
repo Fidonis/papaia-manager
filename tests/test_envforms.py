@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
 from app.core.envforms import (
@@ -14,7 +13,6 @@ from app.core.envforms import (
     build_form,
     field_to_dict,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -86,7 +84,9 @@ def test_replace_with_marker(tmp_path: Path) -> None:
 
 def test_declared_integer_type(tmp_path: Path) -> None:
     _write_env(tmp_path, ["APP_PORT=8080"])
-    _write_manifest(tmp_path, {"env_prompts": {"APP_PORT": {"type": "integer", "min": 1, "max": 65535}}})
+    _write_manifest(tmp_path, {
+        "env_prompts": {"APP_PORT": {"type": "integer", "min": 1, "max": 65535}}
+    })
     f = build_form(tmp_path)[0]
     assert f.value_type == "integer"
     assert f.type_declared is True
