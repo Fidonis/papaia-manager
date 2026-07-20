@@ -7,6 +7,7 @@
      fn     – JS function to call: 'addonAction' (detail) or 'galleryAction' (dashboard)
    Macros: action_buttons, remove_modal, uninstall_modal, install_modal
 #}
+{% from "partials/_env_fields.html" import env_input %}
 
 {% macro action_buttons(addon, s, fn) %}
   {% if s in ("available", "inactive") and addon.catalog %}
@@ -140,46 +141,66 @@
 
 {% macro install_modal(addon, s, fn) %}
 {% if s in ("available", "inactive") and addon.catalog %}
+{# Split fields into primary (operator action needed) and secondary (sensible defaults). #}
+{% set primary_fields = addon.env_fields | selectattr('prompt_on_install') | list %}
+{% set secondary_fields = addon.env_fields | rejectattr('prompt_on_install') | list %}
 <dialog x-ref="installModal" class="modal">
   <div class="modal-box">
     <h3 class="text-lg font-bold mb-4">Install {{ addon.name }}</h3>
     <form
       @submit.prevent="
-        const fd = new FormData($el);
         const env = {};
-        for (const [k, v] of fd.entries()) {
-          const m = k.match(/^env\[(.+)\]$/);
-          if (m) env[m[1]] = v;
-        }
+        $el.querySelectorAll('[data-env-key]').forEach(el => {
+          const val = el.value.trim();
+          const omit = el.dataset.omitIfEmpty === '1';
+          const send = omit ? val !== '' : val !== (el.dataset.example || '');
+          if (send) env[el.dataset.envKey] = val;
+        });
         const start = $el.querySelector('[name=start]').checked;
         $refs.installModal.close();
         busy = true; activeVerb = 'install';
-        {{ fn }}('{{ addon.name }}', 'install', { catalog: fd.get('catalog'), env, start })
+        {{ fn }}('{{ addon.name }}', 'install', { catalog: '{{ addon.catalog }}', env, start })
           .then(ok => { if (!ok) { busy = false; activeVerb = '' } });
       "
     >
-      <input type="hidden" name="catalog" value="{{ addon.catalog }}">
 
-      {% for f in addon.env_fields %}
-      {% if not f.auto_handled and f.prompt_on_install %}
+      {# Primary fields — required, auto-generated, or explicitly annotated #}
+      {% for f in primary_fields %}
       <div class="form-control mb-3">
-        <label class="label">
-          <span class="label-text">{{ f.label }}{% if f.required %} *{% endif %}</span>
+        <label class="label pb-0.5">
+          <span class="label-text font-medium">{{ f.label }}{% if f.required %} <span class="text-error">*</span>{% endif %}</span>
+          {% if f.auto_generated %}
+          <span class="badge badge-neutral badge-xs">wird generiert</span>
+          {% elif f.marker == 'replace_with' %}
+          <span class="badge badge-warning badge-xs">Keycloak</span>
+          {% endif %}
         </label>
-        <input
-          name="env[{{ f.key }}]"
-          type="{% if f.is_secret %}password{% else %}text{% endif %}"
-          class="input input-bordered input-sm"
-          {% if f.required %}required{% endif %}
-          placeholder="{{ f.default }}"
-          {% if f.current_set and not f.is_secret %}value="{{ f.default }}"{% endif %}
-        >
+        {{ env_input(f, display_value=f.prefill) }}
         {% if f.hint %}
-        <label class="label"><span class="label-text-alt opacity-60">{{ f.hint }}</span></label>
+        <label class="label pt-0.5"><span class="label-text-alt opacity-60">{{ f.hint }}</span></label>
         {% endif %}
       </div>
-      {% endif %}
       {% endfor %}
+
+      {# Secondary fields — plain defaults the operator rarely needs to touch #}
+      {% if secondary_fields %}
+      <details class="mb-3">
+        <summary class="text-sm opacity-60 cursor-pointer select-none mb-2">
+          Weitere Einstellungen ({{ secondary_fields | length }})
+        </summary>
+        {% for f in secondary_fields %}
+        <div class="form-control mb-3">
+          <label class="label pb-0.5">
+            <span class="label-text">{{ f.label }}</span>
+          </label>
+          {{ env_input(f, display_value=f.prefill) }}
+          {% if f.hint %}
+          <label class="label pt-0.5"><span class="label-text-alt opacity-60">{{ f.hint }}</span></label>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </details>
+      {% endif %}
 
       <div class="form-control mb-4">
         <label class="label cursor-pointer">
