@@ -8,8 +8,13 @@
 
 # Tests and documentation are not part of the server image.
 tests
-docker
 *.md
+
+# Exclude docker/ orchestration files, but keep files the Dockerfile COPYs.
+docker
+!docker/git-askpass.sh
+!docker/tailwind.config.js
+!docker/tailwind.input.css
 
 # Python / uv artifacts
 **/.venv

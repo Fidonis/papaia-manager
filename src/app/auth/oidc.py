@@ -124,13 +124,43 @@ class OIDCClient:
         url = f"{self._auth_endpoint}?{urlencode(params)}"
         return url, state, verifier
 
+    def build_auth_url(self, state: str, challenge: str) -> str:
+        """Return an authorization URL with caller-supplied state and PKCE challenge."""
+        params = {
+            "response_type": "code",
+            "client_id": self._client_id,
+            "redirect_uri": self._redirect_uri,
+            "scope": "openid profile",
+            "state": state,
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        }
+        return f"{self._auth_endpoint}?{urlencode(params)}"
+
     async def exchange_code(self, *, code: str, code_verifier: str) -> OIDCClaims:
         """Exchange an authorization code for validated OIDC claims."""
         token_response = await self._fetch_tokens(code=code, code_verifier=code_verifier)
         id_token = token_response.get("id_token")
         if not isinstance(id_token, str) or not id_token:
             raise OIDCError("Token response missing id_token")
-        return await self._validate_id_token(id_token)
+        access_token: str | None = token_response.get("access_token") or None
+        claims = await self._validate_id_token(id_token, access_token=access_token)
+
+        # In a default Keycloak setup roles live in the access token under
+        # realm_access.roles, not the ID token. Fall back to the access token
+        # when the ID token carries no roles at the configured claim path.
+        if not claims.roles and access_token:
+            fallback_paths = [self._role_claim, "realm_access.roles"]
+            roles = _roles_from_unverified_jwt(access_token, fallback_paths)
+            if roles:
+                claims = OIDCClaims(
+                    sub=claims.sub,
+                    preferred_username=claims.preferred_username,
+                    roles=roles,
+                    exp=claims.exp,
+                )
+
+        return claims
 
     async def _fetch_tokens(self, *, code: str, code_verifier: str) -> dict[str, Any]:
         data = {
@@ -151,7 +181,9 @@ class OIDCClient:
         result: dict[str, Any] = response.json()
         return result
 
-    async def _validate_id_token(self, id_token: str) -> OIDCClaims:
+    async def _validate_id_token(
+        self, id_token: str, *, access_token: str | None = None
+    ) -> OIDCClaims:
         try:
             header = jwt.get_unverified_header(id_token)
         except JWTError as exc:
@@ -170,6 +202,7 @@ class OIDCClient:
                 key,
                 algorithms=[alg],
                 audience=self._client_id,
+                access_token=access_token,
                 options={
                     "verify_signature": True,
                     "verify_aud": True,
@@ -179,7 +212,12 @@ class OIDCClient:
         except ExpiredSignatureError as exc:
             raise OIDCError("id_token expired") from exc
         except JWTError as exc:
-            logger.info("id_token validation failed: %s", exc.__class__.__name__)
+            logger.warning(
+                "id_token validation failed: %s: %s (client_id=%r)",
+                exc.__class__.__name__,
+                exc,
+                self._client_id,
+            )
             raise OIDCError("id_token validation failed") from exc
 
         return _extract_claims(payload, self._role_claim)
@@ -259,13 +297,37 @@ def _algorithm_for_key(key: dict[str, Any]) -> str:
     return str(alg)
 
 
+def _roles_from_unverified_jwt(token: str, claim_paths: list[str]) -> list[str]:
+    """Return the first non-empty role list found at any of the given dotted paths."""
+    try:
+        payload = jwt.get_unverified_claims(token)
+    except JWTError:
+        return []
+    for path in claim_paths:
+        node: Any = payload
+        for part in path.split("."):
+            if not isinstance(node, dict):
+                node = None
+                break
+            node = node.get(part)
+        if isinstance(node, list) and node:
+            return [str(r) for r in node if r]
+    return []
+
+
 def _extract_claims(payload: dict[str, Any], role_claim: str) -> OIDCClaims:
     sub = payload.get("sub")
     if not isinstance(sub, str) or not sub:
         raise OIDCError("id_token missing required sub claim")
 
-    raw_roles = payload.get(role_claim, [])
-    roles: list[str] = [str(r) for r in raw_roles] if isinstance(raw_roles, list) else []
+    # Support dotted paths like "realm_access.roles"
+    node: Any = payload
+    for part in role_claim.split("."):
+        if not isinstance(node, dict):
+            node = []
+            break
+        node = node.get(part, [])
+    roles: list[str] = [str(r) for r in node] if isinstance(node, list) else []
 
     exp = payload.get("exp")
     if not isinstance(exp, (int, float)):
