@@ -16,7 +16,8 @@ from app.config import Settings, get_settings
 from app.core.audit import write_audit_entry
 from app.core.catalogs import load_registry, scan_catalog_addons
 from app.core.ctl import CtlError, run_addon_verb
-from app.core.envforms import build_form
+from app.core.envforms import EnvField, build_form, field_to_dict
+from app.core.envvalidate import EnvValidationError, coerce_env_values
 from app.core.jobs import JobContext, JobQueue
 from app.core.snapshots import (
     catalog_clone_path,
@@ -234,20 +235,7 @@ async def env_form(
             bundle_env = _parse_env_file(bundle_env_file.read_text(encoding="utf-8"))
 
     fields = build_form(addon_path, bundle_env=bundle_env)
-    return [
-        {
-            "key": f.key,
-            "label": f.label,
-            "default": f.default,
-            "required": f.required,
-            "is_secret": f.is_secret,
-            "current_set": f.current_set,
-            "hint": f.hint,
-            "auto_handled": f.auto_handled,
-            "current_value": f.current_value,
-        }
-        for f in fields
-    ]
+    return [field_to_dict(f) for f in fields]
 
 
 @router.post("/{name}/install", status_code=status.HTTP_202_ACCEPTED)
@@ -278,9 +266,10 @@ async def install(
 
     queue = _queue()
     _cat = catalog.name
-    _env = dict(body.env)
     _start = body.start
     _username = _user_id(user)
+
+    _env = _validate_env(build_form(clone / name), dict(body.env)) if body.env else {}
 
     async def _callback(ctx: JobContext) -> None:
         dest = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
@@ -533,8 +522,13 @@ async def update(
     queue = _queue()
     _username = _user_id(user)
     _cat = inst.catalog
-    _env = dict(body.env)
     _was_running = name in _current_running(settings)
+
+    if body.env:
+        _cur_path = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
+        _env = _validate_env(_addon_fields(name, _cur_path, settings), dict(body.env))
+    else:
+        _env = {}
 
     async def _callback(ctx: JobContext) -> None:
         dest = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
@@ -628,8 +622,15 @@ async def save_config(
     verify_csrf(request)
     queue = _queue()
     _username = _user_id(user)
-    _env = dict(body.env)
     _restart = body.restart
+
+    if body.env:
+        _env = _validate_env(
+            _addon_fields(name, _resolve_addon_path(name, settings), settings),
+            dict(body.env),
+        )
+    else:
+        _env = {}
 
     async def _callback(ctx: JobContext) -> None:
         if _env:
@@ -711,6 +712,49 @@ async def check_compat(
         return {"name": name, "status": "failed", "reason": str(exc), "exit_code": exc.exit_code}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _resolve_addon_path(name: str, settings: Settings) -> Path | None:
+    """Return the best available filesystem path for the named addon."""
+    installed_map = load_installed(settings.papaia_config_dir)
+    inst = installed_map.get(name)
+    if inst:
+        p = managed_snapshot_path(settings.papaia_workspace_dir, inst.catalog, name)
+        if p.exists():
+            return p
+    registry = load_registry(settings.papaia_config_dir)
+    for catalog in registry.catalogs:
+        if not catalog.enabled:
+            continue
+        candidate = catalog_clone_path(settings.papaia_workspace_dir, catalog.name) / name
+        if (candidate / "papaia-app.yaml").exists():
+            return candidate
+    return None
+
+
+def _addon_fields(name: str, addon_path: Path | None, settings: Settings) -> list[EnvField]:
+    """Build EnvField list for validation — returns [] if the path is missing."""
+    if addon_path is None or not addon_path.exists():
+        return []
+    bundle_env_file = Path(settings.papaia_config_dir) / "addons" / name / ".env"
+    bundle_env = (
+        _parse_env_file(bundle_env_file.read_text(encoding="utf-8"))
+        if bundle_env_file.exists()
+        else None
+    )
+    return build_form(addon_path, bundle_env=bundle_env)
+
+
+def _validate_env(fields: list[EnvField], env: dict[str, str]) -> dict[str, str]:
+    """Validate and coerce operator-supplied env values; raises HTTP 422 on error."""
+    try:
+        coerced, _ = coerce_env_values(fields, env)
+        return coerced
+    except EnvValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"field": exc.field, "message": exc.message},
+        ) from exc
 
 
 def _user_id(user: OIDCClaims) -> str:

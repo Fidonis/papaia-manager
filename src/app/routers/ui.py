@@ -311,25 +311,11 @@ def _build_env_fields(
 ) -> list[dict[str, Any]]:
     if addon_path is None or not addon_path.exists():
         return []
-    from app.core.envforms import build_form  # noqa: PLC0415
+    from app.core.envforms import build_form, field_to_dict  # noqa: PLC0415
 
     bundle_env: dict[str, str] | None = None
     bundle_env_file = Path(settings.papaia_config_dir) / "addons" / name / ".env"
     if bundle_env_file.exists():
         bundle_env = _quick_parse_env(bundle_env_file.read_text(encoding="utf-8"))
     fields = build_form(addon_path, bundle_env=bundle_env)
-    return [
-        {
-            "key": f.key,
-            "label": f.label,
-            "default": f.default,
-            "required": f.required,
-            "is_secret": f.is_secret,
-            "current_set": f.current_set,
-            "hint": f.hint,
-            "auto_handled": f.auto_handled,
-            "current_value": f.current_value,
-            "prompt_on_install": f.prompt_on_install,
-        }
-        for f in fields
-    ]
+    return [field_to_dict(f) for f in fields]
