@@ -44,15 +44,21 @@
       </div>
       <div class="form-control mb-3">
         <label class="label"><span class="label-text">Type</span></label>
-        <select name="type" class="select select-bordered">
+        <select id="catalog-type-select" name="type" class="select select-bordered"
+                onchange="toggleCatalogFields(this.value)">
           <option value="git">Git</option>
           <option value="local">Local</option>
         </select>
       </div>
-      <div class="form-control mb-3">
-        <label class="label"><span class="label-text">URL (git catalogs)</span></label>
-        <input name="url" type="url" class="input input-bordered"
+      <div id="field-url" class="form-control mb-3">
+        <label class="label"><span class="label-text">URL</span></label>
+        <input name="url" type="url" class="input input-bordered" required
                placeholder="https://github.com/example/addons.git">
+      </div>
+      <div id="field-path" class="form-control mb-3 hidden">
+        <label class="label"><span class="label-text">Path</span></label>
+        <input name="path" type="text" class="input input-bordered" disabled
+               placeholder="/path/to/local/addons">
       </div>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost"
@@ -63,4 +69,31 @@
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
+<script>
+function toggleCatalogFields(type) {
+  var urlField = document.getElementById('field-url');
+  var pathField = document.getElementById('field-path');
+  var urlInput = urlField.querySelector('input');
+  var pathInput = pathField.querySelector('input');
+  if (type === 'local') {
+    urlField.classList.add('hidden');
+    urlInput.required = false;
+    urlInput.disabled = true;
+    pathField.classList.remove('hidden');
+    pathInput.required = true;
+    pathInput.disabled = false;
+  } else {
+    pathField.classList.add('hidden');
+    pathInput.required = false;
+    pathInput.disabled = true;
+    urlField.classList.remove('hidden');
+    urlInput.required = true;
+    urlInput.disabled = false;
+  }
+}
+document.getElementById('add-catalog-modal').addEventListener('close', function () {
+  document.getElementById('catalog-type-select').value = 'git';
+  toggleCatalogFields('git');
+});
+</script>
 {% endblock %}
