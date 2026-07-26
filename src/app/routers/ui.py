@@ -317,5 +317,9 @@ def _build_env_fields(
     bundle_env_file = Path(settings.papaia_config_dir) / "addons" / name / ".env"
     if bundle_env_file.exists():
         bundle_env = _quick_parse_env(bundle_env_file.read_text(encoding="utf-8"))
-    fields = build_form(addon_path, bundle_env=bundle_env)
+    core_env: dict[str, str] | None = None
+    core_env_file = Path(settings.papaia_config_dir) / ".env"
+    if core_env_file.exists():
+        core_env = _quick_parse_env(core_env_file.read_text(encoding="utf-8"))
+    fields = build_form(addon_path, bundle_env=bundle_env, core_env=core_env)
     return [field_to_dict(f) for f in fields]
