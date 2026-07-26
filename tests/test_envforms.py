@@ -34,7 +34,7 @@ def _write_manifest(tmp_path: Path, data: dict) -> None:  # type: ignore[type-ar
 
 def test_literal_marker(tmp_path: Path) -> None:
     _write_env(tmp_path, ["FOO=bar"])
-    (fields := build_form(tmp_path))
+    fields = build_form(tmp_path)
     f = fields[0]
     assert f.marker == MARKER_NONE
     assert f.prefill == "bar"
