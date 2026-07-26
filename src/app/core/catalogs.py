@@ -105,6 +105,19 @@ def validate_local_path(path: str, workspace_dir: str) -> None:
         )
 
 
+def catalog_scan_path(catalog: Catalog, workspace_dir: str) -> Path:
+    """Return the directory to scan for add-ons in *catalog*.
+
+    Local catalogs live at the operator-supplied path; git catalogs are
+    cloned into the workspace under addons/_catalogs/<name>.
+    """
+    from app.core.snapshots import catalog_clone_path  # noqa: PLC0415
+
+    if catalog.type == "local" and catalog.path:
+        return Path(catalog.path)
+    return catalog_clone_path(workspace_dir, catalog.name)
+
+
 def scan_catalog_addons(clone_path: Path) -> list[tuple[str, dict[str, Any]]]:
     """Return (addon_name, manifest) for every addon found in a catalog clone dir."""
     results: list[tuple[str, dict[str, Any]]] = []
@@ -182,6 +195,24 @@ def _publish_to_workspace(scratch: Path, dest: Path) -> None:
     if dest.exists():
         dest.rename(prev)
     staging.rename(dest)
+
+
+async def materialize_local_addon(source_dir: Path, dest: Path) -> str:
+    """Publish one addon of a local catalog into the managed snapshot area.
+
+    A local catalog is a working directory, not a clone: the operator expects
+    the files exactly as they are on disk right now, including uncommitted
+    edits, so the git-archive path used for git catalogs does not apply.
+    Returns the revision marker recorded in installed.yaml.
+    """
+    # Without this guard a vanished source would produce an empty staging dir
+    # and _publish_to_workspace would swap it over a good snapshot.
+    if not (source_dir / "papaia-app.yaml").exists():
+        raise RuntimeError(f"no papaia-app.yaml under {source_dir}")
+    await asyncio.get_running_loop().run_in_executor(
+        None, _publish_to_workspace, source_dir, dest
+    )
+    return "local"
 
 
 async def clone_catalog_clone(catalog: Catalog, workspace_dir: str) -> list[str]:

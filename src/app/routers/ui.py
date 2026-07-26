@@ -14,8 +14,8 @@ from app.auth.csrf import get_csrf_token
 from app.auth.deps import CurrentUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core.catalogs import load_registry, scan_catalog_addons
-from app.core.snapshots import catalog_clone_path, load_installed, managed_snapshot_path
+from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
+from app.core.snapshots import load_installed, managed_snapshot_path
 from app.core.state import (
     AddonStatus,
     compute_status,
@@ -137,10 +137,18 @@ async def partial_catalogs(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
     registry = load_registry(settings.papaia_config_dir)
+    # Scanned on every render so the count reflects the catalog directory as it
+    # is right now — this is what makes Re-scan meaningful for local catalogs.
+    addon_counts = {
+        c.name: len(
+            scan_catalog_addons(catalog_scan_path(c, settings.papaia_workspace_dir))
+        )
+        for c in registry.catalogs
+    }
     return _templates.TemplateResponse(
         request,
         "partials/catalog_list.html",
-        _ctx(request, user, catalogs=registry.catalogs),
+        _ctx(request, user, catalogs=registry.catalogs, addon_counts=addon_counts),
     )
 
 
@@ -162,7 +170,7 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
     for catalog in registry.catalogs:
         if not catalog.enabled:
             continue
-        clone = catalog_clone_path(settings.papaia_workspace_dir, catalog.name)
+        clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
         for addon_name, manifest in scan_catalog_addons(clone):
             if addon_name in addons:
                 continue
@@ -246,15 +254,17 @@ async def _get_addon(name: str, settings: Settings) -> dict[str, Any]:
 
     manifest: dict[str, Any] = {}
     catalog_name: str | None = None
+    catalog_addon_dir: Path | None = None
     for catalog in registry.catalogs:
         if not catalog.enabled:
             continue
-        clone = catalog_clone_path(settings.papaia_workspace_dir, catalog.name)
+        clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
         addon_dir = clone / name
         mf = addon_dir / "papaia-app.yaml"
         if addon_dir.exists() and mf.exists():
             manifest = yaml.safe_load(mf.read_text(encoding="utf-8")) or {}
             catalog_name = catalog.name
+            catalog_addon_dir = addon_dir
             break
 
     inst = installed_map.get(name)
@@ -271,8 +281,8 @@ async def _get_addon(name: str, settings: Settings) -> dict[str, Any]:
     addon_path = None
     if inst:
         addon_path = managed_snapshot_path(settings.papaia_workspace_dir, inst.catalog, name)
-    elif catalog_name:
-        addon_path = catalog_clone_path(settings.papaia_workspace_dir, catalog_name) / name
+    elif catalog_addon_dir:
+        addon_path = catalog_addon_dir
 
     env_fields = _build_env_fields(name, addon_path, settings)
 
