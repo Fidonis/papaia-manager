@@ -105,6 +105,19 @@ def validate_local_path(path: str, workspace_dir: str) -> None:
         )
 
 
+def catalog_scan_path(catalog: Catalog, workspace_dir: str) -> Path:
+    """Return the directory to scan for add-ons in *catalog*.
+
+    Local catalogs live at the operator-supplied path; git catalogs are
+    cloned into the workspace under addons/_catalogs/<name>.
+    """
+    from app.core.snapshots import catalog_clone_path  # noqa: PLC0415
+
+    if catalog.type == "local" and catalog.path:
+        return Path(catalog.path)
+    return catalog_clone_path(workspace_dir, catalog.name)
+
+
 def scan_catalog_addons(clone_path: Path) -> list[tuple[str, dict[str, Any]]]:
     """Return (addon_name, manifest) for every addon found in a catalog clone dir."""
     results: list[tuple[str, dict[str, Any]]] = []

@@ -17,6 +17,8 @@
             <span class="badge badge-neutral badge-sm">disabled</span>
           {% endif %}
           <span class="badge badge-outline badge-sm">{{ c.type }}</span>
+          {% set n = addon_counts.get(c.name, 0) %}
+          <span class="badge badge-ghost badge-sm">{{ n }} add-on{{ '' if n == 1 else 's' }}</span>
         </div>
 
         <div class="flex gap-2">

@@ -14,7 +14,7 @@ from app.auth.deps import CurrentUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core.audit import write_audit_entry
-from app.core.catalogs import Catalog, load_registry, scan_catalog_addons
+from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.ctl import CtlError, run_addon_verb
 from app.core.envforms import EnvField, build_form, field_to_dict
 from app.core.envvalidate import EnvValidationError, coerce_env_values
@@ -147,7 +147,7 @@ async def list_addons(
     for catalog in registry.catalogs:
         if not catalog.enabled:
             continue
-        clone = _catalog_scan_path(catalog, settings.papaia_workspace_dir)
+        clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
         for addon_name, manifest in scan_catalog_addons(clone):
             if addon_name in addons:
                 continue
@@ -188,7 +188,7 @@ async def addon_detail(
     for catalog in registry.catalogs:
         if not catalog.enabled:
             continue
-        clone = _catalog_scan_path(catalog, settings.papaia_workspace_dir)
+        clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
         addon_dir = clone / name
         mf = addon_dir / "papaia-app.yaml"
         if addon_dir.exists() and mf.exists():
@@ -224,7 +224,7 @@ async def env_form(
         for catalog in registry.catalogs:
             if not catalog.enabled:
                 continue
-            clone = _catalog_scan_path(catalog, settings.papaia_workspace_dir)
+            clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
             candidate = clone / name
             if (candidate / "papaia-app.yaml").exists():
                 addon_path = candidate
@@ -738,7 +738,7 @@ def _resolve_addon_path(name: str, settings: Settings) -> Path | None:
     for catalog in registry.catalogs:
         if not catalog.enabled:
             continue
-        candidate = _catalog_scan_path(catalog, settings.papaia_workspace_dir) / name
+        candidate = catalog_scan_path(catalog, settings.papaia_workspace_dir) / name
         if (candidate / "papaia-app.yaml").exists():
             return candidate
     return None
@@ -780,14 +780,3 @@ def _current_running(settings: Settings) -> set[str]:
         return load_running_compose_projects()
     except Exception:  # noqa: BLE001
         return set()
-
-
-def _catalog_scan_path(catalog: Catalog, workspace_dir: str) -> Path:
-    """Return the filesystem path to scan for add-ons in *catalog*.
-
-    Local catalogs are stored at the operator-supplied path; git catalogs
-    are cloned into the workspace under addons/_catalogs/<name>.
-    """
-    if catalog.type == "local" and catalog.path:
-        return Path(catalog.path)
-    return catalog_clone_path(workspace_dir, catalog.name)
