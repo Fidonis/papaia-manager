@@ -14,7 +14,12 @@ from app.auth.deps import CurrentUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core.audit import write_audit_entry
-from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
+from app.core.catalogs import (
+    catalog_scan_path,
+    load_registry,
+    materialize_local_addon,
+    scan_catalog_addons,
+)
 from app.core.ctl import CtlError, run_addon_verb
 from app.core.envforms import EnvField, build_form, field_to_dict
 from app.core.envvalidate import EnvValidationError, coerce_env_values
@@ -264,7 +269,7 @@ async def install(
             status_code=404,
             detail=f"catalog {body.catalog!r} not found or disabled",
         )
-    clone = catalog_clone_path(settings.papaia_workspace_dir, catalog.name)
+    clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
     if not (clone / name).exists():
         raise HTTPException(
             status_code=404,
@@ -273,6 +278,8 @@ async def install(
 
     queue = _queue()
     _cat = catalog.name
+    _is_local = catalog.type == "local"
+    _src = clone / name
     _start = body.start
     _username = _user_id(user)
 
@@ -286,12 +293,15 @@ async def install(
     async def _callback(ctx: JobContext) -> None:
         dest = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
         ctx.log(f"[info] materializing snapshot for {name!r} from {_cat!r}")
-        sha = await materialize_snapshot(
-            catalog_clone=catalog_clone_path(settings.papaia_workspace_dir, _cat),
-            addon_subdir=name,
-            dest=dest,
-        )
-        ctx.log(f"[info] snapshot at {dest} (commit {sha[:12]})")
+        if _is_local:
+            sha = await materialize_local_addon(_src, dest)
+        else:
+            sha = await materialize_snapshot(
+                catalog_clone=catalog_clone_path(settings.papaia_workspace_dir, _cat),
+                addon_subdir=name,
+                dest=dest,
+            )
+        ctx.log(f"[info] snapshot at {dest} (revision {sha[:12]})")
 
         ver = _manifest_version(dest)
 
@@ -536,6 +546,20 @@ async def update(
     _cat = inst.catalog
     _was_running = name in _current_running(settings)
 
+    # The catalog may since have been removed from the registry. Git catalogs
+    # keep working off their workspace clone in that case, so only switch to
+    # the local path when the registry still says the catalog is local.
+    _catalog = next(
+        (c for c in load_registry(settings.papaia_config_dir).catalogs if c.name == _cat),
+        None,
+    )
+    _is_local = _catalog is not None and _catalog.type == "local"
+    _src = (
+        catalog_scan_path(_catalog, settings.papaia_workspace_dir) / name
+        if _catalog is not None
+        else None
+    )
+
     if body.env:
         _cur_path = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
         _env = _validate_env(_addon_fields(name, _cur_path, settings), dict(body.env))
@@ -545,12 +569,15 @@ async def update(
     async def _callback(ctx: JobContext) -> None:
         dest = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
         ctx.log(f"[info] updating snapshot for {name!r} from {_cat!r}")
-        sha = await materialize_snapshot(
-            catalog_clone=catalog_clone_path(settings.papaia_workspace_dir, _cat),
-            addon_subdir=name,
-            dest=dest,
-        )
-        ctx.log(f"[info] snapshot at {dest} (commit {sha[:12]})")
+        if _is_local and _src is not None:
+            sha = await materialize_local_addon(_src, dest)
+        else:
+            sha = await materialize_snapshot(
+                catalog_clone=catalog_clone_path(settings.papaia_workspace_dir, _cat),
+                addon_subdir=name,
+                dest=dest,
+            )
+        ctx.log(f"[info] snapshot at {dest} (revision {sha[:12]})")
 
         ver = _manifest_version(dest)
 

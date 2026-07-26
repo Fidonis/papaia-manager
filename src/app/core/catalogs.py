@@ -197,6 +197,24 @@ def _publish_to_workspace(scratch: Path, dest: Path) -> None:
     staging.rename(dest)
 
 
+async def materialize_local_addon(source_dir: Path, dest: Path) -> str:
+    """Publish one addon of a local catalog into the managed snapshot area.
+
+    A local catalog is a working directory, not a clone: the operator expects
+    the files exactly as they are on disk right now, including uncommitted
+    edits, so the git-archive path used for git catalogs does not apply.
+    Returns the revision marker recorded in installed.yaml.
+    """
+    # Without this guard a vanished source would produce an empty staging dir
+    # and _publish_to_workspace would swap it over a good snapshot.
+    if not (source_dir / "papaia-app.yaml").exists():
+        raise RuntimeError(f"no papaia-app.yaml under {source_dir}")
+    await asyncio.get_running_loop().run_in_executor(
+        None, _publish_to_workspace, source_dir, dest
+    )
+    return "local"
+
+
 async def clone_catalog_clone(catalog: Catalog, workspace_dir: str) -> list[str]:
     """Shallow-clone a git catalog, then publish it into the workspace browse area."""
     scratch = _scratch_clone_dir(catalog.name)
