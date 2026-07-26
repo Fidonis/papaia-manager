@@ -239,7 +239,9 @@ async def env_form(
         if bundle_env_file.exists():
             bundle_env = _parse_env_file(bundle_env_file.read_text(encoding="utf-8"))
 
-    fields = build_form(addon_path, bundle_env=bundle_env, core_env=_load_core_env(settings.papaia_config_dir))
+    fields = build_form(
+        addon_path, bundle_env=bundle_env, core_env=_load_core_env(settings.papaia_config_dir)
+    )
     return [field_to_dict(f) for f in fields]
 
 
@@ -274,7 +276,12 @@ async def install(
     _start = body.start
     _username = _user_id(user)
 
-    _env = _validate_env(build_form(clone / name, core_env=_load_core_env(settings.papaia_config_dir)), dict(body.env)) if body.env else {}
+    _core_env = _load_core_env(settings.papaia_config_dir)
+    _env = (
+        _validate_env(build_form(clone / name, core_env=_core_env), dict(body.env))
+        if body.env
+        else {}
+    )
 
     async def _callback(ctx: JobContext) -> None:
         dest = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
@@ -747,7 +754,9 @@ def _addon_fields(name: str, addon_path: Path | None, settings: Settings) -> lis
         if bundle_env_file.exists()
         else None
     )
-    return build_form(addon_path, bundle_env=bundle_env, core_env=_load_core_env(settings.papaia_config_dir))
+    return build_form(
+        addon_path, bundle_env=bundle_env, core_env=_load_core_env(settings.papaia_config_dir)
+    )
 
 
 def _validate_env(fields: list[EnvField], env: dict[str, str]) -> dict[str, str]:
