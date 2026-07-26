@@ -27,6 +27,11 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button class="btn btn-outline btn-xs">Refresh</button>
           </form>
+          {% else %}
+          <button class="btn btn-outline btn-xs"
+                  hx-get="/partials/catalogs"
+                  hx-target="#catalog-list"
+                  hx-swap="innerHTML">Re-scan</button>
           {% endif %}
 
           <form hx-delete="/api/v1/catalogs/{{ c.name }}"
