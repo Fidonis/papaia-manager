@@ -1,0 +1,184 @@
+# papaia-manager
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+Maintained by **Fidonis** · See [TRADEMARK.md](TRADEMARK.md) for the trademark notice.
+
+A web-based control plane for the papAIa stack's add-on lifecycle. It gives
+non-technical operators a browser UI for discovering, installing, starting,
+stopping, removing, and updating add-ons — without needing shell access to
+the host running the stack.
+
+The manager does not duplicate orchestration logic: it drives `papaia-ctl`
+as a subprocess for every mutating operation and reads shared library
+modules directly from the mounted papAIa workspace for status queries, so
+CLI and web stay behaviourally identical.
+
+```
+┌─────────┐   OIDC + PKCE   ┌────────────────┐   subprocess    ┌───────────┐
+│ Browser │ ──────────────▶ │ papaia-manager │ ──────────────▶ │ papaia-ctl│
+└─────────┘                 │   (FastAPI)    │                 └───────────┘
+                                   │    │                            │
+                                   ▼    ▼                            ▼
+                              Keycloak  git clone/fetch         docker compose
+                              (OIDC)    (add-on catalogs)        (addon lifecycle)
+```
+
+## Quick start (Docker)
+
+```bash
+cp docker/.env.example docker/.env   # fill in OIDC + path values
+docker compose -f docker/docker-compose.yml up -d
+```
+
+This builds the image from `docker/Dockerfile` and publishes the UI on
+`127.0.0.1:8120`, with a `/health` health check. Every variable is documented
+in [`docker/.env.example`](docker/.env.example).
+
+The manager mounts `/var/run/docker.sock` plus the papAIa workspace and
+config directories **at their host paths** (path parity — required so that
+bind-mount sources in add-on compose files resolve identically whether
+`docker compose` is invoked by the manager or by an operator on the host
+directly). Because of this, the `manager` profile is **Linux-only**;
+Windows/macOS Docker Desktop hosts don't preserve host-path parity through
+the VM boundary.
+
+## How it works
+
+**Catalogs.** A catalog is a source of add-ons — a public or private Git
+repository, or a local directory — registered at runtime (not versioned in
+this repo). Each catalog is scanned for top-level `papaia-app.yaml`
+manifests. Installing an add-on materializes a pinned snapshot
+(`git archive` at a specific commit) so that a later catalog refresh never
+moves code out from under a running container.
+
+**Status model.** Each add-on resolves to one of five states, merged from
+the catalog scan, `deployment.yaml`, and live Docker container labels:
+`available`, `installed`, `running`, `inactive`, `unmanaged` (an
+operator-managed checkout outside the manager's own snapshot directory).
+If the same add-on name exists in more than one enabled catalog, each
+distinct version is surfaced as its own entry rather than one silently
+hiding the other.
+
+**Jobs.** Installs, updates, and lifecycle verbs that shell out to
+`papaia-ctl` can take minutes (image pulls, container starts). These run as
+queued `Job` objects processed one at a time by a single worker; the UI
+polls for live status and streamed log output.
+
+**Updates.** Refresh the catalog, diff the candidate manifest's
+`.env.example` against the installed bundle (new `CHANGE_ME` keys prompt for
+values before the job starts), stop the add-on, re-materialize the snapshot
+at the new commit, reinstall, and start again.
+
+## REST API
+
+All mutating routes require the `MANAGER_ADMIN_ROLE` and a CSRF header.
+Long-running operations return `202` with a job id.
+
+```
+GET  /health                              # unauthenticated
+
+GET    /api/v1/catalogs
+POST   /api/v1/catalogs                   # {name, type, url|path, ref?, auth?}
+PUT    /api/v1/catalogs/{name}
+DELETE /api/v1/catalogs/{name}
+POST   /api/v1/catalogs/{name}/refresh     # → 202 {job_id}
+
+GET  /api/v1/addons
+GET  /api/v1/addons/{name}
+GET  /api/v1/addons/{name}/env-form
+POST /api/v1/addons/{name}/install         # → 202
+POST /api/v1/addons/{name}/start           # → 202
+POST /api/v1/addons/{name}/stop            # → 202
+POST /api/v1/addons/{name}/remove          # → 202
+POST /api/v1/addons/{name}/uninstall       # → 202
+POST /api/v1/addons/{name}/update          # → 202
+POST /api/v1/addons/{name}/save-config     # → 202
+POST /api/v1/addons/{name}/check           # synchronous compatibility check
+
+GET /api/v1/jobs
+GET /api/v1/jobs/{id}
+GET /api/v1/jobs/{id}/log
+```
+
+## Layout
+
+```
+papaia-manager/
+├── src/                    # Python application (uv project, Python 3.12+)
+│   ├── pyproject.toml
+│   ├── uv.lock             # pinned lock, tracked for reproducible Docker builds
+│   ├── .env.example
+│   └── app/
+│       ├── main.py         # FastAPI application factory
+│       ├── config.py       # Pydantic Settings
+│       ├── auth/           # OIDC + PKCE login, CSRF, admin-role dependency
+│       ├── core/           # catalogs, snapshots, status, env-forms, jobs, audit
+│       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs
+│       ├── templates/      # Jinja2 pages + HTMX partials
+│       └── static/         # htmx.min.js, alpine.min.js, app.css (Tailwind build)
+├── tests/                  # pytest suite (sibling to src/)
+└── docker/
+    ├── Dockerfile          # multi-stage build; installs Docker CLI + compose plugin
+    ├── docker-compose.yml  # local development compose
+    ├── git-askpass.sh      # GIT_ASKPASS helper for private catalog auth
+    └── .env.example
+```
+
+## Setup
+
+### Prerequisites
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) installed
+- A reachable OIDC provider (e.g. Keycloak)
+- A papAIa workspace checkout and config directory on the host (Linux)
+
+### Install
+
+```bash
+cd src
+uv sync
+```
+
+### Configure
+
+```bash
+cp src/.env.example src/.env
+```
+
+The server reads `src/.env`. See [`src/.env.example`](src/.env.example) for
+every variable, including the OIDC endpoints, `MANAGER_ADMIN_ROLE`,
+`MANAGER_HOST`, and the papAIa workspace/config paths.
+
+### Run
+
+```bash
+cd src
+uv run uvicorn app.main:app --reload
+```
+
+### Run with Docker
+
+See [Quick start](#quick-start-docker) above.
+
+## About Fidonis
+
+`papaia-manager` is built and maintained by **Fidonis** as part of the papAIa
+stack. We help companies run their own AI infrastructure end to end — open
+source, open standards, no vendor lock-in.
+
+If you are building a similar self-hosted stack and want to talk shop, drop
+by at [fidonis.de](https://fidonis.de).
+
+## License
+
+`papaia-manager` is released under the [MIT license](LICENSE) —
+*Copyright (c) 2026 Fidonis GmbH (in Gründung) and contributors.*
+
+- See [`TRADEMARK.md`](TRADEMARK.md) for the trademark notice covering the
+  name "Fidonis" and the project name `papaia-manager`.
+- See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the licenses
+  of the third-party Python dependencies bundled with this project.
+- See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the *Inbound = Outbound (MIT)*
+  rule and the list of license categories that contributions may not
+  introduce without prior approval.

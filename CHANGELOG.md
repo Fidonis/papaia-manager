@@ -10,6 +10,10 @@ based on merged pull requests; this file mirrors the published releases.
 
 ## [Unreleased]
 
+<!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
+
+## [0.1.0] - 2026-07-27
+
 ### Added
 - Install dialog now shows **all** `.env.example` variables (not just a filtered subset).
 - Non-secret, non-marker fields are pre-filled with their `.env.example` default value.
@@ -31,7 +35,19 @@ based on merged pull requests; this file mirrors the published releases.
   the config bundle.
 - Only changed values are submitted on install/update (diff against `.env.example`),
   preventing accidental overrides of auto-generated secrets.
+- Add-on install now accepts `core_env` so the install form can pre-fill
+  `default_from_core` values from the running core's environment.
 
-<!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
+### Fixed
+- Local catalogs (`type: local`) now scan, display, and install end to end.
+- The add-catalog dialog submits its form as JSON, matching the API's expected
+  content type.
+- The add-catalog dialog shows the path field when the catalog type is `local`.
+- Add-ons with the same name in more than one enabled catalog are no longer
+  silently dropped — each distinct version is now surfaced as its own entry,
+  with same-version duplicates collapsed and annotated with the catalogs that
+  shadow the primary one.
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/HEAD...main
+[0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
+
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.1.0...HEAD
