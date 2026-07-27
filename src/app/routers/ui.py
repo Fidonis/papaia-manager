@@ -5,7 +5,6 @@ import asyncio
 from pathlib import Path
 from typing import Annotated, Any
 
-import yaml
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -15,6 +14,7 @@ from app.auth.deps import CurrentUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
+from app.core.resolve import resolve_catalog_addons
 from app.core.snapshots import load_installed, managed_snapshot_path
 from app.core.state import (
     AddonStatus,
@@ -55,9 +55,10 @@ async def addon_detail(
     name: str,
     request: Request,
     user: CurrentUser,
+    catalog: str | None = None,
 ) -> HTMLResponse:
     return _templates.TemplateResponse(
-        request, "addon_detail.html", _ctx(request, user, addon_name=name)
+        request, "addon_detail.html", _ctx(request, user, addon_name=name, catalog=catalog)
     )
 
 
@@ -104,8 +105,9 @@ async def partial_addon_detail(
     request: Request,
     user: CurrentUser,
     settings: Annotated[Settings, Depends(get_settings)],
+    catalog: str | None = None,
 ) -> HTMLResponse:
-    addon = await _get_addon(name, settings)
+    addon = await _get_addon(name, settings, catalog=catalog)
     resp = _templates.TemplateResponse(
         request, "partials/addon_detail_content.html", _ctx(request, user, addon=addon)
     )
@@ -137,6 +139,7 @@ async def partial_catalogs(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
     registry = load_registry(settings.papaia_config_dir)
+    installed_map = load_installed(settings.papaia_config_dir)
     # Scanned on every render so the count reflects the catalog directory as it
     # is right now — this is what makes Re-scan meaningful for local catalogs.
     addon_counts = {
@@ -145,10 +148,22 @@ async def partial_catalogs(
         )
         for c in registry.catalogs
     }
+    # How many of this catalog's add-ons are shadowed by an identical-version
+    # entry from another catalog earlier in registry order (dashboard-hidden).
+    shadowed_counts: dict[str, int] = {c.name: 0 for c in registry.catalogs}
+    for resolved in resolve_catalog_addons(registry, settings.papaia_workspace_dir, installed_map):
+        for shadowed_catalog in resolved.shadowed_by:
+            shadowed_counts[shadowed_catalog] = shadowed_counts.get(shadowed_catalog, 0) + 1
     return _templates.TemplateResponse(
         request,
         "partials/catalog_list.html",
-        _ctx(request, user, catalogs=registry.catalogs, addon_counts=addon_counts),
+        _ctx(
+            request,
+            user,
+            catalogs=registry.catalogs,
+            addon_counts=addon_counts,
+            shadowed_counts=shadowed_counts,
+        ),
     )
 
 
@@ -167,50 +182,60 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
     deployment_addons = deployment_addons_by_name(deployment)
 
     addons: dict[str, dict[str, Any]] = {}
-    for catalog in registry.catalogs:
-        if not catalog.enabled:
-            continue
-        clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
-        for addon_name, manifest in scan_catalog_addons(clone):
-            if addon_name in addons:
-                continue
-            deploy_entry = deployment_addons.get(addon_name)
-            inst = installed_map.get(addon_name)
-            st = compute_status(
-                name=addon_name,
-                deployment_entry=deploy_entry,
-                installed=inst,
-                catalog_version=manifest.get("version"),
-                running_projects=running,
-                workspace_dir=settings.papaia_workspace_dir,
-            )
-            addons[addon_name] = {
-                "name": addon_name,
-                "status": st,
-                "description": manifest.get("description", ""),
-                "catalog": catalog.name,
-                "catalog_version": manifest.get("version"),
-                "installed_version": inst.manifest_version if inst else None,
-                "update_available": (
-                    inst is not None
-                    and inst.managed
-                    and manifest.get("version") is not None
-                    and inst.manifest_version != manifest.get("version")
-                ),
-                "managed": inst.managed if inst else True,
-                "env_fields": _build_env_fields(
-                    addon_name,
-                    managed_snapshot_path(settings.papaia_workspace_dir, inst.catalog, addon_name)
-                    if inst
-                    else clone / addon_name,
-                    settings,
+    seen_names: set[str] = set()
+    for resolved in resolve_catalog_addons(
+        registry, settings.papaia_workspace_dir, installed_map
+    ):
+        seen_names.add(resolved.name)
+        inst = installed_map.get(resolved.name)
+        # installed.yaml/deployment.yaml are keyed by name only; a version
+        # variant that isn't the installed catalog carries no install state.
+        applies_here = (
+            not resolved.is_variant or inst is None or inst.catalog == resolved.catalog
+        )
+        variant_inst = inst if applies_here else None
+        deploy_entry = deployment_addons.get(resolved.name) if applies_here else None
+
+        st = compute_status(
+            name=resolved.name,
+            deployment_entry=deploy_entry,
+            installed=variant_inst,
+            catalog_version=resolved.manifest.get("version"),
+            running_projects=running,
+            workspace_dir=settings.papaia_workspace_dir,
+        )
+        addons[resolved.key] = {
+            "key": resolved.key,
+            "name": resolved.name,
+            "status": st,
+            "description": resolved.manifest.get("description", ""),
+            "catalog": resolved.catalog,
+            "catalog_version": resolved.manifest.get("version"),
+            "installed_version": variant_inst.manifest_version if variant_inst else None,
+            "shadowed_by": resolved.shadowed_by,
+            "is_variant": resolved.is_variant,
+            "update_available": (
+                variant_inst is not None
+                and variant_inst.managed
+                and resolved.manifest.get("version") is not None
+                and variant_inst.manifest_version != resolved.manifest.get("version")
+            ),
+            "managed": variant_inst.managed if variant_inst else True,
+            "env_fields": _build_env_fields(
+                resolved.name,
+                managed_snapshot_path(
+                    settings.papaia_workspace_dir, variant_inst.catalog, resolved.name
                 )
-                if st in (AddonStatus.AVAILABLE, AddonStatus.INACTIVE)
-                else [],
-            }
+                if variant_inst
+                else resolved.clone / resolved.name,
+                settings,
+            )
+            if st in (AddonStatus.AVAILABLE, AddonStatus.INACTIVE)
+            else [],
+        }
 
     for addon_name, deploy_entry in deployment_addons.items():
-        if addon_name in addons:
+        if addon_name in seen_names:
             continue
         inst = installed_map.get(addon_name)
         st = compute_status(
@@ -222,12 +247,15 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             workspace_dir=settings.papaia_workspace_dir,
         )
         addons[addon_name] = {
+            "key": addon_name,
             "name": addon_name,
             "status": st,
             "description": "",
             "catalog": inst.catalog if inst else None,
             "catalog_version": None,
             "installed_version": inst.manifest_version if inst else None,
+            "shadowed_by": [],
+            "is_variant": False,
             "update_available": False,
             "managed": inst.managed if inst else False,
             "env_fields": _build_env_fields(
@@ -244,7 +272,9 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
     return list(addons.values())
 
 
-async def _get_addon(name: str, settings: Settings) -> dict[str, Any]:
+async def _get_addon(
+    name: str, settings: Settings, catalog: str | None = None
+) -> dict[str, Any]:
     registry = load_registry(settings.papaia_config_dir)
     deployment = load_deployment_yaml(settings.papaia_config_dir)
     installed_map = load_installed(settings.papaia_config_dir)
@@ -252,54 +282,72 @@ async def _get_addon(name: str, settings: Settings) -> dict[str, Any]:
         None, load_running_compose_projects
     )
 
-    manifest: dict[str, Any] = {}
-    catalog_name: str | None = None
-    catalog_addon_dir: Path | None = None
-    for catalog in registry.catalogs:
-        if not catalog.enabled:
-            continue
-        clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
-        addon_dir = clone / name
-        mf = addon_dir / "papaia-app.yaml"
-        if addon_dir.exists() and mf.exists():
-            manifest = yaml.safe_load(mf.read_text(encoding="utf-8")) or {}
-            catalog_name = catalog.name
-            catalog_addon_dir = addon_dir
-            break
+    matches = [
+        r
+        for r in resolve_catalog_addons(
+            registry, settings.papaia_workspace_dir, installed_map
+        )
+        if r.name == name
+    ]
+    resolved = None
+    if catalog is not None:
+        resolved = next((r for r in matches if r.catalog == catalog), None)
+    if resolved is None:
+        resolved = next((r for r in matches if not r.is_variant), None)
+        if resolved is None and matches:
+            resolved = matches[0]
+
+    manifest: dict[str, Any] = resolved.manifest if resolved else {}
+    catalog_name = resolved.catalog if resolved else None
+    catalog_addon_dir: Path | None = (resolved.clone / name) if resolved else None
 
     inst = installed_map.get(name)
-    deploy_entry = deployment_addons_by_name(deployment).get(name)
+    applies_here = (
+        resolved is None
+        or not resolved.is_variant
+        or inst is None
+        or inst.catalog == resolved.catalog
+    )
+    variant_inst = inst if applies_here else None
+    deploy_entry = (
+        deployment_addons_by_name(deployment).get(name) if applies_here else None
+    )
     st = compute_status(
         name=name,
         deployment_entry=deploy_entry,
-        installed=inst,
+        installed=variant_inst,
         catalog_version=manifest.get("version"),
         running_projects=running,
         workspace_dir=settings.papaia_workspace_dir,
     )
 
     addon_path = None
-    if inst:
-        addon_path = managed_snapshot_path(settings.papaia_workspace_dir, inst.catalog, name)
+    if variant_inst:
+        addon_path = managed_snapshot_path(
+            settings.papaia_workspace_dir, variant_inst.catalog, name
+        )
     elif catalog_addon_dir:
         addon_path = catalog_addon_dir
 
     env_fields = _build_env_fields(name, addon_path, settings)
 
     return {
+        "key": resolved.key if resolved else name,
         "name": name,
         "status": st,
         "description": manifest.get("description", ""),
         "catalog": catalog_name or (inst.catalog if inst else None),
         "catalog_version": manifest.get("version"),
-        "installed_version": inst.manifest_version if inst else None,
+        "installed_version": variant_inst.manifest_version if variant_inst else None,
+        "shadowed_by": resolved.shadowed_by if resolved else [],
+        "is_variant": resolved.is_variant if resolved else False,
         "update_available": (
-            inst is not None
-            and inst.managed
+            variant_inst is not None
+            and variant_inst.managed
             and manifest.get("version") is not None
-            and inst.manifest_version != manifest.get("version")
+            and variant_inst.manifest_version != manifest.get("version")
         ),
-        "managed": inst.managed if inst else True,
+        "managed": variant_inst.managed if variant_inst else True,
         "manifest": manifest,
         "env_fields": env_fields,
     }

@@ -18,12 +18,12 @@ from app.core.catalogs import (
     catalog_scan_path,
     load_registry,
     materialize_local_addon,
-    scan_catalog_addons,
 )
 from app.core.ctl import CtlError, run_addon_verb
 from app.core.envforms import EnvField, build_form, field_to_dict
 from app.core.envvalidate import EnvValidationError, coerce_env_values
 from app.core.jobs import JobContext, JobQueue
+from app.core.resolve import resolve_catalog_addons
 from app.core.snapshots import (
     catalog_clone_path,
     load_installed,
@@ -106,6 +106,10 @@ def _addon_summary(
     deploy_entry: Any,
     running: set[str],
     workspace_dir: str,
+    *,
+    key: str | None = None,
+    shadowed_by: list[str] | None = None,
+    is_variant: bool = False,
 ) -> dict[str, Any]:
     st = compute_status(
         name=name,
@@ -116,12 +120,15 @@ def _addon_summary(
         workspace_dir=workspace_dir,
     )
     return {
+        "key": key or name,
         "name": name,
         "status": st,
         "description": manifest.get("description", ""),
         "catalog": catalog_name or (inst.catalog if inst else None),
         "catalog_version": manifest.get("version"),
         "installed_version": inst.manifest_version if inst else None,
+        "shadowed_by": shadowed_by or [],
+        "is_variant": is_variant,
         "update_available": (
             inst is not None
             and inst.managed
@@ -148,23 +155,26 @@ async def list_addons(
     deployment_addons = deployment_addons_by_name(deployment)
 
     addons: dict[str, dict[str, Any]] = {}
+    seen_names: set[str] = set()
 
-    for catalog in registry.catalogs:
-        if not catalog.enabled:
-            continue
-        clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
-        for addon_name, manifest in scan_catalog_addons(clone):
-            if addon_name in addons:
-                continue
-            deploy_entry = deployment_addons.get(addon_name)
-            inst = installed_map.get(addon_name)
-            addons[addon_name] = _addon_summary(
-                addon_name, manifest, catalog.name, inst, deploy_entry,
-                running, settings.papaia_workspace_dir,
-            )
+    for resolved in resolve_catalog_addons(
+        registry, settings.papaia_workspace_dir, installed_map
+    ):
+        seen_names.add(resolved.name)
+        inst = installed_map.get(resolved.name)
+        applies_here = (
+            not resolved.is_variant or inst is None or inst.catalog == resolved.catalog
+        )
+        variant_inst = inst if applies_here else None
+        deploy_entry = deployment_addons.get(resolved.name) if applies_here else None
+        addons[resolved.key] = _addon_summary(
+            resolved.name, resolved.manifest, resolved.catalog, variant_inst, deploy_entry,
+            running, settings.papaia_workspace_dir,
+            key=resolved.key, shadowed_by=resolved.shadowed_by, is_variant=resolved.is_variant,
+        )
 
     for addon_name, deploy_entry in deployment_addons.items():
-        if addon_name in addons:
+        if addon_name in seen_names:
             continue
         inst = installed_map.get(addon_name)
         addons[addon_name] = _addon_summary(
@@ -180,6 +190,7 @@ async def addon_detail(
     name: str,
     user: CurrentUser,
     settings: Annotated[Settings, Depends(get_settings)],
+    catalog: str | None = None,
 ) -> dict[str, Any]:
     registry = load_registry(settings.papaia_config_dir)
     deployment = load_deployment_yaml(settings.papaia_config_dir)
@@ -188,24 +199,39 @@ async def addon_detail(
         None, load_running_compose_projects
     )
 
-    manifest: dict[str, Any] = {}
-    catalog_name: str | None = None
-    for catalog in registry.catalogs:
-        if not catalog.enabled:
-            continue
-        clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
-        addon_dir = clone / name
-        mf = addon_dir / "papaia-app.yaml"
-        if addon_dir.exists() and mf.exists():
-            manifest = yaml.safe_load(mf.read_text(encoding="utf-8")) or {}
-            catalog_name = catalog.name
-            break
+    matches = [
+        r
+        for r in resolve_catalog_addons(registry, settings.papaia_workspace_dir, installed_map)
+        if r.name == name
+    ]
+    resolved = None
+    if catalog is not None:
+        resolved = next((r for r in matches if r.catalog == catalog), None)
+    if resolved is None:
+        resolved = next((r for r in matches if not r.is_variant), None)
+        if resolved is None and matches:
+            resolved = matches[0]
 
-    deploy_entry = deployment_addons_by_name(deployment).get(name)
+    manifest: dict[str, Any] = resolved.manifest if resolved else {}
+    catalog_name = resolved.catalog if resolved else None
+
     inst = installed_map.get(name)
+    applies_here = (
+        resolved is None
+        or not resolved.is_variant
+        or inst is None
+        or inst.catalog == resolved.catalog
+    )
+    variant_inst = inst if applies_here else None
+    deploy_entry = (
+        deployment_addons_by_name(deployment).get(name) if applies_here else None
+    )
     summary = _addon_summary(
-        name, manifest, catalog_name, inst, deploy_entry,
+        name, manifest, catalog_name, variant_inst, deploy_entry,
         running, settings.papaia_workspace_dir,
+        key=resolved.key if resolved else name,
+        shadowed_by=resolved.shadowed_by if resolved else [],
+        is_variant=resolved.is_variant if resolved else False,
     )
     return {**summary, "manifest": manifest}
 
