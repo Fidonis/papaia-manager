@@ -14,7 +14,7 @@
 {% block content %}
 <div
   id="addon-detail"
-  hx-get="/partials/addons/{{ addon_name }}"
+  hx-get="/partials/addons/{{ addon_name }}{% if catalog %}?catalog={{ catalog }}{% endif %}"
   hx-trigger="load"
   hx-swap="innerHTML"
 >

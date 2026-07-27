@@ -19,6 +19,13 @@
           <span class="badge badge-outline badge-sm">{{ c.type }}</span>
           {% set n = addon_counts.get(c.name, 0) %}
           <span class="badge badge-ghost badge-sm">{{ n }} add-on{{ '' if n == 1 else 's' }}</span>
+          {% set hidden = shadowed_counts.get(c.name, 0) %}
+          {% if hidden %}
+          <span class="badge badge-warning badge-outline badge-sm"
+                title="{{ hidden }} identisch versionierte Add-On(s) dieses Katalogs werden im Dashboard durch einen anderen Katalog abgedeckt">
+            {{ hidden }} verdeckt
+          </span>
+          {% endif %}
         </div>
 
         <div class="flex gap-2">
