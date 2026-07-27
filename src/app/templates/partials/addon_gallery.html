@@ -87,6 +87,7 @@
           <p class="text-xs opacity-50 mt-0.5 truncate">
             {% if addon.catalog_version %}v{{ addon.catalog_version }}{% endif %}
             {% if addon.catalog %} · {{ addon.catalog }}{% endif %}
+            {% if addon.is_variant %} · andere Version{% endif %}
           </p>
         </div>
       </div>
@@ -107,6 +108,9 @@
         {% if addon.update_available %}
           <span class="badge badge-warning badge-xs">Update</span>
         {% endif %}
+        {% if addon.shadowed_by %}
+          <span class="badge badge-outline badge-xs" title="Gleiche Version auch in: {{ addon.shadowed_by | join(', ') }}">auch in {{ addon.shadowed_by | join(', ') }}</span>
+        {% endif %}
       </div>
 
       {# Actions #}
@@ -115,7 +119,7 @@
 
         <div class="flex-1"></div>
 
-        <a href="/addons/{{ addon.name }}"
+        <a href="/addons/{{ addon.name }}{% if addon.is_variant %}?catalog={{ addon.catalog }}{% endif %}"
            class="btn btn-ghost btn-sm btn-square shrink-0"
            aria-label="Einstellungen">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

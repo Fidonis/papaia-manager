@@ -31,12 +31,7 @@
 <dialog id="add-catalog-modal" class="modal">
   <div class="modal-box">
     <h3 class="text-lg font-bold mb-4">Add catalog</h3>
-    <form
-      hx-post="/api/v1/catalogs"
-      hx-target="#catalog-list"
-      hx-swap="innerHTML"
-      hx-on::after-request="document.getElementById('add-catalog-modal').close()"
-    >
+    <form id="add-catalog-form" onsubmit="submitAddCatalog(event)">
       <div class="form-control mb-3">
         <label class="label"><span class="label-text">Name</span></label>
         <input name="name" type="text" class="input input-bordered" required
@@ -44,15 +39,21 @@
       </div>
       <div class="form-control mb-3">
         <label class="label"><span class="label-text">Type</span></label>
-        <select name="type" class="select select-bordered">
+        <select id="catalog-type-select" name="type" class="select select-bordered"
+                onchange="toggleCatalogFields(this.value)">
           <option value="git">Git</option>
           <option value="local">Local</option>
         </select>
       </div>
-      <div class="form-control mb-3">
-        <label class="label"><span class="label-text">URL (git catalogs)</span></label>
-        <input name="url" type="url" class="input input-bordered"
+      <div id="field-url" class="form-control mb-3">
+        <label class="label"><span class="label-text">URL</span></label>
+        <input name="url" type="url" class="input input-bordered" required
                placeholder="https://github.com/example/addons.git">
+      </div>
+      <div id="field-path" class="form-control mb-3 hidden">
+        <label class="label"><span class="label-text">Path</span></label>
+        <input name="path" type="text" class="input input-bordered" disabled
+               placeholder="/path/to/local/addons">
       </div>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost"
@@ -63,4 +64,59 @@
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
+<script>
+function submitAddCatalog(event) {
+  event.preventDefault();
+  var form = document.getElementById('add-catalog-form');
+  var type = form.elements['type'].value;
+  var body = { name: form.elements['name'].value, type: type };
+  if (type === 'git') {
+    body.url = form.elements['url'].value;
+  } else {
+    body.path = form.elements['path'].value;
+  }
+  fetch('/api/v1/catalogs', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': document.querySelector('meta[name=csrf]').content,
+    },
+    body: JSON.stringify(body),
+  }).then(async function(r) {
+    if (!r.ok) {
+      var detail = r.status;
+      try { var e = await r.json(); detail = e.detail || JSON.stringify(e); } catch (_) {}
+      alert('Add catalog failed: ' + detail);
+      return;
+    }
+    document.getElementById('add-catalog-modal').close();
+    htmx.ajax('GET', '/partials/catalogs', { target: '#catalog-list', swap: 'innerHTML' });
+  });
+}
+function toggleCatalogFields(type) {
+  var urlField = document.getElementById('field-url');
+  var pathField = document.getElementById('field-path');
+  var urlInput = urlField.querySelector('input');
+  var pathInput = pathField.querySelector('input');
+  if (type === 'local') {
+    urlField.classList.add('hidden');
+    urlInput.required = false;
+    urlInput.disabled = true;
+    pathField.classList.remove('hidden');
+    pathInput.required = true;
+    pathInput.disabled = false;
+  } else {
+    pathField.classList.add('hidden');
+    pathInput.required = false;
+    pathInput.disabled = true;
+    urlField.classList.remove('hidden');
+    urlInput.required = true;
+    urlInput.disabled = false;
+  }
+}
+document.getElementById('add-catalog-modal').addEventListener('close', function () {
+  document.getElementById('catalog-type-select').value = 'git';
+  toggleCatalogFields('git');
+});
+</script>
 {% endblock %}

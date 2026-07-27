@@ -34,6 +34,8 @@ papaia-manager/
 │       │   ├── snapshots.py    # git-archive materialization + installed.yaml
 │       │   ├── state.py        # Merged addon status (catalog × deployment × Docker)
 │       │   ├── envforms.py     # Env-form spec from .env.example + manifest prompts
+│       │   ├── envvalidate.py  # Server-side validation/coercion of add-on env values
+│       │   ├── resolve.py      # Cross-catalog addon dedup: groups same-name hits by version
 │       │   ├── keycloak.py     # Idempotent Keycloak admin REST client registration
 │       │   ├── jobs.py         # Single-flight job queue + streaming log store
 │       │   └── audit.py        # Append-only JSONL audit log
@@ -45,6 +47,13 @@ papaia-manager/
 │       │   ├── api_addons.py   # /api/v1/addons — addon lifecycle verbs
 │       │   └── api_jobs.py     # /api/v1/jobs — job status + log streaming
 │       ├── templates/          # Jinja2 HTML templates
+│       │   └── partials/           # HTMX fragments returned by mutating/polling routes
+│       │       ├── _addon_controls.html      # Per-addon action buttons (install/start/stop/...)
+│       │       ├── _env_fields.html          # Rendered env-form fields (typed, masked secrets)
+│       │       ├── addon_detail_content.html # Addon detail tab content
+│       │       ├── addon_gallery.html        # Addon card grid
+│       │       ├── catalog_list.html         # Catalog table rows
+│       │       └── job_status.html           # Polled job progress/log fragment
 │       └── static/             # htmx.min.js, alpine.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)
 └── docker/

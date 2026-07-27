@@ -1,0 +1,8 @@
+line-length = 100
+target-version = "py312"
+# src/ is the application root; this lets ruff classify `app.*` imports as
+# first-party when linting tests or any file outside src/.
+src = ["src"]
+
+[lint]
+select = ["E", "F", "I", "B", "UP", "N", "RET", "SIM", "ASYNC"]

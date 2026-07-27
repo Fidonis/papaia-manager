@@ -1,6 +1,6 @@
 [project]
 name = "papaia-manager"
-version = "1.0.0"
+version = "0.1.0"
 description = "Web-based addon management for the papAIa stack"
 readme = "../README.md"
 requires-python = ">=3.12"

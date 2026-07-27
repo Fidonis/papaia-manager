@@ -27,7 +27,20 @@
       &middot; installed: v{{ addon.installed_version }}
     {% endif %}
   </span>
+
+  {% if addon.is_variant %}
+    <span class="badge badge-outline badge-sm" title="Diese Version steht neben der Hauptvariante zur Verfügung">andere Version</span>
+  {% endif %}
 </div>
+
+{% if addon.shadowed_by %}
+<div class="alert alert-info py-2 mb-4 text-sm">
+  <span>
+    Identische Version (v{{ addon.catalog_version }}) auch verfügbar in:
+    {% for other in addon.shadowed_by %}<span class="badge badge-outline badge-xs">{{ other }}</span>{% endfor %}
+  </span>
+</div>
+{% endif %}
 
 {% if addon.description %}
 <p class="mb-6 opacity-80">{{ addon.description }}</p>

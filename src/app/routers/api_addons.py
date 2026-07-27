@@ -14,11 +14,16 @@ from app.auth.deps import CurrentUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core.audit import write_audit_entry
-from app.core.catalogs import load_registry, scan_catalog_addons
+from app.core.catalogs import (
+    catalog_scan_path,
+    load_registry,
+    materialize_local_addon,
+)
 from app.core.ctl import CtlError, run_addon_verb
 from app.core.envforms import EnvField, build_form, field_to_dict
 from app.core.envvalidate import EnvValidationError, coerce_env_values
 from app.core.jobs import JobContext, JobQueue
+from app.core.resolve import resolve_catalog_addons
 from app.core.snapshots import (
     catalog_clone_path,
     load_installed,
@@ -80,6 +85,11 @@ def _parse_env_file(text: str) -> dict[str, str]:
     return result
 
 
+def _load_core_env(papaia_config_dir: str) -> dict[str, str] | None:
+    p = Path(papaia_config_dir) / ".env"
+    return _parse_env_file(p.read_text(encoding="utf-8")) if p.exists() else None
+
+
 def _manifest_version(addon_path: Path) -> str:
     mf = addon_path / "papaia-app.yaml"
     if not mf.exists():
@@ -96,6 +106,10 @@ def _addon_summary(
     deploy_entry: Any,
     running: set[str],
     workspace_dir: str,
+    *,
+    key: str | None = None,
+    shadowed_by: list[str] | None = None,
+    is_variant: bool = False,
 ) -> dict[str, Any]:
     st = compute_status(
         name=name,
@@ -106,12 +120,15 @@ def _addon_summary(
         workspace_dir=workspace_dir,
     )
     return {
+        "key": key or name,
         "name": name,
         "status": st,
         "description": manifest.get("description", ""),
         "catalog": catalog_name or (inst.catalog if inst else None),
         "catalog_version": manifest.get("version"),
         "installed_version": inst.manifest_version if inst else None,
+        "shadowed_by": shadowed_by or [],
+        "is_variant": is_variant,
         "update_available": (
             inst is not None
             and inst.managed
@@ -138,23 +155,26 @@ async def list_addons(
     deployment_addons = deployment_addons_by_name(deployment)
 
     addons: dict[str, dict[str, Any]] = {}
+    seen_names: set[str] = set()
 
-    for catalog in registry.catalogs:
-        if not catalog.enabled:
-            continue
-        clone = catalog_clone_path(settings.papaia_workspace_dir, catalog.name)
-        for addon_name, manifest in scan_catalog_addons(clone):
-            if addon_name in addons:
-                continue
-            deploy_entry = deployment_addons.get(addon_name)
-            inst = installed_map.get(addon_name)
-            addons[addon_name] = _addon_summary(
-                addon_name, manifest, catalog.name, inst, deploy_entry,
-                running, settings.papaia_workspace_dir,
-            )
+    for resolved in resolve_catalog_addons(
+        registry, settings.papaia_workspace_dir, installed_map
+    ):
+        seen_names.add(resolved.name)
+        inst = installed_map.get(resolved.name)
+        applies_here = (
+            not resolved.is_variant or inst is None or inst.catalog == resolved.catalog
+        )
+        variant_inst = inst if applies_here else None
+        deploy_entry = deployment_addons.get(resolved.name) if applies_here else None
+        addons[resolved.key] = _addon_summary(
+            resolved.name, resolved.manifest, resolved.catalog, variant_inst, deploy_entry,
+            running, settings.papaia_workspace_dir,
+            key=resolved.key, shadowed_by=resolved.shadowed_by, is_variant=resolved.is_variant,
+        )
 
     for addon_name, deploy_entry in deployment_addons.items():
-        if addon_name in addons:
+        if addon_name in seen_names:
             continue
         inst = installed_map.get(addon_name)
         addons[addon_name] = _addon_summary(
@@ -170,6 +190,7 @@ async def addon_detail(
     name: str,
     user: CurrentUser,
     settings: Annotated[Settings, Depends(get_settings)],
+    catalog: str | None = None,
 ) -> dict[str, Any]:
     registry = load_registry(settings.papaia_config_dir)
     deployment = load_deployment_yaml(settings.papaia_config_dir)
@@ -178,24 +199,39 @@ async def addon_detail(
         None, load_running_compose_projects
     )
 
-    manifest: dict[str, Any] = {}
-    catalog_name: str | None = None
-    for catalog in registry.catalogs:
-        if not catalog.enabled:
-            continue
-        clone = catalog_clone_path(settings.papaia_workspace_dir, catalog.name)
-        addon_dir = clone / name
-        mf = addon_dir / "papaia-app.yaml"
-        if addon_dir.exists() and mf.exists():
-            manifest = yaml.safe_load(mf.read_text(encoding="utf-8")) or {}
-            catalog_name = catalog.name
-            break
+    matches = [
+        r
+        for r in resolve_catalog_addons(registry, settings.papaia_workspace_dir, installed_map)
+        if r.name == name
+    ]
+    resolved = None
+    if catalog is not None:
+        resolved = next((r for r in matches if r.catalog == catalog), None)
+    if resolved is None:
+        resolved = next((r for r in matches if not r.is_variant), None)
+        if resolved is None and matches:
+            resolved = matches[0]
 
-    deploy_entry = deployment_addons_by_name(deployment).get(name)
+    manifest: dict[str, Any] = resolved.manifest if resolved else {}
+    catalog_name = resolved.catalog if resolved else None
+
     inst = installed_map.get(name)
+    applies_here = (
+        resolved is None
+        or not resolved.is_variant
+        or inst is None
+        or inst.catalog == resolved.catalog
+    )
+    variant_inst = inst if applies_here else None
+    deploy_entry = (
+        deployment_addons_by_name(deployment).get(name) if applies_here else None
+    )
     summary = _addon_summary(
-        name, manifest, catalog_name, inst, deploy_entry,
+        name, manifest, catalog_name, variant_inst, deploy_entry,
         running, settings.papaia_workspace_dir,
+        key=resolved.key if resolved else name,
+        shadowed_by=resolved.shadowed_by if resolved else [],
+        is_variant=resolved.is_variant if resolved else False,
     )
     return {**summary, "manifest": manifest}
 
@@ -219,7 +255,7 @@ async def env_form(
         for catalog in registry.catalogs:
             if not catalog.enabled:
                 continue
-            clone = catalog_clone_path(settings.papaia_workspace_dir, catalog.name)
+            clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
             candidate = clone / name
             if (candidate / "papaia-app.yaml").exists():
                 addon_path = candidate
@@ -234,7 +270,9 @@ async def env_form(
         if bundle_env_file.exists():
             bundle_env = _parse_env_file(bundle_env_file.read_text(encoding="utf-8"))
 
-    fields = build_form(addon_path, bundle_env=bundle_env)
+    fields = build_form(
+        addon_path, bundle_env=bundle_env, core_env=_load_core_env(settings.papaia_config_dir)
+    )
     return [field_to_dict(f) for f in fields]
 
 
@@ -257,7 +295,7 @@ async def install(
             status_code=404,
             detail=f"catalog {body.catalog!r} not found or disabled",
         )
-    clone = catalog_clone_path(settings.papaia_workspace_dir, catalog.name)
+    clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
     if not (clone / name).exists():
         raise HTTPException(
             status_code=404,
@@ -266,20 +304,30 @@ async def install(
 
     queue = _queue()
     _cat = catalog.name
+    _is_local = catalog.type == "local"
+    _src = clone / name
     _start = body.start
     _username = _user_id(user)
 
-    _env = _validate_env(build_form(clone / name), dict(body.env)) if body.env else {}
+    _core_env = _load_core_env(settings.papaia_config_dir)
+    _env = (
+        _validate_env(build_form(clone / name, core_env=_core_env), dict(body.env))
+        if body.env
+        else {}
+    )
 
     async def _callback(ctx: JobContext) -> None:
         dest = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
         ctx.log(f"[info] materializing snapshot for {name!r} from {_cat!r}")
-        sha = await materialize_snapshot(
-            catalog_clone=catalog_clone_path(settings.papaia_workspace_dir, _cat),
-            addon_subdir=name,
-            dest=dest,
-        )
-        ctx.log(f"[info] snapshot at {dest} (commit {sha[:12]})")
+        if _is_local:
+            sha = await materialize_local_addon(_src, dest)
+        else:
+            sha = await materialize_snapshot(
+                catalog_clone=catalog_clone_path(settings.papaia_workspace_dir, _cat),
+                addon_subdir=name,
+                dest=dest,
+            )
+        ctx.log(f"[info] snapshot at {dest} (revision {sha[:12]})")
 
         ver = _manifest_version(dest)
 
@@ -524,6 +572,20 @@ async def update(
     _cat = inst.catalog
     _was_running = name in _current_running(settings)
 
+    # The catalog may since have been removed from the registry. Git catalogs
+    # keep working off their workspace clone in that case, so only switch to
+    # the local path when the registry still says the catalog is local.
+    _catalog = next(
+        (c for c in load_registry(settings.papaia_config_dir).catalogs if c.name == _cat),
+        None,
+    )
+    _is_local = _catalog is not None and _catalog.type == "local"
+    _src = (
+        catalog_scan_path(_catalog, settings.papaia_workspace_dir) / name
+        if _catalog is not None
+        else None
+    )
+
     if body.env:
         _cur_path = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
         _env = _validate_env(_addon_fields(name, _cur_path, settings), dict(body.env))
@@ -533,12 +595,15 @@ async def update(
     async def _callback(ctx: JobContext) -> None:
         dest = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
         ctx.log(f"[info] updating snapshot for {name!r} from {_cat!r}")
-        sha = await materialize_snapshot(
-            catalog_clone=catalog_clone_path(settings.papaia_workspace_dir, _cat),
-            addon_subdir=name,
-            dest=dest,
-        )
-        ctx.log(f"[info] snapshot at {dest} (commit {sha[:12]})")
+        if _is_local and _src is not None:
+            sha = await materialize_local_addon(_src, dest)
+        else:
+            sha = await materialize_snapshot(
+                catalog_clone=catalog_clone_path(settings.papaia_workspace_dir, _cat),
+                addon_subdir=name,
+                dest=dest,
+            )
+        ctx.log(f"[info] snapshot at {dest} (revision {sha[:12]})")
 
         ver = _manifest_version(dest)
 
@@ -726,7 +791,7 @@ def _resolve_addon_path(name: str, settings: Settings) -> Path | None:
     for catalog in registry.catalogs:
         if not catalog.enabled:
             continue
-        candidate = catalog_clone_path(settings.papaia_workspace_dir, catalog.name) / name
+        candidate = catalog_scan_path(catalog, settings.papaia_workspace_dir) / name
         if (candidate / "papaia-app.yaml").exists():
             return candidate
     return None
@@ -742,7 +807,9 @@ def _addon_fields(name: str, addon_path: Path | None, settings: Settings) -> lis
         if bundle_env_file.exists()
         else None
     )
-    return build_form(addon_path, bundle_env=bundle_env)
+    return build_form(
+        addon_path, bundle_env=bundle_env, core_env=_load_core_env(settings.papaia_config_dir)
+    )
 
 
 def _validate_env(fields: list[EnvField], env: dict[str, str]) -> dict[str, str]:

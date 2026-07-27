@@ -17,6 +17,15 @@
             <span class="badge badge-neutral badge-sm">disabled</span>
           {% endif %}
           <span class="badge badge-outline badge-sm">{{ c.type }}</span>
+          {% set n = addon_counts.get(c.name, 0) %}
+          <span class="badge badge-ghost badge-sm">{{ n }} add-on{{ '' if n == 1 else 's' }}</span>
+          {% set hidden = shadowed_counts.get(c.name, 0) %}
+          {% if hidden %}
+          <span class="badge badge-warning badge-outline badge-sm"
+                title="{{ hidden }} identisch versionierte Add-On(s) dieses Katalogs werden im Dashboard durch einen anderen Katalog abgedeckt">
+            {{ hidden }} verdeckt
+          </span>
+          {% endif %}
         </div>
 
         <div class="flex gap-2">
@@ -27,6 +36,11 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button class="btn btn-outline btn-xs">Refresh</button>
           </form>
+          {% else %}
+          <button class="btn btn-outline btn-xs"
+                  hx-get="/partials/catalogs"
+                  hx-target="#catalog-list"
+                  hx-swap="innerHTML">Re-scan</button>
           {% endif %}
 
           <form hx-delete="/api/v1/catalogs/{{ c.name }}"
