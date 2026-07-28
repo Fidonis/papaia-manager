@@ -22,8 +22,8 @@
           {% set hidden = shadowed_counts.get(c.name, 0) %}
           {% if hidden %}
           <span class="badge badge-warning badge-outline badge-sm"
-                title="{{ hidden }} identisch versionierte Add-On(s) dieses Katalogs werden im Dashboard durch einen anderen Katalog abgedeckt">
-            {{ hidden }} verdeckt
+                title="{{ hidden }} identically versioned add-on(s) from this catalog are shadowed by another catalog on the dashboard">
+            {{ hidden }} shadowed
           </span>
           {% endif %}
         </div>

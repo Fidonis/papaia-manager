@@ -29,14 +29,14 @@
   </span>
 
   {% if addon.is_variant %}
-    <span class="badge badge-outline badge-sm" title="Diese Version steht neben der Hauptvariante zur Verfügung">andere Version</span>
+    <span class="badge badge-outline badge-sm" title="This version is available alongside the main variant">other version</span>
   {% endif %}
 </div>
 
 {% if addon.shadowed_by %}
 <div class="alert alert-info py-2 mb-4 text-sm">
   <span>
-    Identische Version (v{{ addon.catalog_version }}) auch verfügbar in:
+    Identical version (v{{ addon.catalog_version }}) also available in:
     {% for other in addon.shadowed_by %}<span class="badge badge-outline badge-xs">{{ other }}</span>{% endfor %}
   </span>
 </div>
@@ -72,19 +72,19 @@
       {% if editable %}
       <div class="flex gap-2">
         <button class="btn btn-outline btn-sm" x-show="!editMode"
-                @click="editMode = true">Bearbeiten</button>
+                @click="editMode = true">Edit</button>
         <button class="btn btn-ghost btn-sm" x-show="editMode" style="display:none"
                 @click="
                   $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
                     el.value = el.dataset.isSecret === '1' ? '' : (el.dataset.initial ?? '');
                   });
                   editMode = false; dirty = false;
-                ">Abbrechen</button>
+                ">Cancel</button>
         <button class="btn btn-primary btn-sm" x-show="editMode" style="display:none"
                 :disabled="!dirty || busy"
                 @click="$refs.saveConfigModal.showModal()">
           <span style="display:none" x-show="busy" class="loading loading-dots loading-xs"></span>
-          <span x-show="!busy">Speichern</span>
+          <span x-show="!busy">Save</span>
         </button>
       </div>
       {% endif %}
@@ -143,13 +143,13 @@
     {% if editable %}
     <dialog x-ref="saveConfigModal" class="modal">
       <div class="modal-box max-w-sm">
-        <h3 class="font-bold text-base mb-2">Konfiguration speichern</h3>
+        <h3 class="font-bold text-base mb-2">Save configuration</h3>
         <p class="text-sm opacity-70 mb-4">
-          Soll das Add-On nach dem Speichern neu gestartet werden, damit die Änderungen wirksam werden?
+          Should the add-on be restarted after saving so the changes take effect?
         </p>
         <div class="modal-action">
           <button class="btn btn-ghost btn-sm"
-                  @click="$refs.saveConfigModal.close()">Abbrechen</button>
+                  @click="$refs.saveConfigModal.close()">Cancel</button>
           <button class="btn btn-outline btn-sm"
                   @click="
                     const env = {};
@@ -164,7 +164,7 @@
                       if (!data) { busy = false; return; }
                       _pollJob(data.job_id, () => htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' }));
                     });
-                  ">Nein</button>
+                  ">No</button>
           <button class="btn btn-primary btn-sm"
                   @click="
                     const env = {};
@@ -179,7 +179,7 @@
                       if (!data) { busy = false; return; }
                       _pollJob(data.job_id, () => htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' }));
                     });
-                  ">Ja, neu starten</button>
+                  ">Yes, restart</button>
         </div>
       </div>
       <form method="dialog" class="modal-backdrop"><button>close</button></form>
