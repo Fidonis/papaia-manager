@@ -53,8 +53,8 @@
       class="btn btn-ghost btn-xs"
       @click="_show = !_show"
       :aria-pressed="_show.toString()"
-      :aria-label="_show ? 'Wert verbergen' : 'Wert anzeigen'"
-      :title="_show ? 'Wert verbergen' : 'Wert anzeigen'"
+      :aria-label="_show ? 'Hide value' : 'Show value'"
+      :title="_show ? 'Hide value' : 'Show value'"
     >
       {# Eye-open icon — shown when value is hidden (default) #}
       <svg x-show="!_show" class="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
