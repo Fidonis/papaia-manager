@@ -54,7 +54,7 @@
         .then(r => r.json())
         .then(job => {
           if (job.status === "succeeded" || job.status === "failed") {
-            onDone();
+            onDone(job);
           } else {
             setTimeout(() => _pollJob(jobId, onDone), 2000);
           }
@@ -76,6 +76,75 @@
       return _addonPost(name, verb, body).then(data => {
         if (!data) return false;
         _pollJob(data.job_id, () => htmx.ajax("GET", "/partials/addons", { target: "#addon-gallery", swap: "innerHTML" }));
+        return true;
+      });
+    }
+
+    // showToast: appends a dismissable daisyUI alert into #toasts, auto-removed after 6s.
+    // `html` may contain markup (e.g. a "view log" link) — only ever called with
+    // server-validated catalog names / job ids (uuid4), never free-form user text.
+    function showToast(type, html) {
+      const box = document.getElementById("toasts");
+      const el = document.createElement("div");
+      el.className = "alert alert-" + type + " shadow-lg text-sm";
+      el.innerHTML = "<span>" + html + "</span>";
+      box.appendChild(el);
+      setTimeout(() => el.remove(), 6000);
+    }
+
+    // catalogAction: POST /api/v1/catalogs/{name}/{verb}, poll the returned job to
+    // completion, then refresh the catalog list and toast the outcome.
+    // onJobId (optional) is called as soon as the job id is known, so callers can
+    // show a "view log" link while the job is still running.
+    function catalogAction(name, verb, onJobId) {
+      return fetch("/api/v1/catalogs/" + name + "/" + verb, {
+        method: "POST",
+        headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
+      }).then(async (r) => {
+        if (!r.ok) {
+          let detail = r.status;
+          try {
+            const e = await r.json();
+            detail = e.detail || JSON.stringify(e);
+          } catch (_) {}
+          showToast("error", verb + " failed: " + detail);
+          return false;
+        }
+        const data = await r.json();
+        if (onJobId) onJobId(data.job_id);
+        return new Promise(resolve => {
+          _pollJob(data.job_id, (job) => {
+            htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
+            if (job.status === "succeeded") {
+              showToast("success", "Catalog \"" + name + "\" refreshed.");
+            } else {
+              showToast("error", "Catalog \"" + name + "\" refresh failed. <a href=\"/jobs/" + data.job_id + "\" class=\"link\">View log</a>");
+            }
+            resolve(true);
+          });
+        });
+      });
+    }
+
+    // catalogDelete: DELETE /api/v1/catalogs/{name}. Synchronous (no job), so just
+    // refresh the list and toast on success — the endpoint returns 204, which htmx
+    // never swaps, so the caller must not rely on htmx to update the list.
+    function catalogDelete(name) {
+      return fetch("/api/v1/catalogs/" + name, {
+        method: "DELETE",
+        headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
+      }).then(async (r) => {
+        if (!r.ok) {
+          let detail = r.status;
+          try {
+            const e = await r.json();
+            detail = e.detail || JSON.stringify(e);
+          } catch (_) {}
+          showToast("error", "delete failed: " + detail);
+          return false;
+        }
+        htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
+        showToast("success", "Catalog \"" + name + "\" deleted.");
         return true;
       });
     }
