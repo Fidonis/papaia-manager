@@ -126,6 +126,32 @@
       });
     }
 
+    // catalogUpdate: PUT /api/v1/catalogs/{name}. Synchronous (no job), so just
+    // refresh the list and toast on success — same rationale as catalogDelete.
+    function catalogUpdate(name, body) {
+      return fetch("/api/v1/catalogs/" + name, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": document.querySelector("meta[name=csrf]").content,
+        },
+        body: JSON.stringify(body),
+      }).then(async (r) => {
+        if (!r.ok) {
+          let detail = r.status;
+          try {
+            const e = await r.json();
+            detail = e.detail || JSON.stringify(e);
+          } catch (_) {}
+          showToast("error", "update failed: " + detail);
+          return false;
+        }
+        htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
+        showToast("success", "Catalog \"" + name + "\" updated.");
+        return true;
+      });
+    }
+
     // catalogDelete: DELETE /api/v1/catalogs/{name}. Synchronous (no job), so just
     // refresh the list and toast on success — the endpoint returns 204, which htmx
     // never swaps, so the caller must not rely on htmx to update the list.
