@@ -28,14 +28,19 @@
           {% endif %}
         </div>
 
-        <div class="flex gap-2">
+        <div class="flex gap-2 items-center">
           {% if c.type == "git" %}
-          <form hx-post="/api/v1/catalogs/{{ c.name }}/refresh"
-                hx-target="#catalog-list"
-                hx-swap="innerHTML">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-outline btn-xs">Refresh</button>
-          </form>
+          <span x-data="{ busy: false, jobId: null }" class="inline-flex items-center gap-2">
+            <button class="btn btn-outline btn-xs" :disabled="busy"
+                    @click="busy = true;
+                            catalogAction('{{ c.name }}', 'refresh', id => jobId = id)
+                              .then(() => { busy = false; jobId = null })">
+              <span x-show="busy" class="loading loading-spinner loading-xs"></span>
+              <span x-show="!busy">Refresh</span>
+            </button>
+            <a x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
+               class="link link-hover text-xs opacity-60">view log</a>
+          </span>
           {% else %}
           <button class="btn btn-outline btn-xs"
                   hx-get="/partials/catalogs"
@@ -43,13 +48,15 @@
                   hx-swap="innerHTML">Re-scan</button>
           {% endif %}
 
-          <form hx-delete="/api/v1/catalogs/{{ c.name }}"
-                hx-target="#catalog-list"
-                hx-swap="innerHTML"
-                hx-confirm="Delete catalog {{ c.name }}?">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-error btn-outline btn-xs">Delete</button>
-          </form>
+          <span x-data="{ busy: false }">
+            <button class="btn btn-error btn-outline btn-xs" :disabled="busy"
+                    @click="if (!confirm('Delete catalog {{ c.name }}?')) return;
+                            busy = true;
+                            catalogDelete('{{ c.name }}').then(() => busy = false)">
+              <span x-show="busy" class="loading loading-spinner loading-xs"></span>
+              <span x-show="!busy">Delete</span>
+            </button>
+          </span>
         </div>
       </div>
 
