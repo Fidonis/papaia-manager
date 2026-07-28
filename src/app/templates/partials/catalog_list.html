@@ -49,11 +49,11 @@
           {% endif %}
 
           <button class="btn btn-outline btn-xs"
-                  onclick="openEditCatalogModal(
+                  onclick='openEditCatalogModal(
                     {{ c.name|tojson }}, {{ c.type|tojson }},
-                    {{ (c.url or '')|tojson }}, {{ c.ref|tojson }},
-                    {{ (c.path or '')|tojson }}, {{ c.enabled|tojson }}
-                  )">Edit</button>
+                    {{ (c.url or "")|tojson }}, {{ c.ref|tojson }},
+                    {{ (c.path or "")|tojson }}, {{ c.enabled|tojson }}
+                  )'>Edit</button>
 
           <span x-data="{ busy: false }">
             <button class="btn btn-error btn-outline btn-xs" :disabled="busy"
