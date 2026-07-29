@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Add-Ons — papAIa manager{% endblock %}
+
+{% block page_title %}Add-Ons{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Manage all the add-ons in your AI stack</p>{% endblock %}
+
+{% block content %}
+<div
+  id="addon-gallery"
+  hx-get="/partials/addons"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+{% endblock %}

@@ -11,6 +11,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from app.auth.csrf import verify_csrf
 from app.auth.oidc import OIDCClient, OIDCError, _pkce_pair
+from app.auth.roles import has_manager_access
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -106,10 +107,13 @@ async def callback(
             detail="authentication failed",
         ) from exc
 
-    if settings.manager_admin_role not in claims.roles:
+    # Gate the session on holding *any* known role. Per-surface authorization
+    # happens in the route dependencies; rejecting non-admins here would lock
+    # dashboard users out of the application entirely.
+    if not has_manager_access(claims, settings):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="your account does not have the required admin role",
+            detail="your account does not have a role granting access to this application",
         )
 
     request.session["user"] = claims.to_dict()
