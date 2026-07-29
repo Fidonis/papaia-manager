@@ -88,12 +88,6 @@ _DEFAULT_TILES: dict[str, Any] = {
                     "description": "LLM proxy and load balancer",
                     "visibility": "all",
                 },
-                {
-                    "name": "Jina Reranker",
-                    "href": "{{PAPAIA_HOST}}:8600",
-                    "description": "Self-hosted reranker for LibreChat web search",
-                    "visibility": "all",
-                },
             ],
         },
         {
