@@ -18,7 +18,10 @@ class Settings(BaseSettings):
     auth_provider: str = "internal_keycloak"
 
     # Manager application
+    # Realm role granting full access (add-ons, catalogs, jobs and dashboard).
     manager_admin_role: str = "admin"
+    # Realm role granting dashboard-only access. Admins implicitly have it too.
+    manager_user_role: str = "user"
     manager_host: str
     manager_oidc_client_id: str = "papaia-manager"
     manager_oidc_client_secret: str

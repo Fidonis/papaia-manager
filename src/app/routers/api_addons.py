@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
 from app.auth.csrf import verify_csrf
-from app.auth.deps import CurrentUser
+from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core.audit import write_audit_entry
@@ -141,7 +141,7 @@ def _addon_summary(
 
 @router.get("")
 async def list_addons(
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> list[dict[str, Any]]:
     """Return merged addon list (catalog × deployment × Docker status)."""
@@ -188,7 +188,7 @@ async def list_addons(
 @router.get("/{name}")
 async def addon_detail(
     name: str,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
     catalog: str | None = None,
 ) -> dict[str, Any]:
@@ -239,7 +239,7 @@ async def addon_detail(
 @router.get("/{name}/env-form")
 async def env_form(
     name: str,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> list[dict[str, Any]]:
     installed_map = load_installed(settings.papaia_config_dir)
@@ -281,7 +281,7 @@ async def install(
     name: str,
     body: InstallBody,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
@@ -407,7 +407,7 @@ async def install(
 async def start(
     name: str,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
@@ -441,7 +441,7 @@ async def stop(
     name: str,
     body: StopBody,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
@@ -481,7 +481,7 @@ async def stop(
 async def remove(
     name: str,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
@@ -515,7 +515,7 @@ async def uninstall(
     name: str,
     body: UninstallBody,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
@@ -558,7 +558,7 @@ async def update(
     name: str,
     body: UpdateBody,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
@@ -681,7 +681,7 @@ async def save_config(
     name: str,
     body: SaveConfigBody,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
@@ -759,7 +759,7 @@ async def save_config(
 @router.post("/{name}/check")
 async def check_compat(
     name: str,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
     try:

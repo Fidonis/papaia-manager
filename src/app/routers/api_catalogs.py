@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, field_validator
 
 from app.auth.csrf import verify_csrf
-from app.auth.deps import CurrentUser
+from app.auth.deps import AdminUser
 from app.config import Settings, get_settings
 from app.core.catalogs import (
     Catalog,
@@ -52,7 +52,7 @@ class CatalogUpdateBody(BaseModel):
 
 @router.get("")
 async def list_catalogs(
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> list[dict[str, Any]]:
     registry = load_registry(settings.papaia_config_dir)
@@ -63,7 +63,7 @@ async def list_catalogs(
 async def create_catalog(
     request: Request,
     body: CatalogCreateBody,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
     verify_csrf(request)
@@ -99,7 +99,7 @@ async def update_catalog(
     name: str,
     request: Request,
     body: CatalogUpdateBody,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
     verify_csrf(request)
@@ -128,7 +128,7 @@ async def update_catalog(
 async def delete_catalog(
     name: str,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
     verify_csrf(request)
@@ -144,7 +144,7 @@ async def delete_catalog(
 async def refresh_catalog(
     name: str,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)

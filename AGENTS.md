@@ -8,7 +8,9 @@ This document provides structural and architectural context for contributors and
 
 papaia-manager is a web-based control plane for the papAIa stack's addon lifecycle. It provides a browser UI for discovering, installing, starting, stopping, removing, and updating papAIa addons. It wraps `papaia-ctl` as a subprocess for all mutating operations and imports `lib.*` modules directly from the mounted papAIa workspace for read-only state queries.
 
-Authentication is handled natively via OIDC Authorization Code Flow with PKCE against Keycloak. Access is gated on a configurable admin role.
+It also serves the stack dashboard: a tile overview of the deployed applications, configured through `manager/tiles.yaml` in the papAIa config directory.
+
+Authentication is handled natively via OIDC Authorization Code Flow with PKCE against Keycloak. Two configurable realm roles gate access: the admin role reaches every surface, while the user role reaches the dashboard only. Authorization is enforced by the route dependencies, so the JSON API is restricted exactly like the pages.
 
 ---
 
@@ -23,14 +25,18 @@ papaia-manager/
 │   └── app/
 │       ├── main.py         # FastAPI application factory; startup checks
 │       ├── config.py       # Pydantic Settings; all env-var configuration
+│       ├── templating.py   # Shared Jinja2 environment
 │       ├── auth/
 │       │   ├── oidc.py     # OIDC Authorization Code + PKCE client
-│       │   ├── deps.py     # FastAPI dependencies: current_user, require_admin
+│       │   ├── roles.py    # Authorization policy: which realm role grants what
+│       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser
 │       │   └── csrf.py     # Session-bound CSRF Double-Submit token
 │       ├── core/
 │       │   ├── papaia_lib.py   # sys.path bootstrap + core version handshake
 │       │   ├── ctl.py          # Whitelisted subprocess wrapper for papaia-ctl
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
+│       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering
+│       │   ├── envfile.py      # Shared KEY=value env-file parsing
 │       │   ├── snapshots.py    # git-archive materialization + installed.yaml
 │       │   ├── state.py        # Merged addon status (catalog × deployment × Docker)
 │       │   ├── envforms.py     # Env-form spec from .env.example + manifest prompts
@@ -77,9 +83,10 @@ SessionMiddleware  (itsdangerous-signed cookie)
   │  cookie present and valid?  →  extract OIDCClaims
   │  no valid cookie            →  302 /auth/login
   ▼
-require_admin dependency  (deps.py)
-  │  MANAGER_ADMIN_ROLE in claims.roles?  →  continue
-  │  role missing                         →  403
+role dependency  (deps.py → roles.py)
+  │  AdminUser  →  MANAGER_ADMIN_ROLE required        (add-ons, catalogs, jobs)
+  │  AnyUser    →  admin OR MANAGER_USER_ROLE         (dashboard)
+  │  role missing  →  403  (HTML page, or JSON under /api/)
   ▼
 Route handler
   │  read-only ops:   import lib.* from mounted workspace
@@ -98,7 +105,8 @@ Browser → /auth/login
 Browser ← Keycloak login dialog
 Browser → /auth/callback?code&state
   Manager: verify state, exchange code+verifier for tokens (OIDC_ISSUER_KC_TOKEN)
-  Manager: validate id_token via JWKS (OIDC_ISSUER_KC_CERTS), check admin role
+  Manager: validate id_token via JWKS (OIDC_ISSUER_KC_CERTS)
+  Manager: require admin OR user role, else 403 without a session
   Manager: set session cookie → 302 /
 ```
 
@@ -170,7 +178,8 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `OIDC_ISSUER_KC_AUTH` | Browser-side Keycloak authorization endpoint |
 | `OIDC_ISSUER_KC_TOKEN` | Server-side token endpoint (internal Docker DNS) |
 | `OIDC_ISSUER_KC_CERTS` | JWKS endpoint for id_token validation |
-| `MANAGER_ADMIN_ROLE` | Keycloak realm role required for UI access (default: `admin`) |
+| `MANAGER_ADMIN_ROLE` | Keycloak realm role granting full access — add-ons, catalogs, jobs, dashboard (default: `admin`) |
+| `MANAGER_USER_ROLE` | Keycloak realm role granting dashboard-only access (default: `user`) |
 | `MANAGER_HOST` | Public base URL of the manager (used as OIDC redirect URI base) |
 | `MANAGER_OIDC_CLIENT_ID` | Keycloak client ID (default: `papaia-manager`) |
 | `MANAGER_OIDC_CLIENT_SECRET` | Keycloak client secret |
