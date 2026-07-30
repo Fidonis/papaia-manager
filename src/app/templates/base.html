@@ -29,10 +29,10 @@
   <meta name="csrf" content="{{ csrf_token }}">
   <meta name="theme-color" content="#0a2f4d">
   <title>{% block title %}papAIa manager by Fidonis{% endblock %}</title>
-  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-  <link rel="stylesheet" href="/static/app.css">
-  <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/alpine.min.js" defer></script>
+  <link rel="icon" type="image/svg+xml" href="{{ asset_url('favicon.svg') }}">
+  <link rel="stylesheet" href="{{ asset_url('app.css') }}">
+  <script src="{{ asset_url('htmx.min.js') }}" defer></script>
+  <script src="{{ asset_url('alpine.min.js') }}" defer></script>
   <script>
     // ── Sidebar ──────────────────────────────────────────────────────────
     // Three states on <html data-sidebar>: "pinned" (full width, pushes the
