@@ -17,6 +17,14 @@ from app.core import backups, runner
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
 from app.core.resolve import resolve_catalog_addons
+from app.core.services import (
+    ServiceHealth,
+    ServiceModule,
+    compose_project,
+    count_by_health,
+    load_modules,
+    overall_health,
+)
 from app.core.snapshots import load_installed, managed_snapshot_path
 from app.core.state import (
     AddonStatus,
@@ -76,6 +84,15 @@ async def addon_detail(
     )
 
 
+@router.get("/services", response_class=HTMLResponse)
+async def services_page(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """Live status of the core stack's containers, grouped by module."""
+    return _templates.TemplateResponse(request, "services.html", _ctx(request, user))
+
+
 @router.get("/catalogs", response_class=HTMLResponse)
 async def catalogs_page(
     request: Request,
@@ -130,6 +147,60 @@ async def partial_tiles(
     )
     resp = _templates.TemplateResponse(
         request, "partials/tile_gallery.html", _ctx(request, user, groups=groups)
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/service-status", response_class=HTMLResponse)
+async def partial_service_status(
+    request: Request,
+    user: AnyUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The header pill: one aggregate value, for every authenticated role.
+
+    Deliberately not filtered by visibility. The pill carries no service
+    names, only the worst state in the stack, so a non-admin learns that
+    something is wrong without learning what -- which is the point of putting
+    it in front of them at all.
+    """
+    modules = await _load_service_modules(settings)
+    overall = overall_health(modules)
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/service_status_pill.html",
+        _ctx(
+            request,
+            user,
+            overall=overall,
+            affected=count_by_health(modules)[overall],
+        ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/services", response_class=HTMLResponse)
+async def partial_services(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    modules = await _load_service_modules(settings)
+    counts = count_by_health(modules)
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/service_list.html",
+        _ctx(
+            request,
+            user,
+            modules=modules,
+            total=len(modules),
+            cnt_running=counts[ServiceHealth.HEALTHY] + counts[ServiceHealth.COMPLETED],
+            cnt_degraded=counts[ServiceHealth.UNHEALTHY] + counts[ServiceHealth.STARTING],
+            cnt_stopped=counts[ServiceHealth.STOPPED],
+        ),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -271,6 +342,13 @@ async def partial_restore_status(
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+async def _load_service_modules(settings: Settings) -> list[ServiceModule]:
+    """Core-stack modules from Docker. Blocking `docker ps`, so off-thread."""
+    return await asyncio.get_running_loop().run_in_executor(
+        None, load_modules, compose_project(settings.papaia_config_dir)
+    )
+
 
 def _gather_tiles(settings: Settings, is_admin_user: bool) -> list[TileGroup]:
     """Load the dashboard tiles a caller may see. Synchronous file I/O."""

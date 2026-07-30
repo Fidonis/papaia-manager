@@ -49,12 +49,13 @@ from app.main import create_app  # noqa: E402
 
 # Surfaces reserved for administrators, and the dashboard surfaces every
 # authenticated account reaches. Kept as data so a new route is one line.
-ADMIN_PAGES = ["/addons", "/addons/paperless", "/catalogs", "/maintenance"]
+ADMIN_PAGES = ["/addons", "/addons/paperless", "/catalogs", "/maintenance", "/services"]
 ADMIN_PARTIALS = [
     "/partials/addons",
     "/partials/catalogs",
     "/partials/maintenance/restore-points",
     "/partials/maintenance/restore-status",
+    "/partials/services",
 ]
 ADMIN_APIS = [
     "/api/v1/addons",
@@ -63,7 +64,9 @@ ADMIN_APIS = [
     "/api/v1/maintenance/backup-dir",
     "/api/v1/maintenance/restore-points",
 ]
-DASHBOARD_PATHS = ["/", "/partials/tiles"]
+# The status pill sits in the header of every page, so it has to answer for
+# both roles even though the page it links to is admin-only.
+DASHBOARD_PATHS = ["/", "/partials/tiles", "/partials/service-status"]
 
 # Denials are decided by the dependency, before the handler runs, so every
 # path above can be asserted on cheaply. Confirming that an admin gets through
@@ -161,7 +164,7 @@ def test_admin_role_reaches_the_api(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/addons", "/catalogs", "/maintenance"])
+@pytest.mark.parametrize("path", ["/addons", "/catalogs", "/maintenance", "/services"])
 def test_admin_reaches_the_admin_pages(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 
