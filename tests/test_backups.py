@@ -117,7 +117,9 @@ def test_backup_dir_comes_from_the_config_bundle_env(tmp_path: Path) -> None:
     assert resolve_backup_dir(str(config_dir)) == Path("/srv/papaia/backup")
 
 
-@pytest.mark.parametrize("env_text", ["", "PAPAIA_HOST=https://papaia.test\n", "PAPAIA_BACKUP_DIR=\n"])
+@pytest.mark.parametrize(
+    "env_text", ["", "PAPAIA_HOST=https://papaia.test\n", "PAPAIA_BACKUP_DIR=\n"]
+)
 def test_missing_backup_dir_resolves_to_none(tmp_path: Path, env_text: str) -> None:
     config_dir = tmp_path / "config"
     config_dir.mkdir()
