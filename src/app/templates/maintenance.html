@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+{% block title %}Maintenance — papAIa manager{% endblock %}
+
+{% block page_title %}Maintenance{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Back up and restore the stack</p>{% endblock %}
+
+{% block content %}
+
+<!-- Restore runner state. Rendered first: while a restore runs it is the only
+     thing on this page that matters. -->
+<div
+  id="restore-status-slot"
+  class="mb-6"
+  hx-get="/partials/maintenance/restore-status"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+></div>
+
+<!-- ── Backup ─────────────────────────────────────────── -->
+<div class="card bg-base-200 shadow-sm mb-6">
+  <div class="card-body p-5 gap-4">
+    <div>
+      <h2 class="font-brand text-lg font-bold">Backup</h2>
+      <p class="text-sm opacity-60 mt-0.5">
+        Archives the stack configuration, every core volume, and every active
+        add-on's volumes and data directories. Containers keep running; each one
+        is briefly paused while its volume is archived.
+      </p>
+    </div>
+
+    {% if backup_dir %}
+    <p class="text-sm opacity-60">
+      Target: <span class="font-mono">{{ backup_dir }}</span>
+      {% if not backup_dir_reachable %}
+      <span class="badge badge-warning badge-sm ml-2">not reachable</span>
+      {% endif %}
+    </p>
+    {% endif %}
+
+    <div class="flex items-end gap-3 flex-wrap" x-data="{ busy: false, jobId: null }">
+      <div class="form-control">
+        <label class="label py-1" for="retention-days">
+          <span class="label-text text-sm">Retention (days, optional)</span>
+        </label>
+        <input id="retention-days" type="number" min="0" step="1" placeholder="keep all"
+               class="input input-bordered input-sm w-40">
+      </div>
+
+      <button class="btn btn-primary btn-sm" :disabled="busy"
+              @click="busy = true;
+                      startBackup(id => jobId = id).then(() => { busy = false; jobId = null })">
+        <span x-show="busy" class="loading loading-spinner loading-xs"></span>
+        <span x-show="!busy">Create backup</span>
+      </button>
+
+      <a x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
+         class="link link-hover text-xs opacity-60 pb-2">view log</a>
+    </div>
+
+    <p class="text-xs opacity-50">
+      A retention period deletes restore points older than that many days, and
+      their catalogue entries, after the new one is written. Leave it empty to
+      keep every restore point.
+    </p>
+  </div>
+</div>
+
+<!-- ── Restore points ─────────────────────────────────── -->
+<div class="mb-3 flex items-center justify-between gap-3">
+  <h2 class="font-brand text-lg font-bold">Restore points</h2>
+  <button class="btn btn-outline btn-xs"
+          hx-get="/partials/maintenance/restore-points"
+          hx-target="#restore-point-list"
+          hx-swap="innerHTML">Refresh</button>
+</div>
+
+<div
+  id="restore-point-list"
+  hx-get="/partials/maintenance/restore-points"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+
+<!-- Restore confirmation modal -->
+<dialog id="restore-modal" class="modal">
+  <div class="modal-box max-w-2xl">
+    <h3 class="text-lg font-bold mb-2">Restore <span id="restore-target" class="font-mono"></span></h3>
+
+    <div class="alert alert-warning text-sm mb-4">
+      <div>
+        <p class="font-semibold mb-1">This overwrites live data.</p>
+        <ul class="list-disc list-inside space-y-0.5">
+          <li>The stack configuration directory is replaced.</li>
+          <li><span id="restore-artifact-count"></span> archived volumes and directories are replaced.</li>
+          <li>All core and add-on containers are removed and recreated.</li>
+        </ul>
+      </div>
+    </div>
+
+    <p id="restore-partial-note" class="text-sm text-warning mb-3 hidden">
+      This restore point is marked <span class="font-mono">partial</span> &mdash; some
+      archives failed when it was written. Check <span class="font-mono">backup.log</span>
+      before relying on it.
+    </p>
+
+    <label class="label cursor-pointer justify-start gap-3 mb-1">
+      <input id="restore-clean" type="checkbox" class="checkbox checkbox-warning">
+      <span class="label-text text-sm">
+        Delete named volumes first (<span class="font-mono">--restart-clean</span>) &mdash;
+        any volume not contained in this restore point loses its data permanently
+      </span>
+    </label>
+
+    <label class="label cursor-pointer justify-start gap-3 mb-2">
+      <input id="restore-confirm" type="checkbox" class="checkbox"
+             onchange="document.getElementById('restore-go').disabled = !this.checked">
+      <span class="label-text text-sm">I understand and want to restore this point</span>
+    </label>
+
+    <p class="text-xs opacity-50 mb-2">
+      The restore runs in its own container, so it completes even though the
+      manager itself is stopped and recreated on the way. Expect this page to be
+      unreachable for a while.
+    </p>
+
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost"
+              onclick="document.getElementById('restore-modal').close()">Cancel</button>
+      <button id="restore-go" type="button" class="btn btn-warning" disabled
+              onclick="submitRestore()">Restore</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Restore point detail modal -->
+<dialog id="restore-detail-modal" class="modal">
+  <div class="modal-box max-w-3xl">
+    <h3 class="text-lg font-bold mb-3">Restore point <span id="detail-id" class="font-mono"></span></h3>
+    <div id="detail-body" class="text-sm"></div>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost"
+              onclick="document.getElementById('restore-detail-modal').close()">Close</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<script>
+// Shared error extraction: the API answers with {detail: ...} on every 4xx.
+async function _maintenanceError(r) {
+  try {
+    const e = await r.json();
+    return e.detail || JSON.stringify(e);
+  } catch (_) {
+    return String(r.status);
+  }
+}
+
+function _csrf() {
+  return document.querySelector('meta[name=csrf]').content;
+}
+
+// startBackup: POST the backup, then reuse the shared job poller from base.html.
+// onJobId lets the caller show a "view log" link while the job still runs.
+function startBackup(onJobId) {
+  var raw = document.getElementById('retention-days').value.trim();
+  var body = {};
+  if (raw !== '') body.retention_days = parseInt(raw, 10);
+
+  return fetch('/api/v1/maintenance/backup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
+    body: JSON.stringify(body),
+  }).then(async function (r) {
+    if (!r.ok) {
+      showToast('error', 'Backup failed: ' + (await _maintenanceError(r)));
+      return false;
+    }
+    var data = await r.json();
+    if (onJobId) onJobId(data.job_id);
+    return new Promise(function (resolve) {
+      _pollJob(data.job_id, function (job) {
+        htmx.ajax('GET', '/partials/maintenance/restore-points',
+                  { target: '#restore-point-list', swap: 'innerHTML' });
+        if (job.status === 'succeeded') {
+          showToast('success', 'Backup complete.');
+        } else {
+          showToast('error', 'Backup failed. <a href="/jobs/' + data.job_id +
+                             '" class="link">View log</a>');
+        }
+        resolve(true);
+      });
+    });
+  });
+}
+
+function openRestoreModal(id, artifacts, result) {
+  document.getElementById('restore-target').textContent = id;
+  document.getElementById('restore-artifact-count').textContent = artifacts;
+  document.getElementById('restore-partial-note').classList.toggle('hidden', result !== 'partial');
+  document.getElementById('restore-clean').checked = false;
+  var confirmBox = document.getElementById('restore-confirm');
+  confirmBox.checked = false;
+  document.getElementById('restore-go').disabled = true;
+  document.getElementById('restore-modal').dataset.restorePoint = id;
+  document.getElementById('restore-modal').showModal();
+}
+
+function submitRestore() {
+  var modal = document.getElementById('restore-modal');
+  var body = {
+    restore_point: modal.dataset.restorePoint,
+    restart_clean: document.getElementById('restore-clean').checked,
+  };
+  document.getElementById('restore-go').disabled = true;
+
+  fetch('/api/v1/maintenance/restore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
+    body: JSON.stringify(body),
+  }).then(async function (r) {
+    if (!r.ok) {
+      showToast('error', 'Restore could not be started: ' + (await _maintenanceError(r)));
+      document.getElementById('restore-go').disabled = false;
+      return;
+    }
+    modal.close();
+    showToast('success', 'Restore started.');
+    // Load the status panel, which then polls itself across the restart.
+    htmx.ajax('GET', '/partials/maintenance/restore-status',
+              { target: '#restore-status-slot', swap: 'innerHTML' });
+  });
+}
+
+// acknowledgeRestore: drop the finished runner container so the next restore can
+// start, then clear the panel and re-read the catalogue.
+function acknowledgeRestore() {
+  fetch('/api/v1/maintenance/restore', {
+    method: 'DELETE',
+    headers: { 'X-CSRF-Token': _csrf() },
+  }).then(async function (r) {
+    if (!r.ok) {
+      showToast('error', 'Could not dismiss the restore: ' + (await _maintenanceError(r)));
+      return;
+    }
+    htmx.ajax('GET', '/partials/maintenance/restore-status',
+              { target: '#restore-status-slot', swap: 'innerHTML' });
+    htmx.ajax('GET', '/partials/maintenance/restore-points',
+              { target: '#restore-point-list', swap: 'innerHTML' });
+  });
+}
+
+// openRestorePointDetail: renders the snapshot manifest. Every value comes from
+// the API as text and is written via textContent / DOM nodes, never innerHTML.
+function openRestorePointDetail(id) {
+  var body = document.getElementById('detail-body');
+  document.getElementById('detail-id').textContent = id;
+  body.textContent = 'Loading…';
+  document.getElementById('restore-detail-modal').showModal();
+
+  fetch('/api/v1/maintenance/restore-points/' + encodeURIComponent(id))
+    .then(async function (r) {
+      if (!r.ok) {
+        body.textContent = 'Could not load details: ' + (await _maintenanceError(r));
+        return;
+      }
+      var data = await r.json();
+      body.textContent = '';
+
+      var meta = document.createElement('p');
+      meta.className = 'opacity-60 mb-3';
+      meta.textContent = data.created_at + ' · ' + data.size_mb + ' MB · ' +
+                         data.artifacts + ' artifacts · result ' + data.result +
+                         (data.papaia_version ? ' · core ' + data.papaia_version : '');
+      body.appendChild(meta);
+
+      var list = data.artifact_list || [];
+      if (!list.length) {
+        var empty = document.createElement('p');
+        empty.className = 'opacity-60';
+        empty.textContent = 'No manifest found for this restore point.';
+        body.appendChild(empty);
+        return;
+      }
+
+      var table = document.createElement('table');
+      table.className = 'table table-zebra table-xs';
+      var head = document.createElement('thead');
+      var headRow = document.createElement('tr');
+      ['Kind', 'Target', 'Owner'].forEach(function (label) {
+        var th = document.createElement('th');
+        th.textContent = label;
+        headRow.appendChild(th);
+      });
+      head.appendChild(headRow);
+      table.appendChild(head);
+
+      var tbody = document.createElement('tbody');
+      list.forEach(function (a) {
+        var tr = document.createElement('tr');
+        [a.kind, a.target, a.owner].forEach(function (value, i) {
+          var td = document.createElement('td');
+          if (i === 1) td.className = 'font-mono';
+          td.textContent = value == null ? '' : String(value);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+
+      var wrapper = document.createElement('div');
+      wrapper.className = 'overflow-x-auto max-h-96 overflow-y-auto';
+      wrapper.appendChild(table);
+      body.appendChild(wrapper);
+    });
+}
+</script>
+{% endblock %}

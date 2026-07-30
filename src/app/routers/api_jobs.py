@@ -5,7 +5,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth.deps import CurrentUser
+from app.auth.deps import AdminUser
 from app.config import Settings, get_settings
 from app.core.jobs import JobQueue
 
@@ -22,7 +22,7 @@ def _queue(settings: Annotated[Settings, Depends(get_settings)]) -> JobQueue:
 
 @router.get("")
 async def list_jobs(
-    user: CurrentUser,
+    user: AdminUser,
     queue: Annotated[JobQueue, Depends(_queue)],
     limit: int = Query(default=50, ge=1, le=500),
 ) -> list[dict[str, Any]]:
@@ -33,7 +33,7 @@ async def list_jobs(
 @router.get("/{job_id}")
 async def get_job(
     job_id: str,
-    user: CurrentUser,
+    user: AdminUser,
     queue: Annotated[JobQueue, Depends(_queue)],
 ) -> dict[str, Any]:
     job = queue.get_job(job_id)
@@ -45,7 +45,7 @@ async def get_job(
 @router.get("/{job_id}/log")
 async def get_job_log(
     job_id: str,
-    user: CurrentUser,
+    user: AdminUser,
     queue: Annotated[JobQueue, Depends(_queue)],
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, str]:

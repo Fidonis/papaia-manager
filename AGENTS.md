@@ -8,7 +8,11 @@ This document provides structural and architectural context for contributors and
 
 papaia-manager is a web-based control plane for the papAIa stack's addon lifecycle. It provides a browser UI for discovering, installing, starting, stopping, removing, and updating papAIa addons. It wraps `papaia-ctl` as a subprocess for all mutating operations and imports `lib.*` modules directly from the mounted papAIa workspace for read-only state queries.
 
-Authentication is handled natively via OIDC Authorization Code Flow with PKCE against Keycloak. Access is gated on a configurable admin role.
+It also serves the stack dashboard: a tile overview of the deployed applications, configured through `manager/tiles.yaml` in the papAIa config directory.
+
+A third surface, Maintenance, drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below).
+
+Authentication is handled natively via OIDC Authorization Code Flow with PKCE against Keycloak. Two configurable realm roles gate access: the admin role reaches every surface, while the user role reaches the dashboard only. Authorization is enforced by the route dependencies, so the JSON API is restricted exactly like the pages.
 
 ---
 
@@ -23,14 +27,21 @@ papaia-manager/
 │   └── app/
 │       ├── main.py         # FastAPI application factory; startup checks
 │       ├── config.py       # Pydantic Settings; all env-var configuration
+│       ├── templating.py   # Shared Jinja2 environment
 │       ├── auth/
 │       │   ├── oidc.py     # OIDC Authorization Code + PKCE client
-│       │   ├── deps.py     # FastAPI dependencies: current_user, require_admin
+│       │   ├── roles.py    # Authorization policy: which realm role grants what
+│       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser
 │       │   └── csrf.py     # Session-bound CSRF Double-Submit token
 │       ├── core/
 │       │   ├── papaia_lib.py   # sys.path bootstrap + core version handshake
 │       │   ├── ctl.py          # Whitelisted subprocess wrapper for papaia-ctl
+│       │   │                   #   (separate allowlists for addon and core verbs)
+│       │   ├── backups.py      # Read-only backup.yaml / manifest.yaml catalogue access
+│       │   ├── runner.py       # Detached `papaia-ctl restore` container
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
+│       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering
+│       │   ├── envfile.py      # Shared KEY=value env-file parsing
 │       │   ├── snapshots.py    # git-archive materialization + installed.yaml
 │       │   ├── state.py        # Merged addon status (catalog × deployment × Docker)
 │       │   ├── envforms.py     # Env-form spec from .env.example + manifest prompts
@@ -45,7 +56,8 @@ papaia-manager/
 │       │   ├── ui.py           # Server-rendered HTML pages
 │       │   ├── api_catalogs.py # /api/v1/catalogs — catalog CRUD + refresh
 │       │   ├── api_addons.py   # /api/v1/addons — addon lifecycle verbs
-│       │   └── api_jobs.py     # /api/v1/jobs — job status + log streaming
+│       │   ├── api_jobs.py     # /api/v1/jobs — job status + log streaming
+│       │   └── api_maintenance.py # /api/v1/maintenance — backup + restore
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
 │       │       ├── _addon_controls.html      # Per-addon action buttons (install/start/stop/...)
@@ -53,7 +65,9 @@ papaia-manager/
 │       │       ├── addon_detail_content.html # Addon detail tab content
 │       │       ├── addon_gallery.html        # Addon card grid
 │       │       ├── catalog_list.html         # Catalog table rows
-│       │       └── job_status.html           # Polled job progress/log fragment
+│       │       ├── job_status.html           # Polled job progress/log fragment
+│       │       ├── restore_point_list.html   # Restore point cards
+│       │       └── restore_status.html       # Polled restore-runner state
 │       └── static/             # htmx.min.js, alpine.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)
 └── docker/
@@ -77,9 +91,11 @@ SessionMiddleware  (itsdangerous-signed cookie)
   │  cookie present and valid?  →  extract OIDCClaims
   │  no valid cookie            →  302 /auth/login
   ▼
-require_admin dependency  (deps.py)
-  │  MANAGER_ADMIN_ROLE in claims.roles?  →  continue
-  │  role missing                         →  403
+role dependency  (deps.py → roles.py)
+  │  AdminUser  →  MANAGER_ADMIN_ROLE required        (add-ons, catalogs, jobs,
+  │                                                    maintenance)
+  │  AnyUser    →  admin OR MANAGER_USER_ROLE         (dashboard)
+  │  role missing  →  403  (HTML page, or JSON under /api/)
   ▼
 Route handler
   │  read-only ops:   import lib.* from mounted workspace
@@ -98,13 +114,31 @@ Browser → /auth/login
 Browser ← Keycloak login dialog
 Browser → /auth/callback?code&state
   Manager: verify state, exchange code+verifier for tokens (OIDC_ISSUER_KC_TOKEN)
-  Manager: validate id_token via JWKS (OIDC_ISSUER_KC_CERTS), check admin role
+  Manager: validate id_token via JWKS (OIDC_ISSUER_KC_CERTS)
+  Manager: require admin OR user role, else 403 without a session
   Manager: set session cookie → 302 /
 ```
 
 ### Job model
 
-All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. Only one mutating job runs at a time. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
+All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. Only one mutating job runs at a time. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
+
+### Restore model
+
+Restore is the one mutating operation that is **not** a job, and the reason is structural rather than stylistic.
+
+`papaia-ctl restore` calls `docker compose down` on the core project before it unpacks any archive, and `papaia-manager` is a service of that same project (`papaia/src/manager/docker-compose.yml`, profile `manager`). A restore running in this process would be SIGKILLed the moment teardown removed its own container — after the stack is down and before anything was put back. `--no-restart` is not an escape: it overwrites volumes underneath live processes.
+
+So `core/runner.py` starts `papaia-ctl restore -y` in a **separate container**, built by cloning the manager's own container spec (`docker inspect` of the container carrying `de.fidonis.module=papaia-manager`): same image, binds, user and supplementary groups. Cloning rather than re-deriving means path parity and docker.sock access hold by construction and the compose fragment stays the only place those mounts are declared.
+
+State lives in Docker. The runner is started without `--rm` and with `--restart no`, so after it exits `docker inspect` still yields its status and exit code and `docker logs` still yields its output — readable by a manager container that was removed and recreated mid-operation. A progress file could not do this: restore replaces `$PAPAIA_CONFIG_DIR` wholesale. The durable cross-restore record is papaia-ctl's own `backup.log` in the backup directory, which is never restored over.
+
+Consequences worth remembering when touching this area:
+
+- `ALLOWED_CORE_VERBS` in `core/ctl.py` contains `backup` and deliberately **not** `restore`.
+- Backup and restore are mutually exclusive, enforced in `routers/api_maintenance.py` with 409s.
+- The restore-point id is validated against an exact timestamp pattern before it reaches a path join or an argv.
+- `PAPAIA_BACKUP_DIR` must be mounted at its host path, or the catalogue is invisible to the container.
 
 ---
 
@@ -170,13 +204,20 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `OIDC_ISSUER_KC_AUTH` | Browser-side Keycloak authorization endpoint |
 | `OIDC_ISSUER_KC_TOKEN` | Server-side token endpoint (internal Docker DNS) |
 | `OIDC_ISSUER_KC_CERTS` | JWKS endpoint for id_token validation |
-| `MANAGER_ADMIN_ROLE` | Keycloak realm role required for UI access (default: `admin`) |
+| `MANAGER_ADMIN_ROLE` | Keycloak realm role granting full access — add-ons, catalogs, jobs, dashboard (default: `admin`) |
+| `MANAGER_USER_ROLE` | Keycloak realm role granting dashboard-only access (default: `user`) |
 | `MANAGER_HOST` | Public base URL of the manager (used as OIDC redirect URI base) |
 | `MANAGER_OIDC_CLIENT_ID` | Keycloak client ID (default: `papaia-manager`) |
 | `MANAGER_OIDC_CLIENT_SECRET` | Keycloak client secret |
 | `MANAGER_SESSION_SECRET` | itsdangerous session signing secret |
 | `PAPAIA_CONFIG_DIR` | Path to papAIa config directory (must equal host path in container) |
 | `PAPAIA_WORKSPACE_DIR` | Path to papAIa workspace (must equal host path in container) |
+
+`PAPAIA_BACKUP_DIR` is **not** a manager setting: the backup location belongs to
+the stack, so it is read from `$PAPAIA_CONFIG_DIR/.env` at request time and the
+manager and a shell on the host always agree on it. It appears in
+`docker/.env.example` only because compose needs it to place the path-parity
+mount.
 
 ---
 

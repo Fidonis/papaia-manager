@@ -22,6 +22,10 @@ services:
       # Workspace and config: mounted at identical host paths (path-parity requirement)
       - ${PAPAIA_WORKSPACE_DIR}:${PAPAIA_WORKSPACE_DIR}
       - ${PAPAIA_CONFIG_DIR}:${PAPAIA_CONFIG_DIR}
+      # Backup location, at its host path for the same reason: the manager reads
+      # the restore-point catalogue from here and hands the identical path to
+      # `papaia-ctl backup|restore --backup-dir`.
+      - ${PAPAIA_BACKUP_DIR}:${PAPAIA_BACKUP_DIR}
       # CA certificate for internal TLS (optional)
       - ${PAPAIA_CONFIG_DIR}/certs:/certs:ro
     # The container runs as the non-root 'app' user (see Dockerfile), which has

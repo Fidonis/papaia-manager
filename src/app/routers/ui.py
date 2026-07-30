@@ -7,13 +7,15 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
 from app.auth.csrf import get_csrf_token
-from app.auth.deps import CurrentUser
+from app.auth.deps import AdminUser, AnyUser
 from app.auth.oidc import OIDCClaims
+from app.auth.roles import is_admin
 from app.config import Settings, get_settings
+from app.core import backups, runner
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
+from app.core.envfile import load_env_file
 from app.core.resolve import resolve_catalog_addons
 from app.core.snapshots import load_installed, managed_snapshot_path
 from app.core.state import (
@@ -23,17 +25,20 @@ from app.core.state import (
     load_deployment_yaml,
     load_running_compose_projects,
 )
+from app.core.tiles import TileGroup, load_tiles, visible_groups
+from app.templating import templates as _templates
 
 router = APIRouter()
 
-_templates = Jinja2Templates(directory="app/templates")
-
 
 def _ctx(request: Request, user: OIDCClaims, **extra: Any) -> dict[str, Any]:
+    # `is_admin` drives which navigation entries render. It is presentation
+    # only -- every restricted route enforces its own tier via AdminUser.
     return {
         "request": request,
         "user": user,
         "csrf_token": get_csrf_token(request),
+        "is_admin": is_admin(user, get_settings()),
         **extra,
     }
 
@@ -45,16 +50,25 @@ def _ctx(request: Request, user: OIDCClaims, **extra: Any) -> dict[str, Any]:
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
-    user: CurrentUser,
+    user: AnyUser,
 ) -> HTMLResponse:
+    """Application tiles -- the landing page for every authenticated role."""
     return _templates.TemplateResponse(request, "dashboard.html", _ctx(request, user))
+
+
+@router.get("/addons", response_class=HTMLResponse)
+async def addons_page(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    return _templates.TemplateResponse(request, "addons.html", _ctx(request, user))
 
 
 @router.get("/addons/{name}", response_class=HTMLResponse)
 async def addon_detail(
     name: str,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     catalog: str | None = None,
 ) -> HTMLResponse:
     return _templates.TemplateResponse(
@@ -65,16 +79,36 @@ async def addon_detail(
 @router.get("/catalogs", response_class=HTMLResponse)
 async def catalogs_page(
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
 ) -> HTMLResponse:
     return _templates.TemplateResponse(request, "catalogs.html", _ctx(request, user))
+
+
+@router.get("/maintenance", response_class=HTMLResponse)
+async def maintenance_page(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """Stack-level operations: backup and restore."""
+    backup_dir = backups.resolve_backup_dir(settings.papaia_config_dir)
+    return _templates.TemplateResponse(
+        request,
+        "maintenance.html",
+        _ctx(
+            request,
+            user,
+            backup_dir=str(backup_dir) if backup_dir else None,
+            backup_dir_reachable=backups.is_reachable(backup_dir),
+        ),
+    )
 
 
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)
 async def job_log_page(
     job_id: str,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
 ) -> HTMLResponse:
     return _templates.TemplateResponse(
         request, "job_log.html", _ctx(request, user, job_id=job_id)
@@ -85,10 +119,26 @@ async def job_log_page(
 # HTMX partials
 # ---------------------------------------------------------------------------
 
+@router.get("/partials/tiles", response_class=HTMLResponse)
+async def partial_tiles(
+    request: Request,
+    user: AnyUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    groups = await asyncio.get_running_loop().run_in_executor(
+        None, _gather_tiles, settings, is_admin(user, settings)
+    )
+    resp = _templates.TemplateResponse(
+        request, "partials/tile_gallery.html", _ctx(request, user, groups=groups)
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @router.get("/partials/addons", response_class=HTMLResponse)
 async def partial_addons(
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
     addons = await _gather_addons(settings)
@@ -103,7 +153,7 @@ async def partial_addons(
 async def partial_addon_detail(
     name: str,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
     catalog: str | None = None,
 ) -> HTMLResponse:
@@ -119,7 +169,7 @@ async def partial_addon_detail(
 async def partial_job_status(
     job_id: str,
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
 ) -> HTMLResponse:
     from app.main import _job_queue  # noqa: PLC0415
 
@@ -135,7 +185,7 @@ async def partial_job_status(
 @router.get("/partials/catalogs", response_class=HTMLResponse)
 async def partial_catalogs(
     request: Request,
-    user: CurrentUser,
+    user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
     registry = load_registry(settings.papaia_config_dir)
@@ -167,9 +217,67 @@ async def partial_catalogs(
     )
 
 
+@router.get("/partials/maintenance/restore-points", response_class=HTMLResponse)
+async def partial_restore_points(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    backup_dir = backups.resolve_backup_dir(settings.papaia_config_dir)
+    points = await asyncio.get_running_loop().run_in_executor(
+        None, backups.load_restore_points, backup_dir
+    )
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/restore_point_list.html",
+        _ctx(
+            request,
+            user,
+            restore_points=points,
+            backup_dir=str(backup_dir) if backup_dir else None,
+            backup_dir_reachable=backups.is_reachable(backup_dir),
+        ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/maintenance/restore-status", response_class=HTMLResponse)
+async def partial_restore_status(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """Polled while a restore runs, and once more after the manager is back.
+
+    A Docker error is rendered as the absence of a runner plus a message: the
+    manager container is recreated during a restore, so a transient failure to
+    reach the daemon is an expected state here, not a fault.
+    """
+    error = ""
+    try:
+        status_obj = await runner.find_runner()
+    except runner.RunnerError as exc:
+        status_obj, error = None, str(exc)
+    log = await runner.runner_log(status_obj.name) if status_obj is not None else ""
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/restore_status.html",
+        _ctx(request, user, restore=status_obj, restore_log=log, restore_error=error),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+def _gather_tiles(settings: Settings, is_admin_user: bool) -> list[TileGroup]:
+    """Load the dashboard tiles a caller may see. Synchronous file I/O."""
+    config = load_tiles(settings.papaia_config_dir)
+    core_env = load_env_file(Path(settings.papaia_config_dir) / ".env")
+    return visible_groups(config, is_admin=is_admin_user, env=core_env)
+
 
 async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
     registry = load_registry(settings.papaia_config_dir)
@@ -353,17 +461,6 @@ async def _get_addon(
     }
 
 
-def _quick_parse_env(text: str) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, val = line.partition("=")
-        result[key.strip()] = val.strip()
-    return result
-
-
 def _build_env_fields(
     name: str, addon_path: Path | None, settings: Settings
 ) -> list[dict[str, Any]]:
@@ -371,13 +468,11 @@ def _build_env_fields(
         return []
     from app.core.envforms import build_form, field_to_dict  # noqa: PLC0415
 
-    bundle_env: dict[str, str] | None = None
+    # build_form distinguishes "file absent" (None) from "file empty" ({}),
+    # so keep the None when the bundle or core env has not been written yet.
     bundle_env_file = Path(settings.papaia_config_dir) / "addons" / name / ".env"
-    if bundle_env_file.exists():
-        bundle_env = _quick_parse_env(bundle_env_file.read_text(encoding="utf-8"))
-    core_env: dict[str, str] | None = None
+    bundle_env = load_env_file(bundle_env_file) if bundle_env_file.exists() else None
     core_env_file = Path(settings.papaia_config_dir) / ".env"
-    if core_env_file.exists():
-        core_env = _quick_parse_env(core_env_file.read_text(encoding="utf-8"))
+    core_env = load_env_file(core_env_file) if core_env_file.exists() else None
     fields = build_form(addon_path, bundle_env=bundle_env, core_env=core_env)
     return [field_to_dict(f) for f in fields]

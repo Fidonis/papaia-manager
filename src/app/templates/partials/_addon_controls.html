@@ -51,38 +51,38 @@
 {% if s in ("installed", "inactive", "running") %}
 <dialog x-ref="removeModal" class="modal">
   <div class="modal-box max-w-sm">
-    <h3 class="font-bold text-base mb-1">{{ addon.name }} entfernen</h3>
+    <h3 class="font-bold text-base mb-1">Remove {{ addon.name }}</h3>
     <p class="text-sm opacity-60 mb-4">
-      Deaktiviert das Add-On und entfernt die Docker Container. Das Add-On kann
-      anschließend über <strong>Reactivate</strong> wieder aktiviert werden.
+      Disables the add-on and removes the Docker containers. The add-on can
+      then be reactivated again via <strong>Reactivate</strong>.
     </p>
     <div class="space-y-1.5 mb-3">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">Was passiert</p>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">What happens</p>
       <div class="flex items-center gap-2 text-sm">
         <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        Docker Container werden gestoppt und entfernt
+        Docker containers are stopped and removed
       </div>
       <div class="flex items-center gap-2 text-sm">
         <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        Compose-Integration wird deaktiviert
+        Compose integration is disabled
       </div>
     </div>
     <div class="space-y-1.5 mb-5">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">Was erhalten bleibt</p>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">What is kept</p>
       <div class="flex items-center gap-2 text-sm opacity-70">
         <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        Docker Volumes (Datenbank, Uploads, …)
+        Docker volumes (database, uploads, …)
       </div>
       <div class="flex items-center gap-2 text-sm opacity-70">
         <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        Konfigurationsdateien auf dem Host
+        Configuration files on the host
       </div>
     </div>
     <div class="modal-action mt-0">
-      <button class="btn btn-ghost btn-sm" @click="$refs.removeModal.close()">Abbrechen</button>
+      <button class="btn btn-ghost btn-sm" @click="$refs.removeModal.close()">Cancel</button>
       <button class="btn btn-error btn-sm"
               @click="$refs.removeModal.close(); busy = true; activeVerb = 'remove'; {{ fn }}('{{ addon.name }}', 'remove', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-        Entfernen
+        Remove
       </button>
     </div>
   </div>
@@ -95,42 +95,42 @@
 {% if addon.installed_version %}
 <dialog x-ref="uninstallModal" class="modal">
   <div class="modal-box max-w-sm">
-    <h3 class="font-bold text-base mb-1">{{ addon.name }} deinstallieren</h3>
+    <h3 class="font-bold text-base mb-1">Uninstall {{ addon.name }}</h3>
     <p class="text-sm opacity-60 mb-4">
-      Entfernt das Add-On vollständig inklusive Konfigurationspaket.
-      Das Add-On muss anschließend neu installiert werden.
+      Removes the add-on completely, including its configuration package.
+      The add-on must then be reinstalled.
     </p>
     <div class="space-y-1.5 mb-3">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">Was passiert</p>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">What happens</p>
       <div class="flex items-center gap-2 text-sm">
         <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        Docker Container werden gestoppt und entfernt
+        Docker containers are stopped and removed
       </div>
       <div class="flex items-center gap-2 text-sm">
         <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        Konfigurationspaket (Snapshot) wird gelöscht
+        Configuration package (snapshot) is deleted
       </div>
       <div class="flex items-center gap-2 text-sm">
         <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        Eintrag wird aus der Bereitstellungskonfiguration entfernt
+        Entry is removed from the deployment configuration
       </div>
     </div>
     <div class="space-y-1.5 mb-3">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">Was erhalten bleibt</p>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">What is kept</p>
       <div class="flex items-center gap-2 text-sm opacity-70">
         <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        Docker Volumes (Datenbank, Uploads, …)
+        Docker volumes (database, uploads, …)
       </div>
     </div>
     <div class="alert alert-warning py-2 mb-5">
       <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-      <span class="text-xs">Diese Aktion kann nicht rückgängig gemacht werden.</span>
+      <span class="text-xs">This action cannot be undone.</span>
     </div>
     <div class="modal-action mt-0">
-      <button class="btn btn-ghost btn-sm" @click="$refs.uninstallModal.close()">Abbrechen</button>
+      <button class="btn btn-ghost btn-sm" @click="$refs.uninstallModal.close()">Cancel</button>
       <button class="btn btn-error btn-sm"
               @click="$refs.uninstallModal.close(); busy = true; activeVerb = 'uninstall'; {{ fn }}('{{ addon.name }}', 'uninstall', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-        Deinstallieren
+        Uninstall
       </button>
     </div>
   </div>
@@ -170,7 +170,7 @@
         <label class="label pb-0.5">
           <span class="label-text font-medium">{{ f.label }}{% if f.required %} <span class="text-error">*</span>{% endif %}</span>
           {% if f.auto_generated %}
-          <span class="badge badge-neutral badge-xs">wird generiert</span>
+          <span class="badge badge-neutral badge-xs">auto-generated</span>
           {% elif f.marker == 'replace_with' %}
           <span class="badge badge-warning badge-xs">Keycloak</span>
           {% endif %}
@@ -186,7 +186,7 @@
       {% if secondary_fields %}
       <details class="mb-3">
         <summary class="text-sm opacity-60 cursor-pointer select-none mb-2">
-          Weitere Einstellungen ({{ secondary_fields | length }})
+          More settings ({{ secondary_fields | length }})
         </summary>
         {% for f in secondary_fields %}
         <div class="form-control mb-3">

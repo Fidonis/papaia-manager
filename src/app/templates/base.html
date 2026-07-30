@@ -54,7 +54,7 @@
         .then(r => r.json())
         .then(job => {
           if (job.status === "succeeded" || job.status === "failed") {
-            onDone();
+            onDone(job);
           } else {
             setTimeout(() => _pollJob(jobId, onDone), 2000);
           }
@@ -79,6 +79,101 @@
         return true;
       });
     }
+
+    // showToast: appends a dismissable daisyUI alert into #toasts, auto-removed after 6s.
+    // `html` may contain markup (e.g. a "view log" link) — only ever called with
+    // server-validated catalog names / job ids (uuid4), never free-form user text.
+    function showToast(type, html) {
+      const box = document.getElementById("toasts");
+      const el = document.createElement("div");
+      el.className = "alert alert-" + type + " shadow-lg text-sm";
+      el.innerHTML = "<span>" + html + "</span>";
+      box.appendChild(el);
+      setTimeout(() => el.remove(), 6000);
+    }
+
+    // catalogAction: POST /api/v1/catalogs/{name}/{verb}, poll the returned job to
+    // completion, then refresh the catalog list and toast the outcome.
+    // onJobId (optional) is called as soon as the job id is known, so callers can
+    // show a "view log" link while the job is still running.
+    function catalogAction(name, verb, onJobId) {
+      return fetch("/api/v1/catalogs/" + name + "/" + verb, {
+        method: "POST",
+        headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
+      }).then(async (r) => {
+        if (!r.ok) {
+          let detail = r.status;
+          try {
+            const e = await r.json();
+            detail = e.detail || JSON.stringify(e);
+          } catch (_) {}
+          showToast("error", verb + " failed: " + detail);
+          return false;
+        }
+        const data = await r.json();
+        if (onJobId) onJobId(data.job_id);
+        return new Promise(resolve => {
+          _pollJob(data.job_id, (job) => {
+            htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
+            if (job.status === "succeeded") {
+              showToast("success", "Catalog \"" + name + "\" refreshed.");
+            } else {
+              showToast("error", "Catalog \"" + name + "\" refresh failed. <a href=\"/jobs/" + data.job_id + "\" class=\"link\">View log</a>");
+            }
+            resolve(true);
+          });
+        });
+      });
+    }
+
+    // catalogUpdate: PUT /api/v1/catalogs/{name}. Synchronous (no job), so just
+    // refresh the list and toast on success — same rationale as catalogDelete.
+    function catalogUpdate(name, body) {
+      return fetch("/api/v1/catalogs/" + name, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": document.querySelector("meta[name=csrf]").content,
+        },
+        body: JSON.stringify(body),
+      }).then(async (r) => {
+        if (!r.ok) {
+          let detail = r.status;
+          try {
+            const e = await r.json();
+            detail = e.detail || JSON.stringify(e);
+          } catch (_) {}
+          showToast("error", "update failed: " + detail);
+          return false;
+        }
+        htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
+        showToast("success", "Catalog \"" + name + "\" updated.");
+        return true;
+      });
+    }
+
+    // catalogDelete: DELETE /api/v1/catalogs/{name}. Synchronous (no job), so just
+    // refresh the list and toast on success — the endpoint returns 204, which htmx
+    // never swaps, so the caller must not rely on htmx to update the list.
+    function catalogDelete(name) {
+      return fetch("/api/v1/catalogs/" + name, {
+        method: "DELETE",
+        headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
+      }).then(async (r) => {
+        if (!r.ok) {
+          let detail = r.status;
+          try {
+            const e = await r.json();
+            detail = e.detail || JSON.stringify(e);
+          } catch (_) {}
+          showToast("error", "delete failed: " + detail);
+          return false;
+        }
+        htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
+        showToast("success", "Catalog \"" + name + "\" deleted.");
+        return true;
+      });
+    }
   </script>
 </head>
 <body
@@ -87,8 +182,10 @@
   x-data
 >
 {% set path = request.url.path %}
-{% set nav_dashboard = path == "/" or path.startswith("/addons") or path.startswith("/jobs") %}
+{% set nav_dashboard = path == "/" %}
+{% set nav_addons    = path.startswith("/addons") or path.startswith("/jobs") %}
 {% set nav_catalogs  = path.startswith("/catalogs") %}
+{% set nav_maintenance = path.startswith("/maintenance") %}
 
 <div class="flex">
 
@@ -121,6 +218,19 @@
         Dashboard
       </a>
 
+      {# Administrative surfaces. Hiding them here is presentation only --
+         the routes and their /api/v1 counterparts enforce the admin role
+         themselves, so a typed URL is rejected just the same. #}
+      {% if is_admin %}
+      <a href="/addons"
+         class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                {{ 'bg-primary text-primary-content' if nav_addons else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+        </svg>
+        Add-Ons
+      </a>
+
       <a href="/catalogs"
          class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                 {{ 'bg-primary text-primary-content' if nav_catalogs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
@@ -129,6 +239,17 @@
         </svg>
         Catalogs
       </a>
+
+      <a href="/maintenance"
+         class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                {{ 'bg-primary text-primary-content' if nav_maintenance else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        Maintenance
+      </a>
+      {% endif %}
 
     </nav>
 

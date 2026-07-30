@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 
 from app.auth.oidc import OIDCClaims
+from app.auth.roles import has_manager_access, is_admin
 from app.config import Settings, get_settings
 
 
@@ -40,7 +41,7 @@ def require_admin(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> OIDCClaims:
     """Raise 403 if the authenticated user does not hold the admin role."""
-    if settings.manager_admin_role not in claims.roles:
+    if not is_admin(claims, settings):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="admin role required",
@@ -48,4 +49,20 @@ def require_admin(
     return claims
 
 
-CurrentUser = Annotated[OIDCClaims, Depends(require_admin)]
+def require_manager_access(
+    claims: Annotated[OIDCClaims, Depends(get_current_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> OIDCClaims:
+    """Raise 403 unless the user holds either the admin or the user role."""
+    if not has_manager_access(claims, settings):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin or user role required",
+        )
+    return claims
+
+
+# Route annotations. The name states the required tier, so a route's access
+# level is readable at its signature instead of hidden in a shared alias.
+AdminUser = Annotated[OIDCClaims, Depends(require_admin)]
+AnyUser = Annotated[OIDCClaims, Depends(require_manager_access)]

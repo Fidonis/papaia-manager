@@ -4,9 +4,9 @@
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
     <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
   </svg>
-  <p class="text-lg font-semibold">Keine Add-Ons gefunden</p>
-  <p class="text-sm">Füge einen Katalog hinzu und aktualisiere ihn, um Add-Ons zu durchsuchen.</p>
-  <a href="/catalogs" class="btn btn-outline btn-sm">Kataloge verwalten</a>
+  <p class="text-lg font-semibold">No add-ons found</p>
+  <p class="text-sm">Add a catalog and refresh it to browse add-ons.</p>
+  <a href="/catalogs" class="btn btn-outline btn-sm">Manage catalogs</a>
 </div>
 {% else %}
 
@@ -19,31 +19,31 @@
 
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
   <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Installierte Add-Ons</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Add-Ons</p>
     <p class="mt-1 text-3xl font-bold font-brand">{{ cnt_total }}</p>
-    <p class="text-xs opacity-40 mt-0.5">Gesamt</p>
+    <p class="text-xs opacity-40 mt-0.5">Total</p>
   </div>
   <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Aktiv</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Active</p>
     <p class="mt-1 text-3xl font-bold font-brand text-success">{{ cnt_running }}</p>
-    <p class="text-xs opacity-40 mt-0.5">in Betrieb</p>
+    <p class="text-xs opacity-40 mt-0.5">running</p>
   </div>
   <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Deaktiviert</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Disabled</p>
     <p class="mt-1 text-3xl font-bold font-brand text-warning">{{ cnt_inactive }}</p>
-    <p class="text-xs opacity-40 mt-0.5">pausiert</p>
+    <p class="text-xs opacity-40 mt-0.5">paused</p>
   </div>
   <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Verfügbar</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Available</p>
     <p class="mt-1 text-3xl font-bold font-brand">{{ cnt_avail }}</p>
-    <p class="text-xs opacity-40 mt-0.5">aus Katalog</p>
+    <p class="text-xs opacity-40 mt-0.5">from catalog</p>
   </div>
 </div>
 
 {# ── Section heading ────────────────────────────────────────────── #}
 <div class="flex items-center justify-between mb-4">
-  <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Add-Ons &nbsp;·&nbsp; {{ cnt_total }} Module</p>
-  <a href="/catalogs" class="btn btn-ghost btn-xs opacity-60">Kataloge verwalten</a>
+  <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Add-Ons &nbsp;·&nbsp; {{ cnt_total }} modules</p>
+  <a href="/catalogs" class="btn btn-ghost btn-xs opacity-60">Manage catalogs</a>
 </div>
 
 {# ── Icon colour cycling (all classes listed literally for Tailwind) #}
@@ -73,21 +73,21 @@
             <p class="font-semibold leading-snug truncate">{{ addon.name }}</p>
             {% set s = addon.status %}
             {% if s == "running" %}
-              <span class="badge badge-success badge-sm shrink-0">Aktiv</span>
+              <span class="badge badge-success badge-sm shrink-0">Active</span>
             {% elif s == "installed" %}
-              <span class="badge badge-info badge-sm shrink-0">Installiert</span>
+              <span class="badge badge-info badge-sm shrink-0">Installed</span>
             {% elif s == "inactive" %}
-              <span class="badge badge-warning badge-sm shrink-0">Deaktiviert</span>
+              <span class="badge badge-warning badge-sm shrink-0">Disabled</span>
             {% elif s == "unmanaged" %}
               <span class="badge badge-neutral badge-sm shrink-0">Unmanaged</span>
             {% else %}
-              <span class="badge badge-ghost badge-sm shrink-0">Verfügbar</span>
+              <span class="badge badge-ghost badge-sm shrink-0">Available</span>
             {% endif %}
           </div>
           <p class="text-xs opacity-50 mt-0.5 truncate">
             {% if addon.catalog_version %}v{{ addon.catalog_version }}{% endif %}
             {% if addon.catalog %} · {{ addon.catalog }}{% endif %}
-            {% if addon.is_variant %} · andere Version{% endif %}
+            {% if addon.is_variant %} · other version{% endif %}
           </p>
         </div>
       </div>
@@ -109,7 +109,7 @@
           <span class="badge badge-warning badge-xs">Update</span>
         {% endif %}
         {% if addon.shadowed_by %}
-          <span class="badge badge-outline badge-xs" title="Gleiche Version auch in: {{ addon.shadowed_by | join(', ') }}">auch in {{ addon.shadowed_by | join(', ') }}</span>
+          <span class="badge badge-outline badge-xs" title="Same version also in: {{ addon.shadowed_by | join(', ') }}">also in {{ addon.shadowed_by | join(', ') }}</span>
         {% endif %}
       </div>
 
@@ -121,7 +121,7 @@
 
         <a href="/addons/{{ addon.name }}{% if addon.is_variant %}?catalog={{ addon.catalog }}{% endif %}"
            class="btn btn-ghost btn-sm btn-square shrink-0"
-           aria-label="Einstellungen">
+           aria-label="Settings">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>

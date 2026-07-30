@@ -2,7 +2,7 @@
 {% block title %}Catalogs — papAIa manager{% endblock %}
 
 {% block page_title %}Catalogs{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Verwalte deine Add-On-Quellen</p>{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Manage your add-on sources</p>{% endblock %}
 {% block page_actions %}
 <button
   class="btn btn-primary btn-sm"
@@ -50,6 +50,11 @@
         <input name="url" type="url" class="input input-bordered" required
                placeholder="https://github.com/example/addons.git">
       </div>
+      <div id="field-ref" class="form-control mb-3">
+        <label class="label"><span class="label-text">Branch</span></label>
+        <input name="ref" type="text" class="input input-bordered" required
+               value="main" pattern="[A-Za-z0-9._/\-]{1,100}">
+      </div>
       <div id="field-path" class="form-control mb-3 hidden">
         <label class="label"><span class="label-text">Path</span></label>
         <input name="path" type="text" class="input input-bordered" disabled
@@ -64,6 +69,48 @@
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
+
+<!-- Edit catalog modal -->
+<dialog id="edit-catalog-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="text-lg font-bold mb-4">Edit catalog</h3>
+    <form id="edit-catalog-form" onsubmit="submitEditCatalog(event)">
+      <div class="form-control mb-3">
+        <label class="label"><span class="label-text">Name</span></label>
+        <input id="edit-name" type="text" class="input input-bordered" disabled>
+      </div>
+      <div class="form-control mb-3">
+        <label class="label"><span class="label-text">Type</span></label>
+        <input id="edit-type" type="text" class="input input-bordered" disabled>
+      </div>
+      <div id="edit-field-url" class="form-control mb-3">
+        <label class="label"><span class="label-text">URL</span></label>
+        <input id="edit-url" name="url" type="url" class="input input-bordered">
+      </div>
+      <div id="edit-field-ref" class="form-control mb-3">
+        <label class="label"><span class="label-text">Branch</span></label>
+        <input id="edit-ref" name="ref" type="text" class="input input-bordered"
+               pattern="[A-Za-z0-9._/\-]{1,100}">
+      </div>
+      <div id="edit-field-path" class="form-control mb-3 hidden">
+        <label class="label"><span class="label-text">Path</span></label>
+        <input id="edit-path" name="path" type="text" class="input input-bordered">
+      </div>
+      <div class="form-control mb-3">
+        <label class="label cursor-pointer justify-start gap-3">
+          <input id="edit-enabled" name="enabled" type="checkbox" class="checkbox">
+          <span class="label-text">Enabled</span>
+        </label>
+      </div>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost"
+                onclick="document.getElementById('edit-catalog-modal').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
 <script>
 function submitAddCatalog(event) {
   event.preventDefault();
@@ -72,6 +119,7 @@ function submitAddCatalog(event) {
   var body = { name: form.elements['name'].value, type: type };
   if (type === 'git') {
     body.url = form.elements['url'].value;
+    body.ref = form.elements['ref'].value;
   } else {
     body.path = form.elements['path'].value;
   }
@@ -95,13 +143,18 @@ function submitAddCatalog(event) {
 }
 function toggleCatalogFields(type) {
   var urlField = document.getElementById('field-url');
+  var refField = document.getElementById('field-ref');
   var pathField = document.getElementById('field-path');
   var urlInput = urlField.querySelector('input');
+  var refInput = refField.querySelector('input');
   var pathInput = pathField.querySelector('input');
   if (type === 'local') {
     urlField.classList.add('hidden');
     urlInput.required = false;
     urlInput.disabled = true;
+    refField.classList.add('hidden');
+    refInput.required = false;
+    refInput.disabled = true;
     pathField.classList.remove('hidden');
     pathInput.required = true;
     pathInput.disabled = false;
@@ -112,11 +165,58 @@ function toggleCatalogFields(type) {
     urlField.classList.remove('hidden');
     urlInput.required = true;
     urlInput.disabled = false;
+    refField.classList.remove('hidden');
+    refInput.required = true;
+    refInput.disabled = false;
   }
 }
 document.getElementById('add-catalog-modal').addEventListener('close', function () {
   document.getElementById('catalog-type-select').value = 'git';
   toggleCatalogFields('git');
 });
+
+function openEditCatalogModal(name, type, url, ref, path, enabled) {
+  document.getElementById('edit-name').value = name;
+  document.getElementById('edit-type').value = type;
+  document.getElementById('edit-url').value = url || '';
+  document.getElementById('edit-ref').value = ref || 'main';
+  document.getElementById('edit-path').value = path || '';
+  document.getElementById('edit-enabled').checked = !!enabled;
+
+  var urlField = document.getElementById('edit-field-url');
+  var refField = document.getElementById('edit-field-ref');
+  var pathField = document.getElementById('edit-field-path');
+  if (type === 'local') {
+    urlField.classList.add('hidden');
+    refField.classList.add('hidden');
+    pathField.classList.remove('hidden');
+  } else {
+    pathField.classList.add('hidden');
+    urlField.classList.remove('hidden');
+    refField.classList.remove('hidden');
+  }
+
+  var form = document.getElementById('edit-catalog-form');
+  form.dataset.name = name;
+  form.dataset.type = type;
+  document.getElementById('edit-catalog-modal').showModal();
+}
+
+function submitEditCatalog(event) {
+  event.preventDefault();
+  var form = document.getElementById('edit-catalog-form');
+  var name = form.dataset.name;
+  var type = form.dataset.type;
+  var body = { enabled: document.getElementById('edit-enabled').checked };
+  if (type === 'git') {
+    body.url = document.getElementById('edit-url').value;
+    body.ref = document.getElementById('edit-ref').value;
+  } else {
+    body.path = document.getElementById('edit-path').value;
+  }
+  catalogUpdate(name, body).then(function (ok) {
+    if (ok) document.getElementById('edit-catalog-modal').close();
+  });
+}
 </script>
 {% endblock %}
