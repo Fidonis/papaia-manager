@@ -99,17 +99,21 @@
   --sidebar-peek-shadow: 0 0 0 1px rgb(255 255 255 / 10%), 0 0 2rem rgb(0 0 0 / 60%);
 }
 
-/* No overflow clipping here on purpose: the user dropdown at the bottom is a
-   13rem absolutely-positioned menu that has to escape the 4rem rail. Nothing
+/* The expanded geometry deliberately stays on the `w-64` / `ml-64` utilities in
+   the markup; only the deviations from it live here. app.css is a build
+   artifact, so if it is ever stale or missing the page still lays out the way
+   it always did instead of dropping the content underneath a shrink-to-fit
+   sidebar.
+
+   No overflow clipping on the panel, either: the user dropdown at the bottom is
+   a 13rem absolutely-positioned menu that has to escape the 4rem rail. Nothing
    else can overflow, because the labels are display:none the instant the
    attribute flips — before the width animation starts. */
 .app-sidebar {
-  width: var(--sidebar-w);
   transition: width 0.2s ease;
 }
 
 .app-main {
-  margin-left: var(--sidebar-w);
   transition: margin-left 0.2s ease;
 }
 

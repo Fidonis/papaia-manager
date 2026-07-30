@@ -248,7 +248,7 @@
      <html data-sidebar> in app.css -- see the "Sidebar" block in
      docker/tailwind.input.css. Alpine is used only to dismiss the mobile
      drawer; the collapse itself works without JavaScript having booted. #}
-  <aside class="app-sidebar fixed inset-y-0 left-0 z-30 flex flex-col bg-base-200 border-r border-base-300"
+  <aside class="app-sidebar fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-base-200 border-r border-base-300"
          x-data
          @click.outside="closeSidebarDrawer()">
 
@@ -377,7 +377,7 @@
   </aside>
 
   <!-- ── Main ──────────────────────────────────────────── -->
-  <div class="app-main flex min-h-screen w-full flex-col">
+  <div class="app-main ml-64 flex min-h-screen w-full flex-col">
 
     <!-- Page header -->
     <header class="sticky top-0 z-20 border-b border-base-300 bg-base-100 px-8 py-5">
