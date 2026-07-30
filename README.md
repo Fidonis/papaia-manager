@@ -44,6 +44,18 @@ the VM boundary.
 
 ## How it works
 
+**Dashboard and access tiers.** Two Keycloak realm roles gate the UI.
+`MANAGER_ADMIN_ROLE` (default `admin`) reaches every surface;
+`MANAGER_USER_ROLE` (default `user`) reaches the dashboard only. Accounts
+holding neither role are rejected at login. The dashboard at `/` is a tile
+overview of the deployed applications, configured by the operator through
+`$PAPAIA_CONFIG_DIR/manager/tiles.yaml` and seeded with the applications the
+stack ships today on first run. `{{KEY}}` placeholders in tile links resolve
+against the core `.env`, and each tile's `visibility: all | admin` is filtered
+server-side, so an admin-only tile is absent from a regular user's response
+rather than hidden by CSS. Authorization is enforced by the route
+dependencies, so the JSON API is restricted exactly like the pages.
+
 **Catalogs.** A catalog is a source of add-ons — a public or private Git
 repository, or a local directory — registered at runtime (not versioned in
 this repo). Each catalog is scanned for top-level `papaia-app.yaml`

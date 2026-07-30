@@ -12,6 +12,62 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [0.2.0] - 2026-07-30
+
+### Added
+- **Dashboard.** `/` now serves a tile overview of the deployed applications,
+  configured through `$PAPAIA_CONFIG_DIR/manager/tiles.yaml` and seeded on first
+  run with the applications the stack ships today. `{{KEY}}` placeholders in tile
+  links resolve against the core `.env`.
+- **Second access tier.** `MANAGER_USER_ROLE` (default `user`) grants
+  dashboard-only access alongside `MANAGER_ADMIN_ROLE` (default `admin`).
+  `/auth/callback` admits either role; accounts holding neither are rejected at
+  login without a session being created.
+- Per-tile `visibility: all | admin`, filtered server-side — an admin-only tile
+  is absent from a regular user's response, not hidden by CSS. Groups left empty
+  are dropped, an unrecognised `visibility` value restricts the tile rather than
+  widening it, and a link that does not resolve to an `http(s)` or site-relative
+  target is dropped instead of rendered.
+- **Maintenance section** (admin-only) for stack-level operations, driving
+  `papaia-ctl backup` and `papaia-ctl restore` so backups no longer require shell
+  access on the host. Backup runs hot as an ordinary queued job with an optional
+  retention period; restore runs in a detached container that survives the
+  teardown of the stack the manager itself is part of.
+- Restore points are listed from the catalogue `papaia-ctl` writes next to the
+  snapshots. A restore point recorded as `failed` is listed and inspectable but
+  not restorable.
+- New API surface under `/api/v1/maintenance/` — `backup-dir`, `restore-points`,
+  `restore-points/{id}`, `backup`, `restore`, `restore/status`, and a `DELETE`
+  to acknowledge a finished restore.
+- The papAIa backup directory is mounted at its host path (path parity, same as
+  workspace and config). `PAPAIA_BACKUP_DIR` is documented in
+  `docker/.env.example`; the manager itself reads the value from
+  `$PAPAIA_CONFIG_DIR/.env` at request time so it always agrees with the stack.
+- Catalogs can be edited from the UI — URL and branch for git sources, path for
+  local ones, plus the enabled state — wired to the existing
+  `PUT /api/v1/catalogs/{name}`.
+- The "Add catalog" form has a **Branch** field for git sources (default `main`).
+
+### Changed
+- The add-on gallery moved from `/` to `/addons` and is labelled **Add-Ons**.
+- Authorization is expressed as two route dependencies (`AdminUser`, `AnyUser`)
+  backed by pure predicates in `auth/roles.py`, replacing the single
+  `require_admin` dependency. Pages and the JSON API are gated by the same rule;
+  a denied navigation renders an HTML error page while `/api/` keeps returning
+  JSON.
+- The `papaia-ctl` wrapper carries a second, separate allowlist for stack-level
+  verbs containing `backup` only. `restore` is deliberately absent, so it cannot
+  be dispatched as a child of the manager process.
+
+### Fixed
+- Refreshing a git catalog no longer swaps the raw job-queue JSON response into
+  the page, and deleting a catalog removes its row without a manual reload. Both
+  actions now use the app's job-polling pattern: busy spinner, live "view log"
+  link, automatic list refresh, and a success/failure toast.
+- The remaining German UI strings are now English. The dashboard's "Installierte
+  Add-Ons" stat tile is now labelled "Add-Ons", since it counts all add-ons
+  (installed and available), not just installed ones.
+
 ## [0.1.0] - 2026-07-27
 
 ### Added
@@ -48,6 +104,8 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[0.2.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.2.0
+
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.2.0...HEAD
