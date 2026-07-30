@@ -12,6 +12,18 @@
       document.documentElement.setAttribute("data-theme", theme);
     })();
   </script>
+  <script>
+    // Sidebar state, applied before first paint for the same reason as the theme
+    // above: every navigation is a full page load, so a collapsed sidebar restored
+    // after the deferred bundles boot would snap 16rem -> 4rem on every click.
+    // The attribute is the single source of truth; all the geometry lives in CSS.
+    (function () {
+      var KEY = "papaia-sidebar";
+      var stored = localStorage.getItem(KEY);
+      var state = stored === "collapsed" || stored === "pinned" ? stored : "pinned";
+      document.documentElement.setAttribute("data-sidebar", state);
+    })();
+  </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf" content="{{ csrf_token }}">
@@ -22,6 +34,48 @@
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/alpine.min.js" defer></script>
   <script>
+    // ── Sidebar ──────────────────────────────────────────────────────────
+    // Three states on <html data-sidebar>: "pinned" (full width, pushes the
+    // content), "collapsed" (icon rail, hover peeks it open as an overlay) and
+    // "open" (transient overlay drawer). Only the first two are remembered.
+    //
+    // Below lg the CSS forces the rail whatever the stored value says, and the
+    // toggle drives the transient "open" state instead — so working on a phone
+    // never overwrites the desktop preference.
+    var SIDEBAR_KEY = "papaia-sidebar";
+    var sidebarWide = window.matchMedia("(min-width: 1024px)");
+
+    function toggleSidebar() {
+      var root = document.documentElement;
+      var cur = root.getAttribute("data-sidebar");
+      if (sidebarWide.matches) {
+        var next = cur === "pinned" ? "collapsed" : "pinned";
+        root.setAttribute("data-sidebar", next);
+        localStorage.setItem(SIDEBAR_KEY, next);
+      } else {
+        root.setAttribute("data-sidebar", cur === "open" ? "collapsed" : "open");
+      }
+    }
+
+    function closeSidebarDrawer() {
+      var root = document.documentElement;
+      if (root.getAttribute("data-sidebar") === "open") {
+        root.setAttribute("data-sidebar", "collapsed");
+      }
+    }
+
+    // Crossing the breakpoint drops any transient drawer state: "open" carries no
+    // desktop meaning and would otherwise render as if the panel were pinned.
+    function syncSidebarToBreakpoint() {
+      var stored = localStorage.getItem(SIDEBAR_KEY);
+      document.documentElement.setAttribute(
+        "data-sidebar",
+        stored === "collapsed" || stored === "pinned" ? stored : "pinned",
+      );
+    }
+
+    sidebarWide.addEventListener("change", syncSidebarToBreakpoint);
+
     // Shared helpers for addon lifecycle actions.
     // _addonPost: sends the action request and returns a Promise<data|null>.
     // _pollJob:   polls /api/v1/jobs/{id} every 2 s and calls onDone() on completion.
@@ -190,17 +244,23 @@
 <div class="flex">
 
   <!-- ── Sidebar ───────────────────────────────────────── -->
-  <aside class="fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-base-200 border-r border-base-300">
+  {# Width, label visibility and row alignment are all driven from
+     <html data-sidebar> in app.css -- see the "Sidebar" block in
+     docker/tailwind.input.css. Alpine is used only to dismiss the mobile
+     drawer; the collapse itself works without JavaScript having booted. #}
+  <aside class="app-sidebar fixed inset-y-0 left-0 z-30 flex flex-col bg-base-200 border-r border-base-300"
+         x-data
+         @click.outside="closeSidebarDrawer()">
 
     <!-- Brand -->
-    <div class="flex items-center gap-3 px-5 py-5 border-b border-base-300">
+    <div class="sidebar-row flex items-center gap-3 px-5 py-5 border-b border-base-300">
       <svg viewBox="0 0 72 72" fill="none" aria-hidden="true" class="brand-mark h-8 w-8 shrink-0">
         <rect x="43.5" y="19.5" width="18" height="18" rx="3" transform="rotate(22.5 52.5 28.5)" fill="#C8972A"/>
         <rect class="brand-mark-ink" x="19.5" y="9.5" width="18" height="18" rx="3" transform="rotate(22.5 28.5 18.5)"/>
         <rect class="brand-mark-ink" x="9.5" y="33.5" width="18" height="18" rx="3" transform="rotate(22.5 18.5 42.5)"/>
         <rect class="brand-mark-ink" x="33.5" y="43.5" width="18" height="18" rx="3" transform="rotate(22.5 42.5 52.5)"/>
       </svg>
-      <div class="min-w-0 leading-tight">
+      <div class="sidebar-label min-w-0 leading-tight">
         <p class="font-brand font-extrabold text-base tracking-tight truncate">papAIa manager</p>
         <p class="text-xs opacity-50 font-medium">by Fidonis</p>
       </div>
@@ -209,55 +269,73 @@
     <!-- Navigation -->
     <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
 
-      <a href="/"
-         class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+      {# aria-label on every nav row: the visible text is display:none while the
+         sidebar is a rail, which also removes it from the accessibility tree. #}
+      <a href="/" aria-label="Dashboard"
+         class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                 {{ 'bg-primary text-primary-content' if nav_dashboard else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
         </svg>
-        Dashboard
+        <span class="sidebar-label">Dashboard</span>
       </a>
 
       {# Administrative surfaces. Hiding them here is presentation only --
          the routes and their /api/v1 counterparts enforce the admin role
          themselves, so a typed URL is rejected just the same. #}
       {% if is_admin %}
-      <a href="/addons"
-         class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+      <a href="/addons" aria-label="Add-Ons"
+         class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                 {{ 'bg-primary text-primary-content' if nav_addons else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
         </svg>
-        Add-Ons
+        <span class="sidebar-label">Add-Ons</span>
       </a>
 
-      <a href="/catalogs"
-         class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+      <a href="/catalogs" aria-label="Catalogs"
+         class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                 {{ 'bg-primary text-primary-content' if nav_catalogs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
         </svg>
-        Catalogs
+        <span class="sidebar-label">Catalogs</span>
       </a>
 
-      <a href="/maintenance"
-         class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+      <a href="/maintenance" aria-label="Maintenance"
+         class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                 {{ 'bg-primary text-primary-content' if nav_maintenance else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
         </svg>
-        Maintenance
+        <span class="sidebar-label">Maintenance</span>
       </a>
       {% endif %}
 
     </nav>
 
-    <!-- Bottom: theme + user -->
+    <!-- Bottom: collapse + theme + user -->
     <div class="border-t border-base-300 px-3 py-3 space-y-0.5">
 
+      {# One control for every state. Sitting at the bottom of the panel it stays
+         reachable as a rail icon, in the hover peek and in the mobile drawer,
+         which the brand header could not do at 4rem. Which glyph shows is CSS,
+         not Alpine, so it is already correct before the bundles boot. #}
+      <button type="button" onclick="toggleSidebar()"
+              aria-label="Toggle sidebar"
+              class="sidebar-row flex w-full items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors select-none">
+        <svg class="sidebar-icon-collapse h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM10 4v16M7.5 9.5L5.5 12l2 2.5"/>
+        </svg>
+        <svg class="sidebar-icon-expand h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM10 4v16M14.5 9.5l2 2.5-2 2.5"/>
+        </svg>
+        <span class="sidebar-label">Collapse</span>
+      </button>
+
       <label
-        class="flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors select-none"
+        class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors select-none"
         x-data="{ dark: document.documentElement.getAttribute('data-theme') === 'fidonis-dark' }"
         x-init="$watch('dark', (v) => {
           var t = v ? 'fidonis-dark' : 'fidonis-light';
@@ -272,17 +350,17 @@
         <svg x-show="!dark" class="h-4 w-4 shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
           <path d="M21.64 13a1 1 0 00-1.05-.14 8.05 8.05 0 01-3.37.73 8.15 8.15 0 01-8.14-8.14 8.05 8.05 0 01.73-3.37 1 1 0 00-1.32-1.32A10.14 10.14 0 1022.96 14.32 1 1 0 0021.64 13z"/>
         </svg>
-        <span x-text="dark ? 'Light mode' : 'Dark mode'"></span>
+        <span class="sidebar-label" x-text="dark ? 'Light mode' : 'Dark mode'"></span>
       </label>
 
       {% if user %}
       <div class="dropdown dropdown-top w-full">
-        <div tabindex="0" role="button"
-             class="flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors w-full">
+        <div tabindex="0" role="button" aria-label="Account menu for {{ user.preferred_username }}"
+             class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors w-full">
           <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-content text-xs font-bold uppercase">
             {{ user.preferred_username[0] }}
           </span>
-          <span class="truncate">{{ user.preferred_username }}</span>
+          <span class="sidebar-label truncate">{{ user.preferred_username }}</span>
         </div>
         <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-10 w-52 p-2 shadow mb-1">
           <li>
@@ -299,7 +377,7 @@
   </aside>
 
   <!-- ── Main ──────────────────────────────────────────── -->
-  <div class="ml-64 flex min-h-screen w-full flex-col">
+  <div class="app-main flex min-h-screen w-full flex-col">
 
     <!-- Page header -->
     <header class="sticky top-0 z-20 border-b border-base-300 bg-base-100 px-8 py-5">

@@ -70,3 +70,175 @@
     color-scheme: dark;
   }
 }
+
+/* ── Sidebar: rail / peek / pin ───────────────────────────────────────────
+   Deliberately unlayered. Rules inside @layer components take part in
+   Tailwind's purge, and the selectors below hang off a data attribute the
+   content scanner cannot see; keeping them out of a layer guarantees they
+   survive the build.
+
+   The whole thing is driven by [data-sidebar] on <html>, set before first
+   paint by the inline script in base.html — same anti-flicker trick as the
+   theme. Doing it in CSS rather than by swapping classes from Alpine means
+   a collapsed sidebar is already collapsed on the first frame, instead of
+   snapping 16rem -> 4rem once the deferred bundles boot.
+
+     pinned     full width, pushes the content (default, = old behaviour)
+     collapsed  icon rail; hovering it peeks the full panel as an overlay
+     open       transient overlay drawer, below lg only, never persisted */
+
+:root {
+  --sidebar-w: 16rem;
+  --sidebar-rail: 4rem;
+  --sidebar-peek-shadow: 0 0 2rem rgb(0 0 0 / 35%);
+}
+
+/* A drop shadow alone is invisible where the panel overlays base-100 #071422,
+   so the dark theme separates the peeked panel with a hairline instead. */
+[data-theme="fidonis-dark"] {
+  --sidebar-peek-shadow: 0 0 0 1px rgb(255 255 255 / 10%), 0 0 2rem rgb(0 0 0 / 60%);
+}
+
+/* No overflow clipping here on purpose: the user dropdown at the bottom is a
+   13rem absolutely-positioned menu that has to escape the 4rem rail. Nothing
+   else can overflow, because the labels are display:none the instant the
+   attribute flips — before the width animation starts. */
+.app-sidebar {
+  width: var(--sidebar-w);
+  transition: width 0.2s ease;
+}
+
+.app-main {
+  margin-left: var(--sidebar-w);
+  transition: margin-left 0.2s ease;
+}
+
+/* Rows must not reflow while the width animates. */
+.sidebar-row {
+  white-space: nowrap;
+}
+
+/* Only one of the two toggle glyphs is ever shown. */
+.sidebar-icon-expand {
+  display: none;
+}
+
+/* ── Collapsed: icon rail ── */
+
+[data-sidebar="collapsed"] .app-sidebar {
+  width: var(--sidebar-rail);
+}
+
+[data-sidebar="collapsed"] .app-main {
+  margin-left: var(--sidebar-rail);
+}
+
+[data-sidebar="collapsed"] .sidebar-label {
+  display: none;
+}
+
+[data-sidebar="collapsed"] .sidebar-row {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+[data-sidebar="collapsed"] .sidebar-icon-collapse {
+  display: none;
+}
+
+[data-sidebar="collapsed"] .sidebar-icon-expand {
+  display: block;
+}
+
+/* ── Hover-peek: overlay the content, never move it ──
+   Pointer devices only, and only where there is room for the panel to sit
+   on top of something. .app-main is untouched on purpose. */
+
+@media (hover: hover) and (min-width: 1024px) {
+  [data-sidebar="collapsed"] .app-sidebar:hover {
+    width: var(--sidebar-w);
+    box-shadow: var(--sidebar-peek-shadow);
+  }
+
+  [data-sidebar="collapsed"] .app-sidebar:hover .sidebar-label {
+    display: block;
+  }
+
+  [data-sidebar="collapsed"] .app-sidebar:hover .sidebar-row {
+    justify-content: flex-start;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  [data-sidebar="collapsed"] .app-sidebar:hover .sidebar-icon-collapse {
+    display: block;
+  }
+
+  [data-sidebar="collapsed"] .app-sidebar:hover .sidebar-icon-expand {
+    display: none;
+  }
+}
+
+/* ── Below lg: rail is forced, regardless of the stored preference ──
+   Equal specificity to the base rules and later in the file, so these win
+   for `pinned` too. The toggle writes nothing here, so a phone session
+   cannot clobber the desktop choice. */
+
+@media (max-width: 1023px) {
+  .app-sidebar {
+    width: var(--sidebar-rail);
+  }
+
+  .app-main {
+    margin-left: var(--sidebar-rail);
+  }
+
+  .sidebar-label {
+    display: none;
+  }
+
+  .sidebar-row {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .sidebar-icon-collapse {
+    display: none;
+  }
+
+  .sidebar-icon-expand {
+    display: block;
+  }
+
+  [data-sidebar="open"] .app-sidebar {
+    width: var(--sidebar-w);
+    box-shadow: var(--sidebar-peek-shadow);
+  }
+
+  [data-sidebar="open"] .sidebar-label {
+    display: block;
+  }
+
+  [data-sidebar="open"] .sidebar-row {
+    justify-content: flex-start;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  [data-sidebar="open"] .sidebar-icon-collapse {
+    display: block;
+  }
+
+  [data-sidebar="open"] .sidebar-icon-expand {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar,
+  .app-main {
+    transition: none;
+  }
+}
