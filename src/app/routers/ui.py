@@ -13,6 +13,7 @@ from app.auth.deps import AdminUser, AnyUser
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
+from app.core import backups, runner
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
 from app.core.resolve import resolve_catalog_addons
@@ -81,6 +82,26 @@ async def catalogs_page(
     user: AdminUser,
 ) -> HTMLResponse:
     return _templates.TemplateResponse(request, "catalogs.html", _ctx(request, user))
+
+
+@router.get("/maintenance", response_class=HTMLResponse)
+async def maintenance_page(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """Stack-level operations: backup and restore."""
+    backup_dir = backups.resolve_backup_dir(settings.papaia_config_dir)
+    return _templates.TemplateResponse(
+        request,
+        "maintenance.html",
+        _ctx(
+            request,
+            user,
+            backup_dir=str(backup_dir) if backup_dir else None,
+            backup_dir_reachable=backups.is_reachable(backup_dir),
+        ),
+    )
 
 
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)
@@ -194,6 +215,57 @@ async def partial_catalogs(
             shadowed_counts=shadowed_counts,
         ),
     )
+
+
+@router.get("/partials/maintenance/restore-points", response_class=HTMLResponse)
+async def partial_restore_points(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    backup_dir = backups.resolve_backup_dir(settings.papaia_config_dir)
+    points = await asyncio.get_running_loop().run_in_executor(
+        None, backups.load_restore_points, backup_dir
+    )
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/restore_point_list.html",
+        _ctx(
+            request,
+            user,
+            restore_points=points,
+            backup_dir=str(backup_dir) if backup_dir else None,
+            backup_dir_reachable=backups.is_reachable(backup_dir),
+        ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/maintenance/restore-status", response_class=HTMLResponse)
+async def partial_restore_status(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """Polled while a restore runs, and once more after the manager is back.
+
+    A Docker error is rendered as the absence of a runner plus a message: the
+    manager container is recreated during a restore, so a transient failure to
+    reach the daemon is an expected state here, not a fault.
+    """
+    error = ""
+    try:
+        status_obj = await runner.find_runner()
+    except runner.RunnerError as exc:
+        status_obj, error = None, str(exc)
+    log = await runner.runner_log(status_obj.name) if status_obj is not None else ""
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/restore_status.html",
+        _ctx(request, user, restore=status_obj, restore_log=log, restore_error=error),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # ---------------------------------------------------------------------------

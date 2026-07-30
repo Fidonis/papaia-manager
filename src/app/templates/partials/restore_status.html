@@ -1,0 +1,70 @@
+{#
+  Polled while a restore runner exists. The poll is what carries the UI across
+  the manager's own restart: during the restore this container is removed and
+  recreated, so the request simply fails and htmx retries on the next tick --
+  no swap happens, the element survives, and `offline` turns the expected
+  outage into a reconnect notice instead of an error.
+#}
+<div
+  id="restore-status"
+  {% if restore is not none and restore.is_running %}
+  hx-get="/partials/maintenance/restore-status"
+  hx-trigger="every 3s"
+  hx-swap="outerHTML"
+  {% endif %}
+  x-data="{ offline: false }"
+  @htmx:send-error.window="offline = true"
+  @htmx:after-on-load.window="offline = false"
+>
+{% if restore is none %}
+  {% if restore_error %}
+  <div class="alert alert-warning">
+    <span>Cannot reach the Docker daemon: {{ restore_error }}</span>
+  </div>
+  {% endif %}
+{% else %}
+  <div class="card bg-base-200 shadow-sm">
+    <div class="card-body p-4 gap-3">
+      <div class="flex items-center gap-3 flex-wrap">
+        {% if restore.is_running %}
+          <span class="loading loading-spinner loading-sm text-info"></span>
+          <span class="badge badge-info">restoring</span>
+        {% elif restore.succeeded %}
+          <span class="badge badge-success">restore complete</span>
+        {% else %}
+          <span class="badge badge-error">restore failed</span>
+        {% endif %}
+
+        <span class="text-sm opacity-60 font-mono">{{ restore.restore_point }}</span>
+
+        {% if restore.exit_code is not none %}
+        <span class="text-xs opacity-40">exit code {{ restore.exit_code }}</span>
+        {% endif %}
+
+        <span class="grow"></span>
+
+        {% if not restore.is_running %}
+        <button class="btn btn-outline btn-xs" onclick="acknowledgeRestore()">Dismiss</button>
+        {% endif %}
+      </div>
+
+      {% if restore.is_running %}
+      <p class="text-sm opacity-60">
+        The stack is being stopped and recreated. This page will lose its
+        connection to the manager for a while &mdash; that is expected, and the
+        result appears here once it is back.
+      </p>
+      {% endif %}
+
+      <div x-show="offline" class="text-sm opacity-60">
+        <span class="loading loading-dots loading-xs"></span>
+        Manager not reachable &mdash; reconnecting&hellip;
+      </div>
+
+      {% if restore_log %}
+      <pre class="bg-base-300 rounded-lg p-3 text-xs overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap">{{ restore_log }}</pre>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+</div>

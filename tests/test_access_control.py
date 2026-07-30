@@ -49,17 +49,34 @@ from app.main import create_app  # noqa: E402
 
 # Surfaces reserved for administrators, and the dashboard surfaces every
 # authenticated account reaches. Kept as data so a new route is one line.
-ADMIN_PAGES = ["/addons", "/addons/paperless", "/catalogs"]
-ADMIN_PARTIALS = ["/partials/addons", "/partials/catalogs"]
-ADMIN_APIS = ["/api/v1/addons", "/api/v1/catalogs", "/api/v1/jobs"]
+ADMIN_PAGES = ["/addons", "/addons/paperless", "/catalogs", "/maintenance"]
+ADMIN_PARTIALS = [
+    "/partials/addons",
+    "/partials/catalogs",
+    "/partials/maintenance/restore-points",
+    "/partials/maintenance/restore-status",
+]
+ADMIN_APIS = [
+    "/api/v1/addons",
+    "/api/v1/catalogs",
+    "/api/v1/jobs",
+    "/api/v1/maintenance/backup-dir",
+    "/api/v1/maintenance/restore-points",
+]
 DASHBOARD_PATHS = ["/", "/partials/tiles"]
 
 # Denials are decided by the dependency, before the handler runs, so every
 # path above can be asserted on cheaply. Confirming that an admin gets through
 # is different -- it runs the handler. `/api/v1/addons` queries Docker for
 # running compose projects, and `/api/v1/jobs` needs the job queue that the
-# skipped lifespan never started, so neither is asserted positively here.
-ADMIN_APIS_SELF_CONTAINED = ["/api/v1/catalogs"]
+# skipped lifespan never started, so neither is asserted positively here. The
+# two maintenance reads only touch the config directory's .env, which this
+# module writes, so they are safe to exercise for real.
+ADMIN_APIS_SELF_CONTAINED = [
+    "/api/v1/catalogs",
+    "/api/v1/maintenance/backup-dir",
+    "/api/v1/maintenance/restore-points",
+]
 
 
 @pytest.fixture(scope="module")
@@ -144,7 +161,7 @@ def test_admin_role_reaches_the_api(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/addons", "/catalogs"])
+@pytest.mark.parametrize("path", ["/addons", "/catalogs", "/maintenance"])
 def test_admin_reaches_the_admin_pages(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 
