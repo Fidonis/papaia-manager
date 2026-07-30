@@ -1,4 +1,10 @@
-"""Whitelisted subprocess wrapper for papaia-ctl addon verbs."""
+"""Whitelisted subprocess wrapper for papaia-ctl.
+
+Two entry points, two separate allowlists: `run_addon_verb` for
+`papaia-ctl addon <verb> <name>`, `run_core_verb` for the stack-level verbs that
+take no target. Keeping the sets apart is what makes it impossible for an addon
+name to be dispatched as a stack operation, or the other way round.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +20,15 @@ logger = logging.getLogger(__name__)
 ALLOWED_VERBS: frozenset[str] = frozenset(
     {"install", "start", "stop", "remove", "uninstall", "check"}
 )
+
+# Stack-level verbs that may run as a child of this process.
+#
+# `restore` is deliberately absent. It tears the core stack down via
+# `docker compose down`, and papaia-manager is a service of that same project --
+# a restore started here would be killed the moment teardown removes its own
+# container, after the stack is down and before anything is put back. It runs in
+# a detached container instead; see app.core.runner.
+ALLOWED_CORE_VERBS: frozenset[str] = frozenset({"backup"})
 
 _ADDON_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
@@ -50,10 +65,9 @@ async def run_addon_verb(
             f"addon name {name!r} does not match ^[a-z0-9][a-z0-9-]{{0,31}}$"
         )
 
-    papaia_ctl = Path(workspace_dir) / "papaia" / "tools" / "papaia-ctl"
     cmd: list[str] = [
         "bash",
-        str(papaia_ctl),
+        str(papaia_ctl_path(workspace_dir)),
         "addon",
         verb,
         name,
@@ -65,6 +79,42 @@ async def run_addon_verb(
     env["PAPAIA_CONFIG_DIR"] = config_dir
     if env_override:
         env.update(env_override)
+
+    return _stream_subprocess(cmd, env)
+
+
+def papaia_ctl_path(workspace_dir: str) -> Path:
+    """Absolute path of the papaia-ctl entrypoint in the mounted workspace."""
+    return Path(workspace_dir) / "papaia" / "tools" / "papaia-ctl"
+
+
+async def run_core_verb(
+    *,
+    verb: str,
+    workspace_dir: str,
+    config_dir: str,
+    extra_flags: list[str] | None = None,
+) -> AsyncGenerator[str, None]:
+    """Yield output lines from ``papaia-ctl <verb>``.
+
+    Same contract as run_addon_verb: stdin is /dev/null, validation happens
+    before the first line is yielded, CtlError is raised after a non-zero exit.
+    """
+    if verb not in ALLOWED_CORE_VERBS:
+        raise ValueError(
+            f"verb {verb!r} is not in the allowed set {sorted(ALLOWED_CORE_VERBS)}"
+        )
+
+    cmd: list[str] = [
+        "bash",
+        str(papaia_ctl_path(workspace_dir)),
+        verb,
+        f"--config-dir={config_dir}",
+        *(extra_flags or []),
+    ]
+
+    env = dict(os.environ)
+    env["PAPAIA_CONFIG_DIR"] = config_dir
 
     return _stream_subprocess(cmd, env)
 
@@ -89,6 +139,6 @@ async def _stream_subprocess(
     if proc.returncode != 0:
         code = proc.returncode if proc.returncode is not None else 1
         raise CtlError(
-            f"papaia-ctl addon exited with code {code}",
+            f"papaia-ctl exited with code {code}",
             exit_code=code,
         )

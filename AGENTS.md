@@ -10,6 +10,8 @@ papaia-manager is a web-based control plane for the papAIa stack's addon lifecyc
 
 It also serves the stack dashboard: a tile overview of the deployed applications, configured through `manager/tiles.yaml` in the papAIa config directory.
 
+A third surface, Maintenance, drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below).
+
 Authentication is handled natively via OIDC Authorization Code Flow with PKCE against Keycloak. Two configurable realm roles gate access: the admin role reaches every surface, while the user role reaches the dashboard only. Authorization is enforced by the route dependencies, so the JSON API is restricted exactly like the pages.
 
 ---
@@ -34,6 +36,9 @@ papaia-manager/
 │       ├── core/
 │       │   ├── papaia_lib.py   # sys.path bootstrap + core version handshake
 │       │   ├── ctl.py          # Whitelisted subprocess wrapper for papaia-ctl
+│       │   │                   #   (separate allowlists for addon and core verbs)
+│       │   ├── backups.py      # Read-only backup.yaml / manifest.yaml catalogue access
+│       │   ├── runner.py       # Detached `papaia-ctl restore` container
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
 │       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering
 │       │   ├── envfile.py      # Shared KEY=value env-file parsing
@@ -51,7 +56,8 @@ papaia-manager/
 │       │   ├── ui.py           # Server-rendered HTML pages
 │       │   ├── api_catalogs.py # /api/v1/catalogs — catalog CRUD + refresh
 │       │   ├── api_addons.py   # /api/v1/addons — addon lifecycle verbs
-│       │   └── api_jobs.py     # /api/v1/jobs — job status + log streaming
+│       │   ├── api_jobs.py     # /api/v1/jobs — job status + log streaming
+│       │   └── api_maintenance.py # /api/v1/maintenance — backup + restore
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
 │       │       ├── _addon_controls.html      # Per-addon action buttons (install/start/stop/...)
@@ -59,7 +65,9 @@ papaia-manager/
 │       │       ├── addon_detail_content.html # Addon detail tab content
 │       │       ├── addon_gallery.html        # Addon card grid
 │       │       ├── catalog_list.html         # Catalog table rows
-│       │       └── job_status.html           # Polled job progress/log fragment
+│       │       ├── job_status.html           # Polled job progress/log fragment
+│       │       ├── restore_point_list.html   # Restore point cards
+│       │       └── restore_status.html       # Polled restore-runner state
 │       └── static/             # htmx.min.js, alpine.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)
 └── docker/
@@ -84,7 +92,8 @@ SessionMiddleware  (itsdangerous-signed cookie)
   │  no valid cookie            →  302 /auth/login
   ▼
 role dependency  (deps.py → roles.py)
-  │  AdminUser  →  MANAGER_ADMIN_ROLE required        (add-ons, catalogs, jobs)
+  │  AdminUser  →  MANAGER_ADMIN_ROLE required        (add-ons, catalogs, jobs,
+  │                                                    maintenance)
   │  AnyUser    →  admin OR MANAGER_USER_ROLE         (dashboard)
   │  role missing  →  403  (HTML page, or JSON under /api/)
   ▼
@@ -112,7 +121,24 @@ Browser → /auth/callback?code&state
 
 ### Job model
 
-All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. Only one mutating job runs at a time. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
+All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. Only one mutating job runs at a time. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
+
+### Restore model
+
+Restore is the one mutating operation that is **not** a job, and the reason is structural rather than stylistic.
+
+`papaia-ctl restore` calls `docker compose down` on the core project before it unpacks any archive, and `papaia-manager` is a service of that same project (`papaia/src/manager/docker-compose.yml`, profile `manager`). A restore running in this process would be SIGKILLed the moment teardown removed its own container — after the stack is down and before anything was put back. `--no-restart` is not an escape: it overwrites volumes underneath live processes.
+
+So `core/runner.py` starts `papaia-ctl restore -y` in a **separate container**, built by cloning the manager's own container spec (`docker inspect` of the container carrying `de.fidonis.module=papaia-manager`): same image, binds, user and supplementary groups. Cloning rather than re-deriving means path parity and docker.sock access hold by construction and the compose fragment stays the only place those mounts are declared.
+
+State lives in Docker. The runner is started without `--rm` and with `--restart no`, so after it exits `docker inspect` still yields its status and exit code and `docker logs` still yields its output — readable by a manager container that was removed and recreated mid-operation. A progress file could not do this: restore replaces `$PAPAIA_CONFIG_DIR` wholesale. The durable cross-restore record is papaia-ctl's own `backup.log` in the backup directory, which is never restored over.
+
+Consequences worth remembering when touching this area:
+
+- `ALLOWED_CORE_VERBS` in `core/ctl.py` contains `backup` and deliberately **not** `restore`.
+- Backup and restore are mutually exclusive, enforced in `routers/api_maintenance.py` with 409s.
+- The restore-point id is validated against an exact timestamp pattern before it reaches a path join or an argv.
+- `PAPAIA_BACKUP_DIR` must be mounted at its host path, or the catalogue is invisible to the container.
 
 ---
 
@@ -186,6 +212,12 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `MANAGER_SESSION_SECRET` | itsdangerous session signing secret |
 | `PAPAIA_CONFIG_DIR` | Path to papAIa config directory (must equal host path in container) |
 | `PAPAIA_WORKSPACE_DIR` | Path to papAIa workspace (must equal host path in container) |
+
+`PAPAIA_BACKUP_DIR` is **not** a manager setting: the backup location belongs to
+the stack, so it is read from `$PAPAIA_CONFIG_DIR/.env` at request time and the
+manager and a shell on the host always agree on it. It appears in
+`docker/.env.example` only because compose needs it to place the path-parity
+mount.
 
 ---
 

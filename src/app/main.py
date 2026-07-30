@@ -15,7 +15,15 @@ from app.auth.oidc import OIDCClaims
 from app.config import get_settings
 from app.core.jobs import JobQueue
 from app.core.papaia_lib import bootstrap
-from app.routers import api_addons, api_catalogs, api_jobs, auth, health, ui
+from app.routers import (
+    api_addons,
+    api_catalogs,
+    api_jobs,
+    api_maintenance,
+    auth,
+    health,
+    ui,
+)
 from app.templating import templates
 
 _job_queue: JobQueue | None = None
@@ -48,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(api_catalogs.router)
     app.include_router(api_addons.router)
     app.include_router(api_jobs.router)
+    app.include_router(api_maintenance.router)
 
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

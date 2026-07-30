@@ -34,8 +34,8 @@ This builds the image from `docker/Dockerfile` and publishes the UI on
 `127.0.0.1:8120`, with a `/health` health check. Every variable is documented
 in [`docker/.env.example`](docker/.env.example).
 
-The manager mounts `/var/run/docker.sock` plus the papAIa workspace and
-config directories **at their host paths** (path parity — required so that
+The manager mounts `/var/run/docker.sock` plus the papAIa workspace, config
+and backup directories **at their host paths** (path parity — required so that
 bind-mount sources in add-on compose files resolve identically whether
 `docker compose` is invoked by the manager or by an operator on the host
 directly). Because of this, the `manager` profile is **Linux-only**;
@@ -63,6 +63,23 @@ hiding the other.
 `papaia-ctl` can take minutes (image pulls, container starts). These run as
 queued `Job` objects processed one at a time by a single worker; the UI
 polls for live status and streamed log output.
+
+**Maintenance.** A separate, admin-only section for stack-level operations.
+`papaia-ctl backup` archives the config directory, every core volume, and every
+active add-on's volumes and data directories; it runs hot (each container is
+paused only while its own volume is archived) and therefore runs as an ordinary
+job. Restore points are listed from the catalogue papaia-ctl writes next to the
+snapshots, with an optional retention period pruning older ones.
+
+Restore is the exception to "everything is a job". `papaia-ctl restore` tears the
+core stack down before unpacking archives, and the manager is a service of that
+same stack — a restore run in-process would be killed by its own teardown step.
+It therefore runs in a **detached container** cloned from the manager's own
+container spec (same image, binds, user and groups, so path parity holds by
+construction). Docker keeps the state: the runner is started without `--rm`, so
+its status and log stay readable by the recreated manager container once the
+stack is back up. The page loses its connection while that happens, reconnects on
+its own, and reports the outcome.
 
 **Updates.** Refresh the catalog, diff the candidate manifest's
 `.env.example` against the installed bundle (new `CHANGE_ME` keys prompt for
@@ -98,6 +115,14 @@ POST /api/v1/addons/{name}/check           # synchronous compatibility check
 GET /api/v1/jobs
 GET /api/v1/jobs/{id}
 GET /api/v1/jobs/{id}/log
+
+GET    /api/v1/maintenance/backup-dir
+GET    /api/v1/maintenance/restore-points
+GET    /api/v1/maintenance/restore-points/{id}
+POST   /api/v1/maintenance/backup            # {retention_days?} → 202 {job_id}
+POST   /api/v1/maintenance/restore           # {restore_point, restart_clean?} → 202
+GET    /api/v1/maintenance/restore/status
+DELETE /api/v1/maintenance/restore           # acknowledge a finished restore
 ```
 
 ## Layout
@@ -112,8 +137,10 @@ papaia-manager/
 │       ├── main.py         # FastAPI application factory
 │       ├── config.py       # Pydantic Settings
 │       ├── auth/           # OIDC + PKCE login, CSRF, admin-role dependency
-│       ├── core/           # catalogs, snapshots, status, env-forms, jobs, audit
-│       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs
+│       ├── core/           # catalogs, snapshots, status, env-forms, jobs, audit,
+│       │                   # backups (restore-point catalogue), runner (detached restore)
+│       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
+│       │                   # api_maintenance
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)

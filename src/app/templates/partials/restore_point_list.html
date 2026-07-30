@@ -1,0 +1,73 @@
+{% if not backup_dir %}
+<div class="alert alert-warning">
+  <span>
+    No backup location is configured for this stack. Run
+    <span class="font-mono">papaia-ctl setup --backup-dir=PATH</span> on the host.
+  </span>
+</div>
+{% elif not backup_dir_reachable %}
+<div class="alert alert-warning">
+  <span>
+    The backup directory <span class="font-mono">{{ backup_dir }}</span> is not
+    reachable from the manager container. It has to be mounted at its host path.
+  </span>
+</div>
+{% elif not restore_points %}
+<div class="flex flex-col items-center py-16 gap-3 opacity-60">
+  <p class="text-lg font-medium">No restore points yet</p>
+  <p class="text-sm">Create a backup to get one.</p>
+</div>
+{% else %}
+<div class="flex flex-col gap-3">
+  {% for p in restore_points %}
+  <div class="card bg-base-200 shadow-sm">
+    <div class="card-body p-4">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-semibold font-mono">{{ p.id }}</span>
+          {% if p.result == "ok" %}
+            <span class="badge badge-success badge-sm">ok</span>
+          {% elif p.result == "partial" %}
+            <span class="badge badge-warning badge-sm"
+                  title="Some archives failed during this backup. Check backup.log before relying on it.">partial</span>
+          {% elif p.result == "failed" %}
+            <span class="badge badge-error badge-sm"
+                  title="No archive could be written during this backup.">failed</span>
+          {% else %}
+            <span class="badge badge-ghost badge-sm">{{ p.result or "unknown" }}</span>
+          {% endif %}
+          <span class="badge badge-ghost badge-sm">{{ p.artifacts }} artifact{{ '' if p.artifacts == 1 else 's' }}</span>
+          <span class="badge badge-ghost badge-sm">{{ p.size_mb }} MB</span>
+          {% if p.papaia_version %}
+          <span class="badge badge-outline badge-sm">core {{ p.papaia_version }}</span>
+          {% endif %}
+        </div>
+
+        <div class="flex gap-2 items-center">
+          <button class="btn btn-outline btn-xs"
+                  onclick='openRestorePointDetail({{ p.id|tojson }})'>Details</button>
+          {% if p.is_usable %}
+          <button class="btn btn-warning btn-outline btn-xs"
+                  onclick='openRestoreModal({{ p.id|tojson }}, {{ p.artifacts|tojson }}, {{ p.result|tojson }})'>
+            Restore
+          </button>
+          {% else %}
+          <button class="btn btn-outline btn-xs" disabled
+                  title="This backup wrote no archive, so there is nothing to restore from.">Restore</button>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="text-sm opacity-60 mt-1">
+        <span>{{ p.created_at }}</span>
+        {% if p.addons %}
+        <span class="opacity-70 ml-2">add-ons: {{ p.addons|join(", ") }}</span>
+        {% else %}
+        <span class="opacity-50 ml-2">no add-ons</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
