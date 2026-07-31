@@ -92,7 +92,10 @@ hiding the other.
 queued `Job` objects processed one at a time by a single worker; the UI
 polls for live status and streamed log output.
 
-**Maintenance.** A separate, admin-only section for stack-level operations.
+**Backup / Restore.** A separate, admin-only section for stack-level operations,
+served at `/backup` — it was called "Maintenance" up to 0.2.0 and `/maintenance`
+still redirects there. The REST prefix stays `/api/v1/maintenance/` so the
+versioned surface does not break; it follows the UI name at the next major.
 `papaia-ctl backup` archives the config directory, every core volume, and every
 active add-on's volumes and data directories; it runs hot (each container is
 paused only while its own volume is archived) and therefore runs as an ordinary

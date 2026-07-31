@@ -10,7 +10,7 @@ papaia-manager is a web-based control plane for the papAIa stack's addon lifecyc
 
 It also serves the stack dashboard: a tile overview of the deployed applications, configured through `manager/tiles.yaml` in the papAIa config directory.
 
-A third surface, Maintenance, drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below).
+A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
 A fourth surface, Services, reports the live state of the core stack: containers read from `docker ps`, grouped by their `de.fidonis.module` label and scored from their healthcheck. It is read-only — lifecycle control over core services stays with `papaia-ctl`, whose core-verb allowlist holds nothing but `backup`. An aggregate of the same data renders as a status pill in the header of every page, for every authenticated role.
 
@@ -96,7 +96,7 @@ SessionMiddleware  (itsdangerous-signed cookie)
   ▼
 role dependency  (deps.py → roles.py)
   │  AdminUser  →  MANAGER_ADMIN_ROLE required        (add-ons, catalogs, jobs,
-  │                                                    maintenance, services)
+  │                                                    backup, services)
   │  AnyUser    →  admin OR MANAGER_USER_ROLE         (dashboard, status pill)
   │  role missing  →  403  (HTML page, or JSON under /api/)
   ▼

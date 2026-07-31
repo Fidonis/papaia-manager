@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth.csrf import get_csrf_token
 from app.auth.deps import AdminUser, AnyUser
@@ -101,8 +101,8 @@ async def catalogs_page(
     return _templates.TemplateResponse(request, "catalogs.html", _ctx(request, user))
 
 
-@router.get("/maintenance", response_class=HTMLResponse)
-async def maintenance_page(
+@router.get("/backup", response_class=HTMLResponse)
+async def backup_page(
     request: Request,
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
@@ -111,7 +111,7 @@ async def maintenance_page(
     backup_dir = backups.resolve_backup_dir(settings.papaia_config_dir)
     return _templates.TemplateResponse(
         request,
-        "maintenance.html",
+        "backup.html",
         _ctx(
             request,
             user,
@@ -288,7 +288,7 @@ async def partial_catalogs(
     )
 
 
-@router.get("/partials/maintenance/restore-points", response_class=HTMLResponse)
+@router.get("/partials/backup/restore-points", response_class=HTMLResponse)
 async def partial_restore_points(
     request: Request,
     user: AdminUser,
@@ -313,7 +313,7 @@ async def partial_restore_points(
     return resp
 
 
-@router.get("/partials/maintenance/restore-status", response_class=HTMLResponse)
+@router.get("/partials/backup/restore-status", response_class=HTMLResponse)
 async def partial_restore_status(
     request: Request,
     user: AdminUser,
@@ -337,6 +337,32 @@ async def partial_restore_status(
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+# ---------------------------------------------------------------------------
+# Legacy paths -- the section was called "Maintenance" up to 0.2.0
+# ---------------------------------------------------------------------------
+#
+# The page redirect is for bookmarks. The two partial redirects matter for one
+# specific case: `partials/restore_status.html` renders its polling path into
+# the markup and keeps polling across the manager's own restart. Upgrading the
+# manager while a restore is in flight would otherwise leave that open page
+# polling a path that no longer exists, stuck on "reconnecting" until someone
+# reloads by hand. Droppable once 0.2.0 is out of circulation.
+
+@router.get("/maintenance", include_in_schema=False)
+async def legacy_maintenance_page() -> RedirectResponse:
+    return RedirectResponse("/backup", status_code=308)
+
+
+@router.get("/partials/maintenance/restore-points", include_in_schema=False)
+async def legacy_partial_restore_points() -> RedirectResponse:
+    return RedirectResponse("/partials/backup/restore-points", status_code=308)
+
+
+@router.get("/partials/maintenance/restore-status", include_in_schema=False)
+async def legacy_partial_restore_status() -> RedirectResponse:
+    return RedirectResponse("/partials/backup/restore-status", status_code=308)
 
 
 # ---------------------------------------------------------------------------

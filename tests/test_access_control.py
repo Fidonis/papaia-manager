@@ -49,12 +49,12 @@ from app.main import create_app  # noqa: E402
 
 # Surfaces reserved for administrators, and the dashboard surfaces every
 # authenticated account reaches. Kept as data so a new route is one line.
-ADMIN_PAGES = ["/addons", "/addons/paperless", "/catalogs", "/maintenance", "/services"]
+ADMIN_PAGES = ["/addons", "/addons/paperless", "/backup", "/catalogs", "/services"]
 ADMIN_PARTIALS = [
     "/partials/addons",
+    "/partials/backup/restore-points",
+    "/partials/backup/restore-status",
     "/partials/catalogs",
-    "/partials/maintenance/restore-points",
-    "/partials/maintenance/restore-status",
     "/partials/services",
 ]
 ADMIN_APIS = [
@@ -164,9 +164,28 @@ def test_admin_role_reaches_the_api(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/addons", "/catalogs", "/maintenance", "/services"])
+@pytest.mark.parametrize("path", ["/addons", "/backup", "/catalogs", "/services"])
 def test_admin_reaches_the_admin_pages(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
+
+
+# The section was called "Maintenance" up to 0.2.0. The redirects answer before
+# the role check, so an anonymous request is enough to assert them -- and the
+# target still enforces the admin tier on the follow-up request.
+@pytest.mark.parametrize(
+    ("legacy", "target"),
+    [
+        ("/maintenance", "/backup"),
+        ("/partials/maintenance/restore-points", "/partials/backup/restore-points"),
+        ("/partials/maintenance/restore-status", "/partials/backup/restore-status"),
+    ],
+)
+def test_legacy_maintenance_paths_redirect(
+    client: TestClient, legacy: str, target: str
+) -> None:
+    response = client.get(legacy)
+    assert response.status_code == 308
+    assert response.headers["location"] == target
 
 
 # ---------------------------------------------------------------------------
