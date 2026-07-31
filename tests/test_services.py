@@ -7,9 +7,12 @@ from __future__ import annotations
 
 from app.core.services import (
     ServiceHealth,
+    ServiceModule,
+    apply_restart_policies,
     count_by_health,
     derive_health,
     overall_health,
+    parse_inspect_output,
     parse_ps_line,
     parse_ps_output,
     worst,
@@ -238,3 +241,102 @@ def test_counts_cover_every_health_value() -> None:
     assert counts[ServiceHealth.STARTING] == 0
     # Every member is present, so the routers can index it without a default.
     assert set(counts) == set(ServiceHealth)
+
+
+# ---------------------------------------------------------------------------
+# Restart policies
+# ---------------------------------------------------------------------------
+
+
+def _inspect(*pairs: tuple[str, str]) -> str:
+    """`docker inspect` output; the leading slash is how Docker reports names."""
+    return "\n".join(f"/{name}\t{policy}" for name, policy in pairs)
+
+
+def test_parses_name_and_policy_without_the_leading_slash() -> None:
+    assert parse_inspect_output(_inspect(("li-init", "no"), ("lc", "unless-stopped"))) == {
+        "li-init": "no",
+        "lc": "unless-stopped",
+    }
+
+
+def test_blank_and_short_inspect_lines_are_skipped() -> None:
+    assert parse_inspect_output("\n\nlc\n") == {}
+
+
+def _completed_module(name: str = "lc") -> list[ServiceModule]:
+    """One module holding a single container that exited cleanly."""
+    return parse_ps_output(
+        _line(name, "exited", "Exited (0) 5 minutes ago", module="papaia-librechat")
+    )
+
+
+def test_a_service_that_exited_cleanly_is_stopped_not_completed() -> None:
+    for policy in ("unless-stopped", "always"):
+        modules = apply_restart_policies(_completed_module(), {"lc": policy})
+        assert modules[0].containers[0].health == ServiceHealth.STOPPED
+
+
+def test_a_one_shot_that_exited_cleanly_stays_completed() -> None:
+    for policy in ("no", "on-failure", ""):
+        modules = apply_restart_policies(_completed_module(), {"lc": policy})
+        assert modules[0].containers[0].health == ServiceHealth.COMPLETED
+
+
+def test_a_container_docker_said_nothing_about_keeps_its_parsed_health() -> None:
+    # An unanswered lookup must not invent an outage.
+    modules = apply_restart_policies(_completed_module(), {})
+    assert modules[0].containers[0].health == ServiceHealth.COMPLETED
+
+
+def test_a_stopped_service_takes_its_whole_module_down() -> None:
+    # The reported bug: LibreChat stopped, four sibling containers still up,
+    # and the module kept reading healthy because a clean exit was taken for a
+    # finished one-shot.
+    output = "\n".join(
+        (
+            _line("lc", "exited", "Exited (0) 5 minutes ago", module="papaia-librechat"),
+            _line("lc-db", "running", "Up 25 minutes (healthy)", module="papaia-librechat"),
+            _line("lc-search", "running", "Up 25 minutes", module="papaia-librechat"),
+            _line("lc-rag", "running", "Up 25 minutes", module="papaia-librechat"),
+            _line("lc-vectordb", "running", "Up 25 minutes (healthy)", module="papaia-librechat"),
+        )
+    )
+    modules = apply_restart_policies(parse_ps_output(output), {"lc": "unless-stopped"})
+
+    assert modules[0].health == ServiceHealth.STOPPED
+    assert modules[0].summary == "1 of 5 containers stopped"
+    assert overall_health(modules) == ServiceHealth.STOPPED
+
+
+def test_model_init_still_does_not_make_localai_look_broken() -> None:
+    output = "\n".join(
+        (
+            _line("li", "running", "Up 2 days", module="papaia-localai", role="inference-engine"),
+            _line(
+                "li-init",
+                "exited",
+                "Exited (0) 2 days ago",
+                module="papaia-localai",
+                role="model-init",
+            ),
+        )
+    )
+    modules = apply_restart_policies(parse_ps_output(output), {"li-init": "no"})
+
+    assert modules[0].health == ServiceHealth.HEALTHY
+    assert modules[0].containers[1].health == ServiceHealth.COMPLETED
+
+
+def test_a_module_turning_stopped_moves_to_the_front() -> None:
+    # parse_ps_output sorted this module last while it still looked healthy.
+    output = "\n".join(
+        (
+            _line("kc", "running", "Up 6 days (health: starting)", module="papaia-keycloak"),
+            _line("lc", "exited", "Exited (0) 5 minutes ago", module="papaia-librechat"),
+        )
+    )
+    assert [m.name for m in parse_ps_output(output)] == ["keycloak", "librechat"]
+
+    modules = apply_restart_policies(parse_ps_output(output), {"lc": "unless-stopped"})
+    assert [m.name for m in modules] == ["librechat", "keycloak"]
