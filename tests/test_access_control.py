@@ -49,12 +49,13 @@ from app.main import create_app  # noqa: E402
 
 # Surfaces reserved for administrators, and the dashboard surfaces every
 # authenticated account reaches. Kept as data so a new route is one line.
-ADMIN_PAGES = ["/addons", "/addons/paperless", "/catalogs", "/maintenance"]
+ADMIN_PAGES = ["/addons", "/addons/paperless", "/backup", "/catalogs", "/services"]
 ADMIN_PARTIALS = [
     "/partials/addons",
+    "/partials/backup/restore-points",
+    "/partials/backup/restore-status",
     "/partials/catalogs",
-    "/partials/maintenance/restore-points",
-    "/partials/maintenance/restore-status",
+    "/partials/services",
 ]
 ADMIN_APIS = [
     "/api/v1/addons",
@@ -63,7 +64,9 @@ ADMIN_APIS = [
     "/api/v1/maintenance/backup-dir",
     "/api/v1/maintenance/restore-points",
 ]
-DASHBOARD_PATHS = ["/", "/partials/tiles"]
+# The status pill sits in the header of every page, so it has to answer for
+# both roles even though the page it links to is admin-only.
+DASHBOARD_PATHS = ["/", "/partials/tiles", "/partials/service-status"]
 
 # Denials are decided by the dependency, before the handler runs, so every
 # path above can be asserted on cheaply. Confirming that an admin gets through
@@ -161,9 +164,28 @@ def test_admin_role_reaches_the_api(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/addons", "/catalogs", "/maintenance"])
+@pytest.mark.parametrize("path", ["/addons", "/backup", "/catalogs", "/services"])
 def test_admin_reaches_the_admin_pages(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
+
+
+# The section was called "Maintenance" up to 0.2.0. The redirects answer before
+# the role check, so an anonymous request is enough to assert them -- and the
+# target still enforces the admin tier on the follow-up request.
+@pytest.mark.parametrize(
+    ("legacy", "target"),
+    [
+        ("/maintenance", "/backup"),
+        ("/partials/maintenance/restore-points", "/partials/backup/restore-points"),
+        ("/partials/maintenance/restore-status", "/partials/backup/restore-status"),
+    ],
+)
+def test_legacy_maintenance_paths_redirect(
+    client: TestClient, legacy: str, target: str
+) -> None:
+    response = client.get(legacy)
+    assert response.status_code == 308
+    assert response.headers["location"] == target
 
 
 # ---------------------------------------------------------------------------

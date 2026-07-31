@@ -14,6 +14,8 @@ import re
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
+from app.core.services import invalidate_snapshot
+
 logger = logging.getLogger(__name__)
 
 # Only these verbs may be dispatched via papaia-ctl addon <verb>.
@@ -136,6 +138,12 @@ async def _stream_subprocess(
         yield raw.decode(errors="replace").rstrip()
 
     await proc.wait()
+    # Every verb reachable from here -- install, start, stop, remove, uninstall,
+    # backup -- moves containers, so the cached `docker ps` reading behind the
+    # services page and `compute_status` is stale the moment this returns.
+    # Dropping it here rather than at each call site is what keeps a freshly
+    # started addon from reading as stopped for the next five seconds.
+    invalidate_snapshot()
     if proc.returncode != 0:
         code = proc.returncode if proc.returncode is not None else 1
         raise CtlError(

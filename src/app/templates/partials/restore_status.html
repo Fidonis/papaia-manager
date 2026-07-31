@@ -8,7 +8,7 @@
 <div
   id="restore-status"
   {% if restore is not none and restore.is_running %}
-  hx-get="/partials/maintenance/restore-status"
+  hx-get="/partials/backup/restore-status"
   hx-trigger="every 3s"
   hx-swap="outerHTML"
   {% endif %}

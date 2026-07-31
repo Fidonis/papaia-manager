@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth.csrf import get_csrf_token
 from app.auth.deps import AdminUser, AnyUser
@@ -17,13 +17,19 @@ from app.core import backups, runner
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
 from app.core.resolve import resolve_catalog_addons
+from app.core.services import (
+    ServiceHealth,
+    StackSnapshot,
+    count_by_health,
+    load_snapshot,
+    overall_health,
+)
 from app.core.snapshots import load_installed, managed_snapshot_path
 from app.core.state import (
     AddonStatus,
     compute_status,
     deployment_addons_by_name,
     load_deployment_yaml,
-    load_running_compose_projects,
 )
 from app.core.tiles import TileGroup, load_tiles, visible_groups
 from app.templating import templates as _templates
@@ -76,6 +82,15 @@ async def addon_detail(
     )
 
 
+@router.get("/services", response_class=HTMLResponse)
+async def services_page(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """What this deployment is configured to run, against what is up."""
+    return _templates.TemplateResponse(request, "services.html", _ctx(request, user))
+
+
 @router.get("/catalogs", response_class=HTMLResponse)
 async def catalogs_page(
     request: Request,
@@ -84,8 +99,8 @@ async def catalogs_page(
     return _templates.TemplateResponse(request, "catalogs.html", _ctx(request, user))
 
 
-@router.get("/maintenance", response_class=HTMLResponse)
-async def maintenance_page(
+@router.get("/backup", response_class=HTMLResponse)
+async def backup_page(
     request: Request,
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
@@ -94,7 +109,7 @@ async def maintenance_page(
     backup_dir = backups.resolve_backup_dir(settings.papaia_config_dir)
     return _templates.TemplateResponse(
         request,
-        "maintenance.html",
+        "backup.html",
         _ctx(
             request,
             user,
@@ -130,6 +145,72 @@ async def partial_tiles(
     )
     resp = _templates.TemplateResponse(
         request, "partials/tile_gallery.html", _ctx(request, user, groups=groups)
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/service-status", response_class=HTMLResponse)
+async def partial_service_status(
+    request: Request,
+    user: AnyUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The header pills: one aggregate per section, for every authenticated role.
+
+    Deliberately not filtered by visibility. A pill carries no service names,
+    only the worst state in its section, so a non-admin learns that something is
+    wrong without learning what -- which is the point of putting it in front of
+    them at all.
+
+    Core and add-ons stay separate rather than being folded into one value: a
+    broken add-on out of a customer catalogue would otherwise repaint the stack
+    pill for everyone who is logged in.
+    """
+    snapshot = await _load_stack_snapshot(settings)
+    core_overall = overall_health(snapshot.core)
+    addon_overall = overall_health(snapshot.addons)
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/service_status_pill.html",
+        _ctx(
+            request,
+            user,
+            core_overall=core_overall,
+            core_affected=count_by_health(snapshot.core)[core_overall],
+            addon_overall=addon_overall,
+            addon_affected=count_by_health(snapshot.addons)[addon_overall],
+            addon_total=len(snapshot.addons),
+        ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/services", response_class=HTMLResponse)
+async def partial_services(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    snapshot = await _load_stack_snapshot(settings)
+    # The tiles count the page as a whole -- an operator wants to know how many
+    # modules are in trouble, not how the trouble splits across two sections.
+    counts = count_by_health(snapshot.core + snapshot.addons)
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/service_list.html",
+        _ctx(
+            request,
+            user,
+            core_modules=snapshot.core,
+            addon_modules=snapshot.addons,
+            total=len(snapshot.core) + len(snapshot.addons),
+            cnt_running=counts[ServiceHealth.HEALTHY] + counts[ServiceHealth.COMPLETED],
+            cnt_degraded=counts[ServiceHealth.UNHEALTHY] + counts[ServiceHealth.STARTING],
+            cnt_stopped=counts[ServiceHealth.STOPPED],
+            cnt_missing=counts[ServiceHealth.MISSING],
+        ),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -217,7 +298,7 @@ async def partial_catalogs(
     )
 
 
-@router.get("/partials/maintenance/restore-points", response_class=HTMLResponse)
+@router.get("/partials/backup/restore-points", response_class=HTMLResponse)
 async def partial_restore_points(
     request: Request,
     user: AdminUser,
@@ -242,7 +323,7 @@ async def partial_restore_points(
     return resp
 
 
-@router.get("/partials/maintenance/restore-status", response_class=HTMLResponse)
+@router.get("/partials/backup/restore-status", response_class=HTMLResponse)
 async def partial_restore_status(
     request: Request,
     user: AdminUser,
@@ -269,8 +350,50 @@ async def partial_restore_status(
 
 
 # ---------------------------------------------------------------------------
+# Legacy paths -- the section was called "Maintenance" up to 0.2.0
+# ---------------------------------------------------------------------------
+#
+# The page redirect is for bookmarks. The two partial redirects matter for one
+# specific case: `partials/restore_status.html` renders its polling path into
+# the markup and keeps polling across the manager's own restart. Upgrading the
+# manager while a restore is in flight would otherwise leave that open page
+# polling a path that no longer exists, stuck on "reconnecting" until someone
+# reloads by hand. Droppable once 0.2.0 is out of circulation.
+
+@router.get("/maintenance", include_in_schema=False)
+async def legacy_maintenance_page() -> RedirectResponse:
+    return RedirectResponse("/backup", status_code=308)
+
+
+@router.get("/partials/maintenance/restore-points", include_in_schema=False)
+async def legacy_partial_restore_points() -> RedirectResponse:
+    return RedirectResponse("/partials/backup/restore-points", status_code=308)
+
+
+@router.get("/partials/maintenance/restore-status", include_in_schema=False)
+async def legacy_partial_restore_status() -> RedirectResponse:
+    return RedirectResponse("/partials/backup/restore-status", status_code=308)
+
+
+# ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+async def _load_stack_snapshot(settings: Settings) -> StackSnapshot:
+    """Core, add-ons and running projects in one reading.
+
+    Blocking (`docker ps` plus a YAML scan of the Compose files), so off-thread.
+    Cheap to call more than once per request: `load_snapshot` caches for five
+    seconds, which is what lets the add-on views share this reading instead of
+    running a second query.
+    """
+    return await asyncio.get_running_loop().run_in_executor(
+        None,
+        load_snapshot,
+        settings.papaia_config_dir,
+        settings.papaia_workspace_dir,
+    )
+
 
 def _gather_tiles(settings: Settings, is_admin_user: bool) -> list[TileGroup]:
     """Load the dashboard tiles a caller may see. Synchronous file I/O."""
@@ -283,9 +406,7 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
     registry = load_registry(settings.papaia_config_dir)
     deployment = load_deployment_yaml(settings.papaia_config_dir)
     installed_map = load_installed(settings.papaia_config_dir)
-    running = await asyncio.get_running_loop().run_in_executor(
-        None, load_running_compose_projects
-    )
+    running = (await _load_stack_snapshot(settings)).running_projects
 
     deployment_addons = deployment_addons_by_name(deployment)
 
@@ -386,9 +507,7 @@ async def _get_addon(
     registry = load_registry(settings.papaia_config_dir)
     deployment = load_deployment_yaml(settings.papaia_config_dir)
     installed_map = load_installed(settings.papaia_config_dir)
-    running = await asyncio.get_running_loop().run_in_executor(
-        None, load_running_compose_projects
-    )
+    running = (await _load_stack_snapshot(settings)).running_projects
 
     matches = [
         r

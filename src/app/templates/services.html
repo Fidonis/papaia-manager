@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Services — papAIa manager{% endblock %}
+
+{% block page_title %}Services{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">What this deployment is configured to run, and what of it is up</p>{% endblock %}
+
+{% block content %}
+{# Polled rather than streamed: a container flipping to unhealthy is not worth
+   an SSE connection per open tab, and 15 s is well inside the shortest
+   healthcheck interval in the stack. #}
+<div
+  id="service-list"
+  hx-get="/partials/services"
+  hx-trigger="load, every 15s"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+{% endblock %}
