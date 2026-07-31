@@ -12,6 +12,71 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [0.3.0] - 2026-07-31
+
+### Added
+- **Services.** An admin-only page at `/services` reporting what this deployment
+  is configured to run and how much of it is up. Containers are read from a
+  single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project`
+  into the core stack and the active add-ons, grouped by the `de.fidonis.module`
+  label the Compose files put on every service, and scored from their
+  healthcheck; the module in the worst state sorts to the top. Each module lists
+  its containers with role, uptime, healthcheck result and published ports. The
+  view is read-only — lifecycle control over core services stays with
+  `papaia-ctl`.
+- The declared state is read next to the live one, so a service that was
+  configured but never started renders as *not deployed* rather than being
+  absent. Core services come from the Compose fragments listed in
+  `papaia/src/docker-compose.yml`, filtered by the profiles enabled in
+  `COMPOSE_PROFILES`; add-on services from the active entries of
+  `deployment.yaml` and their own Compose files. A torn-down stack therefore
+  reports every module instead of an empty page, while an unreachable Docker
+  socket still reports nothing at all — not knowing is not the same as knowing
+  it is gone.
+- Add-ons render in their own section with their own aggregate, so a failing
+  add-on out of a customer catalogue does not report the stack itself as broken.
+- Two status pills in the header of every page, one per section, visible to every
+  authenticated account regardless of role. Each carries the aggregate only and
+  links to the matching page for administrators, so a user without the admin role
+  learns that something is unhealthy but not which service.
+- **Collapsible sidebar.** The navigation panel collapses to a 4rem icon rail,
+  peeks open on hover, pins back to full width, and remembers the choice across
+  page loads. State is a single `data-sidebar` attribute on `<html>`, set before
+  first paint the same way the theme already is, so a collapsed panel renders
+  collapsed on the first frame. Below `lg` the rail is forced regardless of the
+  stored value and the toggle drives a transient overlay drawer without writing
+  the preference.
+- The four administrative navigation entries are grouped under a divider and an
+  "Administration" caption; the caption disappears with every other label when
+  the panel collapses to a rail.
+- An `asset_url()` template global appends a short content digest to the
+  `/static` references in `base.html`, so a stylesheet held in a browser cache
+  cannot outlive the markup it was generated from. The digest is keyed on the
+  file's stat signature, so an asset rebuilt under a running process is picked up
+  without a restart.
+
+### Changed
+- The Maintenance surface is now called **Backup / Restore** and is served at
+  `/backup`, including its partials. The old paths answer 308, and the REST
+  prefix stays `/api/v1/maintenance/` so the versioned surface is unaffected; it
+  follows the UI name at the next major.
+- `state.compute_status` takes its set of running Compose projects from the
+  shared stack snapshot rather than issuing a `docker ps` of its own, so
+  `/addons` and `/services` can no longer disagree about whether an add-on is up.
+  The snapshot cache is invalidated whenever `papaia-ctl` returns, so a freshly
+  started add-on does not read as stopped for another five seconds.
+
+### Fixed
+- A service shut down through `papaia-ctl` is reported as down rather than
+  completed. Its exit is as clean as that of a one-shot container that finished
+  its work, so the restart policy is read alongside the exit code: `unless-stopped`
+  and `always` mark something that was meant to keep running, and its exit is an
+  outage.
+- The expanded sidebar geometry stays on the `w-64`/`ml-64` utilities in the
+  markup, with only the deviations — rail, peek, drawer — defined in the
+  stylesheet, so a stale or missing `app.css` build artifact degrades to the
+  previous layout instead of rendering the content underneath the sidebar.
+
 ## [0.2.0] - 2026-07-30
 
 ### Added
@@ -104,8 +169,10 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[0.3.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.3.0
+
 [0.2.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.2.0
 
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.3.0...HEAD
