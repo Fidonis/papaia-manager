@@ -14,8 +14,13 @@ Three decisions here are load-bearing:
 * A container with no healthcheck counts as healthy while it runs. Most of the
   stack defines one, but treating its absence as a problem would paint half a
   working deployment yellow.
-* `Exited (0)` is a finished one-shot job (`localai-model-init` and friends),
-  not a failure, and it does not drag its module's status down.
+* `Exited (0)` alone does not mean "finished one-shot job". A service shut down
+  through `papaia-ctl down` terminates just as cleanly as `localai-model-init`
+  finishing its work, so the exit code has to be read together with the
+  container's restart policy: `unless-stopped` / `always` marks something that
+  was meant to keep running, and its exit is an outage no matter how clean.
+  That policy is not part of `docker ps` output, hence the second, narrowly
+  scoped `docker inspect` below.
 
 Everything is read-only. Lifecycle control over core services belongs to
 papaia-ctl, whose core-verb allowlist deliberately holds nothing but `backup`.
@@ -26,7 +31,7 @@ import logging
 import re
 import subprocess
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -51,6 +56,17 @@ _PS_FORMAT = "\t".join(
 )
 
 _PS_TIMEOUT_SECONDS = 5
+
+# Restart policy plus container name, for the exited containers whose exit code
+# leaves their meaning open. `.Name` comes back with a leading slash.
+_INSPECT_FORMAT = "\t".join(("{{.Name}}", "{{.HostConfig.RestartPolicy.Name}}"))
+
+_INSPECT_TIMEOUT_SECONDS = 5
+
+# Restart policies of a container that was meant to keep running. Everything
+# else -- `no`, `on-failure`, or no policy at all -- describes a job that is
+# allowed to finish.
+_SERVICE_RESTART_POLICIES = frozenset({"always", "unless-stopped"})
 
 # How long a `docker ps` result is reused. The header pill renders on every
 # page and polls, so without this every request would fork a subprocess; five
@@ -259,7 +275,63 @@ def parse_ps_output(output: str) -> list[ServiceModule]:
     for module in grouped.values():
         module.containers.sort(key=lambda c: c.name)
 
-    return sorted(grouped.values(), key=lambda m: (_SEVERITY[m.health], m.name))
+    return _worst_first(grouped.values())
+
+
+def parse_inspect_output(output: str) -> dict[str, str]:
+    """Map container name to restart policy from `docker inspect` output.
+
+    Docker reports the name with a leading slash; the rest of this module
+    works with the bare name `docker ps` prints.
+    """
+    policies: dict[str, str] = {}
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) != 2:
+            logger.debug("skipping unparseable docker inspect line %r", line)
+            continue
+        name, policy = (p.strip() for p in parts)
+        if name:
+            policies[name.removeprefix("/")] = policy
+    return policies
+
+
+def apply_restart_policies(
+    modules: list[ServiceModule], policies: Mapping[str, str]
+) -> list[ServiceModule]:
+    """Re-read completed containers in the light of their restart policy.
+
+    `Exited (0)` is where a finished one-shot job and a service someone shut
+    down look exactly alike. The restart policy separates them: a container
+    Docker was told to keep alive has no business being gone, so its exit is
+    an outage regardless of the code it exited with.
+
+    A container missing from `policies` keeps its parsed value. That is the
+    conservative direction -- when Docker gives no answer, an unfounded outage
+    on the header pill is worse than a stopped container reading as completed.
+
+    Returns the list re-sorted, since a container turning stopped can change
+    where its module belongs.
+    """
+    for module in modules:
+        for container in module.containers:
+            if (
+                container.health is ServiceHealth.COMPLETED
+                and policies.get(container.name) in _SERVICE_RESTART_POLICIES
+            ):
+                container.health = ServiceHealth.STOPPED
+    return _worst_first(modules)
+
+
+def _worst_first(modules: Iterable[ServiceModule]) -> list[ServiceModule]:
+    """Modules ordered worst first, ties broken by name.
+
+    The name tiebreak keeps the list from reshuffling between polls when
+    nothing has changed.
+    """
+    return sorted(modules, key=lambda m: (_SEVERITY[m.health], m.name))
 
 
 def _parse_ports(raw: str) -> list[str]:
@@ -324,6 +396,34 @@ def query_containers(project: str) -> str | None:
     return result.stdout
 
 
+def query_restart_policies(names: list[str]) -> dict[str, str]:
+    """Restart policy per container name, empty on failure.
+
+    Asked only about the containers whose state is ambiguous, so in a healthy
+    deployment this is one lookup for `localai-model-init` and nothing else.
+    """
+    if not names:
+        return {}
+
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "--type", "container", "--format", _INSPECT_FORMAT, *names],
+            capture_output=True,
+            text=True,
+            timeout=_INSPECT_TIMEOUT_SECONDS,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("could not reach Docker socket: %s", exc)
+        return {}
+
+    # A container removed between `ps` and `inspect` makes Docker exit non-zero
+    # while still reporting the ones it did find, so stdout is worth parsing
+    # either way.
+    if result.returncode != 0:
+        logger.debug("docker inspect reported an error: %s", result.stderr)
+    return parse_inspect_output(result.stdout)
+
+
 # project -> (monotonic timestamp, modules)
 _CACHE: dict[str, tuple[float, list[ServiceModule]]] = {}
 
@@ -345,5 +445,9 @@ def load_modules(project: str) -> list[ServiceModule]:
         return []
 
     modules = parse_ps_output(output)
+    completed = [
+        c.name for m in modules for c in m.containers if c.health is ServiceHealth.COMPLETED
+    ]
+    modules = apply_restart_policies(modules, query_restart_policies(completed))
     _CACHE[project] = (now, modules)
     return modules

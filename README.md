@@ -62,9 +62,10 @@ doing right now. Containers are read from `docker ps` and grouped by the
 module lists its own containers with their role, uptime, healthcheck result and
 published ports; the module in the worst state sorts to the top. A container
 without a healthcheck counts as healthy while it runs, and a one-shot container
-that exited cleanly is reported as completed rather than dragging its module
-down. The view is read-only — starting and stopping core services stays with
-`papaia-ctl`.
+that has finished its work is reported as completed rather than dragging its
+module down — recognised by its restart policy, so a service that was shut down
+still reads as stopped even though it exited just as cleanly. The view is
+read-only — starting and stopping core services stays with `papaia-ctl`.
 
 The same data drives a status pill in the header of every page, visible to
 every authenticated account regardless of role. It carries the aggregate only —
