@@ -24,6 +24,7 @@ from app.core.envforms import EnvField, build_form, field_to_dict
 from app.core.envvalidate import EnvValidationError, coerce_env_values
 from app.core.jobs import JobContext, JobQueue
 from app.core.resolve import resolve_catalog_addons
+from app.core.services import load_snapshot
 from app.core.snapshots import (
     catalog_clone_path,
     load_installed,
@@ -36,7 +37,6 @@ from app.core.state import (
     compute_status,
     deployment_addons_by_name,
     load_deployment_yaml,
-    load_running_compose_projects,
 )
 
 router = APIRouter(prefix="/api/v1/addons")
@@ -148,9 +148,7 @@ async def list_addons(
     registry = load_registry(settings.papaia_config_dir)
     deployment = load_deployment_yaml(settings.papaia_config_dir)
     installed_map = load_installed(settings.papaia_config_dir)
-    running = await asyncio.get_running_loop().run_in_executor(
-        None, load_running_compose_projects
-    )
+    running = await _running_projects(settings)
 
     deployment_addons = deployment_addons_by_name(deployment)
 
@@ -195,9 +193,7 @@ async def addon_detail(
     registry = load_registry(settings.papaia_config_dir)
     deployment = load_deployment_yaml(settings.papaia_config_dir)
     installed_map = load_installed(settings.papaia_config_dir)
-    running = await asyncio.get_running_loop().run_in_executor(
-        None, load_running_compose_projects
-    )
+    running = await _running_projects(settings)
 
     matches = [
         r
@@ -829,7 +825,21 @@ def _user_id(user: OIDCClaims) -> str:
 
 
 def _current_running(settings: Settings) -> set[str]:
+    """Compose projects with at least one running container.
+
+    Reads the shared services snapshot rather than issuing its own `docker ps`,
+    so this and the services page can never disagree about whether an add-on is
+    up. Blocking, and deliberately called from sync code paths only; the async
+    routes go through `_running_projects`.
+    """
     try:
-        return load_running_compose_projects()
+        return load_snapshot(
+            settings.papaia_config_dir, settings.papaia_workspace_dir
+        ).running_projects
     except Exception:  # noqa: BLE001
         return set()
+
+
+async def _running_projects(settings: Settings) -> set[str]:
+    """`_current_running` off the event loop."""
+    return await asyncio.get_running_loop().run_in_executor(None, _current_running, settings)

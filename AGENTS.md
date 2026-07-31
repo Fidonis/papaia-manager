@@ -12,7 +12,9 @@ It also serves the stack dashboard: a tile overview of the deployed applications
 
 A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
-A fourth surface, Services, reports the live state of the core stack: containers read from `docker ps`, grouped by their `de.fidonis.module` label and scored from their healthcheck. It is read-only — lifecycle control over core services stays with `papaia-ctl`, whose core-verb allowlist holds nothing but `backup`. An aggregate of the same data renders as a status pill in the header of every page, for every authenticated role.
+A fourth surface, Services, reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. It is read-only — lifecycle control over core services stays with `papaia-ctl`, whose core-verb allowlist holds nothing but `backup`. Two aggregates of the same snapshot render as status pills in the header of every page, one per section, for every authenticated role.
+
+That snapshot is also the single Docker reading behind the add-on surfaces: `state.compute_status` takes its set of running Compose projects from `StackSnapshot.running_projects` rather than issuing a `docker ps` of its own, so `/addons` and `/services` cannot disagree about whether an add-on is up.
 
 Authentication is handled natively via OIDC Authorization Code Flow with PKCE against Keycloak. Two configurable realm roles gate access: the admin role reaches every surface, while the user role reaches the dashboard only. Authorization is enforced by the route dependencies, so the JSON API is restricted exactly like the pages.
 
@@ -43,7 +45,9 @@ papaia-manager/
 │       │   ├── runner.py       # Detached `papaia-ctl restore` container
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
 │       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering
-│       │   ├── services.py     # Core-stack container status from docker ps, by module label
+│       │   ├── services.py     # Container status from docker ps, by module label; declared
+│       │   │                   #   vs. live merge; shared snapshot for the addon surfaces
+│       │   ├── inventory.py    # Declared state: compose fragments × profiles, addon manifests
 │       │   ├── envfile.py      # Shared KEY=value env-file parsing
 │       │   ├── snapshots.py    # git-archive materialization + installed.yaml
 │       │   ├── state.py        # Merged addon status (catalog × deployment × Docker)

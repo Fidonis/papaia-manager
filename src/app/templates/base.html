@@ -417,10 +417,12 @@
           {# Aggregate stack status, on every page for every role. Loaded out of
              band rather than passed into each page's context, so a new page
              picks it up by extending this template and nothing else. Empty
-             until the first response lands; the pill is the only thing that
-             appears, so nothing below it moves. #}
+             until the first response lands; the pills are the only thing that
+             appears, so nothing below them moves. One request for both pills --
+             they read the same snapshot, and a second poll would buy nothing. #}
           {% if user %}
-          <div hx-get="/partials/service-status"
+          <div class="flex flex-wrap items-center gap-2"
+               hx-get="/partials/service-status"
                hx-trigger="load, every 30s"
                hx-swap="innerHTML"></div>
           {% endif %}

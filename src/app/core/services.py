@@ -1,19 +1,31 @@
-"""Live status of the core stack's containers, grouped by `de.fidonis.module`.
+"""Live status of the stack's containers, grouped by `de.fidonis.module`.
 
-The core Compose files label every container with `de.fidonis.module` (which
-service bundle it belongs to) and `de.fidonis.role` (what it does inside that
-bundle), and most of them define a healthcheck. That is enough to reconstruct
-the shape of the running stack from a single `docker ps` -- no Compose file
-parsing, no papaia-ctl call.
+The Compose files label every container with `de.fidonis.module` (which service
+bundle it belongs to) and `de.fidonis.role` (what it does inside that bundle),
+and most of them define a healthcheck. That is enough to reconstruct the shape
+of the running stack from a single `docker ps` -- no papaia-ctl call.
 
-Three decisions here are load-bearing:
+What `docker ps` cannot answer is what is *not* there: a service whose profile
+was never enabled and one whose container `papaia-ctl down` removed both show up
+as nothing at all. `inventory.py` supplies that half, and `merge_expected` folds
+it in, so the page reports the target state against the live one.
+
+Five decisions here are load-bearing:
 
 * `docker ps -a`, not `docker ps`. A stopped Keycloak has to read as *down*,
   and without `-a` its container is simply absent, which is indistinguishable
-  from a profile that was never enabled.
+  from a service that was never deployed.
+* No `--filter` at all, and partitioning by the `com.docker.compose.project`
+  label in Python. Add-ons run in their own Compose project (one per add-on
+  directory), so a project filter excludes them; filtering on
+  `label=de.fidonis.module` instead would drop every container that carries no
+  module label, which is exactly the case the `other` bucket exists for. One
+  unfiltered call answers both, and several papAIa environments on one host stay
+  separated because everything outside the known projects is discarded.
 * A container with no healthcheck counts as healthy while it runs. Most of the
   stack defines one, but treating its absence as a problem would paint half a
-  working deployment yellow.
+  working deployment yellow. This weighs heavier for add-ons, which rarely
+  define healthchecks at all.
 * `Exited (0)` alone does not mean "finished one-shot job". A service shut down
   through `papaia-ctl down` terminates just as cleanly as `localai-model-init`
   finishing its work, so the exit code has to be read together with the
@@ -21,9 +33,12 @@ Three decisions here are load-bearing:
   was meant to keep running, and its exit is an outage no matter how clean.
   That policy is not part of `docker ps` output, hence the second, narrowly
   scoped `docker inspect` below.
+* An unreachable Docker socket yields an empty snapshot, never a stack full of
+  missing services. Not knowing is not the same as knowing it is gone.
 
 Everything is read-only. Lifecycle control over core services belongs to
-papaia-ctl, whose core-verb allowlist deliberately holds nothing but `backup`.
+papaia-ctl, whose core-verb allowlist deliberately holds nothing but `backup`;
+add-ons are controlled from `/addons`.
 """
 from __future__ import annotations
 
@@ -37,6 +52,14 @@ from enum import StrEnum
 from pathlib import Path
 
 from app.core.envfile import load_env_file
+from app.core.inventory import (
+    ExpectedService,
+    active_profiles,
+    addon_inventory,
+    core_inventory,
+    module_display_name,
+)
+from app.core.state import deployment_addons_by_name, load_deployment_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +71,15 @@ _PS_FORMAT = "\t".join(
         "{{.Names}}",
         "{{.State}}",
         "{{.Status}}",
+        '{{.Label "com.docker.compose.project"}}',
         '{{.Label "com.docker.compose.service"}}',
         '{{.Label "de.fidonis.module"}}',
         '{{.Label "de.fidonis.role"}}',
         "{{.Ports}}",
     )
 )
+
+_PS_FIELD_COUNT = 8
 
 _PS_TIMEOUT_SECONDS = 5
 
@@ -68,9 +94,10 @@ _INSPECT_TIMEOUT_SECONDS = 5
 # allowed to finish.
 _SERVICE_RESTART_POLICIES = frozenset({"always", "unless-stopped"})
 
-# How long a `docker ps` result is reused. The header pill renders on every
-# page and polls, so without this every request would fork a subprocess; five
-# seconds is short enough that the polled views still feel live.
+# How long a `docker ps` result is reused. The header pills render on every page
+# and poll, and `/addons` reads the same snapshot, so without this a single page
+# load would fork several subprocesses; five seconds is short enough that the
+# polled views still feel live.
 _CACHE_TTL_SECONDS = 5.0
 
 # `Exited (0) 2 days ago` -- the exit code is what separates a completed
@@ -80,18 +107,15 @@ _EXIT_CODE_RE = re.compile(r"^Exited \((\d+)\)")
 # Published host ports out of `0.0.0.0:8000->3080/tcp, :::8000->3080/tcp`.
 _HOST_PORT_RE = re.compile(r":(\d+)->")
 
-# Labels are namespaced by product; the prefix carries no information once the
-# containers are grouped, so it is dropped for display.
-_MODULE_PREFIX = "papaia-"
-
-# Containers that carry no module label at all -- add-on containers sharing the
-# project, or a core service whose label was dropped in a local edit.
-UNGROUPED_MODULE = "other"
+# What a declared-but-absent service reports instead of Docker's status text.
+_MISSING_STATE = "missing"
+_MISSING_STATUS_TEXT = "not deployed"
 
 
 class ServiceHealth(StrEnum):
     """Derived state of a container or of a whole module."""
 
+    MISSING = "missing"
     STOPPED = "stopped"
     UNHEALTHY = "unhealthy"
     STARTING = "starting"
@@ -102,19 +126,27 @@ class ServiceHealth(StrEnum):
 
 # Lower is worse. `worst()` walks this order, so it is the single place that
 # decides what the header pill shows when several things are wrong at once.
+# `MISSING` outranks `STOPPED`: a container that exited at least got as far as
+# being created, and its logs are still there to look at.
 _SEVERITY: dict[ServiceHealth, int] = {
-    ServiceHealth.STOPPED: 0,
-    ServiceHealth.UNHEALTHY: 1,
-    ServiceHealth.STARTING: 2,
-    ServiceHealth.UNKNOWN: 3,
-    ServiceHealth.COMPLETED: 4,
-    ServiceHealth.HEALTHY: 5,
+    ServiceHealth.MISSING: 0,
+    ServiceHealth.STOPPED: 1,
+    ServiceHealth.UNHEALTHY: 2,
+    ServiceHealth.STARTING: 3,
+    ServiceHealth.UNKNOWN: 4,
+    ServiceHealth.COMPLETED: 5,
+    ServiceHealth.HEALTHY: 6,
 }
 
 
 @dataclass
 class ServiceContainer:
-    """One container of the core stack."""
+    """One container of the stack.
+
+    A declared service with no container is represented here too, with an empty
+    `name` -- Docker never assigned one -- and `MISSING` health. Everything the
+    page shows about it (`service`, `role`) comes from the Compose file.
+    """
 
     name: str
     service: str
@@ -123,6 +155,15 @@ class ServiceContainer:
     status_text: str
     ports: list[str] = field(default_factory=list)
     health: ServiceHealth = ServiceHealth.UNKNOWN
+
+    @property
+    def sort_key(self) -> str:
+        """Containers sort by name; missing ones fall back to the service name.
+
+        Without the fallback every placeholder would sort to the front on its
+        empty name, splitting a module's list at an arbitrary point.
+        """
+        return self.name or self.service
 
 
 @dataclass
@@ -140,9 +181,16 @@ class ServiceModule:
     def summary(self) -> str:
         """Short human-readable verdict for the module header row."""
         total = len(self.containers)
-        broken = [c for c in self.containers if c.health == ServiceHealth.STOPPED]
-        if broken:
-            return f"{len(broken)} of {total} containers stopped"
+        missing = sum(1 for c in self.containers if c.health == ServiceHealth.MISSING)
+        stopped = sum(1 for c in self.containers if c.health == ServiceHealth.STOPPED)
+        if missing == total and total:
+            return "not deployed"
+        if missing and stopped:
+            return f"{missing + stopped} of {total} containers missing or stopped"
+        if missing:
+            return f"{missing} of {total} containers not deployed"
+        if stopped:
+            return f"{stopped} of {total} containers stopped"
         if self.health == ServiceHealth.UNHEALTHY:
             return "healthcheck failing"
         if self.health == ServiceHealth.STARTING:
@@ -150,6 +198,20 @@ class ServiceModule:
         if self.health == ServiceHealth.COMPLETED:
             return "completed"
         return f"{total} container" if total == 1 else f"{total} containers"
+
+
+@dataclass
+class StackSnapshot:
+    """One reading of the whole host, split into the parts this manager owns.
+
+    `running_projects` covers *every* Compose project on the host, not just the
+    two sections above: `/addons` uses it to tell an installed add-on from a
+    running one, including add-ons that are not in the deployment manifest.
+    """
+
+    core: list[ServiceModule] = field(default_factory=list)
+    addons: list[ServiceModule] = field(default_factory=list)
+    running_projects: set[str] = field(default_factory=set)
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +241,7 @@ def worst(values: Iterable[ServiceHealth]) -> ServiceHealth:
 
 
 def overall_health(modules: list[ServiceModule]) -> ServiceHealth:
-    """Worst module status across the stack -- what the header pill shows."""
+    """Worst module status across a section -- what a header pill shows."""
     return worst(m.health for m in modules)
 
 
@@ -227,55 +289,105 @@ def derive_health(state: str, status_text: str) -> ServiceHealth:
     return ServiceHealth.UNKNOWN
 
 
-def parse_ps_line(line: str) -> tuple[str, ServiceContainer] | None:
-    """Parse one `docker ps` line into (module, container).
+def parse_ps_line(line: str) -> tuple[str, str, ServiceContainer] | None:
+    """Parse one `docker ps` line into (project, module, container).
 
-    Returns None for a line that does not carry all seven fields, which is
+    Returns None for a line that does not carry all eight fields, which is
     what a truncated read or an unexpected format change looks like.
     """
     parts = line.split("\t")
-    if len(parts) != 7:
+    if len(parts) != _PS_FIELD_COUNT:
         logger.debug("skipping unparseable docker ps line %r", line)
         return None
 
-    name, state, status_text, service, module, role, ports = (p.strip() for p in parts)
+    name, state, status_text, project, service, module, role, ports = (
+        p.strip() for p in parts
+    )
     if not name:
         return None
 
-    module = module.removeprefix(_MODULE_PREFIX) if module else UNGROUPED_MODULE
-    return module, ServiceContainer(
-        name=name,
-        service=service or name,
-        role=role,
-        state=state,
-        status_text=status_text,
-        ports=_parse_ports(ports),
-        health=derive_health(state, status_text),
+    return (
+        project,
+        module_display_name(module),
+        ServiceContainer(
+            name=name,
+            service=service or name,
+            role=role,
+            state=state,
+            status_text=status_text,
+            ports=_parse_ports(ports),
+            health=derive_health(state, status_text),
+        ),
     )
 
 
-def parse_ps_output(output: str) -> list[ServiceModule]:
-    """Group `docker ps` output into modules, worst module first.
+def parse_ps_output(output: str) -> dict[str, list[ServiceModule]]:
+    """Group `docker ps` output by Compose project, then by module.
 
-    Ties are broken by name so the list does not reshuffle between polls when
-    nothing has changed.
+    Containers with no project label are collected under the empty string, so
+    a caller that only knows about named projects drops them without having to
+    special-case anything.
+
+    Each project's modules come back worst first, ties broken by name so the
+    list does not reshuffle between polls when nothing has changed.
     """
-    grouped: dict[str, ServiceModule] = {}
+    grouped: dict[str, dict[str, ServiceModule]] = {}
     for line in output.splitlines():
         if not line.strip():
             continue
         parsed = parse_ps_line(line)
         if parsed is None:
             continue
-        module_name, container = parsed
-        grouped.setdefault(module_name, ServiceModule(name=module_name)).containers.append(
+        project, module_name, container = parsed
+        modules = grouped.setdefault(project, {})
+        modules.setdefault(module_name, ServiceModule(name=module_name)).containers.append(
             container
         )
 
-    for module in grouped.values():
-        module.containers.sort(key=lambda c: c.name)
+    return {
+        project: _worst_first(modules.values()) for project, modules in grouped.items()
+    }
 
-    return _worst_first(grouped.values())
+
+def merge_expected(
+    modules: list[ServiceModule], expected: Iterable[ExpectedService]
+) -> list[ServiceModule]:
+    """Add a placeholder for every declared service Docker did not report.
+
+    Matching is by Compose service name, which is unique inside a project --
+    that is why this works per project and not across the host: `paperless` and
+    `paperless-connect` both define a service called `paperless-mcp`.
+
+    A module that exists only in the target state is created here, which is what
+    makes an enabled-but-never-started profile visible at all. Containers Docker
+    reported that are *not* in the target state are left alone: they are running,
+    which is a fact the page has no business hiding just because the manifest
+    disagrees.
+    """
+    by_name = {m.name: m for m in modules}
+    seen = {c.service for m in modules for c in m.containers}
+
+    for item in expected:
+        if item.service in seen:
+            continue
+        module = by_name.get(item.module)
+        if module is None:
+            module = ServiceModule(name=item.module)
+            by_name[item.module] = module
+        module.containers.append(
+            ServiceContainer(
+                name="",
+                service=item.service,
+                role=item.role,
+                state=_MISSING_STATE,
+                status_text=_MISSING_STATUS_TEXT,
+                health=ServiceHealth.MISSING,
+            )
+        )
+
+    for module in by_name.values():
+        module.containers.sort(key=lambda c: c.sort_key)
+    return _worst_first(by_name.values())
 
 
 def parse_inspect_output(output: str) -> dict[str, str]:
@@ -364,24 +476,16 @@ def compose_project(config_dir: str) -> str:
     return env.get("COMPOSE_PROJECT_NAME") or "papaia"
 
 
-def query_containers(project: str) -> str | None:
-    """Raw `docker ps -a` output for one Compose project, or None on failure.
+def query_containers() -> str | None:
+    """Raw `docker ps -a` output for the whole host, or None on failure.
 
-    Mirrors `state.load_running_compose_projects`: an unreachable Docker
+    Unfiltered on purpose -- see the module docstring. An unreachable Docker
     socket is a normal state here (unit tests, a host mid-restore), so it is
     logged at debug level and surfaces as "unknown" rather than as an error.
     """
     try:
         result = subprocess.run(
-            [
-                "docker",
-                "ps",
-                "-a",
-                "--filter",
-                f"label=com.docker.compose.project={project}",
-                "--format",
-                _PS_FORMAT,
-            ],
+            ["docker", "ps", "-a", "--format", _PS_FORMAT],
             capture_output=True,
             text=True,
             timeout=_PS_TIMEOUT_SECONDS,
@@ -424,30 +528,113 @@ def query_restart_policies(names: list[str]) -> dict[str, str]:
     return parse_inspect_output(result.stdout)
 
 
-# project -> (monotonic timestamp, modules)
-_CACHE: dict[str, tuple[float, list[ServiceModule]]] = {}
+# ---------------------------------------------------------------------------
+# Snapshot
+# ---------------------------------------------------------------------------
 
 
-def load_modules(project: str) -> list[ServiceModule]:
-    """Modules of one Compose project, cached for `_CACHE_TTL_SECONDS`.
+def addon_projects(config_dir: str, workspace_dir: str) -> dict[str, list[ExpectedService]]:
+    """Compose project name to declared services, for every active add-on.
+
+    The project name is the add-on directory's basename, because that is what
+    `lib/sh/addon.sh` pins with `docker compose -p` -- and what
+    `state.compute_status` already matches against. Deriving it the same way in
+    both places is what keeps `/addons` and `/services` from disagreeing.
+
+    `path` is absolute for everything papaia-ctl writes; a relative one is
+    resolved against the workspace, the root the manifest is relative to.
+    """
+    deployment = load_deployment_yaml(config_dir)
+    projects: dict[str, list[ExpectedService]] = {}
+    for name, entry in deployment_addons_by_name(deployment).items():
+        if not entry.get("active", False):
+            continue
+        raw_path = str(entry.get("path", ""))
+        if not raw_path:
+            continue
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = Path(workspace_dir) / path
+        projects[path.name] = addon_inventory(str(path), fallback_module=name)
+    return projects
+
+
+def build_snapshot(config_dir: str, workspace_dir: str, output: str) -> StackSnapshot:
+    """Turn one `docker ps` reading plus the declared state into a snapshot.
+
+    Split out from `load_snapshot` so the whole merge is testable without a
+    Docker daemon -- which is also the state CI runs in.
+    """
+    by_project = parse_ps_output(output)
+    running = {
+        project
+        for project, modules in by_project.items()
+        if project
+        and any(c.state == "running" for m in modules for c in m.containers)
+    }
+
+    core_project = compose_project(config_dir)
+    core = merge_expected(
+        by_project.get(core_project, []),
+        core_inventory(workspace_dir, active_profiles(config_dir)),
+    )
+
+    addons: list[ServiceModule] = []
+    for project, expected in sorted(addon_projects(config_dir, workspace_dir).items()):
+        addons.extend(merge_expected(by_project.get(project, []), expected))
+
+    return StackSnapshot(core=core, addons=addons, running_projects=running)
+
+
+# (monotonic timestamp, snapshot). One manager process serves one deployment,
+# so a single entry is all this ever needs.
+_CACHE: tuple[float, StackSnapshot] | None = None
+
+
+def load_snapshot(config_dir: str, workspace_dir: str) -> StackSnapshot:
+    """The whole stack as it is and as it should be, cached for the TTL.
 
     Blocking: call it from a thread, the way the routers do.
     """
+    global _CACHE
+
     now = time.monotonic()
-    cached = _CACHE.get(project)
-    if cached is not None and now - cached[0] < _CACHE_TTL_SECONDS:
-        return cached[1]
+    if _CACHE is not None and now - _CACHE[0] < _CACHE_TTL_SECONDS:
+        return _CACHE[1]
 
-    output = query_containers(project)
-    # A failed query keeps no cache entry: the next request should retry
-    # rather than pin "unknown" in place for the TTL.
+    output = query_containers()
+    # A failed query keeps no cache entry: the next request should retry rather
+    # than pin "unknown" in place for the TTL. It also returns *nothing* rather
+    # than the declared state -- reporting every service as missing because the
+    # socket was unreachable would invent an outage out of ignorance.
     if output is None:
-        return []
+        return StackSnapshot()
 
-    modules = parse_ps_output(output)
+    snapshot = build_snapshot(config_dir, workspace_dir, output)
     completed = [
-        c.name for m in modules for c in m.containers if c.health is ServiceHealth.COMPLETED
+        c.name
+        for section in (snapshot.core, snapshot.addons)
+        for m in section
+        for c in m.containers
+        if c.health is ServiceHealth.COMPLETED
     ]
-    modules = apply_restart_policies(modules, query_restart_policies(completed))
-    _CACHE[project] = (now, modules)
-    return modules
+    policies = query_restart_policies(completed)
+    snapshot.core = apply_restart_policies(snapshot.core, policies)
+    snapshot.addons = apply_restart_policies(snapshot.addons, policies)
+
+    _CACHE = (now, snapshot)
+    return snapshot
+
+
+def invalidate_snapshot() -> None:
+    """Drop the cached reading because something just changed Docker state.
+
+    The TTL exists to keep polled views from forking a subprocess per request,
+    not to defer known-stale data. Every papaia-ctl run goes through
+    `core.ctl`, which calls this when the subprocess exits -- so an add-on that
+    was just started reads as running immediately instead of up to five seconds
+    later, both on the services page and in `compute_status`.
+    """
+    global _CACHE
+
+    _CACHE = None
