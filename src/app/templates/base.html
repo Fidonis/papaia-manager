@@ -240,7 +240,7 @@
 {% set nav_addons    = path.startswith("/addons") or path.startswith("/jobs") %}
 {% set nav_services  = path.startswith("/services") %}
 {% set nav_catalogs  = path.startswith("/catalogs") %}
-{% set nav_maintenance = path.startswith("/maintenance") %}
+{% set nav_backup    = path.startswith("/backup") %}
 
 <div class="flex">
 
@@ -268,7 +268,10 @@
     </div>
 
     <!-- Navigation -->
-    <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
+    {# `gap` rather than `space-y`: the latter's `> * ~ *` selector outranks a
+       `mt-*` utility on a direct child, so the admin group below could not set
+       its own separating margin. #}
+    <nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
 
       {# aria-label on every nav row: the visible text is display:none while the
          sidebar is a rail, which also removes it from the accessibility tree. #}
@@ -283,44 +286,58 @@
 
       {# Administrative surfaces. Hiding them here is presentation only --
          the routes and their /api/v1 counterparts enforce the admin role
-         themselves, so a typed URL is rejected just the same. #}
+         themselves, so a typed URL is rejected just the same.
+
+         The caption is a `sidebar-label`, so it disappears with every other
+         label the moment the panel becomes a rail -- the divider on the
+         wrapper stays and carries the grouping on its own. That is also why
+         the divider sits on a wrapper rather than being a row of its own: a
+         bare `<hr>` would have to be hidden and re-shown per state. #}
       {% if is_admin %}
-      <a href="/services" aria-label="Services"
-         class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                {{ 'bg-primary text-primary-content' if nav_services else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
-        </svg>
-        <span class="sidebar-label">Services</span>
-      </a>
+      <div class="mt-3 flex flex-col gap-0.5 border-t border-base-300 pt-3">
 
-      <a href="/addons" aria-label="Add-Ons"
-         class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                {{ 'bg-primary text-primary-content' if nav_addons else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-        </svg>
-        <span class="sidebar-label">Add-Ons</span>
-      </a>
+        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">Administration</p>
 
-      <a href="/catalogs" aria-label="Catalogs"
-         class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                {{ 'bg-primary text-primary-content' if nav_catalogs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
-        </svg>
-        <span class="sidebar-label">Catalogs</span>
-      </a>
+        <a href="/services" aria-label="Services"
+           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                  {{ 'bg-primary text-primary-content' if nav_services else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+          </svg>
+          <span class="sidebar-label">Services</span>
+        </a>
 
-      <a href="/maintenance" aria-label="Maintenance"
-         class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                {{ 'bg-primary text-primary-content' if nav_maintenance else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-        </svg>
-        <span class="sidebar-label">Maintenance</span>
-      </a>
+        <a href="/addons" aria-label="Add-Ons"
+           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                  {{ 'bg-primary text-primary-content' if nav_addons else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+          </svg>
+          <span class="sidebar-label">Add-Ons</span>
+        </a>
+
+        <a href="/catalogs" aria-label="Catalogs"
+           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                  {{ 'bg-primary text-primary-content' if nav_catalogs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
+          </svg>
+          <span class="sidebar-label">Catalogs</span>
+        </a>
+
+        {# Archive box rather than the former cog: collapsed to a rail the icon is
+           the only thing left of this entry, so it has to carry the meaning the
+           label spells out. #}
+        <a href="/backup" aria-label="Backup / Restore"
+           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                  {{ 'bg-primary text-primary-content' if nav_backup else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
+          </svg>
+          <span class="sidebar-label">Backup / Restore</span>
+        </a>
+
+      </div>
       {% endif %}
 
     </nav>

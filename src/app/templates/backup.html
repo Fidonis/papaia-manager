@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Maintenance — papAIa manager{% endblock %}
+{% block title %}Backup / Restore — papAIa manager{% endblock %}
 
-{% block page_title %}Maintenance{% endblock %}
+{% block page_title %}Backup / Restore{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Back up and restore the stack</p>{% endblock %}
 
 {% block content %}
@@ -11,7 +11,7 @@
 <div
   id="restore-status-slot"
   class="mb-6"
-  hx-get="/partials/maintenance/restore-status"
+  hx-get="/partials/backup/restore-status"
   hx-trigger="load"
   hx-swap="innerHTML"
 ></div>
@@ -69,14 +69,14 @@
 <div class="mb-3 flex items-center justify-between gap-3">
   <h2 class="font-brand text-lg font-bold">Restore points</h2>
   <button class="btn btn-outline btn-xs"
-          hx-get="/partials/maintenance/restore-points"
+          hx-get="/partials/backup/restore-points"
           hx-target="#restore-point-list"
           hx-swap="innerHTML">Refresh</button>
 </div>
 
 <div
   id="restore-point-list"
-  hx-get="/partials/maintenance/restore-points"
+  hx-get="/partials/backup/restore-points"
   hx-trigger="load"
   hx-swap="innerHTML"
 >
@@ -152,7 +152,7 @@
 
 <script>
 // Shared error extraction: the API answers with {detail: ...} on every 4xx.
-async function _maintenanceError(r) {
+async function _apiError(r) {
   try {
     const e = await r.json();
     return e.detail || JSON.stringify(e);
@@ -178,14 +178,14 @@ function startBackup(onJobId) {
     body: JSON.stringify(body),
   }).then(async function (r) {
     if (!r.ok) {
-      showToast('error', 'Backup failed: ' + (await _maintenanceError(r)));
+      showToast('error', 'Backup failed: ' + (await _apiError(r)));
       return false;
     }
     var data = await r.json();
     if (onJobId) onJobId(data.job_id);
     return new Promise(function (resolve) {
       _pollJob(data.job_id, function (job) {
-        htmx.ajax('GET', '/partials/maintenance/restore-points',
+        htmx.ajax('GET', '/partials/backup/restore-points',
                   { target: '#restore-point-list', swap: 'innerHTML' });
         if (job.status === 'succeeded') {
           showToast('success', 'Backup complete.');
@@ -225,14 +225,14 @@ function submitRestore() {
     body: JSON.stringify(body),
   }).then(async function (r) {
     if (!r.ok) {
-      showToast('error', 'Restore could not be started: ' + (await _maintenanceError(r)));
+      showToast('error', 'Restore could not be started: ' + (await _apiError(r)));
       document.getElementById('restore-go').disabled = false;
       return;
     }
     modal.close();
     showToast('success', 'Restore started.');
     // Load the status panel, which then polls itself across the restart.
-    htmx.ajax('GET', '/partials/maintenance/restore-status',
+    htmx.ajax('GET', '/partials/backup/restore-status',
               { target: '#restore-status-slot', swap: 'innerHTML' });
   });
 }
@@ -245,12 +245,12 @@ function acknowledgeRestore() {
     headers: { 'X-CSRF-Token': _csrf() },
   }).then(async function (r) {
     if (!r.ok) {
-      showToast('error', 'Could not dismiss the restore: ' + (await _maintenanceError(r)));
+      showToast('error', 'Could not dismiss the restore: ' + (await _apiError(r)));
       return;
     }
-    htmx.ajax('GET', '/partials/maintenance/restore-status',
+    htmx.ajax('GET', '/partials/backup/restore-status',
               { target: '#restore-status-slot', swap: 'innerHTML' });
-    htmx.ajax('GET', '/partials/maintenance/restore-points',
+    htmx.ajax('GET', '/partials/backup/restore-points',
               { target: '#restore-point-list', swap: 'innerHTML' });
   });
 }
@@ -266,7 +266,7 @@ function openRestorePointDetail(id) {
   fetch('/api/v1/maintenance/restore-points/' + encodeURIComponent(id))
     .then(async function (r) {
       if (!r.ok) {
-        body.textContent = 'Could not load details: ' + (await _maintenanceError(r));
+        body.textContent = 'Could not load details: ' + (await _apiError(r));
         return;
       }
       var data = await r.json();
