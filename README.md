@@ -56,6 +56,22 @@ server-side, so an admin-only tile is absent from a regular user's response
 rather than hidden by CSS. Authorization is enforced by the route
 dependencies, so the JSON API is restricted exactly like the pages.
 
+**Services.** An admin-only page at `/services` showing what the core stack is
+doing right now. Containers are read from `docker ps` and grouped by the
+`de.fidonis.module` label the core Compose files put on every service, so each
+module lists its own containers with their role, uptime, healthcheck result and
+published ports; the module in the worst state sorts to the top. A container
+without a healthcheck counts as healthy while it runs, and a one-shot container
+that exited cleanly is reported as completed rather than dragging its module
+down. The view is read-only — starting and stopping core services stays with
+`papaia-ctl`.
+
+The same data drives a status pill in the header of every page, visible to
+every authenticated account regardless of role. It carries the aggregate only —
+the worst state across the stack — and links to the services page for
+administrators. A user without the admin role therefore learns that something
+in the stack is unhealthy, but not which service.
+
 **Catalogs.** A catalog is a source of add-ons — a public or private Git
 repository, or a local directory — registered at runtime (not versioned in
 this repo). Each catalog is scanned for top-level `papaia-app.yaml`
@@ -150,6 +166,7 @@ papaia-manager/
 │       ├── config.py       # Pydantic Settings
 │       ├── auth/           # OIDC + PKCE login, CSRF, admin-role dependency
 │       ├── core/           # catalogs, snapshots, status, env-forms, jobs, audit,
+│       │                   # services (core-stack container status),
 │       │                   # backups (restore-point catalogue), runner (detached restore)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance

@@ -12,6 +12,8 @@ It also serves the stack dashboard: a tile overview of the deployed applications
 
 A third surface, Maintenance, drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below).
 
+A fourth surface, Services, reports the live state of the core stack: containers read from `docker ps`, grouped by their `de.fidonis.module` label and scored from their healthcheck. It is read-only — lifecycle control over core services stays with `papaia-ctl`, whose core-verb allowlist holds nothing but `backup`. An aggregate of the same data renders as a status pill in the header of every page, for every authenticated role.
+
 Authentication is handled natively via OIDC Authorization Code Flow with PKCE against Keycloak. Two configurable realm roles gate access: the admin role reaches every surface, while the user role reaches the dashboard only. Authorization is enforced by the route dependencies, so the JSON API is restricted exactly like the pages.
 
 ---
@@ -41,6 +43,7 @@ papaia-manager/
 │       │   ├── runner.py       # Detached `papaia-ctl restore` container
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
 │       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering
+│       │   ├── services.py     # Core-stack container status from docker ps, by module label
 │       │   ├── envfile.py      # Shared KEY=value env-file parsing
 │       │   ├── snapshots.py    # git-archive materialization + installed.yaml
 │       │   ├── state.py        # Merged addon status (catalog × deployment × Docker)
@@ -93,8 +96,8 @@ SessionMiddleware  (itsdangerous-signed cookie)
   ▼
 role dependency  (deps.py → roles.py)
   │  AdminUser  →  MANAGER_ADMIN_ROLE required        (add-ons, catalogs, jobs,
-  │                                                    maintenance)
-  │  AnyUser    →  admin OR MANAGER_USER_ROLE         (dashboard)
+  │                                                    maintenance, services)
+  │  AnyUser    →  admin OR MANAGER_USER_ROLE         (dashboard, status pill)
   │  role missing  →  403  (HTML page, or JSON under /api/)
   ▼
 Route handler

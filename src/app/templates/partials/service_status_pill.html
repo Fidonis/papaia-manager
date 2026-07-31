@@ -1,0 +1,48 @@
+{# Aggregate status of the core stack, rendered into the header of every page.
+
+   Only administrators get a link: /services enforces the admin role itself, so
+   pointing everyone at it would hand non-admins a pill that answers with 403.
+
+   Both branches spell their classes out. app.css is built by scanning these
+   templates, so a class assembled from a variable would not survive the purge. #}
+{% macro pill_body(state, affected) %}
+  {% if state == "stopped" %}
+    <span class="h-2 w-2 shrink-0 rounded-full bg-error"></span>
+    {{ affected }} {{ 'service' if affected == 1 else 'services' }} down
+  {% elif state == "unhealthy" %}
+    <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>
+    {{ affected }} {{ 'service' if affected == 1 else 'services' }} degraded
+  {% elif state == "starting" %}
+    <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>
+    {{ affected }} {{ 'service' if affected == 1 else 'services' }} starting
+  {% elif state == "unknown" %}
+    <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>
+    Status unknown
+  {% else %}
+    <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span>
+    All services running
+  {% endif %}
+{% endmacro %}
+
+{% set state = overall | string %}
+{% if state == "stopped" %}
+  {% set tone = "badge-error" %}
+{% elif state in ("unhealthy", "starting") %}
+  {% set tone = "badge-warning" %}
+{% elif state == "unknown" %}
+  {% set tone = "badge-ghost" %}
+{% else %}
+  {% set tone = "badge-success" %}
+{% endif %}
+
+{% if is_admin %}
+<a href="/services"
+   aria-label="Service status — open the services page"
+   class="badge badge-outline {{ tone }} gap-2 py-3 font-medium whitespace-nowrap hover:opacity-80 transition-opacity">
+  {{ pill_body(state, affected) }}
+</a>
+{% else %}
+<span class="badge badge-outline {{ tone }} gap-2 py-3 font-medium whitespace-nowrap">
+  {{ pill_body(state, affected) }}
+</span>
+{% endif %}

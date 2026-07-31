@@ -1,0 +1,105 @@
+{% if not modules %}
+<div class="flex flex-col items-center py-24 gap-4 opacity-60">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M5 12a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H7a2 2 0 01-2-2v-2zM5 5a2 2 0 012-2h10a2 2 0 012 2M7 20h10M8 13h.01"/>
+  </svg>
+  <p class="text-lg font-semibold">No containers found</p>
+  <p class="text-sm">Either the stack is down, or the Docker socket is not reachable from this container.</p>
+</div>
+{% else %}
+
+{# ── Stats row ──────────────────────────────────────────────────── #}
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Modules</p>
+    <p class="mt-1 text-3xl font-bold font-brand">{{ total }}</p>
+    <p class="text-xs opacity-40 mt-0.5">Total</p>
+  </div>
+  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Running</p>
+    <p class="mt-1 text-3xl font-bold font-brand text-success">{{ cnt_running }}</p>
+    <p class="text-xs opacity-40 mt-0.5">healthy</p>
+  </div>
+  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Degraded</p>
+    <p class="mt-1 text-3xl font-bold font-brand text-warning">{{ cnt_degraded }}</p>
+    <p class="text-xs opacity-40 mt-0.5">starting or failing</p>
+  </div>
+  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Stopped</p>
+    <p class="mt-1 text-3xl font-bold font-brand text-error">{{ cnt_stopped }}</p>
+    <p class="text-xs opacity-40 mt-0.5">not serving</p>
+  </div>
+</div>
+
+{# ── Section heading ────────────────────────────────────────────── #}
+<div class="flex items-center justify-between mb-4">
+  <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">
+    Core stack &nbsp;·&nbsp; {{ total }} {{ 'module' if total == 1 else 'modules' }}
+  </p>
+  <p class="text-xs opacity-40">Refreshes every 15 s</p>
+</div>
+
+{# Modules arrive worst-first from parse_ps_output, so the thing that needs
+   attention is the first thing on the page. #}
+<div class="overflow-hidden rounded-xl border border-base-300">
+  {% for module in modules %}
+  {% set mh = module.health | string %}
+
+  {# ── Module header ── #}
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 border-base-300
+              {% if not loop.first %}border-t-2{% endif %}
+              {% if mh == 'stopped' %}bg-error/10
+              {% elif mh in ('unhealthy', 'starting') %}bg-warning/10
+              {% else %}bg-base-200{% endif %}">
+    {% if mh == 'stopped' %}
+      <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-error"></span>
+    {% elif mh in ('unhealthy', 'starting') %}
+      <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-warning"></span>
+    {% elif mh == 'unknown' %}
+      <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-neutral"></span>
+    {% else %}
+      <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
+    {% endif %}
+    <p class="font-semibold text-sm">{{ module.name }}</p>
+    <p class="text-xs opacity-60">{{ module.summary }}</p>
+  </div>
+
+  {# ── Containers ── #}
+  {% for container in module.containers %}
+  <div class="grid grid-cols-2 md:grid-cols-4 items-center gap-x-4 gap-y-1 px-5 py-2.5 text-sm
+              border-t border-base-300 bg-base-100">
+    <div class="col-span-2 md:col-span-1 min-w-0 truncate">
+      {{ container.service }}
+      {% if container.role %}<span class="opacity-40"> · {{ container.role }}</span>{% endif %}
+    </div>
+    <div class="font-mono text-xs opacity-60 truncate">{{ container.status_text }}</div>
+    <div class="text-xs">
+      {% set ch = container.health | string %}
+      {% if ch == 'healthy' %}
+        <span class="text-success">healthy</span>
+      {% elif ch == 'unhealthy' %}
+        <span class="text-warning">unhealthy</span>
+      {% elif ch == 'starting' %}
+        <span class="text-warning">starting</span>
+      {% elif ch == 'stopped' %}
+        <span class="text-error">stopped</span>
+      {% elif ch == 'completed' %}
+        <span class="opacity-50">completed</span>
+      {% else %}
+        <span class="opacity-50">unknown</span>
+      {% endif %}
+    </div>
+    <div class="text-xs opacity-60 text-right">
+      {%- if container.ports -%}
+        {% for port in container.ports %}:{{ port }}{% if not loop.last %} {% endif %}{% endfor %}
+      {%- else -%}
+        <span class="opacity-50">—</span>
+      {%- endif -%}
+    </div>
+  </div>
+  {% endfor %}
+
+  {% endfor %}
+</div>
+{% endif %}
