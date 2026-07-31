@@ -56,22 +56,42 @@ server-side, so an admin-only tile is absent from a regular user's response
 rather than hidden by CSS. Authorization is enforced by the route
 dependencies, so the JSON API is restricted exactly like the pages.
 
-**Services.** An admin-only page at `/services` showing what the core stack is
-doing right now. Containers are read from `docker ps` and grouped by the
-`de.fidonis.module` label the core Compose files put on every service, so each
-module lists its own containers with their role, uptime, healthcheck result and
-published ports; the module in the worst state sorts to the top. A container
-without a healthcheck counts as healthy while it runs, and a one-shot container
-that has finished its work is reported as completed rather than dragging its
-module down — recognised by its restart policy, so a service that was shut down
-still reads as stopped even though it exited just as cleanly. The view is
-read-only — starting and stopping core services stays with `papaia-ctl`.
+**Services.** An admin-only page at `/services` showing what this deployment is
+configured to run and how much of it is up. Containers are read from `docker ps`
+and grouped by the `de.fidonis.module` label the Compose files put on every
+service, so each module lists its own containers with their role, uptime,
+healthcheck result and published ports; the module in the worst state sorts to
+the top. A container without a healthcheck counts as healthy while it runs, and
+a one-shot container that has finished its work is reported as completed rather
+than dragging its module down — recognised by its restart policy, so a service
+that was shut down still reads as stopped even though it exited just as cleanly.
+The view is read-only — starting and stopping core services stays with
+`papaia-ctl`.
 
-The same data drives a status pill in the header of every page, visible to
-every authenticated account regardless of role. It carries the aggregate only —
-the worst state across the stack — and links to the services page for
-administrators. A user without the admin role therefore learns that something
-in the stack is unhealthy, but not which service.
+Live containers alone cannot say what is *missing*, so the page reads the
+declared state next to them. For the core stack that is the Compose fragments
+listed in `papaia/src/docker-compose.yml`, filtered by the profiles enabled in
+`COMPOSE_PROFILES`; for add-ons it is the active entries of `deployment.yaml`
+and their own Compose files. A declared service with no container renders as
+*not deployed* instead of being absent, which is what separates "LocalAI is
+configured but was never started" from "this deployment has no LocalAI". A
+torn-down stack therefore reports every module rather than an empty page —
+`papaia-ctl down` removes containers, it does not stop them. An unreachable
+Docker socket still reports nothing at all: not knowing is not the same as
+knowing it is gone.
+
+Add-ons appear in their own section below the core stack. They run in a separate
+Compose project each, but use the same labels, so they group into modules exactly
+like core services do. Bear in mind that few add-ons define healthchecks, so a
+green add-on module says only that its containers are running.
+
+The same data drives two status pills in the header of every page, visible to
+every authenticated account regardless of role: one for the core stack, one for
+add-ons. Each carries the aggregate only — the worst state in its section — and
+links to the matching page for administrators. A user without the admin role
+therefore learns that something is unhealthy, but not which service. Core and
+add-ons stay separate so that a failing add-on out of a customer catalogue does
+not report the stack itself as broken.
 
 **Catalogs.** A catalog is a source of add-ons — a public or private Git
 repository, or a local directory — registered at runtime (not versioned in
@@ -170,7 +190,7 @@ papaia-manager/
 │       ├── config.py       # Pydantic Settings
 │       ├── auth/           # OIDC + PKCE login, CSRF, admin-role dependency
 │       ├── core/           # catalogs, snapshots, status, env-forms, jobs, audit,
-│       │                   # services (core-stack container status),
+│       │                   # services (container status), inventory (declared state),
 │       │                   # backups (restore-point catalogue), runner (detached restore)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance

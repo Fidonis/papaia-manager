@@ -1,7 +1,6 @@
 """Merged addon status: catalog × deployment.yaml × live Docker containers."""
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -10,8 +9,6 @@ from typing import Any
 import yaml
 
 from app.core.snapshots import InstalledAddon
-
-logger = logging.getLogger(__name__)
 
 
 class AddonStatus(StrEnum):
@@ -44,7 +41,13 @@ def compute_status(
     running_projects: set[str],
     workspace_dir: str,
 ) -> AddonStatus:
-    """Return the merged status for one addon."""
+    """Return the merged status for one addon.
+
+    ``running_projects`` used to come from a second, independent ``docker ps``
+    in this module. It now arrives as ``services.StackSnapshot.running_projects``
+    -- one reading of the host, shared with the services page, which is what
+    keeps the two surfaces from disagreeing about whether an addon is up.
+    """
     if deployment_entry is None:
         return AddonStatus.AVAILABLE
 
@@ -85,32 +88,3 @@ def deployment_addons_by_name(deployment: dict[str, Any]) -> dict[str, dict[str,
         for entry in (deployment.get("addons") or [])
         if entry.get("name")
     }
-
-
-def load_running_compose_projects() -> set[str]:
-    """Return the set of running Docker Compose project names via docker ps.
-
-    Uses the ``com.docker.compose.project`` label. Falls back to an empty
-    set if the Docker socket is unreachable (e.g. in unit tests).
-    """
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            [
-                "docker",
-                "ps",
-                "--format",
-                "{{.Label \"com.docker.compose.project\"}}",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            logger.debug("docker ps failed: %s", result.stderr)
-            return set()
-        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
-        logger.debug("could not reach Docker socket: %s", exc)
-        return set()

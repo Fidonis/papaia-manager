@@ -19,10 +19,9 @@ from app.core.envfile import load_env_file
 from app.core.resolve import resolve_catalog_addons
 from app.core.services import (
     ServiceHealth,
-    ServiceModule,
-    compose_project,
+    StackSnapshot,
     count_by_health,
-    load_modules,
+    load_snapshot,
     overall_health,
 )
 from app.core.snapshots import load_installed, managed_snapshot_path
@@ -31,7 +30,6 @@ from app.core.state import (
     compute_status,
     deployment_addons_by_name,
     load_deployment_yaml,
-    load_running_compose_projects,
 )
 from app.core.tiles import TileGroup, load_tiles, visible_groups
 from app.templating import templates as _templates
@@ -89,7 +87,7 @@ async def services_page(
     request: Request,
     user: AdminUser,
 ) -> HTMLResponse:
-    """Live status of the core stack's containers, grouped by module."""
+    """What this deployment is configured to run, against what is up."""
     return _templates.TemplateResponse(request, "services.html", _ctx(request, user))
 
 
@@ -158,23 +156,31 @@ async def partial_service_status(
     user: AnyUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
-    """The header pill: one aggregate value, for every authenticated role.
+    """The header pills: one aggregate per section, for every authenticated role.
 
-    Deliberately not filtered by visibility. The pill carries no service
-    names, only the worst state in the stack, so a non-admin learns that
-    something is wrong without learning what -- which is the point of putting
-    it in front of them at all.
+    Deliberately not filtered by visibility. A pill carries no service names,
+    only the worst state in its section, so a non-admin learns that something is
+    wrong without learning what -- which is the point of putting it in front of
+    them at all.
+
+    Core and add-ons stay separate rather than being folded into one value: a
+    broken add-on out of a customer catalogue would otherwise repaint the stack
+    pill for everyone who is logged in.
     """
-    modules = await _load_service_modules(settings)
-    overall = overall_health(modules)
+    snapshot = await _load_stack_snapshot(settings)
+    core_overall = overall_health(snapshot.core)
+    addon_overall = overall_health(snapshot.addons)
     resp = _templates.TemplateResponse(
         request,
         "partials/service_status_pill.html",
         _ctx(
             request,
             user,
-            overall=overall,
-            affected=count_by_health(modules)[overall],
+            core_overall=core_overall,
+            core_affected=count_by_health(snapshot.core)[core_overall],
+            addon_overall=addon_overall,
+            addon_affected=count_by_health(snapshot.addons)[addon_overall],
+            addon_total=len(snapshot.addons),
         ),
     )
     resp.headers["Cache-Control"] = "no-store"
@@ -187,19 +193,23 @@ async def partial_services(
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
-    modules = await _load_service_modules(settings)
-    counts = count_by_health(modules)
+    snapshot = await _load_stack_snapshot(settings)
+    # The tiles count the page as a whole -- an operator wants to know how many
+    # modules are in trouble, not how the trouble splits across two sections.
+    counts = count_by_health(snapshot.core + snapshot.addons)
     resp = _templates.TemplateResponse(
         request,
         "partials/service_list.html",
         _ctx(
             request,
             user,
-            modules=modules,
-            total=len(modules),
+            core_modules=snapshot.core,
+            addon_modules=snapshot.addons,
+            total=len(snapshot.core) + len(snapshot.addons),
             cnt_running=counts[ServiceHealth.HEALTHY] + counts[ServiceHealth.COMPLETED],
             cnt_degraded=counts[ServiceHealth.UNHEALTHY] + counts[ServiceHealth.STARTING],
             cnt_stopped=counts[ServiceHealth.STOPPED],
+            cnt_missing=counts[ServiceHealth.MISSING],
         ),
     )
     resp.headers["Cache-Control"] = "no-store"
@@ -369,10 +379,19 @@ async def legacy_partial_restore_status() -> RedirectResponse:
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-async def _load_service_modules(settings: Settings) -> list[ServiceModule]:
-    """Core-stack modules from Docker. Blocking `docker ps`, so off-thread."""
+async def _load_stack_snapshot(settings: Settings) -> StackSnapshot:
+    """Core, add-ons and running projects in one reading.
+
+    Blocking (`docker ps` plus a YAML scan of the Compose files), so off-thread.
+    Cheap to call more than once per request: `load_snapshot` caches for five
+    seconds, which is what lets the add-on views share this reading instead of
+    running a second query.
+    """
     return await asyncio.get_running_loop().run_in_executor(
-        None, load_modules, compose_project(settings.papaia_config_dir)
+        None,
+        load_snapshot,
+        settings.papaia_config_dir,
+        settings.papaia_workspace_dir,
     )
 
 
@@ -387,9 +406,7 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
     registry = load_registry(settings.papaia_config_dir)
     deployment = load_deployment_yaml(settings.papaia_config_dir)
     installed_map = load_installed(settings.papaia_config_dir)
-    running = await asyncio.get_running_loop().run_in_executor(
-        None, load_running_compose_projects
-    )
+    running = (await _load_stack_snapshot(settings)).running_projects
 
     deployment_addons = deployment_addons_by_name(deployment)
 
@@ -490,9 +507,7 @@ async def _get_addon(
     registry = load_registry(settings.papaia_config_dir)
     deployment = load_deployment_yaml(settings.papaia_config_dir)
     installed_map = load_installed(settings.papaia_config_dir)
-    running = await asyncio.get_running_loop().run_in_executor(
-        None, load_running_compose_projects
-    )
+    running = (await _load_stack_snapshot(settings)).running_projects
 
     matches = [
         r
