@@ -286,6 +286,11 @@ def _stack_command(action: str, ctl: str, config_dir: str, clean_up: bool) -> li
     fails; leaving a stack down is recoverable, restarting one that never came
     down cleanly is not.
 
+    `clean_up` attaches to the stop half, which is the only half that has a flag
+    for it. On a restart that turns the operation into a full recreate: the
+    containers are removed and built again from the rendered configuration,
+    rather than merely stopped and started.
+
     Nothing here is interpolated from a request: `config_dir` comes from settings
     and `action` is checked against `STACK_ACTIONS` by the caller.
     """
@@ -312,8 +317,8 @@ def build_stack_run_args(
     """
     if action not in STACK_ACTIONS:
         raise ValueError(f"action {action!r} is not in {sorted(STACK_ACTIONS)}")
-    if clean_up and action != "stop":
-        raise ValueError("--clean-up is only meaningful when stopping")
+    if clean_up and action == "start":
+        raise ValueError("--clean-up needs something to stop")
 
     args = _base_run_args(
         spec,

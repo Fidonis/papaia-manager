@@ -301,11 +301,19 @@ def test_an_unknown_stack_action_is_refused(spec: ContainerSpec) -> None:
         _stack(spec, "uninstall")
 
 
-def test_clean_up_is_refused_on_anything_but_a_stop(spec: ContainerSpec) -> None:
-    # papaia-ctl start has no such flag, so honouring it would be a lie.
-    for action in ("start", "restart"):
-        with pytest.raises(ValueError, match="only meaningful when stopping"):
-            _stack(spec, action, clean_up=True)
+def test_clean_up_rides_along_with_the_stop_half_of_a_restart(spec: ContainerSpec) -> None:
+    # A restart that removes the containers in between is a full recreate. The
+    # flag belongs on the stop, which is the only half that has one.
+    stop, start = _command(_stack(spec, "restart", clean_up=True), spec).split(" && ")
+    assert stop.endswith("--clean-up")
+    assert "--clean-up" not in start
+
+
+def test_clean_up_is_refused_on_a_start(spec: ContainerSpec) -> None:
+    # papaia-ctl start has no such flag and stops nothing, so honouring it would
+    # be a lie.
+    with pytest.raises(ValueError, match="needs something to stop"):
+        _stack(spec, "start", clean_up=True)
 
 
 def test_the_legacy_restore_point_label_is_still_read() -> None:

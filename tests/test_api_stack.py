@@ -36,18 +36,20 @@ def test_a_refused_selection_is_a_400_not_a_500(groups: list[str]) -> None:
     assert exc.value.status_code == 400
 
 
-def test_clean_up_is_accepted_on_a_stop() -> None:
-    _check_clean_up("stop", clean_up=True)
+@pytest.mark.parametrize("action", ["stop", "restart"])
+def test_clean_up_is_accepted_wherever_something_is_stopped(action: str) -> None:
+    # On a restart it attaches to the stop half and makes the operation a full
+    # recreate, which is a choice the operator gets to make either way.
+    _check_clean_up(action, clean_up=True)
 
 
-@pytest.mark.parametrize("action", ["start", "restart"])
-def test_clean_up_is_refused_where_papaia_ctl_has_no_flag_for_it(action: str) -> None:
+def test_clean_up_is_refused_on_a_start() -> None:
     # Ignoring it would confirm an operation that did not happen: the caller
     # asked for the containers to be removed and would be told it worked.
     with pytest.raises(HTTPException) as exc:
-        _check_clean_up(action, clean_up=True)
+        _check_clean_up("start", clean_up=True)
     assert exc.value.status_code == 400
-    assert "only supported when stopping" in exc.value.detail
+    assert "needs something to stop" in exc.value.detail
 
 
 @pytest.mark.parametrize("action", ["start", "stop", "restart"])

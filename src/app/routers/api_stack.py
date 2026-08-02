@@ -94,15 +94,18 @@ def _flag(names: list[str], allowed: dict[str, frozenset[str]]) -> str:
 
 
 def _check_clean_up(action: str, clean_up: bool) -> None:
-    """Refuse `clean_up` where papaia-ctl has no flag for it.
+    """Refuse `clean_up` where there is nothing for it to attach to.
 
-    Silently ignoring it would confirm an operation that did not happen: the
-    caller asked for the containers to be removed and would be told it worked.
+    It maps onto `papaia-ctl stop --clean-up`, so it is meaningful for a stop and
+    for the stop half of a restart -- which turns that restart into a full
+    recreate. A start has no such flag, and silently ignoring the field there
+    would confirm an operation that did not happen: the caller asked for the
+    containers to be removed and would be told it worked.
     """
-    if clean_up and action != "stop":
+    if clean_up and action == "start":
         raise HTTPException(
             status_code=400,
-            detail=f"clean_up is only supported when stopping, not on {action}",
+            detail="clean_up needs something to stop, and start stops nothing",
         )
 
 

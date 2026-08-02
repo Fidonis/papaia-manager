@@ -21,9 +21,9 @@
   </div>
   <ul tabindex="0" class="dropdown-content z-10 menu bg-base-100 rounded-box w-72 p-2 shadow border border-base-300">
     <li class="menu-title text-xs">Every profile, this panel included</li>
-    <li><a @click="stackAction('start')">Start stack</a></li>
-    <li><a @click="stackAction('restart')">Restart stack</a></li>
-    <li><a @click="stackAction('stop')">Stop stack</a></li>
+    <li><a @click="askStack('start')">Start stack</a></li>
+    <li><a @click="askStack('restart')">Restart stack</a></li>
+    <li><a @click="askStack('stop')">Stop stack</a></li>
     <li class="mt-1 pt-1 border-t border-base-300">
       <span class="text-xs opacity-50 block leading-snug">
         Runs in a separate container and keeps going after this page goes down.
@@ -80,6 +80,9 @@
     <p class="text-sm opacity-60 mb-4" x-show="pending === 'restart'">
       Stops the selected profiles, then starts them again. One job, one log.
     </p>
+    <p class="text-sm opacity-60 mb-4" style="display:none" x-show="pending === 'restart' && cleanUp">
+      With the containers removed in between, this is a full recreate.
+    </p>
 
     <div class="rounded-lg border border-base-300 px-4 py-3 mb-4 max-h-56 overflow-y-auto">
       <template x-for="g in sel" :key="g">
@@ -101,12 +104,15 @@
       </span>
     </div>
 
-    <label class="flex items-center gap-2 text-sm mb-5" x-show="pending === 'stop'">
+    {# Offered wherever something is stopped. On a restart the containers come
+       straight back, so the consequence differs and the hint below says which. #}
+    <label class="flex items-center gap-2 text-sm mb-5" x-show="pending !== 'start'">
       <input type="checkbox" class="checkbox checkbox-sm" x-model="cleanUp">
       <span>
         Also remove the containers
         <span class="opacity-50 font-mono text-xs">--clean-up</span>
-        <span class="block text-xs opacity-50">Volumes are kept. The page will read “not deployed” afterwards.</span>
+        <span class="block text-xs opacity-50" x-show="pending === 'stop'">Volumes are kept. The page will read “not deployed” afterwards.</span>
+        <span class="block text-xs opacity-50" style="display:none" x-show="pending === 'restart'">Volumes are kept. They are created again by the start that follows.</span>
       </span>
     </label>
 
@@ -115,6 +121,48 @@
       <button class="btn btn-warning btn-sm" x-show="pending === 'stop'" @click="run()">Stop groups</button>
       <button class="btn btn-success btn-sm" x-show="pending === 'start'" @click="run()">Start groups</button>
       <button class="btn btn-primary btn-sm" x-show="pending === 'restart'" @click="run()">Restart groups</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endmacro %}
+
+
+{% macro stack_modal() %}
+{# The stack actions used to fire straight from the menu. They take this panel
+   down with them and cannot report their own outcome, which is reason enough to
+   ask first — and the only place `clean_up` can be chosen for them. #}
+<dialog x-ref="stackModal" class="modal">
+  <div class="modal-box max-w-md">
+    <h3 class="font-bold text-base mb-1">
+      <span class="capitalize" x-text="stackPending"></span> the whole stack?
+    </h3>
+    <p class="text-sm opacity-60 mb-4">
+      Every profile, including the one serving this page. It runs in a separate
+      container, so it finishes even once this panel is gone — the result appears
+      here again afterwards. Add-ons keep running.
+    </p>
+
+    <div class="alert alert-warning py-2 mb-4" x-show="stackPending !== 'start'">
+      <span class="text-xs leading-snug">
+        This page will become unreachable for the duration.
+      </span>
+    </div>
+
+    <label class="flex items-center gap-2 text-sm mb-5" x-show="stackPending !== 'start'">
+      <input type="checkbox" class="checkbox checkbox-sm" x-model="stackCleanUp">
+      <span>
+        Also remove the containers
+        <span class="opacity-50 font-mono text-xs">--clean-up</span>
+        <span class="block text-xs opacity-50">Volumes and configuration are kept either way.</span>
+      </span>
+    </label>
+
+    <div class="modal-action mt-0">
+      <button class="btn btn-ghost btn-sm" @click="$refs.stackModal.close()">Cancel</button>
+      <button class="btn btn-warning btn-sm" x-show="stackPending === 'stop'" @click="runStack()">Stop stack</button>
+      <button class="btn btn-success btn-sm" x-show="stackPending === 'start'" @click="runStack()">Start stack</button>
+      <button class="btn btn-primary btn-sm" x-show="stackPending === 'restart'" @click="runStack()">Restart stack</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>

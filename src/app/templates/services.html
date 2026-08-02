@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/_group_controls.html" import stack_menu, action_bar, confirm_modal %}
+{% from "partials/_group_controls.html" import stack_menu, action_bar, confirm_modal, stack_modal %}
 {% block title %}Services — papAIa manager{% endblock %}
 
 {% block page_title %}Services{% endblock %}
@@ -36,12 +36,24 @@
        run() {
          $refs.confirmModal.close();
          this.busy = true;
-         const body = this.pending === 'stop' ? { clean_up: this.cleanUp } : {};
-         stackGroupAction(this.pending, this.sel, body).then(ok => {
-           this.busy = false;
-           if (ok) this.sel = [];
-         });
-       }
+         stackGroupAction(this.pending, this.sel, this.body(this.pending, this.cleanUp))
+           .then(ok => {
+             this.busy = false;
+             if (ok) this.sel = [];
+           });
+       },
+       stackPending: '',
+       stackCleanUp: false,
+       askStack(action) { this.stackPending = action; this.stackCleanUp = false; $refs.stackModal.showModal(); },
+       runStack() {
+         $refs.stackModal.close();
+         stackAction(this.stackPending, this.body(this.stackPending, this.stackCleanUp));
+       },
+       // `clean_up` maps onto `papaia-ctl stop --clean-up`, so it rides along
+       // with anything that stops — a restart included, where it turns the
+       // operation into a full recreate. A start has no such flag and the API
+       // rejects the field outright rather than ignoring it.
+       body(action, cleanUp) { return action === 'start' ? {} : { clean_up: cleanUp }; }
      }">
 
   {# Whole-stack actions. Separate from the selection above because they are a
@@ -69,5 +81,6 @@
 
   {{ action_bar() }}
   {{ confirm_modal() }}
+  {{ stack_modal() }}
 </div>
 {% endblock %}

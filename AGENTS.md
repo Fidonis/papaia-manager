@@ -159,7 +159,7 @@ Two execution models, split on whether the operation removes the container servi
 Further points that are easy to get wrong:
 
 - `restart` is composed as stop → start. papaia-ctl has no restart verb, and adding one would mean a change in the stack repo plus a minimum-version coupling.
-- `--clean-up` (`docker compose down` instead of `stop`) is offered on every stop and **rejected with 400** on start and restart, where the CLI has no such flag. After a stop with it the page reports the modules as *not deployed*: a removed container is indistinguishable from one that was never created.
+- `--clean-up` (`docker compose down` instead of `stop`) attaches to anything that stops — a stop, and the stop half of a restart, where it turns the operation into a full recreate. It is **rejected with 400** on start, which has no such flag; ignoring the field there would confirm an operation that did not happen. After a stop with it the page reports the modules as *not deployed*: a removed container is indistinguishable from one that was never created.
 - A stack action never passes `--addons`. That flag exists and would take every add-on down with the core stack — the bulk action this surface deliberately omits. Add-ons are started, stopped and restarted one at a time.
 - The selection state lives in an Alpine scope in `services.html`, **outside** `#service-list`. That element is swapped every 15 s, and state held inside it would not survive a single poll — nor would an open confirmation dialog.
 

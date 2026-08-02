@@ -93,18 +93,22 @@ is not something Compose can do. Several groups can be selected and started,
 stopped or restarted in one run. Restart is a stop followed by a start, so it
 picks up a changed configuration.
 
-Stopping leaves the containers in place. The confirmation dialog offers to remove
-them as well (`--clean-up`, i.e. `docker compose down`); volumes and
-`$PAPAIA_CONFIG_DIR` are untouched either way, but the modules then read as
-*not deployed* rather than *stopped*, because a removed container is
-indistinguishable from one that was never created.
+Stopping leaves the containers in place. Every confirmation dialog that stops
+something — a stop, and the stop half of a restart — offers to remove them as
+well (`--clean-up`, i.e. `docker compose down` instead of `docker compose stop`).
+Volumes and `$PAPAIA_CONFIG_DIR` are untouched in either case. After a stop with
+it the modules read as *not deployed* rather than *stopped*, because a removed
+container is indistinguishable from one that was never created; after a restart
+with it they are simply built again, which is what makes that a full recreate
+rather than a stop and start. A start has no such flag and the API rejects the
+field rather than ignoring it.
 
-The whole stack can be started, stopped and restarted from the header menu. That
-one takes the manager down with it, so it runs in a separate container that
-outlives this one and reports its result back once the page is reachable again —
-the same mechanism restore uses. Add-ons are left running by a stack action, and
-are started, stopped and restarted individually from their own rows. There is
-deliberately no action across all add-ons.
+The whole stack can be started, stopped and restarted from the header menu, with
+the same choice. That one takes the manager down with it, so it runs in a
+separate container that outlives this one and reports its result back once the
+page is reachable again — the same mechanism restore uses. Add-ons are left
+running by a stack action, and are started, stopped and restarted individually
+from their own rows. There is deliberately no action across all add-ons.
 
 The profile serving this panel is the one group that cannot be selected. Stopping
 it would remove the container handling the request, which could then never report
@@ -183,7 +187,7 @@ GET  /api/v1/addons/{name}/env-form
 POST /api/v1/addons/{name}/install         # → 202
 POST /api/v1/addons/{name}/start           # → 202
 POST /api/v1/addons/{name}/stop            # {clean_up?} → 202
-POST /api/v1/addons/{name}/restart         # stop then start → 202
+POST /api/v1/addons/{name}/restart         # {clean_up?} stop then start → 202
 POST /api/v1/addons/{name}/remove          # → 202
 POST /api/v1/addons/{name}/uninstall       # → 202
 POST /api/v1/addons/{name}/update          # → 202
@@ -205,10 +209,10 @@ DELETE /api/v1/maintenance/restore           # acknowledge a finished restore
 GET    /api/v1/stack/groups                  # the deployment's service groups
 POST   /api/v1/stack/groups/start            # {groups} → 202 {job_id}
 POST   /api/v1/stack/groups/stop             # {groups, clean_up?} → 202
-POST   /api/v1/stack/groups/restart          # {groups} → 202
+POST   /api/v1/stack/groups/restart          # {groups, clean_up?} → 202
 POST   /api/v1/stack/start                   # whole stack, detached runner
 POST   /api/v1/stack/stop                    # {clean_up?}, detached runner
-POST   /api/v1/stack/restart                 # detached runner
+POST   /api/v1/stack/restart                 # {clean_up?}, detached runner
 GET    /api/v1/stack/runner                  # its status and log
 POST   /api/v1/stack/runner/clear            # acknowledge a finished action
 ```
