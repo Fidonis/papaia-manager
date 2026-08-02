@@ -100,7 +100,7 @@ async def _require_no_runner() -> None:
     if active is not None and active.is_running:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"a restore of {active.restore_point} is still running",
+            detail=f"a restore of {active.target} is still running",
         )
 
 
@@ -241,10 +241,10 @@ async def start_restore(
     existing = await runner.find_runner()
     if existing is not None:
         detail = (
-            f"a restore of {existing.restore_point} is still running"
+            f"a restore of {existing.target} is still running"
             if existing.is_running
             else (
-                f"the result of the previous restore ({existing.restore_point}) has not "
+                f"the result of the previous restore ({existing.target}) has not "
                 "been acknowledged yet"
             )
         )

@@ -12,7 +12,7 @@ It also serves the stack dashboard: a tile overview of the deployed applications
 
 A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
-A fourth surface, Services, reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. It is read-only — lifecycle control over core services stays with `papaia-ctl`, whose core-verb allowlist holds nothing but `backup`. Two aggregates of the same snapshot render as status pills in the header of every page, one per section, for every authenticated role.
+A fourth surface, Services, reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. The page also drives lifecycle: one Compose profile at a time via `papaia-ctl start`/`stop --profiles=`, several profiles at once, or the whole stack in a detached container (see the Service group control section below). Two aggregates of the same snapshot render as status pills in the header of every page, one per section, for every authenticated role.
 
 That snapshot is also the single Docker reading behind the add-on surfaces: `state.compute_status` takes its set of running Compose projects from `StackSnapshot.running_projects` rather than issuing a `docker ps` of its own, so `/addons` and `/services` cannot disagree about whether an add-on is up.
 
@@ -142,10 +142,26 @@ State lives in Docker. The runner is started without `--rm` and with `--restart 
 
 Consequences worth remembering when touching this area:
 
-- `ALLOWED_CORE_VERBS` in `core/ctl.py` contains `backup` and deliberately **not** `restore`.
+- `ALLOWED_CORE_VERBS` in `core/ctl.py` contains `backup`, `start` and `stop`, and deliberately **not** `restore`.
 - Backup and restore are mutually exclusive, enforced in `routers/api_maintenance.py` with 409s.
 - The restore-point id is validated against an exact timestamp pattern before it reaches a path join or an argv.
 - `PAPAIA_BACKUP_DIR` must be mounted at its host path, or the catalogue is invisible to the container.
+
+### Service group control
+
+A **service group** is one Compose profile. That is the granularity, because it is the only one `papaia-ctl` accepts — there is no per-service verb. The mapping to modules is many-to-many and read out of the fragments, never derived from the name: `librechat-websearch` covers `firecrawl`, `searxng`, `jinaai` and `mcp-firecrawl`, while `oauth2-proxy` is labelled `papaia-auth`. `inventory.core_groups` is the authority, and the set it returns is the allowlist a request is validated against — a profile that is not in `COMPOSE_PROFILES` is absent from it, and `papaia-ctl` would otherwise hand `docker compose` a profile whose env file setup never rendered.
+
+Two execution models, split on whether the operation removes the container serving the request:
+
+- **Group actions** (`POST /api/v1/stack/groups/{start,stop,restart}`) name profiles explicitly and never `manager`, so they are ordinary queued jobs. `ctl.profiles_flag` builds the `--profiles=` flag and refuses `manager` regardless of what the caller passed.
+- **Stack actions** (`POST /api/v1/stack/{start,stop,restart}`) cover every profile including `manager`, so they go through `core/runner.py` in a detached container, exactly like restore. `runner.RunnerKind` keeps the two runner flavours apart by label and name prefix. The outcome is read back from `docker inspect` / `docker logs` by `/partials/stack-runner`.
+
+Further points that are easy to get wrong:
+
+- `restart` is composed as stop → start. papaia-ctl has no restart verb, and adding one would mean a change in the stack repo plus a minimum-version coupling.
+- `--clean-up` (`docker compose down` instead of `stop`) is offered on every stop and **rejected with 400** on start and restart, where the CLI has no such flag. After a stop with it the page reports the modules as *not deployed*: a removed container is indistinguishable from one that was never created.
+- A stack action never passes `--addons`. That flag exists and would take every add-on down with the core stack — the bulk action this surface deliberately omits. Add-ons are started, stopped and restarted one at a time.
+- The selection state lives in an Alpine scope in `services.html`, **outside** `#service-list`. That element is swapped every 15 s, and state held inside it would not survive a single poll — nor would an open confirmation dialog.
 
 ---
 

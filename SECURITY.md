@@ -56,6 +56,19 @@ a web control plane is explicitly desired and access is gated by Keycloak.
 `app/core/ctl.py`, which validates the operation verb against an allowlist
 and uses arg arrays rather than shell string interpolation.
 
+**Core stack lifecycle:** Two allowlists are kept apart, so an add-on name can
+never be dispatched as a stack operation or the other way round. The stack-level
+set holds `backup`, `start` and `stop`. `restore` is deliberately absent: it
+tears the core stack down unconditionally, and the manager is a service of that
+same project. `start` and `stop` are reachable only because every caller scopes
+them to Compose profiles, and the profile names are validated against the set
+read out of the deployment's own Compose fragments — not against a pattern
+alone. The profile the manager itself runs under is rejected regardless of what
+the caller passed. Stack-wide operations, which do include that profile, run in
+a separate container rather than as a child of this process. Every one of these
+routes requires the admin role and a session-bound CSRF token, and writes an
+audit entry to `$PAPAIA_CONFIG_DIR/manager/audit.log`.
+
 **Token handling:** OIDC client secrets and catalog tokens never appear
 in logs, process arguments, or HTTP responses.
 

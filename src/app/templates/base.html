@@ -134,6 +134,84 @@
       });
     }
 
+    // serviceAddonAction: an addon verb driven from the services page. Same
+    // request as galleryAction, different thing to swap back in afterwards.
+    function serviceAddonAction(name, verb, body) {
+      return _addonPost(name, verb, body).then(data => {
+        if (!data) return false;
+        _pollJob(data.job_id, () => refreshServices());
+        return true;
+      });
+    }
+
+    // stackGroupAction: POST /api/v1/stack/groups/{action} for a set of Compose
+    // profiles, poll the job, then refresh the services list. Resolves false when
+    // the request was rejected, so the caller can release its busy flag —
+    // a resolved-true call leaves it set, because the swap that follows replaces
+    // the button anyway.
+    function stackGroupAction(action, groups, body) {
+      return _stackPost("/api/v1/stack/groups/" + action,
+                        Object.assign({ groups: groups }, body || {}), action)
+        .then(data => {
+          if (!data) return false;
+          _pollJob(data.job_id, job => {
+            refreshServices();
+            if (job.status === "failed") {
+              showToast("error", action + " failed — <a class='underline' href='/jobs/" + job.id + "'>view log</a>");
+            } else {
+              showToast("success", action + " finished");
+            }
+          });
+          return true;
+        });
+    }
+
+    // stackAction: the whole stack, including this container's own profile. The
+    // runner outlives us, so there is no job to poll — /partials/stack-runner
+    // picks the outcome back up, here and after a reload.
+    function stackAction(action, body) {
+      return _stackPost("/api/v1/stack/" + action, body || {}, action).then(data => {
+        if (!data) return false;
+        refreshStackRunner();
+        showToast("info", "Stack " + action + " started — this panel may go down with it");
+        return true;
+      });
+    }
+
+    function _stackPost(url, body, label) {
+      return fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": document.querySelector("meta[name=csrf]").content,
+        },
+        body: JSON.stringify(body || {}),
+      }).then(async (r) => {
+        if (!r.ok) {
+          let detail = r.status;
+          try {
+            const e = await r.json();
+            detail = e.detail || JSON.stringify(e);
+          } catch (_) {}
+          showToast("error", label + " refused: " + detail);
+          return null;
+        }
+        return r.json();
+      });
+    }
+
+    function refreshServices() {
+      if (document.getElementById("service-list")) {
+        htmx.ajax("GET", "/partials/services", { target: "#service-list", swap: "innerHTML" });
+      }
+    }
+
+    function refreshStackRunner() {
+      if (document.getElementById("stack-runner")) {
+        htmx.ajax("GET", "/partials/stack-runner", { target: "#stack-runner", swap: "innerHTML" });
+      }
+    }
+
     // showToast: appends a dismissable daisyUI alert into #toasts, auto-removed after 6s.
     // `html` may contain markup (e.g. a "view log" link) — only ever called with
     // server-validated catalog names / job ids (uuid4), never free-form user text.

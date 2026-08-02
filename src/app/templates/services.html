@@ -1,21 +1,73 @@
 {% extends "base.html" %}
+{% from "partials/_group_controls.html" import stack_menu, action_bar, confirm_modal %}
 {% block title %}Services — papAIa manager{% endblock %}
 
 {% block page_title %}Services{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">What this deployment is configured to run, and what of it is up</p>{% endblock %}
 
 {% block content %}
-{# Polled rather than streamed: a container flipping to unhealthy is not worth
-   an SSE connection per open tab, and 15 s is well inside the shortest
-   healthcheck interval in the stack. #}
-<div
-  id="service-list"
-  hx-get="/partials/services"
-  hx-trigger="load, every 15s"
-  hx-swap="innerHTML"
->
-  <div class="flex justify-center py-20">
-    <span class="loading loading-spinner loading-lg text-primary"></span>
+{# The selection and the confirmation dialog live *outside* #service-list on
+   purpose: that element is replaced wholesale every 15 s, and anything held
+   inside it would lose the operator's ticks — or close the dialog under their
+   hand — on the next poll. Alpine re-binds the swapped-in checkboxes to this
+   scope because it is their ancestor.
+
+   `groups` is filled by the partial on every swap: a group that disappeared
+   from the deployment must not stay selected just because nobody unticked it. #}
+<div id="service-controls"
+     x-data="{
+       sel: [],
+       groups: {},
+       busy: false,
+       pending: '',
+       cleanUp: false,
+       toggle(name) {
+         this.sel = this.sel.includes(name)
+           ? this.sel.filter(g => g !== name)
+           : this.sel.concat([name]);
+       },
+       prune() {
+         this.sel = this.sel.filter(g => g in this.groups);
+       },
+       get modules() {
+         return this.sel.reduce((n, g) => n + (this.groups[g] || []).length, 0);
+       },
+       ask(action) { this.pending = action; this.cleanUp = false; $refs.confirmModal.showModal(); },
+       run() {
+         $refs.confirmModal.close();
+         this.busy = true;
+         const body = this.pending === 'stop' ? { clean_up: this.cleanUp } : {};
+         stackGroupAction(this.pending, this.sel, body).then(ok => {
+           this.busy = false;
+           if (ok) this.sel = [];
+         });
+       }
+     }">
+
+  {# Whole-stack actions. Separate from the selection above because they are a
+     different execution model, not a shortcut for ticking every box: they take
+     this container down with them. #}
+  <div class="flex items-center justify-end mb-4">
+    {{ stack_menu() }}
   </div>
+
+  <div id="stack-runner" hx-get="/partials/stack-runner" hx-trigger="load, every 10s" hx-swap="innerHTML"></div>
+
+  {# Polled rather than streamed: a container flipping to unhealthy is not worth
+     an SSE connection per open tab, and 15 s is well inside the shortest
+     healthcheck interval in the stack. #}
+  <div
+    id="service-list"
+    hx-get="/partials/services"
+    hx-trigger="load, every 15s"
+    hx-swap="innerHTML"
+  >
+    <div class="flex justify-center py-20">
+      <span class="loading loading-spinner loading-lg text-primary"></span>
+    </div>
+  </div>
+
+  {{ action_bar() }}
+  {{ confirm_modal() }}
 </div>
 {% endblock %}

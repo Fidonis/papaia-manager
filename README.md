@@ -65,8 +65,6 @@ the top. A container without a healthcheck counts as healthy while it runs, and
 a one-shot container that has finished its work is reported as completed rather
 than dragging its module down — recognised by its restart policy, so a service
 that was shut down still reads as stopped even though it exited just as cleanly.
-The view is read-only — starting and stopping core services stays with
-`papaia-ctl`.
 
 Live containers alone cannot say what is *missing*, so the page reads the
 declared state next to them. For the core stack that is the Compose fragments
@@ -84,6 +82,33 @@ Add-ons appear in their own section below the core stack. They run in a separate
 Compose project each, but use the same labels, so they group into modules exactly
 like core services do. Bear in mind that few add-ons define healthchecks, so a
 green add-on module says only that its containers are running.
+
+**Service groups.** The page is also where the stack is started and stopped. The
+unit is the Compose profile — a *service group* — because that is the only
+granularity `papaia-ctl` accepts; there is no per-container verb. Each module
+header carries its profile and a checkbox, and ticking one module ticks every
+module the same profile brings up: `librechat-websearch` alone covers Firecrawl,
+SearXNG, Jina and the Firecrawl MCP server, and stopping one without the others
+is not something Compose can do. Several groups can be selected and started,
+stopped or restarted in one run. Restart is a stop followed by a start, so it
+picks up a changed configuration.
+
+Stopping leaves the containers in place. The confirmation dialog offers to remove
+them as well (`--clean-up`, i.e. `docker compose down`); volumes and
+`$PAPAIA_CONFIG_DIR` are untouched either way, but the modules then read as
+*not deployed* rather than *stopped*, because a removed container is
+indistinguishable from one that was never created.
+
+The whole stack can be started, stopped and restarted from the header menu. That
+one takes the manager down with it, so it runs in a separate container that
+outlives this one and reports its result back once the page is reachable again —
+the same mechanism restore uses. Add-ons are left running by a stack action, and
+are started, stopped and restarted individually from their own rows. There is
+deliberately no action across all add-ons.
+
+The profile serving this panel is the one group that cannot be selected. Stopping
+it would remove the container handling the request, which could then never report
+whether it worked.
 
 The same data drives two status pills in the header of every page, visible to
 every authenticated account regardless of role: one for the core stack, one for
@@ -157,7 +182,8 @@ GET  /api/v1/addons/{name}
 GET  /api/v1/addons/{name}/env-form
 POST /api/v1/addons/{name}/install         # → 202
 POST /api/v1/addons/{name}/start           # → 202
-POST /api/v1/addons/{name}/stop            # → 202
+POST /api/v1/addons/{name}/stop            # {clean_up?} → 202
+POST /api/v1/addons/{name}/restart         # stop then start → 202
 POST /api/v1/addons/{name}/remove          # → 202
 POST /api/v1/addons/{name}/uninstall       # → 202
 POST /api/v1/addons/{name}/update          # → 202
@@ -175,6 +201,16 @@ POST   /api/v1/maintenance/backup            # {retention_days?} → 202 {job_id
 POST   /api/v1/maintenance/restore           # {restore_point, restart_clean?} → 202
 GET    /api/v1/maintenance/restore/status
 DELETE /api/v1/maintenance/restore           # acknowledge a finished restore
+
+GET    /api/v1/stack/groups                  # the deployment's service groups
+POST   /api/v1/stack/groups/start            # {groups} → 202 {job_id}
+POST   /api/v1/stack/groups/stop             # {groups, clean_up?} → 202
+POST   /api/v1/stack/groups/restart          # {groups} → 202
+POST   /api/v1/stack/start                   # whole stack, detached runner
+POST   /api/v1/stack/stop                    # {clean_up?}, detached runner
+POST   /api/v1/stack/restart                 # detached runner
+GET    /api/v1/stack/runner                  # its status and log
+POST   /api/v1/stack/runner/clear            # acknowledge a finished action
 ```
 
 ## Layout
