@@ -6,9 +6,12 @@ from pathlib import Path
 import pytest
 
 from app.core.inventory import (
+    ExpectedService,
     active_profiles,
     addon_inventory,
+    core_groups,
     core_inventory,
+    group_modules,
     module_display_name,
 )
 
@@ -233,3 +236,48 @@ def test_an_addon_without_the_module_label_falls_back_to_its_name(tmp_path: Path
 
 def test_an_addon_without_a_compose_file_expects_nothing(tmp_path: Path) -> None:
     assert addon_inventory(str(tmp_path / "gone"), fallback_module="gone") == []
+
+
+# ---------------------------------------------------------------------------
+# Service groups
+# ---------------------------------------------------------------------------
+
+
+def test_the_declared_profile_survives_into_the_expected_service(workspace: Path) -> None:
+    # It is filtered against the active set on the way out, so everything that
+    # comes back is enabled -- but the name is what the page needs to offer an
+    # action, and dropping it would make the profile unrecoverable.
+    expected = core_inventory(str(workspace), {"oauth2-proxy"})
+    assert expected[0].profiles == frozenset({"oauth2-proxy"})
+
+
+def test_a_service_without_profiles_carries_none(tmp_path: Path) -> None:
+    path = _addon(tmp_path / "acme-crm", "services:\n  web:\n    image: acme/crm\n")
+    assert addon_inventory(path, fallback_module="acme-crm")[0].profiles == frozenset()
+
+
+def test_a_group_lists_every_module_its_profile_brings_up(workspace: Path) -> None:
+    # The case the whole feature turns on: ticking one of these four modules has
+    # to take the other three with it, because Compose cannot stop them apart.
+    groups = core_groups(str(workspace), {"librechat", "librechat-websearch"})
+    assert groups["librechat-websearch"] == frozenset({"searxng"})
+    assert groups["librechat"] == frozenset({"librechat", "other"})
+
+
+def test_a_group_is_absent_when_its_profile_is_not_active(workspace: Path) -> None:
+    # papaia-ctl would hand docker compose a profile whose env file setup never
+    # rendered, and `docker compose config` fails outright on that.
+    assert "librechat-websearch" not in core_groups(str(workspace), {"librechat"})
+
+
+def test_grouping_is_pure_aggregation_over_an_inventory() -> None:
+    # Shared with the snapshot so both read one parse of the Compose files.
+    items = [
+        ExpectedService("a", "one", "", frozenset({"p", "q"})),
+        ExpectedService("b", "two", "", frozenset({"q"})),
+        ExpectedService("c", "three", "", frozenset()),
+    ]
+    assert group_modules(items) == {
+        "p": frozenset({"one"}),
+        "q": frozenset({"one", "two"}),
+    }

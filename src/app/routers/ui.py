@@ -16,6 +16,7 @@ from app.config import Settings, get_settings
 from app.core import backups, runner
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
+from app.core.inventory import SELF_PROFILE
 from app.core.resolve import resolve_catalog_addons
 from app.core.services import (
     ServiceHealth,
@@ -210,7 +211,40 @@ async def partial_services(
             cnt_degraded=counts[ServiceHealth.UNHEALTHY] + counts[ServiceHealth.STARTING],
             cnt_stopped=counts[ServiceHealth.STOPPED],
             cnt_missing=counts[ServiceHealth.MISSING],
+            group_count=len(snapshot.groups),
+            # Only the selectable groups: the page pushes this into its Alpine
+            # scope and prunes the selection against it, so a locked group in
+            # here would make `manager` selectable by the back door.
+            group_map={
+                g.name: list(g.modules) for g in snapshot.groups if g.selectable
+            },
+            self_profile=SELF_PROFILE,
         ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/stack-runner", response_class=HTMLResponse)
+async def partial_stack_runner(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """State of the detached stack runner, or nothing at all when there is none.
+
+    Polled from the services page. An unreachable Docker socket renders as empty
+    rather than as an error: the page around it is still perfectly informative,
+    and the operator has a bigger problem than this strip.
+    """
+    try:
+        status_obj = await runner.find_runner(runner.STACK_KIND)
+    except runner.RunnerError:
+        status_obj = None
+    log = await runner.runner_log(status_obj.name) if status_obj is not None else ""
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/stack_runner.html",
+        _ctx(request, user, stack=runner.status_to_dict(status_obj, log, target_key="action")),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

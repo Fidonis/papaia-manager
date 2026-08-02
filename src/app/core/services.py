@@ -36,9 +36,12 @@ Five decisions here are load-bearing:
 * An unreachable Docker socket yields an empty snapshot, never a stack full of
   missing services. Not knowing is not the same as knowing it is gone.
 
-Everything is read-only. Lifecycle control over core services belongs to
-papaia-ctl, whose core-verb allowlist deliberately holds nothing but `backup`;
-add-ons are controlled from `/addons`.
+Reading is all this module does. Acting on what it reports happens elsewhere:
+core services are started and stopped one Compose profile at a time through
+`app.core.ctl`, stack-wide through `app.core.runner`, and add-ons through the
+`/api/v1/addons` verbs. What this module contributes to that is `ServiceGroup`
+-- the profile, its modules and their aggregated health -- because a profile is
+the only granularity `papaia-ctl` accepts.
 """
 from __future__ import annotations
 
@@ -53,6 +56,7 @@ from pathlib import Path
 
 from app.core.envfile import load_env_file
 from app.core.inventory import (
+    SELF_PROFILE,
     ExpectedService,
     active_profiles,
     addon_inventory,
@@ -168,10 +172,19 @@ class ServiceContainer:
 
 @dataclass
 class ServiceModule:
-    """All containers sharing one `de.fidonis.module` label."""
+    """All containers sharing one `de.fidonis.module` label.
+
+    `profiles` and `addon` are what the page needs to offer an action on this
+    module, and both come from the target state: a container Docker reports that
+    nothing declared has neither, and is therefore shown but not controllable.
+    They are mutually exclusive in practice -- core modules carry profiles,
+    add-on modules carry a project name.
+    """
 
     name: str
     containers: list[ServiceContainer] = field(default_factory=list)
+    profiles: tuple[str, ...] = ()
+    addon: str = ""
 
     @property
     def health(self) -> ServiceHealth:
@@ -201,6 +214,22 @@ class ServiceModule:
 
 
 @dataclass
+class ServiceGroup:
+    """One Compose profile, as something the operator can act on.
+
+    Health is aggregated over the whole group rather than per module, because
+    that is the granularity `papaia-ctl start`/`stop` work at: a group is up
+    only if everything it brings up is up.
+    """
+
+    name: str
+    modules: tuple[str, ...]
+    containers: int
+    health: ServiceHealth
+    selectable: bool = True
+
+
+@dataclass
 class StackSnapshot:
     """One reading of the whole host, split into the parts this manager owns.
 
@@ -212,6 +241,7 @@ class StackSnapshot:
     core: list[ServiceModule] = field(default_factory=list)
     addons: list[ServiceModule] = field(default_factory=list)
     running_projects: set[str] = field(default_factory=set)
+    groups: list[ServiceGroup] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -350,7 +380,10 @@ def parse_ps_output(output: str) -> dict[str, list[ServiceModule]]:
 
 
 def merge_expected(
-    modules: list[ServiceModule], expected: Iterable[ExpectedService]
+    modules: list[ServiceModule],
+    expected: Iterable[ExpectedService],
+    *,
+    addon: str = "",
 ) -> list[ServiceModule]:
     """Add a placeholder for every declared service Docker did not report.
 
@@ -366,8 +399,13 @@ def merge_expected(
     """
     by_name = {m.name: m for m in modules}
     seen = {c.service for m in modules for c in m.containers}
+    profiles: dict[str, set[str]] = {}
 
     for item in expected:
+        # Collected for every declared service, including the ones Docker did
+        # report: a running module is exactly the one an operator is most likely
+        # to want to stop, and it would otherwise come back uncontrollable.
+        profiles.setdefault(item.module, set()).update(item.profiles)
         if item.service in seen:
             continue
         module = by_name.get(item.module)
@@ -387,7 +425,39 @@ def merge_expected(
 
     for module in by_name.values():
         module.containers.sort(key=lambda c: c.sort_key)
+        module.profiles = tuple(sorted(profiles.get(module.name, ())))
+        module.addon = addon
     return _worst_first(by_name.values())
+
+
+def build_groups(modules: Iterable[ServiceModule]) -> list[ServiceGroup]:
+    """Invert the modules' profile lists into the groups the page acts on.
+
+    Derived from the merged modules rather than from the inventory directly, so
+    that it can be recomputed after `apply_restart_policies` has had its say --
+    a group whose only container turns out to be stopped rather than completed
+    has to read as stopped too.
+
+    A profile with no module behind it cannot appear here at all, which is the
+    intended behaviour: an operator offered a group with nothing in it would
+    rightly distrust the page.
+    """
+    members: dict[str, list[ServiceModule]] = {}
+    for module in modules:
+        for profile in module.profiles:
+            members.setdefault(profile, []).append(module)
+
+    groups = [
+        ServiceGroup(
+            name=profile,
+            modules=tuple(sorted(m.name for m in found)),
+            containers=sum(len(m.containers) for m in found),
+            health=worst(m.health for m in found),
+            selectable=profile != SELF_PROFILE,
+        )
+        for profile, found in members.items()
+    ]
+    return sorted(groups, key=lambda g: (_SEVERITY[g.health], g.name))
 
 
 def parse_inspect_output(output: str) -> dict[str, str]:
@@ -574,16 +644,16 @@ def build_snapshot(config_dir: str, workspace_dir: str, output: str) -> StackSna
     }
 
     core_project = compose_project(config_dir)
-    core = merge_expected(
-        by_project.get(core_project, []),
-        core_inventory(workspace_dir, active_profiles(config_dir)),
-    )
+    expected_core = core_inventory(workspace_dir, active_profiles(config_dir))
+    core = merge_expected(by_project.get(core_project, []), expected_core)
 
     addons: list[ServiceModule] = []
     for project, expected in sorted(addon_projects(config_dir, workspace_dir).items()):
-        addons.extend(merge_expected(by_project.get(project, []), expected))
+        addons.extend(merge_expected(by_project.get(project, []), expected, addon=project))
 
-    return StackSnapshot(core=core, addons=addons, running_projects=running)
+    return StackSnapshot(
+        core=core, addons=addons, running_projects=running, groups=build_groups(core)
+    )
 
 
 # (monotonic timestamp, snapshot). One manager process serves one deployment,
@@ -621,6 +691,9 @@ def load_snapshot(config_dir: str, workspace_dir: str) -> StackSnapshot:
     policies = query_restart_policies(completed)
     snapshot.core = apply_restart_policies(snapshot.core, policies)
     snapshot.addons = apply_restart_policies(snapshot.addons, policies)
+    # A container that just turned from completed to stopped changes its group's
+    # health, so the groups are rebuilt from the corrected modules.
+    snapshot.groups = build_groups(snapshot.core)
 
     _CACHE = (now, snapshot)
     return snapshot
