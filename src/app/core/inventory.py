@@ -28,6 +28,7 @@ view it had before rather than breaking it.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,12 @@ _MODULE_PREFIX = "papaia-"
 # Containers that carry no module label at all -- a core service whose label was
 # dropped in a local edit, or a third-party add-on that never set one.
 UNGROUPED_MODULE = "other"
+
+# The profile papaia-manager itself runs under. It is the one group the panel
+# must not offer as a target: stopping it removes the container serving the
+# request, so the operation could never report its own outcome. The stack-wide
+# actions reach it, but those run detached -- see `app.core.runner`.
+SELF_PROFILE = "manager"
 
 
 def module_display_name(label: str) -> str:
@@ -64,11 +71,18 @@ class ExpectedService:
     `service` is the Compose service name, which is what
     `com.docker.compose.service` reports on the running container -- the key
     the live view is matched against.
+
+    `profiles` is what the service declared, not what is active: the filtering
+    against the active set happens in `core_inventory`, so anything that comes
+    back from there is enabled by definition. It is kept because a profile is
+    the only granularity `papaia-ctl start` and `stop` accept, which makes it
+    the unit the services page can offer control over.
     """
 
     service: str
     module: str
     role: str
+    profiles: frozenset[str] = frozenset()
 
 
 def active_profiles(config_dir: str) -> set[str]:
@@ -107,6 +121,36 @@ def core_inventory(workspace_dir: str, profiles: set[str]) -> list[ExpectedServi
     return expected
 
 
+def group_modules(expected: Iterable[ExpectedService]) -> dict[str, frozenset[str]]:
+    """Compose profile to the modules its services belong to.
+
+    Pure aggregation over an inventory that has already been read, so the
+    snapshot and the endpoints that validate a request can share one parse.
+
+    The mapping is many-to-many by nature -- see the module docstring -- which
+    is why the value is a set rather than a single name. Seven of the eight core
+    profiles happen to cover exactly one module today; `librechat-websearch`
+    covers four, and the page has to be able to say so before it stops them.
+    """
+    groups: dict[str, set[str]] = {}
+    for item in expected:
+        for profile in item.profiles:
+            groups.setdefault(profile, set()).add(item.module)
+    return {profile: frozenset(modules) for profile, modules in groups.items()}
+
+
+def core_groups(workspace_dir: str, profiles: set[str]) -> dict[str, frozenset[str]]:
+    """The service groups this deployment can be asked to act on.
+
+    Reads the same fragments as `core_inventory` and is therefore the authority
+    on which profile names a request may name: an allowlist derived from the
+    shipped Compose files rather than from a pattern. A profile that is not
+    active is absent here, and rightly so -- `papaia-ctl` would hand
+    `docker compose` a profile whose env file setup never rendered.
+    """
+    return group_modules(core_inventory(workspace_dir, profiles))
+
+
 def addon_inventory(addon_path: str, fallback_module: str) -> list[ExpectedService]:
     """Every service of one add-on's Compose file.
 
@@ -138,6 +182,7 @@ def _expected(service: str, body: dict[str, Any], *, fallback_module: str) -> Ex
         service=service,
         module=module_display_name(module) if module else fallback_module,
         role=labels.get("de.fidonis.role", ""),
+        profiles=frozenset(_profiles(body)),
     )
 
 

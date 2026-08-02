@@ -15,6 +15,7 @@ from app.core.services import (
     ServiceHealth,
     ServiceModule,
     apply_restart_policies,
+    build_groups,
     build_snapshot,
     count_by_health,
     derive_health,
@@ -614,3 +615,102 @@ def test_a_module_turning_stopped_moves_to_the_front() -> None:
 
     modules = apply_restart_policies(_modules(output), {"lc": "unless-stopped"})
     assert [m.name for m in modules] == ["librechat", "keycloak"]
+
+
+# ---------------------------------------------------------------------------
+# Service groups
+# ---------------------------------------------------------------------------
+
+
+def _declared(service: str, module: str, *profiles: str) -> ExpectedService:
+    return ExpectedService(service, module, "", frozenset(profiles))
+
+
+def test_a_module_carries_the_profiles_of_its_declared_services() -> None:
+    modules = merge_expected([], [_declared("searxng", "searxng", "librechat-websearch")])
+    assert modules[0].profiles == ("librechat-websearch",)
+
+
+def test_a_running_module_is_controllable_too() -> None:
+    # The profile is collected for services Docker already reported, not only for
+    # the missing ones -- a running module is the likeliest thing to be stopped,
+    # and without this it would come back with no group to act on.
+    running = _modules(
+        _line("papaia-searxng", "running", "Up 2 minutes", service="searxng",
+              module="papaia-searxng")
+    )
+    modules = merge_expected(running, [_declared("searxng", "searxng", "librechat-websearch")])
+    assert modules[0].profiles == ("librechat-websearch",)
+
+
+def test_a_container_nothing_declared_carries_no_group() -> None:
+    # It is running, so the page shows it; nothing declared it, so there is no
+    # profile to hand papaia-ctl and the row gets no checkbox.
+    running = _modules(_line("stray", "running", "Up 1 minute"))
+    assert merge_expected(running, [])[0].profiles == ()
+
+
+def test_one_group_gathers_every_module_of_its_profile() -> None:
+    modules = merge_expected(
+        [],
+        [
+            _declared("firecrawl", "firecrawl", "librechat-websearch"),
+            _declared("searxng", "searxng", "librechat-websearch"),
+            _declared("keycloak", "keycloak", "keycloak"),
+        ],
+    )
+    groups = {g.name: g for g in build_groups(modules)}
+    assert groups["librechat-websearch"].modules == ("firecrawl", "searxng")
+    assert groups["librechat-websearch"].containers == 2
+    assert groups["keycloak"].modules == ("keycloak",)
+
+
+def test_the_managers_own_profile_is_not_selectable() -> None:
+    # Stopping it removes the container serving the request, so the operation
+    # could never report its own outcome. The stack-wide actions reach it; this
+    # list must not.
+    modules = merge_expected([], [_declared("papaia-manager", "manager", "manager")])
+    assert build_groups(modules)[0].selectable is False
+
+
+def test_a_group_is_as_unhealthy_as_its_worst_module() -> None:
+    output = "\n".join(
+        (
+            _line("papaia-searxng", "running", "Up 2 minutes (healthy)",
+                  service="searxng", module="papaia-searxng"),
+            _line("papaia-firecrawl", "exited", "Exited (1) 1 minute ago",
+                  service="firecrawl", module="papaia-firecrawl"),
+        )
+    )
+    modules = merge_expected(
+        _modules(output),
+        [
+            _declared("searxng", "searxng", "librechat-websearch"),
+            _declared("firecrawl", "firecrawl", "librechat-websearch"),
+        ],
+    )
+    assert build_groups(modules)[0].health is ServiceHealth.STOPPED
+
+
+def test_groups_are_worst_first_like_the_modules() -> None:
+    # searxng is only declared, never reported -- its group has to sort ahead of
+    # the one that is up, the same way the module list does.
+    modules = merge_expected(
+        _modules(
+            _line("papaia-keycloak", "running", "Up 2 minutes (healthy)",
+                  service="keycloak", module="papaia-keycloak")
+        ),
+        [
+            _declared("keycloak", "keycloak", "keycloak"),
+            _declared("searxng", "searxng", "librechat-websearch"),
+        ],
+    )
+    assert [g.name for g in build_groups(modules)] == ["librechat-websearch", "keycloak"]
+
+
+def test_an_addon_module_carries_its_compose_project() -> None:
+    # The add-on verbs address the project, not the module: a project may hold
+    # several modules, and they all have to route to the same name.
+    modules = merge_expected([], [_declared("paperless", "paperless")], addon="paperless-ngx")
+    assert modules[0].addon == "paperless-ngx"
+    assert modules[0].profiles == ()

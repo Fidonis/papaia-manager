@@ -63,6 +63,23 @@ ADMIN_APIS = [
     "/api/v1/jobs",
     "/api/v1/maintenance/backup-dir",
     "/api/v1/maintenance/restore-points",
+    "/api/v1/stack/groups",
+    "/api/v1/stack/runner",
+]
+
+# Lifecycle control over the core stack. Denial is decided by the dependency, so
+# these are asserted without a body and without ever reaching papaia-ctl -- which
+# is the point: a route that lost its admin tier would start containers for
+# anyone holding a user session.
+ADMIN_WRITE_APIS = [
+    "/api/v1/stack/groups/start",
+    "/api/v1/stack/groups/stop",
+    "/api/v1/stack/groups/restart",
+    "/api/v1/stack/start",
+    "/api/v1/stack/stop",
+    "/api/v1/stack/restart",
+    "/api/v1/stack/runner/clear",
+    "/api/v1/addons/paperless/restart",
 ]
 # The status pill sits in the header of every page, so it has to answer for
 # both roles even though the page it links to is admin-only.
@@ -79,6 +96,9 @@ ADMIN_APIS_SELF_CONTAINED = [
     "/api/v1/catalogs",
     "/api/v1/maintenance/backup-dir",
     "/api/v1/maintenance/restore-points",
+    # Reads the workspace's compose files and nothing else. An empty workspace
+    # yields an empty group list, which is a correct answer, not an error.
+    "/api/v1/stack/groups",
 ]
 
 
@@ -157,6 +177,17 @@ def test_account_without_any_known_role_is_denied(client: TestClient) -> None:
 @pytest.mark.parametrize("path", ADMIN_PAGES + ADMIN_PARTIALS + ADMIN_APIS)
 def test_user_role_is_denied_admin_surfaces(client: TestClient, path: str) -> None:
     assert _as(client, "user").get(path).status_code == 403
+
+
+@pytest.mark.parametrize("path", ADMIN_WRITE_APIS)
+def test_user_role_is_denied_stack_control(client: TestClient, path: str) -> None:
+    assert _as(client, "user").post(path, json={}).status_code == 403
+
+
+@pytest.mark.parametrize("path", ADMIN_WRITE_APIS)
+def test_anonymous_is_denied_stack_control(client: TestClient, path: str) -> None:
+    client.cookies.clear()
+    assert client.post(path, json={}).status_code == 307
 
 
 @pytest.mark.parametrize("path", ADMIN_APIS_SELF_CONTAINED)

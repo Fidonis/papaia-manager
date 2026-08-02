@@ -3,17 +3,24 @@
 
    Classes are spelled out per branch rather than assembled from a variable:
    app.css is built by scanning these templates, and a computed class name would
-   not survive the purge. #}
-{% macro module_section(title, modules) %}
+   not survive the purge.
+
+   The selection state this reads (`sel`, `busy`, `toggle`) belongs to the Alpine
+   scope in services.html, not to anything here: this partial is replaced every
+   15 s, and state held inside it would not survive a single poll. #}
+{% from "partials/_group_controls.html" import group_checkbox, group_badge, addon_buttons %}
+{% macro module_section(title, modules, groups=0) %}
 <div class="flex items-center justify-between mb-4">
   <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">
     {{ title }} &nbsp;·&nbsp; {{ modules | length }} {{ 'module' if modules | length == 1 else 'modules' }}
+    {%- if groups %} &nbsp;·&nbsp; {{ groups }} {{ 'group' if groups == 1 else 'groups' }}{% endif %}
   </p>
 </div>
 
 <div class="overflow-hidden rounded-xl border border-base-300 mb-8">
   {% for module in modules %}
   {% set mh = module.health | string %}
+  {% set first_of_addon = module.addon and (loop.first or modules[loop.index0 - 1].addon != module.addon) %}
 
   {# ── Module header ── #}
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 border-base-300
@@ -21,6 +28,11 @@
               {% if mh in ('missing', 'stopped') %}bg-error/10
               {% elif mh in ('unhealthy', 'starting') %}bg-warning/10
               {% else %}bg-base-200{% endif %}">
+    {% if module.addon %}
+      <span class="h-4 w-4 shrink-0"></span>
+    {% else %}
+      {{ group_checkbox(module, self_profile) }}
+    {% endif %}
     {% if mh == 'missing' %}
       <span class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-error"></span>
     {% elif mh == 'stopped' %}
@@ -33,7 +45,14 @@
       <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
     {% endif %}
     <p class="font-semibold text-sm">{{ module.name }}</p>
+    {{ group_badge(module) }}
     <p class="text-xs opacity-60">{{ module.summary }}</p>
+    {# One control set per add-on project, on its first module: the verbs act on
+       the whole Compose project, so repeating them per module would offer the
+       same button several times over. #}
+    {% if first_of_addon %}
+      <div class="ml-auto">{{ addon_buttons(module.addon, mh not in ('missing', 'stopped')) }}</div>
+    {% endif %}
   </div>
 
   {# ── Containers ── #}
@@ -124,6 +143,20 @@
   <p class="text-xs opacity-40">Refreshes every 15 s</p>
 </div>
 
-{% if core_modules %}{{ module_section("Core stack", core_modules) }}{% endif %}
+{% if core_modules %}{{ module_section("Core stack", core_modules, group_count) }}{% endif %}
 {% if addon_modules %}{{ module_section("Add-ons", addon_modules) }}{% endif %}
 {% endif %}
+
+{# Hand the current group map to the scope that owns the selection. It lives
+   outside this partial, so the swap cannot carry it — and the selection has to
+   be pruned against it, or a group that left the deployment would stay ticked
+   and be sent on the next action. #}
+<script>
+  (function () {
+    const host = document.getElementById("service-controls");
+    const scope = host && window.Alpine && Alpine.$data(host);
+    if (!scope) return;
+    scope.groups = {{ (group_map or {}) | tojson }};
+    scope.prune();
+  })();
+</script>

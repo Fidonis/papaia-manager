@@ -1,0 +1,41 @@
+{# The detached container behind a whole-stack action. Renders to nothing when
+   there is none, which is the normal case — this strip only exists while an
+   operation is in flight or its outcome has not been acknowledged.
+
+   It is the only place a stack action reports back: the manager is taken down
+   by the very operation it started, so there is no request left to answer on.
+   The poll picks the result up again after the container returns. #}
+{% if stack.active %}
+<div class="rounded-xl border px-5 py-3 mb-4
+            {% if stack.running %}border-warning bg-warning/10
+            {% elif stack.succeeded %}border-success bg-success/10
+            {% else %}border-error bg-error/10{% endif %}">
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+    {% if stack.running %}
+      <span class="loading loading-spinner loading-xs text-warning"></span>
+      <p class="text-sm font-semibold">Stack {{ stack.action }} running</p>
+      <p class="text-xs opacity-60">This panel may become unreachable until it finishes.</p>
+    {% elif stack.succeeded %}
+      <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
+      <p class="text-sm font-semibold">Stack {{ stack.action }} finished</p>
+      <p class="text-xs opacity-60 font-mono">{{ stack.finished_at[:19] }}</p>
+    {% else %}
+      <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-error"></span>
+      <p class="text-sm font-semibold">Stack {{ stack.action }} failed</p>
+      <p class="text-xs opacity-60 font-mono">exit {{ stack.exit_code }}</p>
+    {% endif %}
+    {% if not stack.running %}
+      <button class="btn btn-ghost btn-xs ml-auto"
+              @click="fetch('/api/v1/stack/runner/clear', { method: 'POST', headers: { 'X-CSRF-Token': document.querySelector('meta[name=csrf]').content } }).then(() => refreshStackRunner())">
+        Dismiss
+      </button>
+    {% endif %}
+  </div>
+  {% if stack.log %}
+  <details class="mt-2">
+    <summary class="text-xs opacity-60 cursor-pointer">Output</summary>
+    <pre class="mt-2 max-h-64 overflow-y-auto rounded bg-base-300 p-3 text-xs whitespace-pre-wrap">{{ stack.log }}</pre>
+  </details>
+  {% endif %}
+</div>
+{% endif %}

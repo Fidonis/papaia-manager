@@ -17,6 +17,7 @@ from app.core.runner import (
     _spec_from_inspect,
     _status_from_inspect,
     build_run_args,
+    build_stack_run_args,
     runner_name,
 )
 
@@ -121,7 +122,7 @@ def test_the_runner_carries_the_discovery_labels(spec: ContainerSpec) -> None:
     args = _args(spec)
     labels = [args[i + 1] for i, a in enumerate(args) if a == "--label"]
     assert "de.fidonis.module=papaia-restore" in labels
-    assert f"de.fidonis.restore-point={_RESTORE_POINT}" in labels
+    assert f"de.fidonis.runner-target={_RESTORE_POINT}" in labels
 
 
 def test_papaia_ctl_is_invoked_from_the_mounted_workspace(spec: ContainerSpec) -> None:
@@ -191,7 +192,7 @@ def test_a_running_runner_reports_no_exit_code() -> None:
     assert status.is_running
     assert status.exit_code is None
     assert not status.succeeded
-    assert status.restore_point == _RESTORE_POINT
+    assert status.target == _RESTORE_POINT
 
 
 def test_a_clean_exit_is_reported_as_success() -> None:
@@ -211,7 +212,7 @@ def test_a_non_zero_exit_is_reported_as_failure() -> None:
 def test_the_restore_point_falls_back_to_the_container_name() -> None:
     payload = _status_payload("exited", 0)
     payload[0]["Config"] = {"Labels": {}}
-    assert _status_from_inspect(payload).restore_point == _RESTORE_POINT
+    assert _status_from_inspect(payload).target == _RESTORE_POINT
 
 
 def test_runner_name_is_derived_from_the_restore_point() -> None:
@@ -222,3 +223,103 @@ def test_runner_name_is_derived_from_the_restore_point() -> None:
 def test_an_unusable_status_payload_raises(payload: object) -> None:
     with pytest.raises(RunnerError):
         _status_from_inspect(payload)
+
+
+# ---------------------------------------------------------------------------
+# Stack runner
+# ---------------------------------------------------------------------------
+
+
+def _stack(spec: ContainerSpec, action: str, **kwargs: object) -> list[str]:
+    return build_stack_run_args(
+        spec,
+        action=action,
+        workspace_dir=_WORKSPACE,
+        config_dir=_CONFIG,
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def _command(args: list[str], spec: ContainerSpec) -> str:
+    """Everything after the image: what the runner actually executes."""
+    return " ".join(args[args.index(spec.image) + 1 :]).replace("\\", "/")
+
+
+def test_a_stack_runner_is_told_apart_from_a_restore(spec: ContainerSpec) -> None:
+    # Same mechanics, different label and name. Without the split, `find_runner`
+    # could report a restore as the outcome of a restart.
+    args = _stack(spec, "restart")
+    labels = [args[i + 1] for i, a in enumerate(args) if a == "--label"]
+    assert "de.fidonis.module=papaia-stack" in labels
+    assert "de.fidonis.runner-target=restart" in labels
+    assert args[args.index("--name") + 1] == "papaia-stack-restart"
+
+
+def test_stopping_the_stack_runs_one_papaia_ctl(spec: ContainerSpec) -> None:
+    assert _command(_stack(spec, "stop"), spec) == (
+        f"bash -c bash {_WORKSPACE}/papaia/tools/papaia-ctl stop --config-dir={_CONFIG}"
+    )
+
+
+def test_clean_up_is_appended_to_the_stop(spec: ContainerSpec) -> None:
+    assert _command(_stack(spec, "stop", clean_up=True), spec).endswith("--clean-up")
+
+
+def test_restarting_the_stack_is_a_stop_followed_by_a_start(spec: ContainerSpec) -> None:
+    # papaia-ctl has no restart verb. The `&&` matters: leaving the stack down is
+    # recoverable, starting one that never came down cleanly is not.
+    command = _command(_stack(spec, "restart"), spec)
+    assert " && " in command
+    stop, start = command.split(" && ")
+    assert stop.endswith(f"papaia-ctl stop --config-dir={_CONFIG}")
+    assert start.endswith(f"papaia-ctl start --config-dir={_CONFIG}")
+
+
+def test_a_stack_action_never_touches_the_addons(spec: ContainerSpec) -> None:
+    # `papaia-ctl stop` accepts --addons, and passing it would take every add-on
+    # down with the core stack -- the bulk action this feature deliberately omits.
+    for action in ("start", "stop", "restart"):
+        assert "--addons" not in " ".join(_stack(spec, action))
+
+
+def test_the_stack_runner_inherits_the_managers_mounts(spec: ContainerSpec) -> None:
+    # Same reason as the restore runner: path parity and Docker socket access
+    # hold by construction rather than by being re-derived here.
+    args = _stack(spec, "stop")
+    volumes = [a for i, a in enumerate(args) if args[i - 1] == "--volume"]
+    assert f"{_WORKSPACE}:{_WORKSPACE}" in volumes
+    assert "/var/run/docker.sock:/var/run/docker.sock" in volumes
+
+
+def test_the_stack_runner_is_never_restarted_by_the_daemon(spec: ContainerSpec) -> None:
+    args = _stack(spec, "stop")
+    assert args[args.index("--restart") + 1] == "no"
+
+
+def test_an_unknown_stack_action_is_refused(spec: ContainerSpec) -> None:
+    with pytest.raises(ValueError, match="is not in"):
+        _stack(spec, "uninstall")
+
+
+def test_clean_up_rides_along_with_the_stop_half_of_a_restart(spec: ContainerSpec) -> None:
+    # A restart that removes the containers in between is a full recreate. The
+    # flag belongs on the stop, which is the only half that has one.
+    stop, start = _command(_stack(spec, "restart", clean_up=True), spec).split(" && ")
+    assert stop.endswith("--clean-up")
+    assert "--clean-up" not in start
+
+
+def test_clean_up_is_refused_on_a_start(spec: ContainerSpec) -> None:
+    # papaia-ctl start has no such flag and stops nothing, so honouring it would
+    # be a lie.
+    with pytest.raises(ValueError, match="needs something to stop"):
+        _stack(spec, "start", clean_up=True)
+
+
+def test_the_legacy_restore_point_label_is_still_read() -> None:
+    # A restore recreates the manager mid-operation, so the new code routinely
+    # inspects a runner the previous version started.
+    payload = json.loads(json.dumps(_INSPECT))
+    payload[0]["Name"] = "/papaia-restore-something-else"
+    payload[0]["Config"]["Labels"] = {"de.fidonis.restore-point": _RESTORE_POINT}
+    assert _status_from_inspect(payload).target == _RESTORE_POINT
