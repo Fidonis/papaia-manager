@@ -12,6 +12,53 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [0.4.0] - 2026-08-02
+
+### Added
+- **Service group control.** `/services` is no longer read-only: the page is now
+  where the stack is started and stopped. The unit is the Compose profile — a
+  *service group* — because that is the only granularity `papaia-ctl` accepts;
+  there is no per-container verb. Each module header carries its profile and a
+  checkbox, and ticking one module ticks every module the same profile brings up,
+  so the coupling is visible rather than surprising: `librechat-websearch` alone
+  covers Firecrawl, SearXNG, Jina and the Firecrawl MCP server. Several groups can
+  be started, stopped or restarted in one job.
+- The whole stack can be started, stopped and restarted from the header menu.
+  That action removes the container serving the request, so it runs in a detached
+  container that outlives the manager — the same mechanism restore already uses —
+  and reports its outcome back through `/partials/stack-runner` once the page is
+  reachable again.
+- Add-ons gained a restart endpoint and their own per-add-on start / stop /
+  restart controls on the services page. There is deliberately no bulk action
+  across add-ons, and a stack action never passes `--addons`.
+- `--clean-up` (`docker compose down` rather than `stop`) is offered by every
+  confirmation dialog that stops something — a stop, and the stop half of a
+  restart, where it turns the operation into a full recreate. A start rejects the
+  field with 400 instead of ignoring it, since it stops nothing and honouring it
+  would confirm an operation that did not happen. Volumes and
+  `$PAPAIA_CONFIG_DIR` are untouched either way.
+- A `/api/v1/stack/` surface backing all of the above: `groups` and
+  `groups/{start,stop,restart}` for scoped actions, `{start,stop,restart}` for the
+  whole stack, plus `runner` and `runner/clear` to read back and acknowledge a
+  detached action.
+
+### Changed
+- `ALLOWED_CORE_VERBS` gains `start` and `stop`; `restore` stays out for the
+  reason already documented there. Profile names are validated against the set
+  `inventory.core_groups` reads out of the shipped Compose fragments — an
+  allowlist, not a pattern — and the profile the manager itself runs under is
+  refused regardless of what the caller passed, since stopping it would remove
+  the container handling the request.
+- `restart` is composed as stop → start rather than calling a `papaia-ctl` verb
+  that does not exist; adding one would mean a change in the stack repo plus a
+  minimum-version coupling. Nothing in `Fidonis/papaia` is touched by this
+  release.
+- `RunnerStatus.restore_point` is renamed to `target`, a runner no longer always
+  being a restore. The JSON shape of the backup page is unchanged — the key is
+  chosen per caller — and the legacy `de.fidonis.restore-point` label is still
+  read back, because a restore recreates the manager mid-operation and the new
+  code routinely inspects a runner the previous version started.
+
 ## [0.3.0] - 2026-07-31
 
 ### Added
@@ -169,10 +216,12 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[0.4.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.4.0
+
 [0.3.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.3.0
 
 [0.2.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.2.0
 
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.4.0...HEAD
