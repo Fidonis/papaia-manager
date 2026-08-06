@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -24,6 +25,7 @@ from app.core.services import (
     count_by_health,
     load_snapshot,
     overall_health,
+    worst,
 )
 from app.core.snapshots import load_installed, managed_snapshot_path
 from app.core.state import (
@@ -157,31 +159,56 @@ async def partial_service_status(
     user: AnyUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
-    """The header pills: one aggregate per section, for every authenticated role.
+    """The header status chip and its popover, for every authenticated role.
 
-    Deliberately not filtered by visibility. A pill carries no service names,
-    only the worst state in its section, so a non-admin learns that something is
-    wrong without learning what -- which is the point of putting it in front of
-    them at all.
+    Deliberately not filtered by visibility. Neither the chip nor the popover
+    names a service, only how many are in which state, so a non-admin learns
+    that something is wrong without learning what -- which is the point of
+    putting it in front of them at all.
 
     Core and add-ons stay separate rather than being folded into one value: a
     broken add-on out of a customer catalogue would otherwise repaint the stack
-    pill for everyone who is logged in.
+    verdict for everyone who is logged in. The chip aggregates the two for its
+    one-line summary; the popover keeps them apart.
+
+    `*_running` counts COMPLETED alongside HEALTHY, the same way the services
+    page does: a one-shot init container that exited 0 did its job.
     """
     snapshot = await _load_stack_snapshot(settings)
+    core_counts = count_by_health(snapshot.core)
+    addon_counts = count_by_health(snapshot.addons)
+    core_running = core_counts[ServiceHealth.HEALTHY] + core_counts[ServiceHealth.COMPLETED]
+    addon_running = addon_counts[ServiceHealth.HEALTHY] + addon_counts[ServiceHealth.COMPLETED]
+
+    # The chip's one-line verdict. `worst()` is reused rather than reimplemented
+    # in the template: the severity order it walks is the single place that
+    # decides what wins when two things are wrong at once, and a second copy of
+    # that order in Jinja would drift.
     core_overall = overall_health(snapshot.core)
     addon_overall = overall_health(snapshot.addons)
+    # An empty add-on section reports UNKNOWN, which must not drag the chip down
+    # to "status unknown" on a deployment that simply has no add-ons.
+    sections = [core_overall] + ([addon_overall] if snapshot.addons else [])
+
     resp = _templates.TemplateResponse(
         request,
-        "partials/service_status_pill.html",
+        "partials/service_status_chip.html",
         _ctx(
             request,
             user,
+            overall=worst(sections),
+            issues=(len(snapshot.core) - core_running) + (len(snapshot.addons) - addon_running),
             core_overall=core_overall,
-            core_affected=count_by_health(snapshot.core)[core_overall],
+            core_running=core_running,
+            core_total=len(snapshot.core),
             addon_overall=addon_overall,
-            addon_affected=count_by_health(snapshot.addons)[addon_overall],
+            addon_running=addon_running,
             addon_total=len(snapshot.addons),
+            # Rendered as a local wall-clock time in the popover. Absolute
+            # rather than relative on purpose: if the poll dies -- backgrounded
+            # tab, manager restarted underneath -- a frozen clock says so,
+            # where "a moment ago" would keep claiming to be fresh.
+            checked_at=datetime.now(UTC).isoformat(),
         ),
     )
     resp.headers["Cache-Control"] = "no-store"

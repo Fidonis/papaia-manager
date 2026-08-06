@@ -11,6 +11,16 @@
 </a>
 {% endblock %}
 
+{# Tier 1, filled out of band. Which verbs exist follows from the add-on's
+   status, and the status changes with every action -- so this slot cannot be
+   rendered here once at page load without going stale the moment something is
+   started or removed. `addon_detail_content.html` therefore ships the cluster as
+   an `hx-swap-oob` element, and the same partial swap that refreshes the body
+   refreshes the header. No second endpoint, no second poll. #}
+{% block page_actions %}
+<div id="addon-actions" class="flex items-center gap-2"></div>
+{% endblock %}
+
 {% block content %}
 <div
   id="addon-detail"

@@ -4,6 +4,19 @@
 {% block page_title %}Add-Ons{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Manage all the add-ons in your AI stack</p>{% endblock %}
 
+{# Tier 1. This page has no primary action of its own -- installing happens per
+   add-on, on the card -- so the catalog link is the secondary, and it moves here
+   out of the gallery's section heading, where it was the only mid-page action
+   button in the panel. #}
+{% block page_actions %}
+<a href="/catalogs" class="btn btn-outline btn-sm">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
+  </svg>
+  Manage catalogs
+</a>
+{% endblock %}
+
 {% block content %}
 <div
   id="addon-gallery"

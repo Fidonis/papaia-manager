@@ -1,3 +1,4 @@
+{% from "partials/_actions.html" import row_actions, overflow_menu %}
 {% if not catalogs %}
 <div class="flex flex-col items-center py-16 gap-3 opacity-60">
   <p class="text-lg font-medium">No catalogs configured</p>
@@ -28,19 +29,22 @@
           {% endif %}
         </div>
 
-        <div class="flex gap-2 items-center">
+        {# Tier 2: refreshing is the verb this row is here for, so it stays in the
+           open. Edit is rare and Delete is destructive, so both move behind the
+           kebab -- Delete used to be a red button one mis-click away from
+           dropping a catalogue. One shared `busy` for the whole cluster, so a
+           refresh in flight also locks the menu. #}
+        {% call row_actions("{ busy: false, jobId: null }") %}
           {% if c.type == "git" %}
-          <span x-data="{ busy: false, jobId: null }" class="inline-flex items-center gap-2">
-            <button class="btn btn-outline btn-xs" :disabled="busy"
-                    @click="busy = true;
-                            catalogAction('{{ c.name }}', 'refresh', id => jobId = id)
-                              .then(() => { busy = false; jobId = null })">
-              <span x-show="busy" class="loading loading-spinner loading-xs"></span>
-              <span x-show="!busy">Refresh</span>
-            </button>
-            <a x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
-               class="link link-hover text-xs opacity-60">view log</a>
-          </span>
+          <button class="btn btn-outline btn-xs" :disabled="busy"
+                  @click="busy = true;
+                          catalogAction('{{ c.name }}', 'refresh', id => jobId = id)
+                            .then(() => { busy = false; jobId = null })">
+            <span x-show="busy" class="loading loading-spinner loading-xs"></span>
+            <span x-show="!busy">Refresh</span>
+          </button>
+          <a style="display:none" x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
+             class="link link-hover text-xs opacity-60">view log</a>
           {% else %}
           <button class="btn btn-outline btn-xs"
                   hx-get="/partials/catalogs"
@@ -48,23 +52,18 @@
                   hx-swap="innerHTML">Re-scan</button>
           {% endif %}
 
-          <button class="btn btn-outline btn-xs"
-                  onclick='openEditCatalogModal(
+          {% call overflow_menu(size='xs', label='More actions for catalog ' ~ c.name) %}
+            <li><a onclick='openEditCatalogModal(
                     {{ c.name|tojson }}, {{ c.type|tojson }},
                     {{ (c.url or "")|tojson }}, {{ c.ref|tojson }},
                     {{ (c.path or "")|tojson }}, {{ c.enabled|tojson }}
-                  )'>Edit</button>
-
-          <span x-data="{ busy: false }">
-            <button class="btn btn-error btn-outline btn-xs" :disabled="busy"
-                    @click="if (!confirm('Delete catalog {{ c.name }}?')) return;
-                            busy = true;
-                            catalogDelete('{{ c.name }}').then(() => busy = false)">
-              <span x-show="busy" class="loading loading-spinner loading-xs"></span>
-              <span x-show="!busy">Delete</span>
-            </button>
-          </span>
-        </div>
+                  )'>Edit</a></li>
+            <li><a class="text-error"
+                   @click="if (!confirm('Delete catalog {{ c.name }}?')) return;
+                           busy = true;
+                           catalogDelete('{{ c.name }}').then(() => busy = false)">Delete</a></li>
+          {% endcall %}
+        {% endcall %}
       </div>
 
       <div class="text-sm opacity-60 mt-1">
