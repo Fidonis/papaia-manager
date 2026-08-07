@@ -1,6 +1,25 @@
-{% from "partials/_addon_controls.html" import action_buttons, remove_modal, uninstall_modal, install_modal %}
+{% from "partials/_addon_controls.html" import primary_action, update_action, overflow_actions, remove_modal, uninstall_modal, install_modal %}
 {% from "partials/_env_fields.html" import env_input %}
 {% set s = addon.status %}
+
+<!-- Page actions, swapped out of band into the header slot declared in
+     addon_detail.html. It has to be a top-level element of this response for
+     htmx to pick it up, and it has to carry the id and the Alpine scope itself,
+     because an oob swap replaces the whole element.
+
+     The modals live in here with the buttons, not in the body: `$refs` resolves
+     per Alpine component, so a dialog outside this scope would not be reachable
+     from the menu item that opens it. `showModal()` puts them in the top layer
+     regardless of where in the document they sit. -->
+<div id="addon-actions" hx-swap-oob="true" class="flex items-center gap-2"
+     x-data="{ busy: false, activeVerb: '' }">
+  {{ primary_action(addon, s, 'addonAction') }}
+  {{ update_action(addon, 'addonAction') }}
+  {{ overflow_actions(addon, s, 'addonAction', include_update=False) }}
+  {{ remove_modal(addon, s, 'addonAction') }}
+  {{ uninstall_modal(addon, 'addonAction') }}
+  {{ install_modal(addon, s, 'addonAction') }}
+</div>
 
 <!-- Status bar -->
 <div class="flex items-center gap-3 mb-6 flex-wrap">
@@ -45,22 +64,6 @@
 {% if addon.description %}
 <p class="mb-6 opacity-80">{{ addon.description }}</p>
 {% endif %}
-
-<!-- Action buttons -->
-<div x-data="{ busy: false, activeVerb: '' }">
-  <div class="flex flex-wrap gap-2 mb-8">
-    {{ action_buttons(addon, s, 'addonAction') }}
-
-    {% if addon.update_available %}
-      <button class="btn btn-secondary btn-sm"
-              @click="addonAction('{{ addon.name }}', 'update', {})">Update</button>
-    {% endif %}
-  </div>
-
-  {{ remove_modal(addon, s, 'addonAction') }}
-  {{ uninstall_modal(addon, 'addonAction') }}
-  {{ install_modal(addon, s, 'addonAction') }}
-</div>
 
 <!-- Configuration -->
 {% if addon.env_fields %}

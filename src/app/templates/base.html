@@ -144,6 +144,21 @@
       });
     }
 
+    // _stackBody: the request body for a stack or group verb.
+    //
+    // `clean_up` maps onto `papaia-ctl stop --clean-up`, so it rides along with
+    // anything that stops -- a restart included, where it turns the operation
+    // into a full recreate. A start has no such flag and the API rejects the
+    // field outright rather than ignoring it.
+    //
+    // It lives here rather than in an Alpine scope because both callers need it:
+    // the group selection in the content area and the whole-stack menu in the
+    // page header are separate components, and a copy per component would be a
+    // second place for this API contract to drift.
+    function _stackBody(action, cleanUp) {
+      return action === "start" ? {} : { clean_up: cleanUp };
+    }
+
     // stackGroupAction: POST /api/v1/stack/groups/{action} for a set of Compose
     // profiles, poll the job, then refresh the services list. Resolves false when
     // the request was rejected, so the caller can release its busy flag —
@@ -488,22 +503,36 @@
     <header class="sticky top-0 z-20 border-b border-base-300 bg-base-100 px-8 py-5">
       <div class="flex items-center justify-between gap-4">
         <div class="min-w-0">
-          <h1 class="font-brand text-2xl font-bold leading-tight">{% block page_title %}{% endblock %}</h1>
+          {# `truncate`, because the action cluster next to it is `shrink-0`: an
+             add-on name in a narrow viewport has to give way, and ellipsising is
+             the graceful version of that -- without it the whole title collapses
+             to zero width and the page loses its label entirely. #}
+          <h1 class="font-brand text-2xl font-bold leading-tight truncate">{% block page_title %}{% endblock %}</h1>
           {% block page_subtitle %}{% endblock %}
         </div>
+        {# Two slots, in this order and nothing else: the status chip, then the
+           page's own actions. Keeping them apart is what stops them competing
+           for the corner -- the chip is a fixed width (see
+           partials/service_status_chip.html), so the actions never move when a
+           poll changes the state.
+
+           Aggregate stack status, on every page for every role. Loaded out of
+           band rather than passed into each page's context, so a new page picks
+           it up by extending this template and nothing else. Empty until the
+           first response lands; the chip is the only thing that appears, so
+           nothing below it moves. #}
         <div class="flex items-center gap-3 shrink-0">
-          {# Aggregate stack status, on every page for every role. Loaded out of
-             band rather than passed into each page's context, so a new page
-             picks it up by extending this template and nothing else. Empty
-             until the first response lands; the pills are the only thing that
-             appears, so nothing below them moves. One request for both pills --
-             they read the same snapshot, and a second poll would buy nothing. #}
           {% if user %}
-          <div class="flex flex-wrap items-center gap-2"
+          <div class="flex items-center"
                hx-get="/partials/service-status"
                hx-trigger="load, every 30s"
                hx-swap="innerHTML"></div>
           {% endif %}
+
+          {# Tier 1 of the action contract in partials/_actions.html: exactly
+             one filled primary button per page, everything else behind the
+             overflow menu. Every page fills this -- no page grows its own
+             action row inside the content area. #}
           {% block page_actions %}{% endblock %}
         </div>
       </div>

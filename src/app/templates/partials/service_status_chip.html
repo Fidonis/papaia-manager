@@ -1,0 +1,114 @@
+{# Aggregate status, rendered into the header of every page.
+
+   One chip, not two pills. The two pills this replaces sat in the same
+   `shrink-0` box as the page's primary action and competed with it for the
+   right-hand corner; worse, their text length varied with the state, so the
+   header reflowed on every poll. The chip is a fixed width and always says the
+   same amount, and the breakdown moved into the popover behind it.
+
+   It is also deliberately not a `badge`: as an outline badge it carried the
+   same visual weight as the decorative `v1.2` / `enabled` badges everywhere
+   else in this panel and read as decoration rather than as a state.
+
+   Core and add-ons still do not share a verdict. The chip aggregates them for
+   its one line -- `worst()` in the router decides that, so the severity order
+   lives in one place -- but the popover keeps the two apart, so a broken
+   add-on out of a customer catalogue cannot make the core stack look down.
+
+   Nothing here names a service, for either role: a non-admin learns that
+   something is wrong without learning what, which is the point of putting it
+   in front of them at all. Only the link is admin-only -- /services enforces
+   the admin role itself, so pointing everyone at it would hand non-admins a
+   chip that answers with 403.
+
+   Every branch spells its classes out. app.css is built by scanning these
+   templates, so a class assembled from a variable would not survive the purge. #}
+
+{% macro dot(state) %}
+  {% if state in ("missing", "stopped") %}
+    <span class="h-2 w-2 shrink-0 rounded-full bg-error"></span>
+  {% elif state in ("unhealthy", "starting") %}
+    <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>
+  {% elif state == "unknown" %}
+    <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>
+  {% else %}
+    <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span>
+  {% endif %}
+{% endmacro %}
+
+{% set state = overall | string %}
+{% set label = "1 issue" if issues == 1 else issues ~ " issues" %}
+
+{# `dropdown-hover` on top of the default focus behaviour, not instead of it:
+   the trigger stays a `tabindex="0"` element, so the popover is reachable by
+   keyboard as well. #}
+<div class="dropdown dropdown-end dropdown-hover shrink-0">
+
+  {# Two fixed widths, one per breakpoint: `w-32` with the verdict spelled out
+     from `sm` up, and a dot-only `w-8` below it. Constant width is the point --
+     it is what stops the header reflowing on every poll -- but 8 rem of it on a
+     phone squeezed the page title out of existence, and knowing which page you
+     are on beats reading the verdict without opening the popover, which still
+     carries it either way. The `aria-label` says the same thing at both sizes. #}
+  {% if state in ("missing", "stopped") %}
+  <div tabindex="0" role="button" aria-label="Stack status: {{ label }}"
+       class="inline-flex w-8 sm:w-32 items-center justify-center gap-2 rounded-full border border-error bg-error/10 px-3 py-1.5 text-xs font-medium text-error whitespace-nowrap">
+    <span class="h-2 w-2 shrink-0 rounded-full bg-error"></span><span class="hidden sm:inline">{{ label }}</span>
+  </div>
+  {% elif state in ("unhealthy", "starting") %}
+  <div tabindex="0" role="button" aria-label="Stack status: {{ label }}"
+       class="inline-flex w-8 sm:w-32 items-center justify-center gap-2 rounded-full border border-warning bg-warning/10 px-3 py-1.5 text-xs font-medium text-warning whitespace-nowrap">
+    <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span><span class="hidden sm:inline">{{ label }}</span>
+  </div>
+  {% elif state == "unknown" %}
+  <div tabindex="0" role="button" aria-label="Stack status unknown"
+       class="inline-flex w-8 sm:w-32 items-center justify-center gap-2 rounded-full border border-base-300 bg-base-200 px-3 py-1.5 text-xs font-medium opacity-60 whitespace-nowrap">
+    <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span><span class="hidden sm:inline">Status unknown</span>
+  </div>
+  {% else %}
+  <div tabindex="0" role="button" aria-label="Stack status: all healthy"
+       class="inline-flex w-8 sm:w-32 items-center justify-center gap-2 rounded-full border border-success bg-success/10 px-3 py-1.5 text-xs font-medium text-success whitespace-nowrap">
+    <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span><span class="hidden sm:inline">All healthy</span>
+  </div>
+  {% endif %}
+
+  <div tabindex="0" class="dropdown-content z-30 mt-1 w-64 rounded-box border border-base-300 bg-base-100 p-3 shadow">
+
+    <div class="flex items-center gap-2 text-sm">
+      {{ dot(core_overall | string) }}
+      <span class="flex-1 font-medium">Core stack</span>
+      <span class="text-xs opacity-60">{{ core_running }} / {{ core_total }} running</span>
+    </div>
+
+    {% if addon_total %}
+    <div class="mt-2 flex items-center gap-2 text-sm">
+      {{ dot(addon_overall | string) }}
+      <span class="flex-1 font-medium">Add-ons</span>
+      <span class="text-xs opacity-60">{{ addon_running }} / {{ addon_total }} running</span>
+    </div>
+    {% endif %}
+
+    <div class="mt-3 flex items-center gap-2 border-t border-base-300 pt-2 text-xs opacity-60">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <span class="flex-1">checked <span data-checked-at="{{ checked_at }}"></span></span>
+      {% if is_admin %}
+      <a href="/services" class="link link-hover whitespace-nowrap">Services</a>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+{# The server sends UTC; the reader wants their own clock. No interval here on
+   purpose -- the surrounding element is replaced by the 30 s poll, and a ticker
+   started per swap would keep running against a detached node. #}
+<script>
+  (function () {
+    document.querySelectorAll("[data-checked-at]").forEach(function (el) {
+      var when = new Date(el.dataset.checkedAt);
+      el.textContent = isNaN(when.getTime()) ? "just now" : when.toLocaleTimeString();
+    });
+  })();
+</script>
