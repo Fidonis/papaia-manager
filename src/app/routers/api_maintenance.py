@@ -29,7 +29,7 @@ from app.config import Settings, get_settings
 from app.core import backups, runner
 from app.core.audit import write_audit_entry
 from app.core.ctl import run_core_verb
-from app.core.jobs import JobContext, JobQueue, JobStatus
+from app.core.jobs import JobContext, JobQueue
 
 router = APIRouter(prefix="/api/v1/maintenance")
 
@@ -173,6 +173,17 @@ async def create_backup(
     await _require_no_runner()
 
     queue = _queue()
+    # Refused rather than queued. The worker is single-flight, so a second backup
+    # accepted here would sit invisible behind the first and start minutes later,
+    # against a stack that has moved on -- and the operator who clicked twice
+    # because the button looked idle gets told why instead of a second archive.
+    active = queue.active_job()
+    if active is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"a {active.action} job is already running; wait for it to finish",
+        )
+
     _username = _user_id(user)
     _retention = body.retention_days
     _flags = [f"--backup-dir={backup_dir}"]
@@ -251,7 +262,9 @@ async def start_restore(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
     queue = _queue()
-    if any(j.status is JobStatus.RUNNING for j in queue.list_jobs()):
+    # A queued job counts as much as a running one: the restore replaces the
+    # config directory the worker would pick it up from moments later.
+    if queue.active_job() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="a job is currently running; wait for it to finish before restoring",

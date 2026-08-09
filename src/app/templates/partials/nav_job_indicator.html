@@ -1,0 +1,14 @@
+{# The dot on the Jobs nav entry. Renders to nothing when the queue is idle,
+   which is nearly always -- and is the only reason it can sit in the sidebar of
+   every page without becoming furniture.
+
+   This is what a running backup looks like from Add-Ons: the strip on the backup
+   page answers "what is running" in full, the sidebar only has to say that
+   something is. Both read the same `active_job()`.
+
+   `aria-label` rather than a title: collapsed to a rail the nav row has no
+   visible text at all, so the dot is the whole message. #}
+{% if active %}
+<span class="h-2 w-2 shrink-0 rounded-full bg-warning"
+      aria-label="{{ active.action }} job running"></span>
+{% endif %}

@@ -330,10 +330,14 @@
 >
 {% set path = request.url.path %}
 {% set nav_dashboard = path == "/" %}
-{% set nav_addons    = path.startswith("/addons") or path.startswith("/jobs") %}
+{% set nav_addons    = path.startswith("/addons") %}
 {% set nav_services  = path.startswith("/services") %}
 {% set nav_catalogs  = path.startswith("/catalogs") %}
 {% set nav_backup    = path.startswith("/backup") %}
+{# /jobs used to be folded into Add-Ons, back when a job log was only ever
+   reached from an add-on action. Jobs now have their own entry, and a job log is
+   a page of that section rather than a detour out of another one. #}
+{% set nav_jobs      = path.startswith("/jobs") %}
 
 <div class="flex">
 
@@ -416,6 +420,27 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
           </svg>
           <span class="sidebar-label">Catalogs</span>
+        </a>
+
+        {# The indicator is positioned rather than placed in the flex flow: as a
+           rail the row centres its icon and drops its padding, and an `ml-auto`
+           dot would end up against the panel edge in that state. Anchored to the
+           row it sits in the same spot at both widths.
+
+           It polls from the sidebar of every admin page, which is the point --
+           this is how a backup started on one page stays visible from another.
+           The Jobs page itself is where it says what and since when. #}
+        <a href="/jobs" aria-label="Jobs"
+           class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                  {{ 'bg-primary text-primary-content' if nav_jobs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+          </svg>
+          <span class="sidebar-label">Jobs</span>
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 flex"
+                hx-get="/partials/nav/job-indicator"
+                hx-trigger="load, every 5s"
+                hx-swap="innerHTML"></span>
         </a>
 
         {# Archive box rather than the former cog: collapsed to a rail the icon is

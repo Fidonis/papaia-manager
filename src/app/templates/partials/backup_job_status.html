@@ -1,0 +1,77 @@
+{# The backup page's job strip, and the page's authority on whether its primary
+   action is available.
+
+   The wrapper polls in every state, including the idle one. That is the point:
+   `busy` used to be Alpine state in the header cluster, so a backup started in
+   another tab -- or before this page was opened at all -- left the button
+   inviting a second one. The slow idle tick is what picks that up; the fast tick
+   only exists while there is something to follow.
+
+   Which job appears here is decided in ui.py (`_backup_panel_ctx`): any active
+   job, since any of them blocks a backup, and otherwise a backup that finished
+   within the last few minutes. #}
+<div
+  id="backup-job-status"
+  hx-get="/partials/backup/job-status"
+  hx-trigger="{% if job_active %}every 2s{% else %}every 10s{% endif %}"
+  hx-swap="outerHTML"
+  class="{% if job %}mb-6{% endif %}"
+>
+{% if job %}
+  <div class="rounded-xl border px-5 py-3
+              {% if job_active %}border-warning bg-warning/10
+              {% elif job.status.value == "succeeded" %}border-success bg-success/10
+              {% else %}border-error bg-error/10{% endif %}">
+
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {% if job_active %}
+        <span class="loading loading-spinner loading-xs text-warning"></span>
+        <p class="text-sm font-semibold">
+          {% if job.status.value == "queued" %}{{ job.action }} queued{% else %}{{ job.action }} running{% endif %}
+        </p>
+      {% elif job.status.value == "succeeded" %}
+        <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
+        <p class="text-sm font-semibold">Backup finished</p>
+      {% else %}
+        <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-error"></span>
+        <p class="text-sm font-semibold">Backup failed</p>
+      {% endif %}
+
+      <p class="text-xs opacity-60 font-mono truncate">{{ job.target }}</p>
+
+      {% if job.started_at %}
+      <p class="text-xs opacity-50">started {{ job.started_at.strftime("%H:%M:%S") }}</p>
+      {% endif %}
+      {% if job.finished_at %}
+      <p class="text-xs opacity-50">finished {{ job.finished_at.strftime("%H:%M:%S") }}</p>
+      {% endif %}
+
+      <a href="/jobs/{{ job.id }}" class="link link-hover ml-auto text-xs opacity-60">View log</a>
+    </div>
+
+    {# A backup is not what blocks a backup here -- say which job is. #}
+    {% if job_active and job.action != "backup" %}
+    <p class="mt-1 text-xs opacity-60">
+      A backup cannot start while another job is in flight.
+    </p>
+    {% endif %}
+
+    {% if job_log_tail %}
+    <pre class="mt-2 max-h-40 overflow-y-auto rounded bg-base-300 p-3 text-xs whitespace-pre-wrap">{{ job_log_tail }}</pre>
+    {% endif %}
+  </div>
+{% endif %}
+
+{# The header button lives outside this element, in the page_actions block, and
+   an out-of-band swap of that cluster would rebuild the <dialog> it contains --
+   closing an open confirmation on every poll. So the strip announces its state
+   instead and the button listens. Same technique as the header status chip:
+   an inline script in a swapped partial. #}
+<script>
+  window.dispatchEvent(new CustomEvent("papaia-job-state", { detail: {
+    active: {{ "true" if job_active else "false" }},
+    jobId: {{ (job.id | tojson) if job_active else "null" }},
+    action: {{ (job.action | tojson) if job_active else "null" }},
+  }}));
+</script>
+</div>

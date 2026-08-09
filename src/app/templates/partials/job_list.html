@@ -1,0 +1,67 @@
+{# Every job of this manager process, newest first.
+
+   The empty state says where the list comes from, because it is the one thing
+   that surprises: the registry is held in memory, so a restarted manager starts
+   over with an empty list. The jobs themselves do not outlive that restart
+   either -- each one is a subprocess of this process -- so the list is not
+   hiding anything that is still going on.
+
+   Every badge branch spells its classes out; app.css is built by scanning these
+   templates, so a class assembled from a variable would not survive the purge. #}
+{% if not jobs %}
+<div class="rounded-xl border border-base-300 px-5 py-10 text-center">
+  <p class="text-sm font-semibold">No jobs yet</p>
+  <p class="mt-1 text-sm opacity-60">
+    Installing an add-on, controlling a service group or creating a backup runs
+    as a job and appears here. The list is kept in memory and starts over when
+    the manager restarts.
+  </p>
+</div>
+{% else %}
+<div class="overflow-x-auto rounded-xl border border-base-300">
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Action</th>
+        <th>Target</th>
+        <th>User</th>
+        <th>Started</th>
+        <th>Finished</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        <td>
+          {% if job.status.value == "running" %}
+            <span class="badge badge-info badge-sm gap-1">
+              <span class="loading loading-spinner loading-xs"></span>running
+            </span>
+          {% elif job.status.value == "succeeded" %}
+            <span class="badge badge-success badge-sm">succeeded</span>
+          {% elif job.status.value == "failed" %}
+            <span class="badge badge-error badge-sm">failed</span>
+          {% else %}
+            <span class="badge badge-ghost badge-sm">queued</span>
+          {% endif %}
+        </td>
+        <td class="font-medium">{{ job.action }}</td>
+        <td class="font-mono text-xs opacity-70 max-w-xs truncate">{{ job.target }}</td>
+        <td class="text-xs opacity-70">{{ job.user }}</td>
+        <td class="text-xs opacity-50 whitespace-nowrap">
+          {{ job.started_at.strftime("%H:%M:%S") if job.started_at else "—" }}
+        </td>
+        <td class="text-xs opacity-50 whitespace-nowrap">
+          {{ job.finished_at.strftime("%H:%M:%S") if job.finished_at else "—" }}
+        </td>
+        <td class="text-right">
+          <a href="/jobs/{{ job.id }}" class="link link-hover text-xs opacity-60 whitespace-nowrap">View log</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
