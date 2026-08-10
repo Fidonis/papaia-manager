@@ -8,11 +8,23 @@
    next to a number input, which is about as buried as a primary action gets.
    The retention period follows it into the modal it opens: an optional parameter
    belongs next to the confirmation, not permanently beside the button. #}
+{# `busy` starts from the server, not from `false`. It used to be page-local
+   Alpine state, so leaving the page and coming back -- or a second tab, or a
+   reload -- offered "Create backup" again while one was still running, and the
+   endpoint accepted the second one. The initial value closes the gap before the
+   first paint; `#backup-job-status` keeps it current from there, including for a
+   job this page never started. #}
 {% block page_actions %}
-<div class="flex items-center gap-2" x-data="{ busy: false, jobId: null }">
+{# Single-quoted attribute: `tojson` escapes for exactly that, and the job id it
+   emits is double-quoted JSON. #}
+<div class="flex items-center gap-2"
+     x-data='{ busy: {{ "true" if job_active else "false" }},
+               jobId: {{ (job.id | tojson) if job_active else "null" }} }'
+     @papaia-job-state.window="busy = $event.detail.active; jobId = $event.detail.jobId">
   <a style="display:none" x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
      class="link link-hover text-xs opacity-60">view log</a>
   <button class="btn btn-primary btn-sm" :disabled="busy"
+          :title="busy ? 'A job is already running' : ''"
           @click="document.getElementById('backup-modal').showModal()">
     <span style="display:none" x-show="busy" class="loading loading-spinner loading-xs"></span>
     <span x-show="!busy">Create backup</span>
@@ -58,6 +70,10 @@
 {% endblock %}
 
 {% block content %}
+
+<!-- Job state. Included rather than fetched on load so the strip and the header
+     button come up together; it polls itself from there. -->
+{% include "partials/backup_job_status.html" %}
 
 <!-- Restore runner state. Rendered first: while a restore runs it is the only
      thing on this page that matters. -->
@@ -188,6 +204,15 @@ function _csrf() {
   return document.querySelector('meta[name=csrf]').content;
 }
 
+// refreshBackupJobStatus: re-read the strip that owns the running state. Called
+// on both outcomes of a POST -- after a 409 ("a backup job is already running")
+// it is what corrects a page that thought the queue was idle, without waiting
+// for the strip's own tick.
+function refreshBackupJobStatus() {
+  htmx.ajax('GET', '/partials/backup/job-status',
+            { target: '#backup-job-status', swap: 'outerHTML' });
+}
+
 // startBackup: POST the backup, then reuse the shared job poller from base.html.
 // onJobId lets the caller show a "view log" link while the job still runs.
 function startBackup(onJobId) {
@@ -202,14 +227,17 @@ function startBackup(onJobId) {
   }).then(async function (r) {
     if (!r.ok) {
       showToast('error', 'Backup failed: ' + (await _apiError(r)));
+      refreshBackupJobStatus();
       return false;
     }
     var data = await r.json();
     if (onJobId) onJobId(data.job_id);
+    refreshBackupJobStatus();
     return new Promise(function (resolve) {
       _pollJob(data.job_id, function (job) {
         htmx.ajax('GET', '/partials/backup/restore-points',
                   { target: '#restore-point-list', swap: 'innerHTML' });
+        refreshBackupJobStatus();
         if (job.status === 'succeeded') {
           showToast('success', 'Backup complete.');
         } else {

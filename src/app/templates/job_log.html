@@ -3,11 +3,11 @@
 
 {% block page_title %}Job Log{% endblock %}
 {% block page_subtitle %}
-<a href="/addons" class="mt-0.5 text-sm opacity-50 hover:opacity-80 transition-opacity flex items-center gap-1">
+<a href="/jobs" class="mt-0.5 text-sm opacity-50 hover:opacity-80 transition-opacity flex items-center gap-1">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
     <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
   </svg>
-  Add-Ons
+  Jobs
 </a>
 {% endblock %}
 
@@ -25,13 +25,11 @@
         <span class="loading loading-dots loading-sm"></span>
       </div>
     </div>
-    <pre
-      id="job-log"
-      class="bg-base-300 rounded-lg p-4 text-sm font-mono overflow-x-auto max-h-[60vh] overflow-y-auto"
-      hx-get="/api/v1/jobs/{{ job_id }}/log"
-      hx-trigger="load, every 2s"
-      hx-swap="innerHTML"
-    ></pre>
+    <div hx-get="/partials/jobs/{{ job_id }}/log" hx-trigger="load" hx-swap="outerHTML">
+      <div class="flex justify-center py-10">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}
