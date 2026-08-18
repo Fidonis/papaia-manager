@@ -1,0 +1,19 @@
+{# The job log as text.
+
+   The page used to point htmx straight at /api/v1/jobs/{id}/log, which answers
+   `{"log": "..."}`. htmx swaps a response body verbatim, so the JSON envelope was
+   rendered along with the log. That route is untouched -- it is API surface --
+   and the page reads this partial instead.
+
+   The poll lives on the element rather than on the page, so it ends with the
+   job: once the status is terminal the swapped-in copy carries no hx-trigger and
+   nothing schedules another request. Same shape as job_status.html. #}
+<pre
+  id="job-log"
+  class="bg-base-300 rounded-lg p-4 text-sm font-mono overflow-x-auto max-h-[60vh] overflow-y-auto"
+  {% if not terminal %}
+  hx-get="/partials/jobs/{{ job_id }}/log"
+  hx-trigger="every 2s"
+  hx-swap="outerHTML"
+  {% endif %}
+>{{ log }}</pre>

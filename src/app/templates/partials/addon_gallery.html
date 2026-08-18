@@ -1,4 +1,5 @@
-{% from "partials/_addon_controls.html" import action_buttons, remove_modal, uninstall_modal, install_modal %}
+{% from "partials/_addon_controls.html" import primary_action, overflow_actions, remove_modal, uninstall_modal, install_modal %}
+{% from "partials/_actions.html" import row_actions %}
 {% if not addons %}
 <div class="flex flex-col items-center py-24 gap-4 opacity-60">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -40,10 +41,11 @@
   </div>
 </div>
 
-{# ── Section heading ────────────────────────────────────────────── #}
+{# ── Section heading ──────────────────────────────────────────────
+   The catalog link that used to sit here is the page's secondary action and
+   lives in the header now, next to every other page's actions. #}
 <div class="flex items-center justify-between mb-4">
   <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Add-Ons &nbsp;·&nbsp; {{ cnt_total }} modules</p>
-  <a href="/catalogs" class="btn btn-ghost btn-xs opacity-60">Manage catalogs</a>
 </div>
 
 {# ── Icon colour cycling (all classes listed literally for Tailwind) #}
@@ -113,20 +115,26 @@
         {% endif %}
       </div>
 
-      {# Actions #}
-      <div class="flex items-center gap-1 pt-2 border-t border-base-300 mt-auto flex-wrap">
-        {{ action_buttons(addon, s, 'galleryAction') }}
+      {# Actions — Tier 2. The state verb on the left, then the gear (navigation,
+         not a verb) and the overflow on the right. `row_actions` is called
+         without a scope so `$refs` keeps resolving to the card's component,
+         where the dialogs below are rendered. #}
+      <div class="flex items-center gap-1.5 pt-2 border-t border-base-300 mt-auto">
+        {{ primary_action(addon, s, 'galleryAction') }}
 
         <div class="flex-1"></div>
 
+        {% call row_actions() %}
         <a href="/addons/{{ addon.name }}{% if addon.is_variant %}?catalog={{ addon.catalog }}{% endif %}"
-           class="btn btn-ghost btn-sm btn-square shrink-0"
-           aria-label="Settings">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+           class="btn btn-ghost btn-sm btn-square"
+           aria-label="Settings for {{ addon.name }}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
           </svg>
         </a>
+        {{ overflow_actions(addon, s, 'galleryAction') }}
+        {% endcall %}
       </div>
 
     </div>

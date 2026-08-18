@@ -1,3 +1,4 @@
+{% from "partials/_actions.html" import row_actions, overflow_menu %}
 {% if not backup_dir %}
 <div class="alert alert-warning">
   <span>
@@ -43,19 +44,24 @@
           {% endif %}
         </div>
 
-        <div class="flex gap-2 items-center">
+        {# Tier 2: inspecting a restore point is safe and stays in the open;
+           restoring one overwrites live data, so it moves behind the kebab. It
+           keeps the warning tone rather than the `text-error` the contract asks
+           of destructive items -- the whole restore flow from here to the
+           confirmation dialog is warning-coloured, and a single red item on the
+           way there would read as a different operation. #}
+        {% call row_actions() %}
           <button class="btn btn-outline btn-xs"
                   onclick='openRestorePointDetail({{ p.id|tojson }})'>Details</button>
-          {% if p.is_usable %}
-          <button class="btn btn-warning btn-outline btn-xs"
-                  onclick='openRestoreModal({{ p.id|tojson }}, {{ p.artifacts|tojson }}, {{ p.result|tojson }})'>
-            Restore
-          </button>
-          {% else %}
-          <button class="btn btn-outline btn-xs" disabled
-                  title="This backup wrote no archive, so there is nothing to restore from.">Restore</button>
-          {% endif %}
-        </div>
+          {% call overflow_menu(size='xs', label='More actions for restore point ' ~ p.id) %}
+            {% if p.is_usable %}
+            <li><a class="text-warning"
+                   onclick='openRestoreModal({{ p.id|tojson }}, {{ p.artifacts|tojson }}, {{ p.result|tojson }})'>Restore</a></li>
+            {% else %}
+            <li class="disabled"><a title="This backup wrote no archive, so there is nothing to restore from.">Restore</a></li>
+            {% endif %}
+          {% endcall %}
+        {% endcall %}
       </div>
 
       <div class="text-sm opacity-60 mt-1">

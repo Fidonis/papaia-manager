@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -17,6 +18,7 @@ from app.core import backups, runner
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
 from app.core.inventory import SELF_PROFILE
+from app.core.jobs import Job, JobQueue
 from app.core.resolve import resolve_catalog_addons
 from app.core.services import (
     ServiceHealth,
@@ -24,6 +26,7 @@ from app.core.services import (
     count_by_health,
     load_snapshot,
     overall_health,
+    worst,
 )
 from app.core.snapshots import load_installed, managed_snapshot_path
 from app.core.state import (
@@ -36,6 +39,58 @@ from app.core.tiles import TileGroup, load_tiles, visible_groups
 from app.templating import templates as _templates
 
 router = APIRouter()
+
+
+# How long a finished backup keeps its panel on the backup page. The panel has no
+# acknowledge endpoint behind it on purpose -- an operator who was on another page
+# while it ran still gets the outcome, and it clears itself instead of leaving a
+# dismissible strip on a page nobody has open.
+_BACKUP_OUTCOME_GRACE = timedelta(minutes=5)
+
+
+def _queue() -> JobQueue | None:
+    from app.main import _job_queue  # noqa: PLC0415
+
+    return _job_queue
+
+
+def _backup_panel_ctx(queue: JobQueue | None) -> dict[str, Any]:
+    """Context for the backup page's status strip.
+
+    An active job of any action, because any of them blocks a backup from
+    starting and the strip is what explains the disabled button. Once the queue
+    is idle only a *backup* outcome is worth showing here -- an add-on install
+    that just finished belongs on the jobs page, not on this one.
+
+    One helper for the page and its partial, so the state rendered on load and
+    the state polled two seconds later are produced by the same code.
+    """
+    job: Job | None = None
+    active = False
+    if queue is not None:
+        job = queue.active_job()
+        active = job is not None
+        if job is None:
+            cutoff = datetime.now(tz=UTC) - _BACKUP_OUTCOME_GRACE
+            job = next(
+                (
+                    j
+                    for j in queue.list_jobs()
+                    if j.action == "backup" and j.finished_at and j.finished_at > cutoff
+                ),
+                None,
+            )
+    return {
+        "job": job,
+        "job_active": active,
+        # Only the tail: the full log is one click away on the job page, and this
+        # strip sits above the restore points rather than replacing them.
+        "job_log_tail": (
+            "\n".join(queue.read_log(job.id).splitlines()[-8:])
+            if queue is not None and job is not None and active
+            else ""
+        ),
+    }
 
 
 def _ctx(request: Request, user: OIDCClaims, **extra: Any) -> dict[str, Any]:
@@ -108,6 +163,10 @@ async def backup_page(
 ) -> HTMLResponse:
     """Stack-level operations: backup and restore."""
     backup_dir = backups.resolve_backup_dir(settings.papaia_config_dir)
+    # Rendered into the page rather than fetched after load: the primary action
+    # has to come up already disabled when a job is in flight. Discovering that a
+    # moment later would show an enabled button first, which is the state this
+    # page is being fixed for.
     return _templates.TemplateResponse(
         request,
         "backup.html",
@@ -116,8 +175,18 @@ async def backup_page(
             user,
             backup_dir=str(backup_dir) if backup_dir else None,
             backup_dir_reachable=backups.is_reachable(backup_dir),
+            **_backup_panel_ctx(_queue()),
         ),
     )
+
+
+@router.get("/jobs", response_class=HTMLResponse)
+async def jobs_page(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """Every job this manager process has run, newest first."""
+    return _templates.TemplateResponse(request, "jobs.html", _ctx(request, user))
 
 
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)
@@ -157,31 +226,56 @@ async def partial_service_status(
     user: AnyUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
-    """The header pills: one aggregate per section, for every authenticated role.
+    """The header status chip and its popover, for every authenticated role.
 
-    Deliberately not filtered by visibility. A pill carries no service names,
-    only the worst state in its section, so a non-admin learns that something is
-    wrong without learning what -- which is the point of putting it in front of
-    them at all.
+    Deliberately not filtered by visibility. Neither the chip nor the popover
+    names a service, only how many are in which state, so a non-admin learns
+    that something is wrong without learning what -- which is the point of
+    putting it in front of them at all.
 
     Core and add-ons stay separate rather than being folded into one value: a
     broken add-on out of a customer catalogue would otherwise repaint the stack
-    pill for everyone who is logged in.
+    verdict for everyone who is logged in. The chip aggregates the two for its
+    one-line summary; the popover keeps them apart.
+
+    `*_running` counts COMPLETED alongside HEALTHY, the same way the services
+    page does: a one-shot init container that exited 0 did its job.
     """
     snapshot = await _load_stack_snapshot(settings)
+    core_counts = count_by_health(snapshot.core)
+    addon_counts = count_by_health(snapshot.addons)
+    core_running = core_counts[ServiceHealth.HEALTHY] + core_counts[ServiceHealth.COMPLETED]
+    addon_running = addon_counts[ServiceHealth.HEALTHY] + addon_counts[ServiceHealth.COMPLETED]
+
+    # The chip's one-line verdict. `worst()` is reused rather than reimplemented
+    # in the template: the severity order it walks is the single place that
+    # decides what wins when two things are wrong at once, and a second copy of
+    # that order in Jinja would drift.
     core_overall = overall_health(snapshot.core)
     addon_overall = overall_health(snapshot.addons)
+    # An empty add-on section reports UNKNOWN, which must not drag the chip down
+    # to "status unknown" on a deployment that simply has no add-ons.
+    sections = [core_overall] + ([addon_overall] if snapshot.addons else [])
+
     resp = _templates.TemplateResponse(
         request,
-        "partials/service_status_pill.html",
+        "partials/service_status_chip.html",
         _ctx(
             request,
             user,
+            overall=worst(sections),
+            issues=(len(snapshot.core) - core_running) + (len(snapshot.addons) - addon_running),
             core_overall=core_overall,
-            core_affected=count_by_health(snapshot.core)[core_overall],
+            core_running=core_running,
+            core_total=len(snapshot.core),
             addon_overall=addon_overall,
-            addon_affected=count_by_health(snapshot.addons)[addon_overall],
+            addon_running=addon_running,
             addon_total=len(snapshot.addons),
+            # Rendered as a local wall-clock time in the popover. Absolute
+            # rather than relative on purpose: if the poll dies -- backgrounded
+            # tab, manager restarted underneath -- a frozen clock says so,
+            # where "a moment ago" would keep claiming to be fresh.
+            checked_at=datetime.now(UTC).isoformat(),
         ),
     )
     resp.headers["Cache-Control"] = "no-store"
@@ -280,21 +374,86 @@ async def partial_addon_detail(
     return resp
 
 
+@router.get("/partials/jobs", response_class=HTMLResponse)
+async def partial_jobs(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    queue = _queue()
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/job_list.html",
+        _ctx(request, user, jobs=queue.list_jobs() if queue else []),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/nav/job-indicator", response_class=HTMLResponse)
+async def partial_nav_job_indicator(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """The dot on the Jobs nav entry -- the only cross-page sign of a running job.
+
+    Rendered from the sidebar of every admin page, which is what makes a backup
+    started on one page still visible from another.
+    """
+    queue = _queue()
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/nav_job_indicator.html",
+        _ctx(request, user, active=queue.active_job() if queue else None),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @router.get("/partials/jobs/{job_id}", response_class=HTMLResponse)
 async def partial_job_status(
     job_id: str,
     request: Request,
     user: AdminUser,
 ) -> HTMLResponse:
-    from app.main import _job_queue  # noqa: PLC0415
-
-    job = _job_queue.get_job(job_id) if _job_queue else None
+    queue = _queue()
+    job = queue.get_job(job_id) if queue else None
     terminal = job is not None and job.status.value in ("succeeded", "failed")
     return _templates.TemplateResponse(
         request,
         "partials/job_status.html",
         _ctx(request, user, job=job, terminal=terminal),
     )
+
+
+@router.get("/partials/jobs/{job_id}/log", response_class=HTMLResponse)
+async def partial_job_log(
+    job_id: str,
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """The log as text.
+
+    The JSON route this replaces on the log page answers ``{"log": ...}``, and
+    htmx swaps a response body verbatim -- the envelope was being rendered along
+    with the log. Jinja escapes the text on the way in; it is command output, not
+    markup.
+    """
+    queue = _queue()
+    job = queue.get_job(job_id) if queue else None
+    terminal = job is not None and job.status.value in ("succeeded", "failed")
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/job_log_text.html",
+        _ctx(
+            request,
+            user,
+            job_id=job_id,
+            log=queue.read_log(job_id) if queue else "",
+            terminal=terminal,
+        ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @router.get("/partials/catalogs", response_class=HTMLResponse)
@@ -352,6 +511,26 @@ async def partial_restore_points(
             backup_dir=str(backup_dir) if backup_dir else None,
             backup_dir_reachable=backups.is_reachable(backup_dir),
         ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/backup/job-status", response_class=HTMLResponse)
+async def partial_backup_job_status(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """The running/last-outcome strip above the restore points.
+
+    Also the page's only source of truth for whether the primary action is
+    disabled -- the strip announces its state and the header button follows, so
+    the two cannot disagree.
+    """
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/backup_job_status.html",
+        _ctx(request, user, **_backup_panel_ctx(_queue())),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

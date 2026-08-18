@@ -49,12 +49,22 @@ from app.main import create_app  # noqa: E402
 
 # Surfaces reserved for administrators, and the dashboard surfaces every
 # authenticated account reaches. Kept as data so a new route is one line.
-ADMIN_PAGES = ["/addons", "/addons/paperless", "/backup", "/catalogs", "/services"]
+ADMIN_PAGES = [
+    "/addons",
+    "/addons/paperless",
+    "/backup",
+    "/catalogs",
+    "/jobs",
+    "/services",
+]
 ADMIN_PARTIALS = [
     "/partials/addons",
+    "/partials/backup/job-status",
     "/partials/backup/restore-points",
     "/partials/backup/restore-status",
     "/partials/catalogs",
+    "/partials/jobs",
+    "/partials/nav/job-indicator",
     "/partials/services",
 ]
 ADMIN_APIS = [
@@ -195,7 +205,7 @@ def test_admin_role_reaches_the_api(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/addons", "/backup", "/catalogs", "/services"])
+@pytest.mark.parametrize("path", ["/addons", "/backup", "/catalogs", "/jobs", "/services"])
 def test_admin_reaches_the_admin_pages(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 

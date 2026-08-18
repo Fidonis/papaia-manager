@@ -1,0 +1,100 @@
+{# ── The action-placement contract ────────────────────────────────────────
+   Three tiers. Every function button in this panel belongs to exactly one of
+   them, and the tier decides where it sits:
+
+     1  page action   sticky header, right of the status chip, via
+                      `{% block page_actions %}`. Exactly one filled primary
+                      button per page, optionally one outline secondary;
+                      everything else goes into `overflow_menu`.
+
+     2  row action    right-aligned in the row or the card footer, wrapped in
+                      `row_actions`. At most two visible buttons, ordered
+                      [state verb, filled] [secondary verb, outline]. Every
+                      destructive verb -- remove, uninstall, delete, restore --
+                      goes into `overflow_menu` and confirms in a dialog.
+
+     3  bulk action   `bulk_bar`, pinned to the bottom edge for as long as a
+                      selection exists. The one place "at the bottom" is the
+                      right answer: the bar belongs to a selection made in the
+                      list above it and must not be scrollable away from it.
+
+   Button vocabulary, so the same verb reads the same everywhere:
+
+     primary / state verb   btn btn-primary btn-sm   (btn-xs in a dense row)
+     secondary verb         btn btn-outline btn-sm
+     start                  btn btn-success btn-sm
+     stop                   btn btn-warning btn-sm
+     destructive            menu item with `class="text-error"`
+
+   Both wrappers are `{% call %}` macros rather than data-driven item lists:
+   every call site carries its own Alpine expression and its own job-polling
+   callback, and squeezing those through a list of dicts would be harder to
+   read than the markup it replaces.
+
+   Class names are spelled out per branch and never assembled from a variable.
+   app.css is built by scanning these templates, so a computed class name does
+   not survive the purge -- same rule as _group_controls.html.
+
+   Macros: kebab, overflow_menu, row_actions, bulk_bar
+#}
+
+{% macro kebab() %}
+<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+  <path stroke-linecap="round" stroke-linejoin="round" d="M12 5h.01M12 12h.01M12 19h.01"/>
+</svg>
+{% endmacro %}
+
+
+{# `dropdown-end` on every instance: the trigger is always the right-most
+   control of its cluster, so a menu growing to the right would leave the
+   viewport. Callers that sit inside an `overflow-hidden` container have to
+   lift that clip themselves -- an absolutely positioned menu is clipped by it
+   just like anything else. #}
+{% macro overflow_menu(size='sm', label='More actions') %}
+<div class="dropdown dropdown-end shrink-0">
+  {% if size == 'xs' %}
+  <div tabindex="0" role="button" aria-label="{{ label }}"
+       class="btn btn-ghost btn-xs btn-square">
+    {{ kebab() }}
+  </div>
+  {% else %}
+  <div tabindex="0" role="button" aria-label="{{ label }}"
+       class="btn btn-ghost btn-sm btn-square">
+    {{ kebab() }}
+  </div>
+  {% endif %}
+  <ul tabindex="0" class="dropdown-content z-30 menu bg-base-100 rounded-box w-56 p-2 shadow border border-base-300">
+    {{ caller() }}
+  </ul>
+</div>
+{% endmacro %}
+
+
+{# `scope` declares an Alpine component on the wrapper, for the common case
+   where a row's buttons share a `busy` flag and there is nothing else for it to
+   hang off. It is an attribute value, not a class name, so it is safe to pass
+   through -- the purge rule above is about classes only. Jinja escapes the
+   quotes inside it; `getAttribute` hands Alpine the decoded string back. #}
+{% macro row_actions(scope='') %}
+{% if scope %}
+<div class="flex items-center gap-1.5 shrink-0" x-data="{{ scope }}">{{ caller() }}</div>
+{% else %}
+<div class="flex items-center gap-1.5 shrink-0">{{ caller() }}</div>
+{% endif %}
+{% endmacro %}
+
+
+{# `bg-base-200` rather than the tinted `bg-primary/10` the services bar used
+   while it was a static block: sticky, it now floats over the list, and a 10 %
+   tint would let the rows underneath read through it. The primary border and
+   the primary count carry the "selection active" signal instead.
+
+   `style="display:none"` rather than `x-cloak`, which needs a stylesheet rule
+   this project does not carry -- same anti-FOUC convention as the addon
+   controls. #}
+{% macro bulk_bar(show) %}
+<div style="display:none" x-show="{{ show }}"
+     class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 mt-4 px-5 py-3 rounded-xl border border-primary bg-base-200 shadow-lg">
+  {{ caller() }}
+</div>
+{% endmacro %}

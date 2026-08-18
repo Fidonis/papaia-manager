@@ -68,10 +68,15 @@ RUN npm install --no-save \
 
 # Tailwind config: scan all Jinja2 templates for class names.
 COPY docker/tailwind.config.js ./tailwind.config.js
-COPY docker/tailwind.input.css ./tailwind.input.css
+COPY docker/tailwind.brand.css ./tailwind.brand.css
+COPY docker/tailwind.app.css ./tailwind.app.css
 COPY src/app/templates/ ./templates/
 
-RUN npx tailwindcss \
+# The brand layer and the application shell are separate files so the brand
+# half can be diffed against qdrant-ingest's copy; Tailwind takes one input,
+# so they are concatenated here. Order matters: the @tailwind directives lead.
+RUN cat tailwind.brand.css tailwind.app.css > tailwind.input.css \
+    && npx tailwindcss \
         -c tailwind.config.js \
         -i tailwind.input.css \
         -o /static/app.css \

@@ -36,7 +36,7 @@ from app.core import runner
 from app.core.audit import write_audit_entry
 from app.core.ctl import profiles_flag, run_core_verb
 from app.core.inventory import active_profiles, core_groups
-from app.core.jobs import JobContext, JobQueue, JobStatus
+from app.core.jobs import JobContext, JobQueue
 
 router = APIRouter(prefix="/api/v1/stack")
 
@@ -286,7 +286,4 @@ def _job_running() -> bool:
 
     if _job_queue is None:
         return False
-    return any(
-        job.status in (JobStatus.QUEUED, JobStatus.RUNNING)
-        for job in _job_queue.list_jobs(limit=50)
-    )
+    return _job_queue.active_job() is not None
