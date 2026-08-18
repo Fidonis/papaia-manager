@@ -1,3 +1,13 @@
+{#
+  fidonis-brand: 1 -- four pieces of this template are vendored verbatim into
+  Fidonis/qdrant-ingest's src/ui/templates/base.html: the theme-init script
+  just below, the <meta name="theme-color">/favicon/stylesheet/script tags,
+  the brand-mark SVG in the sidebar header, and the dark-mode toggle control.
+  Everything else here -- the sidebar-state script, the addon/stack/catalog
+  action helpers, the navigation, the page chrome -- is specific to this app
+  and has no counterpart in the vendored copy. Keep the four pieces in step
+  with qdrant-ingest; see that repo's docs/ui.md.
+#}
 <!doctype html>
 <html lang="en">
 <head>
@@ -142,6 +152,21 @@
         _pollJob(data.job_id, () => refreshServices());
         return true;
       });
+    }
+
+    // _stackBody: the request body for a stack or group verb.
+    //
+    // `clean_up` maps onto `papaia-ctl stop --clean-up`, so it rides along with
+    // anything that stops -- a restart included, where it turns the operation
+    // into a full recreate. A start has no such flag and the API rejects the
+    // field outright rather than ignoring it.
+    //
+    // It lives here rather than in an Alpine scope because both callers need it:
+    // the group selection in the content area and the whole-stack menu in the
+    // page header are separate components, and a copy per component would be a
+    // second place for this API contract to drift.
+    function _stackBody(action, cleanUp) {
+      return action === "start" ? {} : { clean_up: cleanUp };
     }
 
     // stackGroupAction: POST /api/v1/stack/groups/{action} for a set of Compose
@@ -315,10 +340,14 @@
 >
 {% set path = request.url.path %}
 {% set nav_dashboard = path == "/" %}
-{% set nav_addons    = path.startswith("/addons") or path.startswith("/jobs") %}
+{% set nav_addons    = path.startswith("/addons") %}
 {% set nav_services  = path.startswith("/services") %}
 {% set nav_catalogs  = path.startswith("/catalogs") %}
 {% set nav_backup    = path.startswith("/backup") %}
+{# /jobs used to be folded into Add-Ons, back when a job log was only ever
+   reached from an add-on action. Jobs now have their own entry, and a job log is
+   a page of that section rather than a detour out of another one. #}
+{% set nav_jobs      = path.startswith("/jobs") %}
 
 <div class="flex">
 
@@ -401,6 +430,27 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
           </svg>
           <span class="sidebar-label">Catalogs</span>
+        </a>
+
+        {# The indicator is positioned rather than placed in the flex flow: as a
+           rail the row centres its icon and drops its padding, and an `ml-auto`
+           dot would end up against the panel edge in that state. Anchored to the
+           row it sits in the same spot at both widths.
+
+           It polls from the sidebar of every admin page, which is the point --
+           this is how a backup started on one page stays visible from another.
+           The Jobs page itself is where it says what and since when. #}
+        <a href="/jobs" aria-label="Jobs"
+           class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                  {{ 'bg-primary text-primary-content' if nav_jobs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+          </svg>
+          <span class="sidebar-label">Jobs</span>
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 flex"
+                hx-get="/partials/nav/job-indicator"
+                hx-trigger="load, every 5s"
+                hx-swap="innerHTML"></span>
         </a>
 
         {# Archive box rather than the former cog: collapsed to a rail the icon is
@@ -488,22 +538,36 @@
     <header class="sticky top-0 z-20 border-b border-base-300 bg-base-100 px-8 py-5">
       <div class="flex items-center justify-between gap-4">
         <div class="min-w-0">
-          <h1 class="font-brand text-2xl font-bold leading-tight">{% block page_title %}{% endblock %}</h1>
+          {# `truncate`, because the action cluster next to it is `shrink-0`: an
+             add-on name in a narrow viewport has to give way, and ellipsising is
+             the graceful version of that -- without it the whole title collapses
+             to zero width and the page loses its label entirely. #}
+          <h1 class="font-brand text-2xl font-bold leading-tight truncate">{% block page_title %}{% endblock %}</h1>
           {% block page_subtitle %}{% endblock %}
         </div>
+        {# Two slots, in this order and nothing else: the status chip, then the
+           page's own actions. Keeping them apart is what stops them competing
+           for the corner -- the chip is a fixed width (see
+           partials/service_status_chip.html), so the actions never move when a
+           poll changes the state.
+
+           Aggregate stack status, on every page for every role. Loaded out of
+           band rather than passed into each page's context, so a new page picks
+           it up by extending this template and nothing else. Empty until the
+           first response lands; the chip is the only thing that appears, so
+           nothing below it moves. #}
         <div class="flex items-center gap-3 shrink-0">
-          {# Aggregate stack status, on every page for every role. Loaded out of
-             band rather than passed into each page's context, so a new page
-             picks it up by extending this template and nothing else. Empty
-             until the first response lands; the pills are the only thing that
-             appears, so nothing below them moves. One request for both pills --
-             they read the same snapshot, and a second poll would buy nothing. #}
           {% if user %}
-          <div class="flex flex-wrap items-center gap-2"
+          <div class="flex items-center"
                hx-get="/partials/service-status"
                hx-trigger="load, every 30s"
                hx-swap="innerHTML"></div>
           {% endif %}
+
+          {# Tier 1 of the action contract in partials/_actions.html: exactly
+             one filled primary button per page, everything else behind the
+             overflow menu. Every page fills this -- no page grows its own
+             action row inside the content area. #}
           {% block page_actions %}{% endblock %}
         </div>
       </div>

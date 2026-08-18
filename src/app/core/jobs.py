@@ -109,6 +109,22 @@ class JobQueue:
         )
         return all_jobs[:limit]
 
+    def active_job(self) -> Job | None:
+        """The oldest job that has not finished yet, or None when idle.
+
+        The one place that answers "is something in flight". Callers that refuse
+        to start work while the queue is busy, and the UI that has to keep saying
+        so across a page change, must agree on that answer -- three copies of the
+        same predicate is what let them drift apart in the first place.
+
+        Oldest first: with a single-flight worker that is the job actually
+        holding the lock, so its action is the one worth naming in a message.
+        """
+        for job in sorted(self._jobs.values(), key=lambda j: j.created_at):
+            if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+                return job
+        return None
+
     def read_log(self, job_id: str, offset: int = 0) -> str:
         log_path = self.jobs_dir / f"{job_id}.log"
         if not log_path.exists():

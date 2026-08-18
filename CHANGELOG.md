@@ -12,6 +12,53 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [0.5.0] - 2026-08-18
+
+### Added
+- **Unified action placement.** Function buttons across every page now follow a three-tier
+  contract — one page action in the sticky header, row actions right-aligned with every
+  destructive verb behind an overflow menu, and a bulk action pinned to the bottom edge for as
+  long as a selection exists — expressed as macros in the new `partials/_actions.html` instead
+  of scattered per-page markup. The whole-stack menu, the per-group start/stop bar, add-on
+  lifecycle verbs and `Create backup` all move onto it; `Delete`, `Remove`, `Uninstall` and
+  `Restore` are reachable only through the overflow menu now.
+- The group selection bar is `sticky bottom-4` over an opaque background instead of a static
+  block below the service list, so acting on a selection no longer means scrolling past a dozen
+  expanded modules first.
+- **One service status chip.** The two header pills (core, add-ons) are replaced by a single
+  fixed-width chip with a popover breaking the verdict down by section, an `n / m running` count
+  per section and a local-time timestamp — the header no longer reflows as the pill text changes
+  on every poll.
+- **Server-tracked backup jobs.** `JobQueue.active_job()` is the single predicate behind the
+  backup guard and the stack-action guard; the running state is no longer held only in the
+  browser tab that started it, so a reload, a second tab or navigating away no longer forgets it,
+  and the endpoint now answers 409 while a backup is already in flight instead of queueing a
+  second one invisibly.
+- A status strip on `/backup` reports what job is running and since when, links to its log, and
+  reports the outcome of a job that finished while the operator was elsewhere before clearing
+  itself after five minutes.
+- A **Jobs** entry in the admin nav group opens `/jobs`, carrying an indicator dot visible from
+  Add-Ons, Services and the dashboard whenever a job is in flight.
+- **Brand-layer vendoring contract with `qdrant-ingest`'s operator UI.** `docker/tailwind.input.css`
+  is split into `tailwind.brand.css` and `tailwind.app.css`, matching the layout already vendored
+  into that interface, so the brand half can be diffed file-for-file against its copy; the
+  Dockerfile concatenates them back at build time and the combined file is no longer committed.
+  Every vendored file carries a `fidonis-brand: 1` stamp, checked by the new
+  `tests/test_brand_layer.py`, and the cross-repo rule — bump the stamp in both places, in the
+  same milestone — is documented in `CONTRIBUTING.md`.
+
+### Changed
+- `tailwind.brand.css` adopts relative `@font-face` URLs, closing the one documented deviation
+  from the vendored copy; the stylesheet is always served from `/static/app.css`, so the
+  resolved path is unchanged.
+
+### Fixed
+- The job log page rendered the raw `{"log": "…"}` JSON response into the page instead of plain
+  text, and its poll never stopped once the job reached a terminal state.
+- `.dockerignore` still listed the removed `tailwind.input.css` instead of the two files that
+  replaced it, so the `css-builder` Docker stage failed with the split files missing from the
+  build context.
+
 ## [0.4.0] - 2026-08-02
 
 ### Added
@@ -216,6 +263,8 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[0.5.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.5.0
+
 [0.4.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.4.0
 
 [0.3.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.3.0
@@ -224,4 +273,4 @@ based on merged pull requests; this file mirrors the published releases.
 
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.5.0...HEAD

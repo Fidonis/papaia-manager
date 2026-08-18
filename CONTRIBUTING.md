@@ -105,6 +105,30 @@ uv run uvicorn app.main:create_app --factory --reload --port 8120
 
 The application expects a running Keycloak instance with a configured `papaia-manager` client. See the docker-compose dev setup under `docker/` for a self-contained environment.
 
+## Brand layer
+
+`Fidonis/qdrant-ingest` ships its own operator web interface that shares this
+project's visual identity — same daisyUI themes, same self-hosted fonts, same
+brand mark. There is no shared package; the relevant files are copied into
+that repository verbatim (or adapted, for the application shell), and each
+copy carries a `fidonis-brand: N` comment stamp:
+
+| File here | Vendored into `qdrant-ingest` as |
+|---|---|
+| `docker/tailwind.config.js` | `docker/tailwind.config.js` |
+| `docker/tailwind.brand.css` | `docker/tailwind.brand.css` |
+| `docker/tailwind.app.css` | `docker/tailwind.app.css` (adapted, not verbatim) |
+| `src/app/templating.py` | `src/ui/templating.py` (the `asset_url()` fingerprinting) |
+| `src/app/templates/base.html` | `src/ui/templates/base.html` (theme init, brand mark, theme toggle only) |
+
+`tests/test_brand_layer.py` catches a half-finished edit on this side — a
+file that lost its stamp, or stamps that disagree with each other. It cannot
+see the other repository, so the cross-repo half of the contract is a rule
+rather than a check:
+
+> **A brand change is finished when both interfaces carry it in the same
+> revision.** Bump the stamp in both repositories, in the same milestone.
+
 ## License of your contributions (Inbound = Outbound)
 
 This project is published under the [MIT license](LICENSE). By submitting a pull request, comment with a code suggestion, or any other contribution to this repository, **you agree that your contribution is licensed under the same MIT license** that the project itself uses ("Inbound = Outbound"). No separate Contributor License Agreement (CLA) is required.

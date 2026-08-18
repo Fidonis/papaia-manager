@@ -5,46 +5,79 @@
      addon  – addon model object
      s      – addon.status (pre-computed by caller)
      fn     – JS function to call: 'addonAction' (detail) or 'galleryAction' (dashboard)
-   Macros: action_buttons, remove_modal, uninstall_modal, install_modal
+
+   The verbs are split across the two tiers of the action contract in
+   _actions.html: `primary_action` is the one filled button that follows from the
+   current status, `overflow_actions` is everything else. Before the split this
+   was one flat row of up to four buttons in four different colours, which put
+   Remove and Uninstall at exactly the same reach as Start -- twelve cards of that
+   made the destructive verbs as easy to hit as the harmless ones.
+
+   Macros: primary_action, overflow_actions, remove_modal, uninstall_modal,
+           install_modal
 #}
 {% from "partials/_env_fields.html" import env_input %}
+{% from "partials/_actions.html" import overflow_menu %}
 
-{% macro action_buttons(addon, s, fn) %}
+{% macro primary_action(addon, s, fn) %}
   {% if s in ("available", "inactive") and addon.catalog %}
     <button class="btn btn-primary btn-sm" :disabled="busy"
             @click="$refs.installModal.showModal()">
       <span style="display:none" x-show="activeVerb === 'install'" class="loading loading-dots loading-xs"></span>
       <span x-show="activeVerb !== 'install'">{% if s == "inactive" %}Reactivate{% else %}Install{% endif %}</span>
     </button>
-  {% endif %}
-  {% if s == "installed" %}
+  {% elif s == "installed" %}
     <button class="btn btn-success btn-sm" :disabled="busy"
             @click="busy = true; activeVerb = 'start'; {{ fn }}('{{ addon.name }}', 'start', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
       <span style="display:none" x-show="activeVerb === 'start'" class="loading loading-dots loading-xs"></span>
       <span x-show="activeVerb !== 'start'">Start</span>
     </button>
-  {% endif %}
-  {% if s == "running" %}
+  {% elif s == "running" %}
     <button class="btn btn-warning btn-sm" :disabled="busy"
             @click="busy = true; activeVerb = 'stop'; {{ fn }}('{{ addon.name }}', 'stop', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
       <span style="display:none" x-show="activeVerb === 'stop'" class="loading loading-dots loading-xs"></span>
       <span x-show="activeVerb !== 'stop'">Stop</span>
     </button>
   {% endif %}
+{% endmacro %}
+
+
+{# The secondary of the pair, offered only when there is something to update.
+   It gets a button of its own on the detail page, where there is room and where
+   the operator came looking for exactly this; on a gallery card it stays in the
+   overflow instead, next to a card that already carries an "Update" badge.
+   Hence `include_update` below -- the two call sites must not both render it, or
+   the same verb appears twice. #}
+{% macro update_action(addon, fn) %}
+{% if addon.update_available %}
+<button class="btn btn-outline btn-sm" :disabled="busy"
+        @click="busy = true; activeVerb = 'update'; {{ fn }}('{{ addon.name }}', 'update', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
+  <span style="display:none" x-show="activeVerb === 'update'" class="loading loading-dots loading-xs"></span>
+  <span x-show="activeVerb !== 'update'">Update</span>
+</button>
+{% endif %}
+{% endmacro %}
+
+
+{# Rendered only when there is something to put in it -- an `unmanaged` add-on has
+   no verbs at all, and an empty kebab that opens onto nothing is worse than no
+   kebab. Both destructive items carry `text-error` and open their confirmation
+   dialog rather than acting on click. #}
+{% macro overflow_actions(addon, s, fn, include_update=True) %}
+{% set wants_update = include_update and addon.update_available %}
+{% if wants_update or addon.installed_version or s in ("installed", "inactive", "running") %}
+{% call overflow_menu(size='sm', label='More actions for ' ~ addon.name) %}
+  {% if wants_update %}
+  <li><a @click="busy = true; activeVerb = 'update'; {{ fn }}('{{ addon.name }}', 'update', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">Update</a></li>
+  {% endif %}
   {% if s in ("installed", "inactive", "running") %}
-    <button class="btn btn-error btn-outline btn-sm" :disabled="busy"
-            @click="$refs.removeModal.showModal()">
-      <span style="display:none" x-show="activeVerb === 'remove'" class="loading loading-dots loading-xs"></span>
-      <span x-show="activeVerb !== 'remove'">Remove</span>
-    </button>
+  <li><a class="text-error" @click="$refs.removeModal.showModal()">Remove</a></li>
   {% endif %}
   {% if addon.installed_version %}
-    <button class="btn btn-ghost btn-sm" :disabled="busy"
-            @click="$refs.uninstallModal.showModal()">
-      <span style="display:none" x-show="activeVerb === 'uninstall'" class="loading loading-dots loading-xs"></span>
-      <span x-show="activeVerb !== 'uninstall'">Uninstall</span>
-    </button>
+  <li><a class="text-error" @click="$refs.uninstallModal.showModal()">Uninstall</a></li>
   {% endif %}
+{% endcall %}
+{% endif %}
 {% endmacro %}
 
 {% macro remove_modal(addon, s, fn) %}
