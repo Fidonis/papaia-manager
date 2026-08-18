@@ -1,3 +1,7 @@
+/* fidonis-brand: 1 -- vendored verbatim (as of this stamp) into
+   Fidonis/qdrant-ingest's docker/tailwind.config.js. A change to the brand
+   belongs in the same revision of both interfaces; see qdrant-ingest's
+   docs/ui.md. Do not bump only this copy. */
 module.exports = {
   content: ["./templates/**/*.html"],
   theme: {
