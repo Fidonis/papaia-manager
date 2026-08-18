@@ -14,7 +14,8 @@ tests
 docker
 !docker/git-askpass.sh
 !docker/tailwind.config.js
-!docker/tailwind.input.css
+!docker/tailwind.brand.css
+!docker/tailwind.app.css
 
 # Python / uv artifacts
 **/.venv

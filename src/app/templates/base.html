@@ -1,3 +1,13 @@
+{#
+  fidonis-brand: 1 -- four pieces of this template are vendored verbatim into
+  Fidonis/qdrant-ingest's src/ui/templates/base.html: the theme-init script
+  just below, the <meta name="theme-color">/favicon/stylesheet/script tags,
+  the brand-mark SVG in the sidebar header, and the dark-mode toggle control.
+  Everything else here -- the sidebar-state script, the addon/stack/catalog
+  action helpers, the navigation, the page chrome -- is specific to this app
+  and has no counterpart in the vendored copy. Keep the four pieces in step
+  with qdrant-ingest; see that repo's docs/ui.md.
+#}
 <!doctype html>
 <html lang="en">
 <head>
