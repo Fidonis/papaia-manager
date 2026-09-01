@@ -48,12 +48,18 @@ the VM boundary.
 `MANAGER_ADMIN_ROLE` (default `admin`) reaches every surface;
 `MANAGER_USER_ROLE` (default `user`) reaches the dashboard only. Accounts
 holding neither role are rejected at login. The dashboard at `/` is a tile
-overview of the deployed applications, configured by the operator through
+overview of the deployed applications, held in
 `$PAPAIA_CONFIG_DIR/manager/tiles.yaml` and seeded with the applications the
-stack ships today on first run. `{{KEY}}` placeholders in tile links resolve
-against the core `.env`, and each tile's `visibility: all | admin` is filtered
-server-side, so an admin-only tile is absent from a regular user's response
-rather than hidden by CSS. Authorization is enforced by the route
+stack ships today on first run. Administrators edit it in place: **Edit
+dashboard** turns the page into an editor for groups and tiles, with drag and
+drop reordering, a live preview of each tile, and one **Save changes** that
+writes the whole file. Hand editing the file keeps working, but a save from the
+UI rewrites the document, so comments are not preserved; a concurrent change on
+the host is detected and refused rather than overwritten. The raw file is also
+editable from the editor's overflow menu. `{{KEY}}` placeholders in tile links
+resolve against the core `.env`, and each tile's `visibility: all | admin` is
+filtered server-side, so an admin-only tile is absent from a regular user's
+response rather than hidden by CSS. Authorization is enforced by the route
 dependencies, so the JSON API is restricted exactly like the pages.
 
 **Services.** An admin-only page at `/services` showing what this deployment is

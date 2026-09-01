@@ -66,6 +66,8 @@ ADMIN_PARTIALS = [
     "/partials/jobs",
     "/partials/nav/job-indicator",
     "/partials/services",
+    # The dashboard itself is open to both roles; only its editor is not.
+    "/partials/tiles/edit",
 ]
 ADMIN_APIS = [
     "/api/v1/addons",
@@ -75,6 +77,8 @@ ADMIN_APIS = [
     "/api/v1/maintenance/restore-points",
     "/api/v1/stack/groups",
     "/api/v1/stack/runner",
+    "/api/v1/tiles",
+    "/api/v1/tiles/raw",
 ]
 
 # Lifecycle control over the core stack. Denial is decided by the dependency, so
@@ -109,6 +113,10 @@ ADMIN_APIS_SELF_CONTAINED = [
     # Reads the workspace's compose files and nothing else. An empty workspace
     # yields an empty group list, which is a correct answer, not an error.
     "/api/v1/stack/groups",
+    # Both read tiles.yaml out of the config directory this module owns, and
+    # seed it on first call the same way the dashboard does.
+    "/api/v1/tiles",
+    "/api/v1/tiles/raw",
 ]
 
 
@@ -203,6 +211,25 @@ def test_anonymous_is_denied_stack_control(client: TestClient, path: str) -> Non
 @pytest.mark.parametrize("path", ADMIN_APIS_SELF_CONTAINED)
 def test_admin_role_reaches_the_api(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
+
+
+# The dashboard is the one page both roles reach, so its write path is the one
+# place a lost dependency would hand a plain user control over what everybody
+# else sees. Asserted on its own rather than through the POST lists above.
+@pytest.mark.parametrize("path", ["/api/v1/tiles", "/api/v1/tiles/raw"])
+def test_user_role_is_denied_the_tile_write_path(client: TestClient, path: str) -> None:
+    assert _as(client, "user").put(path, json={}).status_code == 403
+
+
+@pytest.mark.parametrize("path", ["/api/v1/tiles", "/api/v1/tiles/raw"])
+def test_anonymous_is_denied_the_tile_write_path(client: TestClient, path: str) -> None:
+    client.cookies.clear()
+    assert client.put(path, json={}).status_code == 307
+
+
+def test_user_role_is_denied_link_resolution(client: TestClient) -> None:
+    """Resolution reads the core .env; a user must not reach it even indirectly."""
+    assert _as(client, "user").post("/api/v1/tiles/resolve", json={}).status_code == 403
 
 
 @pytest.mark.parametrize("path", ["/addons", "/backup", "/catalogs", "/jobs", "/services"])

@@ -1,0 +1,411 @@
+{# The dashboard, editable. Administrators only -- `/partials/tiles/edit` is
+   gated with AdminUser, the gallery it replaces is not.
+
+   The tile card below repeats the markup of tile_gallery.html rather than
+   sharing it. That is deliberate: the gallery is server-rendered because
+   server-side visibility filtering is the security boundary, while the editor
+   renders from a client-side draft so a reorder or a rename does not need a
+   round trip. One template cannot be both. Keep the two card bodies in step by
+   hand -- they are next to each other in the same directory.
+
+   "Preview as user" filters the draft in the browser. It is a preview of what
+   the gallery will return, never a substitute for it. #}
+{% from "partials/_actions.html" import overflow_menu %}
+
+{# Header cluster, swapped out of band into the slot dashboard.html reserves.
+   One filled primary button, everything else ghost or in the overflow menu --
+   tier 1 of the contract in _actions.html. #}
+<div id="dashboard-actions" hx-swap-oob="true" class="flex items-center gap-2">
+  <button class="btn btn-ghost btn-sm" @click="$store.tiles.preview = !$store.tiles.preview">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+      <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+    </svg>
+    <span x-text="$store.tiles.preview ? 'Back to editing' : 'Preview as user'"></span>
+  </button>
+
+  {% call overflow_menu(label='More dashboard actions') %}
+  <li><a @click="$store.tiles.openRaw()">Edit tiles.yaml</a></li>
+  <li><a @click="$store.tiles.discard()">Reload from disk</a></li>
+  <li><a @click="$store.tiles.leave()">Leave editor</a></li>
+  {% endcall %}
+
+  <button class="btn btn-primary btn-sm"
+          :disabled="$store.tiles.busy"
+          @click="$store.tiles.save()">
+    <span class="loading loading-spinner loading-xs" x-show="$store.tiles.busy" style="display:none"></span>
+    Save changes
+  </button>
+</div>
+
+{# `x-data` with no expression: the state lives in the store, this only opens a
+   scope for the directives below. The draft is handed over in x-init rather
+   than fetched, so the editor comes up populated instead of blank. #}
+<div
+  x-data
+  x-init='$store.tiles.load({{ draft|tojson }}, {{ revision|tojson }}, {{ link_keys|tojson }})'
+  x-effect="$store.tiles.groups.length; $store.tiles.preview; $nextTick(() => tilesInitSortable())"
+>
+
+  {% if error %}
+  <div class="alert alert-warning mb-6">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M4.93 19h14.14a2 2 0 001.74-3L13.74 4a2 2 0 00-3.48 0L3.19 16a2 2 0 001.74 3z"/>
+    </svg>
+    <div>
+      <p class="font-semibold">tiles.yaml could not be parsed</p>
+      <p class="text-sm opacity-80">{{ error }}</p>
+      <p class="text-sm opacity-80">
+        The editor started from an empty dashboard. Saving replaces the file —
+        open the raw editor first if the current content is worth keeping.
+      </p>
+    </div>
+    <button class="btn btn-sm" @click="$store.tiles.openRaw()">Edit tiles.yaml</button>
+  </div>
+  {% endif %}
+
+  <div data-group-list>
+    <template x-for="(group, gi) in $store.tiles.groups" :key="group._id">
+      <section class="mt-10 first:mt-0"
+               :data-group-id="group._id"
+               x-show="$store.tiles.groupVisible(group)">
+
+        <div class="flex items-center gap-2 mb-4">
+          <span data-group-handle
+                class="cursor-grab opacity-30 hover:opacity-70 shrink-0"
+                x-show="!$store.tiles.preview"
+                title="Drag to reorder groups"
+                aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/>
+            </svg>
+          </span>
+
+          <template x-if="!$store.tiles.preview">
+            <input type="text"
+                   class="input input-bordered input-sm w-72 font-semibold uppercase tracking-wide"
+                   aria-label="Group name"
+                   :value="group.name"
+                   @input="group.name = $event.target.value; $store.tiles.touch()">
+          </template>
+          <template x-if="$store.tiles.preview">
+            <p class="text-sm font-semibold opacity-60 uppercase tracking-wide" x-text="group.name"></p>
+          </template>
+
+          <p class="text-sm opacity-40"
+             x-text="group.tiles.length + (group.tiles.length === 1 ? ' application' : ' applications')"></p>
+
+          <span class="flex-1"></span>
+
+          <div x-show="!$store.tiles.preview">
+            {% call overflow_menu(size='xs', label='Group actions') %}
+            <li><a @click="$store.tiles.newTile(gi)">Add tile</a></li>
+            <li><a @click="$store.tiles.moveGroup(gi, -1)">Move group up</a></li>
+            <li><a @click="$store.tiles.moveGroup(gi, 1)">Move group down</a></li>
+            <li>
+              <a class="text-error"
+                 @click="if (confirm('Delete the group and its ' + group.tiles.length + ' tile(s)? Nothing is written until you save.')) $store.tiles.deleteGroup(gi)">
+                Delete group
+              </a>
+            </li>
+            {% endcall %}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4"
+             data-tile-list
+             :data-list-group="group._id">
+          <template x-for="(tile, ti) in group.tiles" :key="tile._id">
+            {# `overflow-visible` because daisyUI's card clips its content and
+               the overflow menu is absolutely positioned inside it. #}
+            <div class="card bg-base-200 shadow-sm overflow-visible relative"
+                 :class="$store.tiles.preview ? '' : 'cursor-pointer hover:shadow-md transition-shadow'"
+                 :data-tile-id="tile._id"
+                 x-show="$store.tiles.tileVisible(tile)"
+                 @click="if (!$store.tiles.preview) $store.tiles.openTile(gi, ti)">
+              <div class="card-body p-5 flex flex-col gap-3">
+
+                <div class="flex items-start gap-3">
+                  <template x-if="tile.icon">
+                    <img :src="tile.icon" alt=""
+                         class="h-11 w-11 shrink-0 rounded-xl object-contain bg-base-100 p-1">
+                  </template>
+                  <template x-if="!tile.icon">
+                    <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-extrabold font-brand uppercase"
+                          :class="$store.tiles.badge(gi, ti)"
+                          x-text="(tile.name || '?').charAt(0)"></span>
+                  </template>
+
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2">
+                      <p class="font-semibold leading-snug truncate" x-text="tile.name || 'Untitled tile'"></p>
+                    </div>
+                    {# Editing aid, not part of the card: hidden in preview so
+                       what is on screen matches what the gallery renders. #}
+                    <p class="mt-1 text-xs opacity-50 truncate"
+                       x-show="!$store.tiles.preview"
+                       x-text="tile.href"></p>
+                  </div>
+
+                  <div class="flex items-center gap-1 shrink-0"
+                       x-show="!$store.tiles.preview"
+                       @click.stop>
+                    <span data-tile-handle
+                          class="cursor-grab opacity-30 hover:opacity-70 px-0.5"
+                          title="Drag to reorder tiles"
+                          aria-hidden="true">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/>
+                      </svg>
+                    </span>
+                    {% call overflow_menu(size='xs', label='Tile actions') %}
+                    <li><a @click="$store.tiles.openTile(gi, ti)">Edit tile</a></li>
+                    <li><a @click="$store.tiles.duplicateTile(gi, ti)">Duplicate</a></li>
+                    <li><a @click="$store.tiles.moveTile(gi, ti, -1)">Move left</a></li>
+                    <li><a @click="$store.tiles.moveTile(gi, ti, 1)">Move right</a></li>
+                    <li x-show="$store.tiles.groups.length > 1">
+                      <details>
+                        <summary>Move to group</summary>
+                        <ul>
+                          <template x-for="(target, index) in $store.tiles.groups" :key="target._id">
+                            <li x-show="index !== gi">
+                              <a @click="$store.tiles.moveTileToGroup(gi, ti, index)" x-text="target.name"></a>
+                            </li>
+                          </template>
+                        </ul>
+                      </details>
+                    </li>
+                    <li>
+                      <a class="text-error" @click="$store.tiles.removeTile(gi, ti)">Remove tile</a>
+                    </li>
+                    {% endcall %}
+                  </div>
+                </div>
+
+                <p class="text-sm opacity-70 line-clamp-2 min-h-[2.5rem]" x-text="tile.description"></p>
+
+                <div x-show="!$store.tiles.preview && tile.visibility === 'admin'" style="display:none">
+                  <span class="badge badge-sm badge-ghost gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                    Administrators only
+                  </span>
+                </div>
+
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <button type="button"
+                x-show="!$store.tiles.preview"
+                @click="$store.tiles.newTile(gi)"
+                class="mt-4 w-full rounded-2xl border border-dashed border-base-300 py-4 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
+          + Add tile to “<span x-text="group.name"></span>”
+        </button>
+      </section>
+    </template>
+  </div>
+
+  <button type="button"
+          x-show="!$store.tiles.preview"
+          @click="$store.tiles.addGroup()"
+          class="mt-10 w-full rounded-2xl border border-dashed border-base-300 py-5 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
+    + Add group
+  </button>
+
+  {# Same geometry as the bulk bar in _actions.html: pinned to the bottom edge
+     for as long as it has something to say, because it belongs to the work in
+     the list above it and must not scroll away from it. #}
+  <div style="display:none"
+       x-show="$store.tiles.dirty > 0 && !$store.tiles.preview"
+       class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 mt-6 px-5 py-3 rounded-xl border border-primary bg-base-200 shadow-lg">
+    <span class="text-sm">
+      <span class="font-semibold" x-text="$store.tiles.dirty"></span>
+      <span x-text="$store.tiles.dirty === 1 ? 'unsaved change' : 'unsaved changes'"></span>
+      <span class="opacity-60">— everyone still sees the saved dashboard</span>
+    </span>
+    <span class="flex-1"></span>
+    <button class="btn btn-outline btn-sm" @click="$store.tiles.discard()">Discard</button>
+    <button class="btn btn-primary btn-sm" :disabled="$store.tiles.busy" @click="$store.tiles.save()">
+      Save changes
+    </button>
+  </div>
+
+  {# ── Tile dialog ─────────────────────────────────────────────────────────
+     Opened and closed imperatively by id, the way catalogs.html drives its
+     modals. Deliberately not an `x-effect` mirroring the store onto the
+     element: an effect that reads `$refs` for its own element runs before the
+     ref is registered, and the resulting error inside Alpine's effect leaves
+     `x-show` dead across the whole page. @close covers Escape and backdrop
+     clicks, which bypass the store entirely. #}
+  <dialog id="tile-editor-modal" class="modal" @close="$store.tiles.dialog = null">
+    <div class="modal-box max-w-3xl">
+      <template x-if="$store.tiles.dialog">
+        <div>
+          <h3 class="text-lg font-bold mb-4"
+              x-text="$store.tiles.dialog.ti === null ? 'Add tile' : 'Edit tile'"></h3>
+
+          <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_15rem] gap-6">
+            <div>
+              <div class="form-control mb-3">
+                <label class="label"><span class="label-text">Name</span></label>
+                <input type="text" class="input input-bordered"
+                       x-model="$store.tiles.dialog.tile.name"
+                       placeholder="LibreChat">
+                <span class="label-text-alt text-error mt-1"
+                      x-show="$store.tiles.dialog.nameProblem"
+                      style="display:none"
+                      x-text="$store.tiles.dialog.nameProblem"></span>
+              </div>
+
+              <div class="form-control mb-3">
+                <label class="label"><span class="label-text">Link</span></label>
+                <input type="text" class="input input-bordered font-mono text-sm"
+                       x-model="$store.tiles.dialog.tile.href"
+                       @input="$store.tiles.resolveDialog()"
+                       placeholder="https://app.example.com">
+                <div class="flex flex-wrap items-center gap-1 mt-2"
+                     x-show="$store.tiles.linkKeys.length" style="display:none">
+                  <span class="text-xs opacity-50">Insert:</span>
+                  <template x-for="key in $store.tiles.linkKeys" :key="key">
+                    <button type="button" class="badge badge-sm badge-outline font-mono"
+                            @click="$store.tiles.insertPlaceholder(key)"
+                            x-text="key"></button>
+                  </template>
+                </div>
+                <span class="label-text-alt text-error mt-1"
+                      x-show="$store.tiles.dialog.problem"
+                      style="display:none"
+                      x-text="$store.tiles.dialog.problem"></span>
+              </div>
+
+              <div class="form-control mb-3">
+                <label class="label"><span class="label-text">Description</span></label>
+                <input type="text" class="input input-bordered"
+                       x-model="$store.tiles.dialog.tile.description"
+                       placeholder="What this application is for">
+              </div>
+
+              <div class="form-control mb-3">
+                <label class="label">
+                  <span class="label-text">Icon URL</span>
+                  <span class="label-text-alt opacity-60">optional</span>
+                </label>
+                <input type="text" class="input input-bordered text-sm"
+                       x-model="$store.tiles.dialog.tile.icon"
+                       @input="$store.tiles.resolveDialog()"
+                       placeholder="https://example.com/icon.svg">
+                <span class="label-text-alt opacity-60 mt-1">
+                  Left empty, the tile shows a lettered badge.
+                </span>
+                <span class="label-text-alt text-error mt-1"
+                      x-show="$store.tiles.dialog.iconProblem"
+                      style="display:none"
+                      x-text="$store.tiles.dialog.iconProblem"></span>
+              </div>
+
+              <div class="form-control">
+                <label class="label"><span class="label-text">Who can see this tile</span></label>
+                <div class="join">
+                  <button type="button" class="btn btn-sm join-item"
+                          :class="$store.tiles.dialog.tile.visibility === 'all' ? 'btn-primary' : 'btn-outline'"
+                          @click="$store.tiles.dialog.tile.visibility = 'all'">
+                    Everyone
+                  </button>
+                  <button type="button" class="btn btn-sm join-item"
+                          :class="$store.tiles.dialog.tile.visibility === 'admin' ? 'btn-primary' : 'btn-outline'"
+                          @click="$store.tiles.dialog.tile.visibility = 'admin'">
+                    Administrators only
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {# Live preview. The resolved address comes from the server: the
+               values behind a placeholder live in the core .env next to every
+               stack secret, so only the finished string is sent back. #}
+            <div class="rounded-xl bg-base-200 p-4">
+              <p class="text-xs uppercase tracking-wide opacity-50 mb-3">Live preview</p>
+
+              <div class="card bg-base-100 shadow-sm">
+                <div class="card-body p-4 gap-2">
+                  <div class="flex items-start gap-3">
+                    <template x-if="$store.tiles.dialog.tile.icon">
+                      <img :src="$store.tiles.dialog.tile.icon" alt=""
+                           class="h-10 w-10 shrink-0 rounded-xl object-contain bg-base-200 p-1">
+                    </template>
+                    <template x-if="!$store.tiles.dialog.tile.icon">
+                      <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-content text-lg font-extrabold font-brand uppercase"
+                            x-text="($store.tiles.dialog.tile.name || '?').charAt(0)"></span>
+                    </template>
+                    <p class="font-semibold leading-snug truncate"
+                       x-text="$store.tiles.dialog.tile.name || 'Untitled tile'"></p>
+                  </div>
+                  <p class="text-sm opacity-70 line-clamp-2 min-h-[2.5rem]"
+                     x-text="$store.tiles.dialog.tile.description"></p>
+                </div>
+              </div>
+
+              <p class="text-xs opacity-50 mt-3">Opens</p>
+              <p class="text-xs font-mono break-all"
+                 :class="$store.tiles.dialog.problem ? 'text-error' : ''"
+                 x-text="$store.tiles.dialog.resolved || '—'"></p>
+
+              <p class="text-xs opacity-70 mt-3"
+                 x-text="$store.tiles.dialog.tile.visibility === 'admin'
+                           ? 'Visible to administrators only'
+                           : 'Visible to everyone'"></p>
+            </div>
+          </div>
+
+          <div class="modal-action">
+            <span class="text-xs opacity-50 mr-auto self-center">
+              Applied to the draft — the dashboard changes when you save.
+            </span>
+            <button type="button" class="btn btn-ghost" @click="$store.tiles.closeTile()">Cancel</button>
+            <button type="button" class="btn btn-primary"
+                    :disabled="!!$store.tiles.dialog.problem"
+                    @click="$store.tiles.applyTile()">Apply</button>
+          </div>
+        </div>
+      </template>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  {# ── Raw YAML ────────────────────────────────────────────────────────────
+     The escape hatch: bulk edits, and moving a dashboard between deployments.
+     Writes through the same validation as the editor, so it cannot leave a
+     document the gallery would refuse to render. #}
+  <dialog id="tiles-raw-modal" class="modal" @close="$store.tiles.raw = null">
+    <div class="modal-box max-w-3xl">
+      <template x-if="$store.tiles.raw">
+        <div>
+          <h3 class="text-lg font-bold mb-1">Edit tiles.yaml</h3>
+          <p class="text-sm opacity-60 mb-4">
+            Saving here replaces the file and reloads the editor. Unsaved changes in
+            the editor are discarded.
+          </p>
+          <textarea class="textarea textarea-bordered w-full h-96 font-mono text-xs"
+                    spellcheck="false"
+                    aria-label="tiles.yaml"
+                    x-model="$store.tiles.raw.text"></textarea>
+          <p class="text-sm text-error mt-2"
+             x-show="$store.tiles.raw.problem"
+             style="display:none"
+             x-text="$store.tiles.raw.problem"></p>
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost" @click="$store.tiles.closeRaw()">Cancel</button>
+            <button type="button" class="btn btn-primary"
+                    :disabled="$store.tiles.busy"
+                    @click="$store.tiles.applyRaw()">Save file</button>
+          </div>
+        </div>
+      </template>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+</div>
