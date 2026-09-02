@@ -4,6 +4,14 @@
 {% block page_title %}Dashboard{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Your papAIa applications</p>{% endblock %}
 
+{% block page_actions %}
+{# Filled out of band by whichever tile partial is loaded: the gallery puts
+   "Edit dashboard" here, the editor replaces it with its own cluster. The
+   header sits outside the swapped region, so a partial can only reach it this
+   way -- same mechanism as #addon-actions on the add-on detail page. #}
+<div id="dashboard-actions" class="flex items-center gap-2"></div>
+{% endblock %}
+
 {% block content %}
 <div
   id="tile-gallery"
@@ -15,4 +23,469 @@
     <span class="loading loading-spinner loading-lg text-primary"></span>
   </div>
 </div>
+
+{% if is_admin %}
+{# Drag and drop is an enhancement, not the mechanism: every reorder is also a
+   menu command, and the editor checks for the global before touching it. A
+   missing asset degrades to the menu instead of breaking the page. #}
+<script src="{{ asset_url('sortable.min.js') }}" defer></script>
+<script>
+  // ── Dashboard editor ─────────────────────────────────────────────────────
+  // The editable dashboard is a client-side draft: nothing reaches the server
+  // until "Save changes" PUTs the whole document. That is what makes "Discard"
+  // an undo for everything, deletions included, and it is also the only shape
+  // that fits the file -- tiles have no identity beyond their position, so
+  // there is nothing for a per-tile endpoint to address.
+  //
+  // State lives in an Alpine store rather than in the partial, because the
+  // header cluster and the gallery are swapped as two separate elements and
+  // both need the same draft and the same unsaved-change count.
+
+  function tilesEnterEdit() {
+    htmx.ajax("GET", "/partials/tiles/edit", { target: "#tile-gallery", swap: "innerHTML" });
+  }
+
+  function tilesExitEdit() {
+    htmx.ajax("GET", "/partials/tiles", { target: "#tile-gallery", swap: "innerHTML" });
+  }
+
+  // Messages carry operator-typed group and tile names back from the server,
+  // and showToast writes with innerHTML. Escape before handing anything over.
+  function tilesEscape(text) {
+    const el = document.createElement("div");
+    el.textContent = String(text == null ? "" : text);
+    return el.innerHTML;
+  }
+
+  function tilesCsrf() {
+    return {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": document.querySelector("meta[name=csrf]").content,
+    };
+  }
+
+  async function tilesDetail(response) {
+    try {
+      const body = await response.json();
+      if (Array.isArray(body.detail) && body.detail.length) {
+        const first = body.detail[0];
+        const where = first.tile === null || first.tile === undefined
+          ? "group " + (first.group + 1)
+          : "group " + (first.group + 1) + ", tile " + (first.tile + 1);
+        return first.message + " (" + where + ")";
+      }
+      return body.detail || JSON.stringify(body);
+    } catch (_) {
+      return "HTTP " + response.status;
+    }
+  }
+
+  let _tilesSortables = [];
+
+  // Re-created rather than updated: a group added or removed changes which
+  // containers exist, and destroying first keeps a stale instance from holding
+  // on to a detached list.
+  function tilesInitSortable() {
+    _tilesSortables.forEach((s) => s.destroy());
+    _tilesSortables = [];
+
+    if (typeof Sortable === "undefined") return;
+    const store = Alpine.store("tiles");
+    if (store.preview) return;
+
+    document.querySelectorAll("[data-tile-list]").forEach((list) => {
+      _tilesSortables.push(new Sortable(list, {
+        group: "papaia-tiles",
+        draggable: "[data-tile-id]",
+        handle: "[data-tile-handle]",
+        animation: 150,
+        onEnd: () => store.syncOrderFromDom(),
+      }));
+    });
+
+    const groups = document.querySelector("[data-group-list]");
+    if (groups) {
+      _tilesSortables.push(new Sortable(groups, {
+        draggable: "[data-group-id]",
+        handle: "[data-group-handle]",
+        animation: 150,
+        onEnd: () => store.syncOrderFromDom(),
+      }));
+    }
+  }
+
+  document.addEventListener("alpine:init", () => {
+    Alpine.store("tiles", {
+      revision: "",
+      linkKeys: [],
+      groups: [],
+      dirty: 0,
+      preview: false,
+      busy: false,
+      dialog: null,
+      raw: null,
+      _seq: 0,
+      _resolveTimer: null,
+
+      // ── Draft lifecycle ──────────────────────────────────────────────────
+
+      load(draft, revision, linkKeys) {
+        this._seq = 0;
+        this.groups = (draft.groups || []).map((group) => ({
+          _id: this._id(),
+          name: group.name,
+          tiles: (group.tiles || []).map((tile) => this._tile(tile)),
+        }));
+        this.revision = revision;
+        this.linkKeys = linkKeys || [];
+        this.dirty = 0;
+        this.preview = false;
+        this.dialog = null;
+        this.raw = null;
+      },
+
+      // Client-side identity, never sent back. x-for needs a stable key to
+      // reuse nodes across a reorder, and names are not unique.
+      _id() {
+        this._seq += 1;
+        return this._seq;
+      },
+
+      _tile(tile) {
+        return {
+          _id: this._id(),
+          name: tile.name || "",
+          href: tile.href || "",
+          description: tile.description || "",
+          icon: tile.icon || "",
+          visibility: tile.visibility === "admin" ? "admin" : "all",
+        };
+      },
+
+      touch() {
+        this.dirty += 1;
+      },
+
+      tileCount() {
+        return this.groups.reduce((n, group) => n + group.tiles.length, 0);
+      },
+
+      // Mirrors visible_groups: a group with nothing a plain user may see is
+      // not rendered for them either. Presentation only -- the real filtering
+      // happens server-side, in the gallery this preview stands in for.
+      groupVisible(group) {
+        if (!this.preview) return true;
+        return group.tiles.some((tile) => tile.visibility === "all");
+      },
+
+      tileVisible(tile) {
+        return !this.preview || tile.visibility === "all";
+      },
+
+      // Listed literally so Tailwind keeps them; the cycle matches the gallery.
+      // bg-primary text-primary-content bg-secondary text-secondary-content
+      // bg-accent text-accent-content bg-success text-success-content
+      // bg-info text-info-content
+      badge(gi, ti) {
+        const palette = [
+          "bg-primary text-primary-content",
+          "bg-secondary text-secondary-content",
+          "bg-accent text-accent-content",
+          "bg-success text-success-content",
+          "bg-info text-info-content",
+        ];
+        let index = ti;
+        for (let i = 0; i < gi; i += 1) index += this.groups[i].tiles.length;
+        return palette[index % palette.length];
+      },
+
+      // ── Groups ───────────────────────────────────────────────────────────
+
+      addGroup() {
+        this.groups.push({ _id: this._id(), name: "New group", tiles: [] });
+        this.touch();
+      },
+
+      deleteGroup(gi) {
+        this.groups.splice(gi, 1);
+        this.touch();
+      },
+
+      moveGroup(gi, delta) {
+        const target = gi + delta;
+        if (target < 0 || target >= this.groups.length) return;
+        const [group] = this.groups.splice(gi, 1);
+        this.groups.splice(target, 0, group);
+        this.touch();
+      },
+
+      // ── Tiles ────────────────────────────────────────────────────────────
+
+      removeTile(gi, ti) {
+        this.groups[gi].tiles.splice(ti, 1);
+        this.touch();
+      },
+
+      duplicateTile(gi, ti) {
+        const copy = this._tile(this.groups[gi].tiles[ti]);
+        copy.name = copy.name + " copy";
+        this.groups[gi].tiles.splice(ti + 1, 0, copy);
+        this.touch();
+      },
+
+      moveTile(gi, ti, delta) {
+        const tiles = this.groups[gi].tiles;
+        const target = ti + delta;
+        if (target < 0 || target >= tiles.length) return;
+        const [tile] = tiles.splice(ti, 1);
+        tiles.splice(target, 0, tile);
+        this.touch();
+      },
+
+      moveTileToGroup(gi, ti, target) {
+        if (target === gi) return;
+        const [tile] = this.groups[gi].tiles.splice(ti, 1);
+        this.groups[target].tiles.push(tile);
+        this.touch();
+      },
+
+      // Sortable owns the DOM for the length of a drag; the store catches up
+      // afterwards by reading the order back. Reading ids rather than
+      // reconstructing the move keeps one code path for reorders inside a
+      // group and moves between groups.
+      syncOrderFromDom() {
+        const byId = new Map();
+        this.groups.forEach((group) => {
+          group.tiles.forEach((tile) => byId.set(String(tile._id), tile));
+        });
+
+        const nextTiles = [];
+        document.querySelectorAll("[data-tile-list]").forEach((list) => {
+          nextTiles.push([
+            list.dataset.listGroup,
+            Array.from(list.querySelectorAll(":scope > [data-tile-id]"))
+              .map((node) => byId.get(node.dataset.tileId))
+              .filter(Boolean),
+          ]);
+        });
+
+        const groupOrder = Array.from(document.querySelectorAll("[data-group-id]"))
+          .map((node) => node.dataset.groupId);
+
+        const groupsById = new Map(this.groups.map((group) => [String(group._id), group]));
+        nextTiles.forEach(([id, tiles]) => {
+          const group = groupsById.get(id);
+          if (group) group.tiles = tiles;
+        });
+        const reordered = groupOrder.map((id) => groupsById.get(id)).filter(Boolean);
+        if (reordered.length === this.groups.length) this.groups = reordered;
+
+        this.touch();
+      },
+
+      // ── Tile dialog ──────────────────────────────────────────────────────
+
+      // The native dialog is opened and closed by id, the way catalogs.html
+      // drives its modals. Binding it to an Alpine effect instead looks
+      // tidier and is a trap: an effect reading `$refs` for its own element
+      // runs before the ref exists, and the error it throws inside Alpine
+      // leaves `x-show` dead for the rest of the page.
+      _openModal(id) {
+        const el = document.getElementById(id);
+        if (el && !el.open) el.showModal();
+      },
+
+      _closeModal(id) {
+        const el = document.getElementById(id);
+        if (el && el.open) el.close();
+      },
+
+      newTile(gi) {
+        this.dialog = {
+          gi: gi,
+          ti: null,
+          tile: this._tile({ visibility: "all" }),
+          resolved: "",
+          problem: null,
+          iconProblem: null,
+          nameProblem: null,
+        };
+        this._openModal("tile-editor-modal");
+      },
+
+      openTile(gi, ti) {
+        this.dialog = {
+          gi: gi,
+          ti: ti,
+          tile: Object.assign({}, this.groups[gi].tiles[ti]),
+          resolved: "",
+          problem: null,
+          iconProblem: null,
+          nameProblem: null,
+        };
+        this._openModal("tile-editor-modal");
+        this.resolveDialog();
+      },
+
+      closeTile() {
+        this.dialog = null;
+        this._closeModal("tile-editor-modal");
+      },
+
+      insertPlaceholder(key) {
+        const open = "{" + "{";
+        this.dialog.tile.href = open + key + "}" + "}" + this.dialog.tile.href;
+        this.resolveDialog();
+      },
+
+      applyTile() {
+        const dialog = this.dialog;
+        if (!dialog) return;
+        if (!dialog.tile.name.trim()) {
+          dialog.nameProblem = "give the tile a name";
+          return;
+        }
+        if (dialog.problem) return;
+
+        const tile = Object.assign({}, dialog.tile);
+        if (dialog.ti === null) {
+          this.groups[dialog.gi].tiles.push(tile);
+        } else {
+          this.groups[dialog.gi].tiles.splice(dialog.ti, 1, tile);
+        }
+        this.dialog = null;
+        this._closeModal("tile-editor-modal");
+        this.touch();
+      },
+
+      // Resolution runs on the server: the values live in the core .env, which
+      // holds every stack secret, so only the finished string comes back.
+      resolveDialog() {
+        clearTimeout(this._resolveTimer);
+        this._resolveTimer = setTimeout(() => this._resolveNow(), 250);
+      },
+
+      async _resolveNow() {
+        const dialog = this.dialog;
+        if (!dialog) return;
+        dialog.nameProblem = null;
+
+        const response = await fetch("/api/v1/tiles/resolve", {
+          method: "POST",
+          headers: tilesCsrf(),
+          body: JSON.stringify({ values: [dialog.tile.href, dialog.tile.icon || ""] }),
+        });
+        if (_authGuard(response)) return;
+        if (!response.ok) return;
+        const results = await response.json();
+        if (this.dialog !== dialog) return;
+
+        dialog.resolved = results[0].resolved;
+        dialog.problem = results[0].ok ? null : results[0].reason;
+        dialog.iconProblem = dialog.tile.icon && !results[1].ok ? results[1].reason : null;
+      },
+
+      // ── Raw YAML ─────────────────────────────────────────────────────────
+
+      async openRaw() {
+        const response = await fetch("/api/v1/tiles/raw", { headers: tilesCsrf() });
+        if (_authGuard(response)) return;
+        if (!response.ok) {
+          showToast("error", "Could not read tiles.yaml: " + tilesEscape(await tilesDetail(response)));
+          return;
+        }
+        const data = await response.json();
+        this.raw = { text: data.yaml, revision: data.revision, problem: null };
+        this._openModal("tiles-raw-modal");
+      },
+
+      closeRaw() {
+        this.raw = null;
+        this._closeModal("tiles-raw-modal");
+      },
+
+      async applyRaw() {
+        if (this.busy) return;
+        this.busy = true;
+        try {
+          const response = await fetch("/api/v1/tiles/raw", {
+            method: "PUT",
+            headers: tilesCsrf(),
+            body: JSON.stringify({ revision: this.raw.revision, yaml: this.raw.text }),
+          });
+          if (_authGuard(response)) return;
+          if (!response.ok) {
+            this.raw.problem = await tilesDetail(response);
+            return;
+          }
+          this.raw = null;
+          this._closeModal("tiles-raw-modal");
+          showToast("success", "tiles.yaml saved.");
+          tilesEnterEdit();
+        } finally {
+          this.busy = false;
+        }
+      },
+
+      // ── Persistence ──────────────────────────────────────────────────────
+
+      async save() {
+        if (this.busy) return;
+        this.busy = true;
+        try {
+          const response = await fetch("/api/v1/tiles", {
+            method: "PUT",
+            headers: tilesCsrf(),
+            body: JSON.stringify({
+              revision: this.revision,
+              version: 1,
+              groups: this.groups.map((group) => ({
+                name: group.name,
+                tiles: group.tiles.map((tile) => ({
+                  name: tile.name,
+                  href: tile.href,
+                  description: tile.description,
+                  icon: tile.icon || null,
+                  visibility: tile.visibility,
+                })),
+              })),
+            }),
+          });
+
+          if (_authGuard(response)) return;
+          if (response.status === 409) {
+            showToast(
+              "error",
+              "tiles.yaml changed on disk since the editor opened. Reopen the editor to work from the current file."
+            );
+            return;
+          }
+          if (!response.ok) {
+            showToast("error", "Save failed: " + tilesEscape(await tilesDetail(response)));
+            return;
+          }
+
+          const data = await response.json();
+          this.revision = data.revision;
+          this.dirty = 0;
+          showToast("success", "Dashboard saved.");
+          tilesExitEdit();
+        } finally {
+          this.busy = false;
+        }
+      },
+
+      discard() {
+        if (this.dirty && !confirm("Discard all unsaved dashboard changes?")) return;
+        tilesEnterEdit();
+      },
+
+      leave() {
+        if (this.dirty && !confirm("Leave the editor and discard all unsaved changes?")) return;
+        tilesExitEdit();
+      },
+    });
+  });
+</script>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,158 @@
+{#
+  Polled while an upgrade runner exists. The poll is what carries the UI across
+  the manager's own restart: during the upgrade this container is removed and
+  recreated -- from the *target release's* image -- so the request simply fails
+  and htmx retries on the next tick. No swap happens, the element survives, and
+  `offline` turns the expected outage into a reconnect notice instead of an
+  error.
+
+  The phase list is derived from papaia-ctl's own announcements (see
+  `upgrade.phases_from_log`). It exists because this is the one operation whose
+  progress an operator cannot watch: the log is here too, underneath, but a wall
+  of output does not answer "how much is left" while the panel is offline.
+#}
+<div
+  id="upgrade-runner"
+  {% if upgrade_runner is not none and upgrade_runner.is_running %}
+  hx-get="/partials/upgrade/runner"
+  hx-trigger="every 3s"
+  hx-swap="outerHTML"
+  {% endif %}
+  x-data="{ offline: false }"
+  @htmx:send-error.window="offline = true"
+  @htmx:after-on-load.window="offline = false"
+>
+{% if upgrade_runner is none %}
+  {% if upgrade_error %}
+  <div class="alert alert-warning mb-6">
+    <span>Cannot reach the Docker daemon: {{ upgrade_error }}</span>
+  </div>
+  {% endif %}
+{% else %}
+  <div class="card bg-base-200 shadow-sm mb-6">
+    <div class="card-body p-5 gap-3">
+
+      <div class="flex items-center gap-3 flex-wrap">
+        {% if upgrade_runner.is_running %}
+          <span class="loading loading-spinner loading-sm text-warning"></span>
+          <span class="badge badge-warning">upgrading</span>
+        {% elif upgrade_runner.succeeded %}
+          <span class="badge badge-success">upgrade complete</span>
+        {% else %}
+          <span class="badge badge-error">upgrade failed</span>
+        {% endif %}
+
+        <span class="text-sm font-medium">papAIa {{ upgrade_runner.target }}</span>
+
+        {% if upgrade_runner.exit_code is not none %}
+        <span class="text-xs opacity-40">exit code {{ upgrade_runner.exit_code }}</span>
+        {% endif %}
+
+        <span class="grow"></span>
+
+        {% if not upgrade_runner.is_running %}
+        <button class="btn btn-outline btn-xs" onclick="acknowledgeUpgrade()">Dismiss</button>
+        {% endif %}
+      </div>
+
+      {% if upgrade_runner.is_running %}
+      <p class="text-sm opacity-60 leading-relaxed">
+        The stack is being stopped, migrated and started again. This page will lose its
+        connection to the manager for a while &mdash; that is expected, and the result
+        appears here once it is back.
+      </p>
+      {% elif upgrade_runner.succeeded %}
+      <p class="text-sm opacity-60 leading-relaxed">
+        papaia-manager was upgraded along with the stack, so this page is now served by a
+        different build than the one that started the upgrade.
+        <button class="link" onclick="window.location.reload()">Reload the page</button>
+        to pick it up.
+      </p>
+      {% endif %}
+
+      {# The phases. Class names are spelled out per branch: app.css is built by
+         scanning these templates and a computed class would not survive. #}
+      <ul class="divide-y divide-base-300 border-y border-base-300">
+        {% for phase in phases %}
+        <li class="flex items-start gap-3 py-2">
+          {% if phase.state == "done" %}
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mt-0.5 shrink-0 text-success"
+                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                 aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+            <div class="min-w-0">
+              <p class="text-sm">{{ phase.label }}</p>
+              {% if phase.detail %}
+              <p class="text-xs opacity-50 font-mono">{{ phase.detail }}</p>
+              {% endif %}
+            </div>
+          {% elif phase.state == "running" %}
+            <span class="loading loading-spinner loading-xs mt-0.5 shrink-0 text-warning"></span>
+            <div class="min-w-0">
+              <p class="text-sm font-medium">{{ phase.label }}</p>
+              {% if phase.detail %}
+              <p class="text-xs opacity-50 font-mono">{{ phase.detail }}</p>
+              {% endif %}
+            </div>
+          {% elif phase.state == "failed" %}
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mt-0.5 shrink-0 text-error"
+                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                 aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-error">{{ phase.label }}</p>
+              <p class="text-xs opacity-60">stopped here</p>
+            </div>
+          {% elif phase.state == "skipped" %}
+            <span class="h-1.5 w-1.5 mt-2 shrink-0 rounded-full bg-base-300"></span>
+            <p class="text-sm opacity-40">{{ phase.label }} &mdash; skipped</p>
+          {% else %}
+            <span class="h-1.5 w-1.5 mt-2 shrink-0 rounded-full bg-base-300"></span>
+            <p class="text-sm opacity-40">{{ phase.label }}</p>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+
+      <div x-show="offline" class="text-sm opacity-60">
+        <span class="loading loading-dots loading-xs"></span>
+        Manager not reachable &mdash; reconnecting&hellip;
+      </div>
+
+      {# The way back, exactly as papaia-ctl printed it. Not re-derived: the
+         shell already knows which of the two forms applies, and a second copy
+         of that logic here would drift from the one that owns it. #}
+      {% if recovery %}
+      <div class="rounded-lg border border-error bg-error/10 p-4">
+        <p class="text-sm font-semibold mb-1">There is no automatic rollback</p>
+        <p class="text-xs opacity-70 mb-3 leading-relaxed">
+          A rollback that fails after a migration failed would leave an installation nobody
+          can reason about, so papaia-ctl stops instead and says how to get back. Run these
+          on the host:
+        </p>
+        <pre class="rounded bg-base-300 p-3 text-xs whitespace-pre-wrap overflow-x-auto">{{ recovery }}</pre>
+      </div>
+      {% endif %}
+
+      {% if upgrade_log %}
+      <details {% if not upgrade_runner.is_running and not upgrade_runner.succeeded %}open{% endif %}>
+        <summary class="text-xs opacity-60 cursor-pointer">Output</summary>
+        <pre class="mt-2 max-h-96 overflow-y-auto rounded-lg bg-base-300 p-3 text-xs whitespace-pre-wrap">{{ upgrade_log }}</pre>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+{# The header button has to disappear while an upgrade is in flight, and stay
+   gone until its outcome is acknowledged. Announced the same way the readiness
+   strip announces its own state. #}
+<script>
+  window.dispatchEvent(new CustomEvent("papaia-upgrade-runner", { detail: {
+    active: {{ "true" if upgrade_runner is not none else "false" }},
+    running: {{ "true" if (upgrade_runner is not none and upgrade_runner.is_running) else "false" }},
+  }}));
+</script>
+</div>

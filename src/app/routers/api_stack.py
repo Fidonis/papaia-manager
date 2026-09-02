@@ -218,6 +218,14 @@ async def stack_action(
         raise HTTPException(
             status_code=409, detail="a job is running; wait for it to finish"
         )
+    # An upgrade already owns the whole stack: it takes it down between its two
+    # phases and brings it back on the target release. A stack action started
+    # against that would race the recreate, and neither side would win cleanly.
+    upgrading = await _find(runner.UPGRADE_KIND)
+    if upgrading is not None and upgrading.is_running:
+        raise HTTPException(
+            status_code=409, detail=f"an upgrade to {upgrading.target} is still running"
+        )
     existing = await _find(runner.STACK_KIND)
     if existing is not None:
         if existing.is_running:

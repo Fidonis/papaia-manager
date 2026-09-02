@@ -8,12 +8,43 @@
    The poll lives on the element rather than on the page, so it ends with the
    job: once the status is terminal the swapped-in copy carries no hx-trigger and
    nothing schedules another request. Same shape as job_status.html. #}
-<pre
+{# The whole partial swaps as one element, so the checklist and the log tail
+   arrive together and the poll cannot leave one of them a tick behind. A job
+   whose output carries no RESTORE-STEP markers renders exactly as before. #}
+<div
   id="job-log"
-  class="bg-base-300 rounded-lg p-4 text-sm font-mono overflow-x-auto max-h-[60vh] overflow-y-auto"
   {% if not terminal %}
   hx-get="/partials/jobs/{{ job_id }}/log"
   hx-trigger="every 2s"
   hx-swap="outerHTML"
   {% endif %}
->{{ log }}</pre>
+>
+  {% if steps %}
+  <ul class="mb-3 flex flex-col gap-1">
+    {% for step in steps %}
+    <li class="flex items-center gap-2 text-sm">
+      {% if step.done %}
+      <span class="badge badge-success badge-xs"></span>
+      {% elif step.failed %}
+      <span class="badge badge-error badge-xs"></span>
+      {% elif step.running %}
+      <span class="loading loading-spinner loading-xs text-primary"></span>
+      {% else %}
+      <span class="badge badge-ghost badge-xs"></span>
+      {% endif %}
+      <span class="opacity-60">{{ step.phase_label }}</span>
+      <span class="font-mono">{{ step.subject }}</span>
+      {% if step.state == "in-use" %}
+      <span class="badge badge-warning badge-sm ml-auto"
+            title="A container still had this volume open, so it was left alone rather than overwritten underneath a live process.">skipped, still in use</span>
+      {% elif step.failed %}
+      <span class="badge badge-error badge-sm ml-auto">failed</span>
+      {% elif step.state == "missing" %}
+      <span class="badge badge-ghost badge-sm ml-auto">no longer installed</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <pre class="bg-base-300 rounded-lg p-4 text-sm font-mono overflow-x-auto max-h-[60vh] overflow-y-auto">{{ log }}</pre>
+</div>

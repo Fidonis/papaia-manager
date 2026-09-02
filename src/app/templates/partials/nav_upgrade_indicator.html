@@ -1,0 +1,17 @@
+{# The dot on the Update nav entry. Renders to nothing unless a check has found
+   a newer release, which is the state it exists to announce.
+
+   It reads the cached check and nothing else. The sidebar is on every admin
+   page, so a git fetch behind this poll would put a network round trip on every
+   navigation -- the dot says "there is something", the Update page says what.
+
+   The consequence is worth stating plainly: nothing lights this up on its own.
+   The check runs when the Update page is opened, so the dot appears after the
+   first visit and stays for as long as this manager process lives.
+
+   `aria-label` rather than a title: collapsed to a rail the nav row has no
+   visible text at all, so the dot is the whole message. #}
+{% if available %}
+<span class="h-2 w-2 shrink-0 rounded-full bg-accent"
+      aria-label="papAIa {{ check.target }} is available"></span>
+{% endif %}

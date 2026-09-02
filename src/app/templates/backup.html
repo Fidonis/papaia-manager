@@ -124,52 +124,106 @@
   </div>
 </div>
 
-<!-- Restore confirmation modal -->
+<!-- Restore wizard: choose, review the impact, confirm.
+     One dialog rather than two menu entries, and one mental model: the scope
+     question is the first thing it asks, and the whole-snapshot path is the
+     branch it already was, warning strecke included.
+
+     No Alpine here. The picker is built from JSON that arrives after the dialog
+     opens, and `x-effect` reading `$refs` of its own <dialog> silently kills
+     `x-show` for the whole page -- so the wizard stays plain DOM, the way
+     openRestorePointDetail already builds its table. -->
 <dialog id="restore-modal" class="modal">
   <div class="modal-box max-w-2xl">
-    <h3 class="text-lg font-bold mb-2">Restore <span id="restore-target" class="font-mono"></span></h3>
-
-    <div class="alert alert-warning text-sm mb-4">
-      <div>
-        <p class="font-semibold mb-1">This overwrites live data.</p>
-        <ul class="list-disc list-inside space-y-0.5">
-          <li>The stack configuration directory is replaced.</li>
-          <li><span id="restore-artifact-count"></span> archived volumes and directories are replaced.</li>
-          <li>All core and add-on containers are removed and recreated.</li>
-        </ul>
-      </div>
+    <div class="flex items-baseline gap-2 mb-3">
+      <h3 class="text-lg font-bold">Restore <span id="restore-target" class="font-mono"></span></h3>
+      <span id="restore-step-badge" class="badge badge-ghost badge-sm ml-auto">Step 1 of 3</span>
     </div>
 
-    <p id="restore-partial-note" class="text-sm text-warning mb-3 hidden">
-      This restore point is marked <span class="font-mono">partial</span> &mdash; some
-      archives failed when it was written. Check <span class="font-mono">backup.log</span>
-      before relying on it.
-    </p>
+    <!-- ── Step 1: what to restore ───────────────────────── -->
+    <div id="restore-step-1">
+      <div class="flex flex-col gap-2 mb-4">
+        <label class="flex items-start gap-3 cursor-pointer">
+          <input type="radio" name="restore-scope" value="all" class="radio radio-sm mt-0.5"
+                 onchange="setRestoreScope('all')">
+          <span class="text-sm">
+            <span class="font-medium">Everything in this restore point</span>
+            <span class="block opacity-60">Replaces the stack configuration and all
+              <span id="restore-artifact-count"></span> archives. The whole stack goes down.</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-3 cursor-pointer">
+          <input type="radio" name="restore-scope" value="some" class="radio radio-sm mt-0.5"
+                 onchange="setRestoreScope('some')">
+          <span class="text-sm">
+            <span class="font-medium">Choose what to restore</span>
+            <span class="block opacity-60">Only the selected services are stopped,
+              restored and started again. Everything else keeps running.</span>
+          </span>
+        </label>
+      </div>
 
-    <label class="label cursor-pointer justify-start gap-3 mb-1">
-      <input id="restore-clean" type="checkbox" class="checkbox checkbox-warning">
-      <span class="label-text text-sm">
-        Delete named volumes first (<span class="font-mono">--restart-clean</span>) &mdash;
-        any volume not contained in this restore point loses its data permanently
-      </span>
-    </label>
+      <div id="restore-picker" class="border border-base-300 rounded-lg overflow-hidden mb-3"></div>
+      <p id="restore-notes" class="text-xs opacity-50 mb-3"></p>
+      <p id="restore-tally" class="text-sm opacity-70"></p>
+    </div>
 
-    <label class="label cursor-pointer justify-start gap-3 mb-2">
-      <input id="restore-confirm" type="checkbox" class="checkbox"
-             onchange="document.getElementById('restore-go').disabled = !this.checked">
-      <span class="label-text text-sm">I understand and want to restore this point</span>
-    </label>
+    <!-- ── Step 2: impact ────────────────────────────────── -->
+    <div id="restore-step-2" class="hidden">
+      <div id="impact-overwritten" class="mb-4"></div>
+      <div id="impact-restarted" class="mb-4"></div>
+      <div id="impact-running" class="mb-4"></div>
+      <div id="impact-hazards"></div>
+    </div>
 
-    <p class="text-xs opacity-50 mb-2">
-      The restore runs in its own container, so it completes even though the
-      manager itself is stopped and recreated on the way. Expect this page to be
-      unreachable for a while.
-    </p>
+    <!-- ── Step 3: confirm ───────────────────────────────── -->
+    <div id="restore-step-3" class="hidden">
+      <div class="alert alert-warning text-sm mb-4">
+        <div>
+          <p class="font-semibold mb-1">This overwrites live data.</p>
+          <ul id="restore-confirm-points" class="list-disc list-inside space-y-0.5"></ul>
+        </div>
+      </div>
+
+      <p id="restore-partial-note" class="text-sm text-warning mb-3 hidden">
+        This restore point is marked <span class="font-mono">partial</span> &mdash; some
+        archives failed when it was written. Check <span class="font-mono">backup.log</span>
+        before relying on it.
+      </p>
+
+      <label id="restore-clean-row" class="label cursor-pointer justify-start gap-3 mb-1">
+        <input id="restore-clean" type="checkbox" class="checkbox checkbox-warning">
+        <span class="label-text text-sm">
+          Delete named volumes first (<span class="font-mono">--restart-clean</span>) &mdash;
+          any volume not contained in this restore point loses its data permanently
+        </span>
+      </label>
+
+      <label class="label cursor-pointer justify-start gap-3 mb-2">
+        <input id="restore-confirm" type="checkbox" class="checkbox"
+               onchange="document.getElementById('restore-go').disabled = !this.checked">
+        <span class="label-text text-sm">I understand and want to restore this point</span>
+      </label>
+
+      <p id="restore-detach-note" class="text-xs opacity-50 mb-2">
+        The restore runs in its own container, so it completes even though the
+        manager itself is stopped and recreated on the way. Expect this page to be
+        unreachable for a while.
+      </p>
+      <p id="restore-inprocess-note" class="text-xs opacity-50 mb-2 hidden">
+        This runs as an ordinary job with a live log. The manager is not part of
+        the selection, so this page stays reachable throughout.
+      </p>
+    </div>
 
     <div class="modal-action">
+      <button id="restore-back" type="button" class="btn btn-ghost mr-auto hidden"
+              onclick="restoreStep(-1)">Back</button>
       <button type="button" class="btn btn-ghost"
               onclick="document.getElementById('restore-modal').close()">Cancel</button>
-      <button id="restore-go" type="button" class="btn btn-warning" disabled
+      <button id="restore-next" type="button" class="btn btn-primary"
+              onclick="restoreStep(1)">Continue</button>
+      <button id="restore-go" type="button" class="btn btn-warning hidden" disabled
               onclick="submitRestore()">Restore</button>
     </div>
   </div>
@@ -225,6 +279,7 @@ function startBackup(onJobId) {
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
     body: JSON.stringify(body),
   }).then(async function (r) {
+    if (_authGuard(r)) return false;
     if (!r.ok) {
       showToast('error', 'Backup failed: ' + (await _apiError(r)));
       refreshBackupJobStatus();
@@ -250,41 +305,435 @@ function startBackup(onJobId) {
   });
 }
 
+// ── Restore wizard ────────────────────────────────────────────────────────
+//
+// _scope holds what the three steps share. `selected` carries selectors exactly
+// as the API takes them ("module:librechat", "volume:papaia_x"), so nothing has
+// to be translated at submit time -- and picking a whole module is genuinely a
+// different request from picking each of its volumes, not another spelling.
+//
+// Plain DOM, no Alpine: the picker is built from JSON that arrives after the
+// dialog opens, and an `x-effect` reading `$refs` of its own <dialog> silently
+// kills `x-show` for the entire page. Same reason openRestorePointDetail builds
+// its table by hand.
+var _scope = null;
+
+function _el(id) { return document.getElementById(id); }
+
+function _freshScope(id, artifacts, result) {
+  return {
+    id: id, artifacts: artifacts, result: result, supported: false,
+    groups: [], services: [], notes: [], configSelector: 'config',
+    mode: 'all', selected: new Set(), step: 1,
+    // Which disclosures are open. Has to live here, not in the DOM: ticking a
+    // checkbox rebuilds the picker, and a freshly built list would come back
+    // collapsed under the hand that just opened it.
+    expanded: new Set(),
+  };
+}
+
+// Every value below comes from the API and is written with textContent or as a
+// DOM node, never innerHTML. Same rule as openRestorePointDetail.
+function _node(tag, className, text) {
+  var el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
 function openRestoreModal(id, artifacts, result) {
-  document.getElementById('restore-target').textContent = id;
-  document.getElementById('restore-artifact-count').textContent = artifacts;
-  document.getElementById('restore-partial-note').classList.toggle('hidden', result !== 'partial');
-  document.getElementById('restore-clean').checked = false;
-  var confirmBox = document.getElementById('restore-confirm');
-  confirmBox.checked = false;
-  document.getElementById('restore-go').disabled = true;
-  document.getElementById('restore-modal').dataset.restorePoint = id;
-  document.getElementById('restore-modal').showModal();
+  _scope = _freshScope(id, artifacts, result);
+  _el('restore-target').textContent = id;
+  _el('restore-artifact-count').textContent = artifacts;
+  _el('restore-partial-note').classList.toggle('hidden', result !== 'partial');
+  _el('restore-clean').checked = false;
+  _el('restore-confirm').checked = false;
+  _el('restore-go').disabled = true;
+  _el('restore-picker').textContent = '';
+  _el('restore-notes').textContent = '';
+  _el('restore-tally').textContent = '';
+  document.querySelector('input[name=restore-scope][value=all]').checked = true;
+  document.querySelector('input[name=restore-scope][value=some]').checked = false;
+  _renderStep();
+  _el('restore-modal').showModal();
+
+  fetch('/api/v1/maintenance/restore-points/' + encodeURIComponent(id) + '/selectors')
+    .then(async function (r) {
+      if (_authGuard(r)) return;
+      if (!r.ok) return;
+      var data = await r.json();
+      _scope.supported = !!data.supported;
+      _scope.groups = data.groups || [];
+      _scope.services = data.services || [];
+      _scope.notes = data.notes || [];
+      _scope.configSelector = data.config_selector || 'config';
+      _renderPicker();
+    });
+}
+
+function setRestoreScope(mode) {
+  _scope.mode = mode;
+  if (mode === 'all') _scope.selected.clear();
+  _renderPicker();
+}
+
+function _renderPicker() {
+  var box = _el('restore-picker');
+  var notes = _el('restore-notes');
+  box.textContent = '';
+  notes.textContent = '';
+
+  if (_scope.mode !== 'some') {
+    box.classList.add('hidden');
+    _el('restore-tally').textContent = '';
+    _updateNextButton();
+    return;
+  }
+  box.classList.remove('hidden');
+
+  // Re-rendering resets the scroll box to the top, which throws the cursor off
+  // the row that was just clicked once the list is longer than the panel.
+  var scrollTop = box.scrollTop;
+
+  var headings = { config: 'Stack', module: 'Core services', addon: 'Add-ons' };
+  var lastKind = '';
+  _scope.groups.forEach(function (group) {
+    if (group.kind !== lastKind) {
+      lastKind = group.kind;
+      box.appendChild(_node('div',
+        'px-3 py-1.5 text-xs uppercase tracking-wide opacity-50 bg-base-200',
+        headings[group.kind] || 'Other'));
+    }
+    box.appendChild(_groupRow(group));
+  });
+
+  // Not instead of the groups: such a snapshot still offers its configuration,
+  // and the note says what it does not offer.
+  if (!_scope.supported) {
+    box.appendChild(_node('p', 'px-3 py-3 text-sm opacity-70 border-t border-base-300',
+      'This restore point was written by an older core and carries no per-service ' +
+      'grouping, so its volumes can only be restored as part of the whole point.'));
+  }
+
+  box.scrollTop = scrollTop;
+  _scope.notes.forEach(function (note) { notes.appendChild(_node('span', '', note)); });
+  _updateTally();
+}
+
+function _groupRow(group) {
+  var wrap = _node('div', 'px-3 py-2.5 border-t border-base-300');
+  var head = _node('div', 'flex items-start gap-3');
+
+  var box = document.createElement('input');
+  box.type = 'checkbox';
+  box.className = 'checkbox checkbox-sm mt-0.5';
+  box.checked = _scope.selected.has(group.selector);
+  box.addEventListener('change', function () {
+    if (box.checked) {
+      _scope.selected.add(group.selector);
+      // A module and its volumes are alternatives, not a hierarchy: holding
+      // both would ask the core to restore the same archive twice.
+      group.items.forEach(function (i) { _scope.selected.delete(i.selector); });
+      if (group.requires_config) _scope.selected.add(_scope.configSelector);
+    } else {
+      _scope.selected.delete(group.selector);
+      group.items.forEach(function (i) { _scope.selected.delete(i.selector); });
+      if (group.requires_config) _scope.selected.delete(_scope.configSelector);
+    }
+    _renderPicker();
+  });
+  head.appendChild(box);
+
+  var text = _node('div', 'min-w-0 flex-1');
+  text.appendChild(_node('span', 'text-sm font-medium', group.label));
+  text.appendChild(_node('span', 'block text-xs opacity-60', group.summary));
+  head.appendChild(text);
+
+  head.appendChild(_node('div', 'text-xs opacity-50 text-right whitespace-nowrap',
+    group.archives + (group.archives === 1 ? ' archive' : ' archives')));
+  wrap.appendChild(head);
+
+  if (group.requires_config && _scope.selected.has(group.selector)) {
+    var alert = _node('div', 'alert alert-warning text-xs mt-2 py-2');
+    var inner = _node('div', '');
+    inner.appendChild(_node('span', 'font-semibold block',
+      group.kind === 'config'
+        ? 'Restoring the configuration restores the whole point.'
+        : group.label + ' brings the stack configuration with it.'));
+    group.hazards.forEach(function (h) { inner.appendChild(_node('span', 'block', h)); });
+    inner.appendChild(_node('span', 'block mt-1', 'This therefore runs as a full restore.'));
+    alert.appendChild(inner);
+    wrap.appendChild(alert);
+  }
+
+  if (group.items.length > 1) {
+    var open = _scope.expanded.has(group.selector);
+    var toggle = _node('button', 'btn btn-ghost btn-xs mt-1 ml-7',
+                       open ? 'Hide volumes' : 'Show volumes');
+    toggle.type = 'button';
+    var list = _node('div', 'ml-7 mt-1 pl-3 border-l border-base-300' + (open ? '' : ' hidden'));
+    group.items.forEach(function (item) { list.appendChild(_itemRow(group, item)); });
+    // The set is the source of truth, not the class: an item checkbox rebuilds
+    // this whole row, and a DOM-only toggle would come back collapsed.
+    toggle.addEventListener('click', function () {
+      if (_scope.expanded.has(group.selector)) _scope.expanded.delete(group.selector);
+      else _scope.expanded.add(group.selector);
+      var hidden = list.classList.toggle('hidden');
+      toggle.textContent = hidden ? 'Show volumes' : 'Hide volumes';
+    });
+    wrap.appendChild(toggle);
+    wrap.appendChild(list);
+  }
+  return wrap;
+}
+
+function _itemRow(group, item) {
+  var label = _node('label', 'flex items-center gap-2 py-1 cursor-pointer');
+  var box = document.createElement('input');
+  box.type = 'checkbox';
+  box.className = 'checkbox checkbox-xs';
+  box.checked = _scope.selected.has(item.selector) || _scope.selected.has(group.selector);
+  box.disabled = _scope.selected.has(group.selector);
+  box.addEventListener('change', function () {
+    if (box.checked) {
+      _scope.selected.add(item.selector);
+      if (group.requires_config) _scope.selected.add(_scope.configSelector);
+    } else {
+      _scope.selected.delete(item.selector);
+      var anyLeft = group.items.some(function (i) { return _scope.selected.has(i.selector); });
+      if (group.requires_config && !anyLeft) _scope.selected.delete(_scope.configSelector);
+    }
+    _renderPicker();
+  });
+  label.appendChild(box);
+  label.appendChild(_node('span', 'text-xs', item.label));
+  label.appendChild(_node('span', 'text-xs font-mono opacity-40', item.target));
+  if (item.advanced) label.appendChild(_node('span', 'badge badge-ghost badge-xs', 'large'));
+  return label;
+}
+
+// True when the selection can only be carried out by replacing the config
+// directory -- which means the detached runner and the whole stack, not a job.
+function _isFullRestore() {
+  return _scope.mode === 'all' || _scope.selected.has(_scope.configSelector);
+}
+
+function _selectedGroups() {
+  return _scope.groups.filter(function (g) {
+    return _scope.selected.has(g.selector) ||
+           g.items.some(function (i) { return _scope.selected.has(i.selector); });
+  });
+}
+
+function _updateTally() {
+  var groups = _selectedGroups();
+  var count = 0;
+  groups.forEach(function (g) {
+    count += _scope.selected.has(g.selector)
+      ? g.archives
+      : g.items.filter(function (i) { return _scope.selected.has(i.selector); }).length;
+  });
+  _el('restore-tally').textContent = groups.length
+    ? count + (count === 1 ? ' item' : ' items') + ' selected'
+    : 'Nothing selected yet.';
+  _updateNextButton();
+}
+
+function _updateNextButton() {
+  _el('restore-next').disabled = _scope.mode === 'some' && _selectedGroups().length === 0;
+}
+
+function restoreStep(delta) {
+  var target = _scope.step + delta;
+  if (target < 1 || target > 3) return;
+  if (target === 2) _renderImpact();
+  if (target === 3) _renderConfirm();
+  _scope.step = target;
+  _renderStep();
+}
+
+function _renderStep() {
+  [1, 2, 3].forEach(function (n) {
+    _el('restore-step-' + n).classList.toggle('hidden', n !== _scope.step);
+  });
+  _el('restore-step-badge').textContent = 'Step ' + _scope.step + ' of 3';
+  _el('restore-back').classList.toggle('hidden', _scope.step === 1);
+  _el('restore-next').classList.toggle('hidden', _scope.step === 3);
+  _el('restore-go').classList.toggle('hidden', _scope.step !== 3);
+  if (_scope.step === 1) _updateNextButton();
+}
+
+function _section(title, bodyClass) {
+  var wrap = _node('div', '');
+  wrap.appendChild(_node('p', 'text-xs uppercase tracking-wide opacity-50 mb-1.5', title));
+  var body = _node('div', bodyClass || '');
+  wrap.appendChild(body);
+  return { wrap: wrap, body: body };
+}
+
+function _renderImpact() {
+  var full = _isFullRestore();
+  var groups = _selectedGroups();
+  var profiles = {};
+  var addons = [];
+  groups.forEach(function (g) {
+    if (g.kind === 'addon') addons.push(g.label);
+    else (g.profiles || []).forEach(function (p) { profiles[p] = true; });
+  });
+
+  var over = _section('Overwritten — current contents are deleted first');
+  if (full) {
+    over.body.appendChild(_node('p', 'text-sm',
+      'The stack configuration and all ' + _scope.artifacts +
+      ' archives in this restore point.'));
+  } else {
+    var list = _node('div', 'flex flex-col gap-0.5');
+    groups.forEach(function (g) {
+      if (_scope.selected.has(g.selector)) {
+        list.appendChild(_node('span', 'text-sm',
+          g.label + ' — ' + g.archives + (g.archives === 1 ? ' archive' : ' archives')));
+      } else {
+        g.items.forEach(function (i) {
+          if (_scope.selected.has(i.selector)) {
+            list.appendChild(_node('span', 'text-sm font-mono', i.target));
+          }
+        });
+      }
+    });
+    over.body.appendChild(list);
+  }
+  _el('impact-overwritten').textContent = '';
+  _el('impact-overwritten').appendChild(over.wrap);
+
+  // Built from profiles, not from the modules that were ticked: a profile is
+  // what actually stops. Selecting SearXNG stops librechat-websearch, which is
+  // nine containers across four modules.
+  var restarted = _section('Stopped and recreated', 'flex flex-wrap gap-1');
+  var running = _section('Keeps running — untouched by this restore', 'flex flex-wrap gap-1');
+  if (full) {
+    restarted.body.appendChild(_node('span', 'text-sm',
+      'Every core and add-on container, this panel included.'));
+    running.body.appendChild(_node('span', 'text-sm opacity-60', 'Nothing.'));
+  } else {
+    _scope.services.forEach(function (svc) {
+      var hit = (svc.profiles || []).some(function (p) { return profiles[p] === true; });
+      if (hit) restarted.body.appendChild(_node('span', 'badge badge-warning badge-sm', svc.service));
+      else running.body.appendChild(_node('span', 'badge badge-success badge-sm', svc.service));
+    });
+    addons.forEach(function (name) {
+      restarted.body.appendChild(_node('span', 'badge badge-warning badge-sm', name));
+    });
+    if (!restarted.body.childNodes.length) {
+      restarted.body.appendChild(_node('span', 'text-sm opacity-60',
+        'Nothing — the selection touches no running container.'));
+    }
+  }
+  _el('impact-restarted').textContent = '';
+  _el('impact-restarted').appendChild(restarted.wrap);
+  _el('impact-running').textContent = '';
+  _el('impact-running').appendChild(running.wrap);
+
+  var hazards = _el('impact-hazards');
+  hazards.textContent = '';
+  var seen = [];
+  groups.forEach(function (g) {
+    (g.hazards || []).forEach(function (h) { if (seen.indexOf(h) === -1) seen.push(h); });
+  });
+  seen.push('Everything these archives recorded after the snapshot is discarded. ' +
+            'Take a backup first if you might want it back.');
+  seen.forEach(function (text) {
+    var alert = _node('div', 'alert alert-warning text-xs mb-2 py-2');
+    alert.appendChild(_node('span', '', text));
+    hazards.appendChild(alert);
+  });
+}
+
+function _renderConfirm() {
+  var full = _isFullRestore();
+  var points = _el('restore-confirm-points');
+  points.textContent = '';
+  if (full) {
+    points.appendChild(_node('li', '', 'The stack configuration directory is replaced.'));
+    points.appendChild(_node('li', '',
+      _scope.artifacts + ' archived volumes and directories are replaced.'));
+    points.appendChild(_node('li', '',
+      'All core and add-on containers are removed and recreated.'));
+  } else {
+    _selectedGroups().forEach(function (g) {
+      points.appendChild(_node('li', '', g.label + ' is replaced from the snapshot.'));
+    });
+    points.appendChild(_node('li', '', 'Everything outside the selection keeps running.'));
+  }
+  _el('restore-clean-row').classList.toggle('hidden', !full);
+  if (!full) _el('restore-clean').checked = false;
+  _el('restore-detach-note').classList.toggle('hidden', !full);
+  _el('restore-inprocess-note').classList.toggle('hidden', full);
+  _el('restore-confirm').checked = false;
+  _el('restore-go').disabled = true;
 }
 
 function submitRestore() {
-  var modal = document.getElementById('restore-modal');
-  var body = {
-    restore_point: modal.dataset.restorePoint,
-    restart_clean: document.getElementById('restore-clean').checked,
-  };
-  document.getElementById('restore-go').disabled = true;
+  _el('restore-go').disabled = true;
+  if (_isFullRestore()) _submitFullRestore();
+  else _submitScopedRestore();
+}
 
+function _submitFullRestore() {
+  var body = {
+    restore_point: _scope.id,
+    restart_clean: _el('restore-clean').checked,
+  };
   fetch('/api/v1/maintenance/restore', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
     body: JSON.stringify(body),
   }).then(async function (r) {
+    if (_authGuard(r)) return;
     if (!r.ok) {
       showToast('error', 'Restore could not be started: ' + (await _apiError(r)));
-      document.getElementById('restore-go').disabled = false;
+      _el('restore-go').disabled = false;
       return;
     }
-    modal.close();
+    _el('restore-modal').close();
     showToast('success', 'Restore started.');
     // Load the status panel, which then polls itself across the restart.
     htmx.ajax('GET', '/partials/backup/restore-status',
               { target: '#restore-status-slot', swap: 'innerHTML' });
+  });
+}
+
+// A scoped restore is an ordinary job: it never replaces the config directory,
+// so the manager -- and this page -- stay up for the whole thing. That is why
+// it reports through the job log rather than the runner status panel.
+function _submitScopedRestore() {
+  var body = { restore_point: _scope.id, only: Array.from(_scope.selected) };
+  fetch('/api/v1/maintenance/restore/scoped', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
+    body: JSON.stringify(body),
+  }).then(async function (r) {
+    if (_authGuard(r)) return;
+    if (!r.ok) {
+      showToast('error', 'Restore could not be started: ' + (await _apiError(r)));
+      _el('restore-go').disabled = false;
+      return;
+    }
+    var data = await r.json();
+    _el('restore-modal').close();
+    showToast('success', 'Restore started. <a href="/jobs/' + data.job_id +
+                         '" class="link">View log</a>');
+    refreshBackupJobStatus();
+    _pollJob(data.job_id, function (job) {
+      refreshBackupJobStatus();
+      htmx.ajax('GET', '/partials/backup/restore-points',
+                { target: '#restore-point-list', swap: 'innerHTML' });
+      if (job.status === 'succeeded') {
+        showToast('success', 'Restore complete.');
+      } else {
+        showToast('error', 'Restore failed. <a href="/jobs/' + data.job_id +
+                           '" class="link">View log</a>');
+      }
+    });
   });
 }
 
@@ -295,6 +744,7 @@ function acknowledgeRestore() {
     method: 'DELETE',
     headers: { 'X-CSRF-Token': _csrf() },
   }).then(async function (r) {
+    if (_authGuard(r)) return;
     if (!r.ok) {
       showToast('error', 'Could not dismiss the restore: ' + (await _apiError(r)));
       return;
@@ -316,6 +766,7 @@ function openRestorePointDetail(id) {
 
   fetch('/api/v1/maintenance/restore-points/' + encodeURIComponent(id))
     .then(async function (r) {
+      if (_authGuard(r)) return;
       if (!r.ok) {
         body.textContent = 'Could not load details: ' + (await _apiError(r));
         return;

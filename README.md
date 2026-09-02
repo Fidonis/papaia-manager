@@ -48,12 +48,18 @@ the VM boundary.
 `MANAGER_ADMIN_ROLE` (default `admin`) reaches every surface;
 `MANAGER_USER_ROLE` (default `user`) reaches the dashboard only. Accounts
 holding neither role are rejected at login. The dashboard at `/` is a tile
-overview of the deployed applications, configured by the operator through
+overview of the deployed applications, held in
 `$PAPAIA_CONFIG_DIR/manager/tiles.yaml` and seeded with the applications the
-stack ships today on first run. `{{KEY}}` placeholders in tile links resolve
-against the core `.env`, and each tile's `visibility: all | admin` is filtered
-server-side, so an admin-only tile is absent from a regular user's response
-rather than hidden by CSS. Authorization is enforced by the route
+stack ships today on first run. Administrators edit it in place: **Edit
+dashboard** turns the page into an editor for groups and tiles, with drag and
+drop reordering, a live preview of each tile, and one **Save changes** that
+writes the whole file. Hand editing the file keeps working, but a save from the
+UI rewrites the document, so comments are not preserved; a concurrent change on
+the host is detected and refused rather than overwritten. The raw file is also
+editable from the editor's overflow menu. `{{KEY}}` placeholders in tile links
+resolve against the core `.env`, and each tile's `visibility: all | admin` is
+filtered server-side, so an admin-only tile is absent from a regular user's
+response rather than hidden by CSS. Authorization is enforced by the route
 dependencies, so the JSON API is restricted exactly like the pages.
 
 **Services.** An admin-only page at `/services` showing what this deployment is
@@ -162,6 +168,25 @@ its status and log stay readable by the recreated manager container once the
 stack is back up. The page loses its connection while that happens, reconnects on
 its own, and reports the outcome.
 
+**Core updates.** An admin-only `/upgrade` page that moves the whole deployment
+to a newer papAIa release. It is two halves. The check resolves the target tag,
+runs the add-on compatibility gate against a temporary worktree of it, and lists
+the release migrations that would run — all of it read-only, and all of it
+answered by `papaia-ctl`'s own machine-readable sub-commands so the page and a
+shell on the host cannot disagree. Everything that would make `papaia-ctl
+upgrade` refuse — a dirty checkout, an incompatible add-on, an unreachable
+backup directory — is shown as a readiness row before the operator commits,
+rather than discovered after the stack is already down.
+
+The upgrade itself runs in a detached container, like restore and for a stronger
+reason: it removes and recreates every container, this panel included, and
+`papaia-manager` is upgraded along with the stack — the page that reports the
+outcome is served by a different build than the one that started it. Progress is
+shown as the phases papaia-ctl announces, over the raw log, with the outage
+handled as a reconnect. papaia-ctl has no automatic rollback by design, so a
+failed upgrade renders its recovery commands verbatim and links the restore point
+taken beforehand.
+
 **Updates.** Refresh the catalog, diff the candidate manifest's
 `.env.example` against the installed bundle (new `CHANGE_ME` keys prompt for
 values before the job starts), stop the add-on, re-materialize the snapshot
@@ -215,6 +240,13 @@ POST   /api/v1/stack/stop                    # {clean_up?}, detached runner
 POST   /api/v1/stack/restart                 # {clean_up?}, detached runner
 GET    /api/v1/stack/runner                  # its status and log
 POST   /api/v1/stack/runner/clear            # acknowledge a finished action
+
+GET    /api/v1/upgrade/status                # version, checkout and backup state
+GET    /api/v1/upgrade/check                 # the last check, without running one
+POST   /api/v1/upgrade/check                 # {version?} fetch tags and evaluate
+POST   /api/v1/upgrade                       # {version, force?, no_backup?} → 202
+GET    /api/v1/upgrade/runner                # its status and log
+POST   /api/v1/upgrade/runner/clear          # acknowledge a finished upgrade
 ```
 
 ## Layout

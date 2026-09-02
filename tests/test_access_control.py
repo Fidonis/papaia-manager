@@ -56,6 +56,7 @@ ADMIN_PAGES = [
     "/catalogs",
     "/jobs",
     "/services",
+    "/upgrade",
 ]
 ADMIN_PARTIALS = [
     "/partials/addons",
@@ -65,7 +66,14 @@ ADMIN_PARTIALS = [
     "/partials/catalogs",
     "/partials/jobs",
     "/partials/nav/job-indicator",
+    "/partials/nav/upgrade-indicator",
     "/partials/services",
+    "/partials/upgrade/check",
+    "/partials/upgrade/log",
+    "/partials/upgrade/runner",
+    "/partials/upgrade/status",
+    # The dashboard itself is open to both roles; only its editor is not.
+    "/partials/tiles/edit",
 ]
 ADMIN_APIS = [
     "/api/v1/addons",
@@ -75,6 +83,11 @@ ADMIN_APIS = [
     "/api/v1/maintenance/restore-points",
     "/api/v1/stack/groups",
     "/api/v1/stack/runner",
+    "/api/v1/tiles",
+    "/api/v1/tiles/raw",
+    "/api/v1/upgrade/check",
+    "/api/v1/upgrade/runner",
+    "/api/v1/upgrade/status",
 ]
 
 # Lifecycle control over the core stack. Denial is decided by the dependency, so
@@ -90,6 +103,9 @@ ADMIN_WRITE_APIS = [
     "/api/v1/stack/restart",
     "/api/v1/stack/runner/clear",
     "/api/v1/addons/paperless/restart",
+    "/api/v1/upgrade",
+    "/api/v1/upgrade/check",
+    "/api/v1/upgrade/runner/clear",
 ]
 # The status pill sits in the header of every page, so it has to answer for
 # both roles even though the page it links to is admin-only.
@@ -109,6 +125,13 @@ ADMIN_APIS_SELF_CONTAINED = [
     # Reads the workspace's compose files and nothing else. An empty workspace
     # yields an empty group list, which is a correct answer, not an error.
     "/api/v1/stack/groups",
+    # Both read tiles.yaml out of the config directory this module owns, and
+    # seed it on first call the same way the dashboard does.
+    "/api/v1/tiles",
+    "/api/v1/tiles/raw",
+    # Reads the cached check and nothing else. Never having run one is the
+    # answer `{"checked": false}`, not an error.
+    "/api/v1/upgrade/check",
 ]
 
 
@@ -148,12 +171,28 @@ def _as(client: TestClient, *roles: str) -> TestClient:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("path", [*DASHBOARD_PATHS, *ADMIN_PAGES, *ADMIN_APIS])
-def test_anonymous_is_sent_to_login(client: TestClient, path: str) -> None:
+@pytest.mark.parametrize("path", [*DASHBOARD_PATHS, *ADMIN_PAGES])
+def test_anonymous_navigation_is_redirected_to_login(client: TestClient, path: str) -> None:
     client.cookies.clear()
     response = client.get(path)
     assert response.status_code == 307
-    assert response.headers["location"] == "/auth/login"
+    assert response.headers["location"].startswith("/auth/login?next=")
+
+
+@pytest.mark.parametrize("path", ADMIN_APIS)
+def test_anonymous_api_read_is_rejected_401(client: TestClient, path: str) -> None:
+    client.cookies.clear()
+    assert client.get(path).status_code == 401
+
+
+@pytest.mark.parametrize(
+    "path", [*ADMIN_PARTIALS, "/partials/tiles", "/partials/service-status"]
+)
+def test_anonymous_htmx_request_is_rejected_401(client: TestClient, path: str) -> None:
+    # An XHR cannot follow the cross-origin redirect to Keycloak, so the 401
+    # handler must hand HTMX a status it can act on rather than a 307.
+    client.cookies.clear()
+    assert client.get(path, headers={"HX-Request": "true"}).status_code == 401
 
 
 def test_health_stays_open(client: TestClient) -> None:
@@ -197,7 +236,7 @@ def test_user_role_is_denied_stack_control(client: TestClient, path: str) -> Non
 @pytest.mark.parametrize("path", ADMIN_WRITE_APIS)
 def test_anonymous_is_denied_stack_control(client: TestClient, path: str) -> None:
     client.cookies.clear()
-    assert client.post(path, json={}).status_code == 307
+    assert client.post(path, json={}).status_code == 401
 
 
 @pytest.mark.parametrize("path", ADMIN_APIS_SELF_CONTAINED)
@@ -205,7 +244,28 @@ def test_admin_role_reaches_the_api(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/addons", "/backup", "/catalogs", "/jobs", "/services"])
+# The dashboard is the one page both roles reach, so its write path is the one
+# place a lost dependency would hand a plain user control over what everybody
+# else sees. Asserted on its own rather than through the POST lists above.
+@pytest.mark.parametrize("path", ["/api/v1/tiles", "/api/v1/tiles/raw"])
+def test_user_role_is_denied_the_tile_write_path(client: TestClient, path: str) -> None:
+    assert _as(client, "user").put(path, json={}).status_code == 403
+
+
+@pytest.mark.parametrize("path", ["/api/v1/tiles", "/api/v1/tiles/raw"])
+def test_anonymous_is_denied_the_tile_write_path(client: TestClient, path: str) -> None:
+    client.cookies.clear()
+    assert client.put(path, json={}).status_code == 401
+
+
+def test_user_role_is_denied_link_resolution(client: TestClient) -> None:
+    """Resolution reads the core .env; a user must not reach it even indirectly."""
+    assert _as(client, "user").post("/api/v1/tiles/resolve", json={}).status_code == 403
+
+
+@pytest.mark.parametrize(
+    "path", ["/addons", "/backup", "/catalogs", "/jobs", "/services", "/upgrade"]
+)
 def test_admin_reaches_the_admin_pages(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 

@@ -1,8 +1,9 @@
 """Whitelisted subprocess wrapper for papaia-ctl.
 
-Two entry points, two separate allowlists: `run_addon_verb` for
+Three entry points, three separate allowlists: `run_addon_verb` for
 `papaia-ctl addon <verb> <name>`, `run_core_verb` for the stack-level verbs that
-take no target. Keeping the sets apart is what makes it impossible for an addon
+take no target, and `run_py_cli` for the core's own read-only Python
+sub-commands. Keeping the sets apart is what makes it impossible for an addon
 name to be dispatched as a stack operation, or the other way round.
 """
 from __future__ import annotations
@@ -36,9 +37,42 @@ ALLOWED_VERBS: frozenset[str] = frozenset(
 # `restore` remains deliberately absent. It tears the core stack down via
 # `docker compose down` unconditionally, so there is no scoping that would make
 # it safe to run here.
-ALLOWED_CORE_VERBS: frozenset[str] = frozenset({"backup", "start", "stop"})
+#
+# `restore-scoped` is a different verb, not the same one with flags. It requires
+# `--only` and refuses `--restart-clean` in papaia-ctl itself, before it
+# delegates, so it cannot replace $PAPAIA_CONFIG_DIR however it is called. That
+# makes the property structural: allowing `restore` and passing the right flags
+# would be safe only for as long as every call site keeps passing them.
+ALLOWED_CORE_VERBS: frozenset[str] = frozenset(
+    {"backup", "start", "stop", "restore-scoped"}
+)
+
+# `upgrade` is deliberately absent from the set above, for a stronger version of
+# the reason `restore` is: it runs `stop --clean-up --addons`, which removes the
+# container this process is running in, and it does so unconditionally. It goes
+# through a detached runner instead; see app.core.runner.
+
+# The core's Python entry point, `python3 -m lib.cli <command>`. Every command
+# here is read-only -- they resolve a version, list pending migrations, and
+# evaluate the addon compatibility gate. None of them writes anything.
+#
+# `upgrade-record` is the one that would belong here by shape and does not: it
+# appends to the migration ledger, and only the upgrade's own second phase may
+# do that. A ledger entry written by the manager would make a migration that
+# never ran look applied.
+ALLOWED_PY_COMMANDS: frozenset[str] = frozenset(
+    {"upgrade-resolve", "upgrade-plan", "addon-check"}
+)
 
 _ADDON_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+
+# Restore selectors, mirroring the grammar in the core's tools/lib/backup.py.
+# The prefix is mandatory there because `librechat` is at once a module, a
+# service, a profile and the prefix of six volume names.
+_MODULE_SELECTOR_RE = re.compile(r"^(module|addon):[a-z0-9][a-z0-9-]{0,31}$")
+_VOLUME_SELECTOR_RE = re.compile(r"^volume:[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+MAX_SELECTORS = 32
 
 # Compose profile names, same shape as an add-on name. The pattern is the cheap
 # half of the check -- `profiles_flag` also requires membership in the set read
@@ -131,6 +165,38 @@ def profiles_flag(names: Iterable[str], *, allowed: Collection[str]) -> str:
     return f"--profiles={','.join(ordered)}"
 
 
+def selection_flag(selectors: Iterable[str], *, allowed: Collection[str]) -> str:
+    """Build `--only=a,b` after checking every selector against `allowed`.
+
+    Same two-stage shape as `profiles_flag`: the pattern is the cheap half, and
+    `allowed` -- derived from the snapshot's own manifest, not from a pattern --
+    is what stops a well-formed selector naming something this restore point
+    does not contain.
+
+    `module:manager` is refused regardless of what `allowed` holds, for the same
+    reason `profiles_flag` refuses the profile: it runs this panel.
+    """
+    ordered = sorted(set(selectors))
+    if not ordered:
+        raise ValueError("no selection given")
+    if len(ordered) > MAX_SELECTORS:
+        raise ValueError(f"at most {MAX_SELECTORS} selectors, got {len(ordered)}")
+    for selector in ordered:
+        if not (
+            _MODULE_SELECTOR_RE.match(selector) or _VOLUME_SELECTOR_RE.match(selector)
+        ):
+            raise ValueError(
+                f"selector {selector!r} is not module:NAME, addon:NAME or volume:NAME"
+            )
+        if selector == f"module:{SELF_PROFILE}":
+            raise ValueError(
+                f"selector {selector!r} runs this panel and cannot be restored from it"
+            )
+        if selector not in allowed:
+            raise ValueError(f"selector {selector!r} is not part of this restore point")
+    return f"--only={','.join(ordered)}"
+
+
 async def run_core_verb(
     *,
     verb: str,
@@ -160,6 +226,72 @@ async def run_core_verb(
     env["PAPAIA_CONFIG_DIR"] = config_dir
 
     return _stream_subprocess(cmd, env)
+
+
+async def run_py_cli(
+    *,
+    command: str,
+    workspace_dir: str,
+    config_dir: str,
+    repo_root: str | None = None,
+    extra_flags: list[str] | None = None,
+) -> tuple[int, str, str]:
+    """Run one of the core's read-only Python sub-commands and collect its output.
+
+    The same invocation shape papaia-ctl uses for itself (`py_cli` in the
+    entrypoint, `_py_cli_at` in upgrade.sh): `lib.cli` is imported off the
+    mounted workspace via PYTHONPATH rather than executed as a file, so its
+    relative imports resolve.
+
+    `repo_root` defaults to the checkout and is a *worktree* of the target tag
+    when the caller is evaluating an upgrade candidate. That is the entire
+    reason this parameter exists: the target's ADDON_API window and its
+    migration directory live only in the target's tree.
+
+    Unlike the two streaming entry points this returns the exit code instead of
+    raising on it, and keeps stderr separate. Both differences are `addon-check`:
+    it exits 2 to *mean* "incompatible" and still prints its JSON, so a non-zero
+    status here is a result to read, not a failure to report.
+    """
+    if command not in ALLOWED_PY_COMMANDS:
+        raise ValueError(
+            f"command {command!r} is not in the allowed set {sorted(ALLOWED_PY_COMMANDS)}"
+        )
+
+    tools = Path(workspace_dir) / "papaia" / "tools"
+    cmd: list[str] = [
+        "python3",
+        "-m",
+        "lib.cli",
+        "--repo-root",
+        repo_root or str(Path(workspace_dir) / "papaia"),
+        "--config-dir",
+        config_dir,
+        command,
+        *(extra_flags or []),
+    ]
+
+    env = dict(os.environ)
+    env["PAPAIA_CONFIG_DIR"] = config_dir
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{tools}{os.pathsep}{existing}" if existing else str(tools)
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.DEVNULL,
+            env=env,
+        )
+    except (FileNotFoundError, OSError) as exc:
+        raise CtlError(f"cannot invoke the core's python entry point: {exc}", exit_code=1) from exc
+    raw_out, raw_err = await proc.communicate()
+    return (
+        proc.returncode if proc.returncode is not None else 1,
+        raw_out.decode(errors="replace"),
+        raw_err.decode(errors="replace"),
+    )
 
 
 async def _stream_subprocess(
