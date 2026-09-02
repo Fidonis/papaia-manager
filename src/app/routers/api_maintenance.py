@@ -103,19 +103,29 @@ def _backup_dir(settings: Settings) -> Path:
 
 
 async def _require_no_runner() -> None:
-    """Reject the request if a restore runner is active."""
+    """Reject the request if a restore or upgrade runner is active.
+
+    Both replace what a backup would archive and what a scoped restore would
+    unpack into: a restore rewrites $PAPAIA_CONFIG_DIR wholesale, an upgrade
+    migrates and re-renders it while the stack is down. An archive taken across
+    either one captures a state that never existed.
+    """
     try:
-        active = await runner.find_runner()
+        candidates = [
+            (await runner.find_runner(runner.RESTORE_KIND), "restore"),
+            (await runner.find_runner(runner.UPGRADE_KIND), "upgrade"),
+        ]
     except runner.RunnerError:
         # Docker unreachable is the restore path's problem, not the backup
         # path's -- a backup shells out to papaia-ctl, which reports its own
         # docker failures in the job log.
         return
-    if active is not None and active.is_running:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"a restore of {active.target} is still running",
-        )
+    for active, label in candidates:
+        if active is not None and active.is_running:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"a {label} of {active.target} is still running",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +327,15 @@ async def start_restore(
             )
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+    # An upgrade in flight is mid-migration on the very config directory this
+    # would unpack over, and it is holding the stack down while it works.
+    upgrading = await runner.find_runner(runner.UPGRADE_KIND)
+    if upgrading is not None and upgrading.is_running:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"an upgrade to {upgrading.target} is still running",
+        )
 
     queue = _queue()
     # A queued job counts as much as a running one: the restore replaces the

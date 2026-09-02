@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+{% block title %}Update — papAIa manager{% endblock %}
+
+{% block page_title %}Update{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Move this deployment to a newer papAIa release</p>{% endblock %}
+
+{# Tier 1: one filled primary button, and it ships disabled.
+
+   Nothing is known about this deployment at render time -- the page forks no
+   subprocess, on purpose, so it comes up whether or not git, Docker and the
+   remote are reachable. `#upgrade-status` and `#upgrade-runner` announce what
+   they find, and this cluster listens. Disabled-until-proven is the safe
+   default for an action that takes the whole stack down. #}
+{% block page_actions %}
+<div class="flex items-center gap-2"
+     x-data="{
+       ready: false, target: null, forceable: false, gatePassed: true,
+       hasBackupDir: false, current: '', runnerActive: false,
+       checking: true, starting: false,
+       force: false, noBackup: false, confirmed: false,
+       get blocked() { return this.runnerActive || this.checking || this.starting },
+       open() {
+         this.force = false; this.noBackup = !this.hasBackupDir; this.confirmed = false;
+         $refs.upgradeModal.showModal();
+       },
+       run() {
+         $refs.upgradeModal.close();
+         this.starting = true;
+         startUpgrade(this.target, this.force, this.noBackup)
+           .then(ok => { if (!ok) this.starting = false });
+       }
+     }"
+     @papaia-upgrade-state.window="ready = $event.detail.ready;
+                                   target = $event.detail.target;
+                                   forceable = $event.detail.forceable;
+                                   gatePassed = $event.detail.gatePassed;
+                                   hasBackupDir = $event.detail.hasBackupDir;
+                                   current = $event.detail.current;
+                                   checking = false"
+     @papaia-upgrade-runner.window="runnerActive = $event.detail.active">
+
+  <button class="btn btn-ghost btn-sm btn-square" aria-label="Check for updates"
+          :disabled="checking || starting"
+          @click="checking = true; runCheck(null).finally(() => checking = false)">
+    <span style="display:none" x-show="checking" class="loading loading-spinner loading-xs"></span>
+    <svg x-show="!checking" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+    </svg>
+  </button>
+
+  <button class="btn btn-primary btn-sm" :disabled="!ready || blocked"
+          :title="runnerActive ? 'An upgrade is already in flight'
+                  : (!ready ? 'Nothing to install, or something in the list below has to be fixed first' : '')"
+          @click="open()">
+    <span style="display:none" x-show="starting" class="loading loading-spinner loading-xs"></span>
+    <span x-show="!starting" x-text="target ? ('Install ' + target) : 'Up to date'"></span>
+  </button>
+
+  {# The confirmation. Everything it says is what papaia-ctl is about to do, in
+     the order it does it, plus the one fact the CLI cannot tell a browser: this
+     page goes away in the middle. #}
+  <dialog x-ref="upgradeModal" class="modal">
+    <div class="modal-box max-w-lg">
+      <h3 class="font-bold text-base mb-1">
+        Update to <span x-text="target"></span>?
+      </h3>
+      <p class="text-sm opacity-60 mb-4 leading-relaxed">
+        papAIa moves from <span class="font-mono" x-text="current"></span> to
+        <span class="font-mono" x-text="target"></span>. It runs in its own container, so
+        it finishes even once this panel is gone.
+      </p>
+
+      {# A real <ol>, so the browser does the numbering. Skipping the restore
+         point hides the first step, and hard-coded numerals would then start
+         the sequence at 2 -- which reads as a step having gone missing rather
+         than as one not being taken. #}
+      <ol class="text-sm space-y-1.5 mb-4 list-decimal list-inside">
+        <li x-show="!noBackup">A restore point is written first</li>
+        <li>All containers are removed &mdash; volumes are kept</li>
+        <li>The checkout moves to <span class="font-mono" x-text="'v' + target"></span></li>
+        <li>The release migrations run against the configuration</li>
+        <li>The stack and every active add-on start again</li>
+      </ol>
+
+      <div class="alert alert-warning py-2 mb-4">
+        <span class="text-xs leading-snug">
+          <strong>There is no automatic rollback.</strong> If a step fails, the upgrade
+          stops and prints exactly how to get back. Without a restore point there is
+          nothing for it to point at.
+        </span>
+      </div>
+
+      {# Offered only where the gate actually failed on an incompatibility. The
+         API refuses it otherwise -- confirming an override that overrode
+         nothing is worse than not offering it. #}
+      <label class="flex items-start gap-2 text-sm mb-3" style="display:none" x-show="forceable">
+        <input type="checkbox" class="checkbox checkbox-sm checkbox-warning mt-0.5" x-model="force">
+        <span>
+          Upgrade despite the incompatible add-ons
+          <span class="opacity-50 font-mono text-xs">--force</span>
+          <span class="block text-xs opacity-50">
+            They will be started against a core they declare they do not support.
+          </span>
+        </span>
+      </label>
+
+      <label class="flex items-start gap-2 text-sm mb-3">
+        <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="noBackup"
+               :disabled="!hasBackupDir">
+        <span>
+          Skip the restore point
+          <span class="opacity-50 font-mono text-xs">--no-backup</span>
+          <span class="block text-xs opacity-50" x-show="hasBackupDir">
+            Faster, and the only recovery path is gone with it.
+          </span>
+          <span class="block text-xs opacity-50" style="display:none" x-show="!hasBackupDir">
+            Forced on: this deployment has no reachable backup directory.
+          </span>
+        </span>
+      </label>
+
+      <label class="flex items-start gap-2 text-sm mb-4">
+        <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="confirmed">
+        <span>
+          I understand the stack &mdash; and this page &mdash; will be unavailable
+          <span class="block text-xs opacity-50">
+            If the panel does not come back, the output is still readable on the host with
+            <span class="font-mono">docker logs papaia-upgrade-<span x-text="target"></span></span>.
+          </span>
+        </span>
+      </label>
+
+      <div class="modal-action mt-0">
+        <button class="btn btn-ghost btn-sm" @click="$refs.upgradeModal.close()">Cancel</button>
+        <button class="btn btn-primary btn-sm" :disabled="!confirmed" @click="run()">
+          Start update
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Runner state first: while an upgrade runs it is the only thing on this page
+     that matters, and after one it is where the outcome is read. -->
+<div id="upgrade-runner-slot"
+     hx-get="/partials/upgrade/runner"
+     hx-trigger="load"
+     hx-swap="innerHTML"></div>
+
+<div id="upgrade-status-slot"
+     hx-get="/partials/upgrade/status"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+
+{# Loaded declaratively rather than from the script below: htmx is a deferred
+   bundle, so an inline script in the body runs before it exists. Whatever a
+   previous check found appears immediately; the fresh one replaces it when it
+   returns. #}
+<div id="upgrade-check-slot" class="mb-6"
+     hx-get="/partials/upgrade/check"
+     hx-trigger="load"
+     hx-swap="innerHTML"></div>
+
+<div class="mb-3 flex items-center justify-between gap-3">
+  <h2 class="font-brand text-lg font-bold">History</h2>
+</div>
+<div class="rounded-xl border border-base-300 overflow-hidden"
+     id="upgrade-log-slot"
+     hx-get="/partials/upgrade/log"
+     hx-trigger="load"
+     hx-swap="innerHTML"></div>
+
+<script>
+// The check is not run by any GET: it fetches from the remote and materialises a
+// git worktree of the target tag. So the page asks for one explicitly on load,
+// which is what makes "open the page" mean "look for updates".
+function _csrfToken() {
+  return document.querySelector('meta[name=csrf]').content;
+}
+
+async function _upgradeError(r) {
+  try {
+    const e = await r.json();
+    return e.detail || JSON.stringify(e);
+  } catch (_) {
+    return String(r.status);
+  }
+}
+
+function refreshUpgradeStatus() {
+  htmx.ajax('GET', '/partials/upgrade/status',
+            { target: '#upgrade-status-slot', swap: 'innerHTML' });
+  htmx.ajax('GET', '/partials/upgrade/check',
+            { target: '#upgrade-check-slot', swap: 'innerHTML' });
+}
+
+function refreshUpgradeRunner() {
+  htmx.ajax('GET', '/partials/upgrade/runner',
+            { target: '#upgrade-runner-slot', swap: 'innerHTML' });
+}
+
+// runCheck: POST because it reaches the network and writes into .git/worktrees.
+// `version` is null for "the newest release", which is what papaia-ctl resolves
+// on its own.
+function runCheck(version) {
+  return fetch('/api/v1/upgrade/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken() },
+    body: JSON.stringify({ version: version }),
+  }).then(async function (r) {
+    if (_authGuard(r)) return false;
+    if (!r.ok) {
+      showToast('error', 'Update check failed: ' + (await _upgradeError(r)));
+      refreshUpgradeStatus();
+      return false;
+    }
+    refreshUpgradeStatus();
+    return true;
+  }).catch(function () {
+    showToast('error', 'Update check failed: the manager could not be reached');
+    return false;
+  });
+}
+
+function recheckVersion(version) {
+  runCheck(version);
+}
+
+// startUpgrade: 202 and then nothing to poll in this request -- the runner
+// outlives us. #upgrade-runner picks the outcome back up, here and after the
+// reload that follows the manager being recreated.
+function startUpgrade(version, force, noBackup) {
+  return fetch('/api/v1/upgrade', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken() },
+    body: JSON.stringify({ version: version, force: force, no_backup: noBackup }),
+  }).then(async function (r) {
+    if (_authGuard(r)) return false;
+    if (!r.ok) {
+      showToast('error', 'Update refused: ' + (await _upgradeError(r)));
+      refreshUpgradeRunner();
+      return false;
+    }
+    refreshUpgradeRunner();
+    showToast('info', 'Update started — this panel will go down with the stack');
+    return true;
+  });
+}
+
+// acknowledgeUpgrade: drop the finished runner so the next upgrade can start.
+// The record of what it did stays in upgrade.log, which is why this is safe to
+// offer as a single click.
+function acknowledgeUpgrade() {
+  fetch('/api/v1/upgrade/runner/clear', {
+    method: 'POST',
+    headers: { 'X-CSRF-Token': _csrfToken() },
+  }).then(async function (r) {
+    if (_authGuard(r)) return;
+    if (!r.ok) {
+      showToast('error', 'Could not dismiss the upgrade: ' + (await _upgradeError(r)));
+      return;
+    }
+    refreshUpgradeRunner();
+    refreshUpgradeStatus();
+    htmx.ajax('GET', '/partials/upgrade/log',
+              { target: '#upgrade-log-slot', swap: 'innerHTML' });
+  });
+}
+
+// Opening the page is what means "look for updates". The cached result is
+// rendered declaratively above, so the page is never empty while this runs.
+//
+// DOMContentLoaded rather than the bare script body: htmx and Alpine are
+// deferred bundles, and deferred scripts all execute before this event -- so
+// this is the earliest point where `htmx` is defined for the refresh that
+// follows.
+document.addEventListener('DOMContentLoaded', function () {
+  runCheck(null);
+});
+</script>
+{% endblock %}

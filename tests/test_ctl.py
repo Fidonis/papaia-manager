@@ -10,11 +10,13 @@ import pytest
 
 from app.core.ctl import (
     ALLOWED_CORE_VERBS,
+    ALLOWED_PY_COMMANDS,
     ALLOWED_VERBS,
     MAX_SELECTORS,
     profiles_flag,
     run_addon_verb,
     run_core_verb,
+    run_py_cli,
     selection_flag,
 )
 
@@ -66,6 +68,48 @@ def test_the_two_allowlists_stay_apart() -> None:
     # way round. `install` is the clearest case: there is no such core verb.
     assert "install" in ALLOWED_VERBS
     assert "install" not in ALLOWED_CORE_VERBS
+
+
+def test_upgrade_stays_out_of_the_core_verbs() -> None:
+    # Same argument as `restore`, one step stronger: `upgrade` runs
+    # `stop --clean-up --addons` between its two phases, which removes the
+    # container this process runs in, and no flag scopes that away. It goes
+    # through app.core.runner.
+    assert "upgrade" not in ALLOWED_CORE_VERBS
+    assert "upgrade" not in ALLOWED_VERBS
+
+
+# ---------------------------------------------------------------------------
+# The core's Python sub-commands
+# ---------------------------------------------------------------------------
+
+
+def test_the_py_commands_are_exactly_the_read_only_ones() -> None:
+    # Every one of these resolves, lists or evaluates. None writes. Adding a
+    # command that does would put a write path behind a read-shaped helper.
+    assert set(ALLOWED_PY_COMMANDS) == {"upgrade-resolve", "upgrade-plan", "addon-check"}
+
+
+def test_upgrade_record_is_not_reachable_from_the_manager() -> None:
+    # It appends to the migration ledger. Only the upgrade's own second phase
+    # may do that -- an entry written here would make a migration that never
+    # ran look applied, and the next attempt would skip it.
+    assert "upgrade-record" not in ALLOWED_PY_COMMANDS
+
+
+async def test_an_unlisted_py_command_is_refused_before_anything_forks() -> None:
+    with pytest.raises(ValueError, match="not in the allowed set"):
+        await run_py_cli(
+            command="upgrade-record", workspace_dir="/w", config_dir="/c"
+        )
+
+
+def test_the_py_commands_share_nothing_with_the_verb_allowlists() -> None:
+    # Different entry point, different process shape: these are dispatched as
+    # `python3 -m lib.cli`, not as `papaia-ctl <verb>`. An overlap would mean a
+    # name is dispatchable two ways with two different sets of guarantees.
+    assert not (set(ALLOWED_PY_COMMANDS) & set(ALLOWED_CORE_VERBS))
+    assert not (set(ALLOWED_PY_COMMANDS) & set(ALLOWED_VERBS))
 
 
 # ---------------------------------------------------------------------------

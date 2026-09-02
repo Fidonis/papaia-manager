@@ -14,7 +14,7 @@ from app.auth.deps import AdminUser, AnyUser
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
-from app.core import backups, restore_scope, runner
+from app.core import backups, restore_scope, runner, upgrade
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
 from app.core.inventory import SELF_PROFILE
@@ -186,6 +186,22 @@ async def backup_page(
             **_backup_panel_ctx(_queue()),
         ),
     )
+
+
+@router.get("/upgrade", response_class=HTMLResponse)
+async def upgrade_page(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """Move this deployment to a newer papAIa release.
+
+    The shell and nothing else: every subprocess this page needs -- git, the
+    core's Python entry point, docker -- lives in a partial or an API call. So
+    the page renders whether or not any of them are reachable, and the primary
+    action ships disabled until `/partials/upgrade/status` says the checkout can
+    actually be moved.
+    """
+    return _templates.TemplateResponse(request, "upgrade.html", _ctx(request, user))
 
 
 @router.get("/jobs", response_class=HTMLResponse)
@@ -591,6 +607,148 @@ async def partial_restore_status(
         request,
         "partials/restore_status.html",
         _ctx(request, user, restore=status_obj, restore_log=log, restore_error=error),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# ---------------------------------------------------------------------------
+# Upgrade
+# ---------------------------------------------------------------------------
+#
+# `/partials/upgrade/runner` is a frozen path. A browser tab open while the
+# upgrade runs keeps polling the URL baked into the markup the *previous* image
+# rendered, and that is the one moment where the page outlives the build that
+# served it. Renaming it would leave every such tab polling a 404 for the whole
+# outage -- which is exactly the failure the legacy /partials/maintenance/*
+# redirects below were added for. If it ever has to move, the old path stays.
+
+
+@router.get("/partials/upgrade/status", response_class=HTMLResponse)
+async def partial_upgrade_status(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """Version, checkout state and backup location -- the offline half.
+
+    Not polled. It answers questions that only change when someone changes them,
+    and it is what the header button reads its enabled state from.
+    """
+    version = upgrade.current_version(settings.papaia_config_dir, settings.papaia_workspace_dir)
+    state = await upgrade.checkout_state(settings.papaia_workspace_dir)
+    backup_dir = backups.resolve_backup_dir(settings.papaia_config_dir)
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/upgrade_status.html",
+        _ctx(
+            request,
+            user,
+            version=version,
+            checkout=state,
+            backup_dir=str(backup_dir) if backup_dir else None,
+            backup_dir_reachable=backups.is_reachable(backup_dir),
+            check=upgrade.cached_check(),
+        ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/upgrade/check", response_class=HTMLResponse)
+async def partial_upgrade_check(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """The last check's verdict. Renders the "not checked yet" state on its own.
+
+    Deliberately does not run a check: this is a GET, and the check fetches from
+    the remote and materialises a worktree. The page asks for one explicitly on
+    load, through the API.
+    """
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/upgrade_check.html",
+        _ctx(request, user, check=upgrade.cached_check()),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/upgrade/runner", response_class=HTMLResponse)
+async def partial_upgrade_runner(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """Polled while an upgrade runs, and once more after the manager is back.
+
+    An unreachable Docker socket is rendered as the absence of a runner plus a
+    message, for the same reason the restore partial does it: the manager
+    container is recreated during the operation this element is following.
+    """
+    error = ""
+    try:
+        status_obj = await runner.find_runner(runner.UPGRADE_KIND)
+    except runner.RunnerError as exc:
+        status_obj, error = None, str(exc)
+    log = (
+        await runner.runner_log(status_obj.name, tail=runner.UPGRADE_LOG_TAIL_LINES)
+        if status_obj is not None
+        else ""
+    )
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/upgrade_runner.html",
+        _ctx(
+            request,
+            user,
+            upgrade_runner=status_obj,
+            upgrade_log=log,
+            upgrade_error=error,
+            phases=upgrade.phases_from_log(
+                log, running=status_obj.is_running if status_obj else False
+            ),
+            recovery=upgrade.recovery_from_log(log),
+        ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/upgrade/log", response_class=HTMLResponse)
+async def partial_upgrade_log(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """Every upgrade this installation has recorded, newest first."""
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/upgrade_log.html",
+        _ctx(request, user, entries=upgrade.read_upgrade_log(settings.papaia_config_dir)),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/nav/upgrade-indicator", response_class=HTMLResponse)
+async def partial_nav_upgrade_indicator(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """The dot on the Update nav entry.
+
+    Reads the cached check and nothing else -- no git, no network, no Docker.
+    It renders in the sidebar of every admin page, so anything more expensive
+    would put a subprocess behind every navigation. The consequence is that the
+    dot appears once a check has run in this process, which is what the page
+    does on open.
+    """
+    check = upgrade.cached_check()
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/nav_upgrade_indicator.html",
+        _ctx(request, user, available=check is not None and not check.up_to_date, check=check),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

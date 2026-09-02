@@ -56,6 +56,7 @@ ADMIN_PAGES = [
     "/catalogs",
     "/jobs",
     "/services",
+    "/upgrade",
 ]
 ADMIN_PARTIALS = [
     "/partials/addons",
@@ -65,7 +66,12 @@ ADMIN_PARTIALS = [
     "/partials/catalogs",
     "/partials/jobs",
     "/partials/nav/job-indicator",
+    "/partials/nav/upgrade-indicator",
     "/partials/services",
+    "/partials/upgrade/check",
+    "/partials/upgrade/log",
+    "/partials/upgrade/runner",
+    "/partials/upgrade/status",
     # The dashboard itself is open to both roles; only its editor is not.
     "/partials/tiles/edit",
 ]
@@ -79,6 +85,9 @@ ADMIN_APIS = [
     "/api/v1/stack/runner",
     "/api/v1/tiles",
     "/api/v1/tiles/raw",
+    "/api/v1/upgrade/check",
+    "/api/v1/upgrade/runner",
+    "/api/v1/upgrade/status",
 ]
 
 # Lifecycle control over the core stack. Denial is decided by the dependency, so
@@ -94,6 +103,9 @@ ADMIN_WRITE_APIS = [
     "/api/v1/stack/restart",
     "/api/v1/stack/runner/clear",
     "/api/v1/addons/paperless/restart",
+    "/api/v1/upgrade",
+    "/api/v1/upgrade/check",
+    "/api/v1/upgrade/runner/clear",
 ]
 # The status pill sits in the header of every page, so it has to answer for
 # both roles even though the page it links to is admin-only.
@@ -117,6 +129,9 @@ ADMIN_APIS_SELF_CONTAINED = [
     # seed it on first call the same way the dashboard does.
     "/api/v1/tiles",
     "/api/v1/tiles/raw",
+    # Reads the cached check and nothing else. Never having run one is the
+    # answer `{"checked": false}`, not an error.
+    "/api/v1/upgrade/check",
 ]
 
 
@@ -248,7 +263,9 @@ def test_user_role_is_denied_link_resolution(client: TestClient) -> None:
     assert _as(client, "user").post("/api/v1/tiles/resolve", json={}).status_code == 403
 
 
-@pytest.mark.parametrize("path", ["/addons", "/backup", "/catalogs", "/jobs", "/services"])
+@pytest.mark.parametrize(
+    "path", ["/addons", "/backup", "/catalogs", "/jobs", "/services", "/upgrade"]
+)
 def test_admin_reaches_the_admin_pages(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
 
