@@ -26,7 +26,7 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core import backups, runner
+from app.core import backups, ctl, inventory, restore_scope, runner
 from app.core.audit import write_audit_entry
 from app.core.ctl import run_core_verb
 from app.core.jobs import JobContext, JobQueue
@@ -47,6 +47,20 @@ class RestoreBody(BaseModel):
     # archives are unpacked. Anything not in the restore point loses its data, so
     # it is opt-in on every single request rather than a stored preference.
     restart_clean: bool = False
+
+
+class ScopedRestoreBody(BaseModel):
+    """A restore of part of a snapshot.
+
+    Deliberately a separate model from RestoreBody rather than an `only` field
+    on it. `restart_clean` and a selection are mutually exclusive -- clearing
+    volumes the selection will not repopulate is data loss -- and a single body
+    carrying two mutually exclusive fields is the shape that eventually ships a
+    request with both set.
+    """
+
+    restore_point: str
+    only: list[str] = Field(min_length=1, max_length=ctl.MAX_SELECTORS)
 
 
 def _queue() -> JobQueue:
@@ -153,6 +167,47 @@ async def restore_point_detail(
         **backups.restore_point_to_dict(point),
         "manifest": manifest,
         "artifact_list": (manifest or {}).get("artifacts") or [],
+    }
+
+
+@router.get("/restore-points/{restore_point_id}/selectors")
+async def restore_point_selectors(
+    restore_point_id: str,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """What this restore point can be asked to restore, and what that would stop.
+
+    `supported: false` is the honest answer for a snapshot written before the
+    manifest carried its grouping: it is restorable, but only as a whole.
+
+    `services` is the target state read from the shipped Compose fragments, not
+    from Docker. The wizard needs it to say which containers a selection stops
+    and which keep serving, and it has to answer that while checkboxes are being
+    ticked -- so the raw mapping is handed over once instead of a round trip per
+    click.
+    """
+    backup_dir = backups.resolve_backup_dir(settings.papaia_config_dir)
+    point = backups.find_restore_point(backup_dir, restore_point_id)
+    if point is None:
+        raise HTTPException(
+            status_code=404, detail=f"restore point {restore_point_id!r} not found"
+        )
+    manifest = backups.snapshot_manifest(backup_dir, restore_point_id)
+    groups = restore_scope.build_groups(manifest)
+    expected = inventory.core_inventory(
+        settings.papaia_workspace_dir,
+        inventory.active_profiles(settings.papaia_config_dir),
+    )
+    return {
+        "supported": bool(groups),
+        "groups": [restore_scope.group_to_dict(g) for g in groups],
+        "notes": list(restore_scope.NOTES),
+        "config_selector": restore_scope.CONFIG_SELECTOR,
+        "services": [
+            {"service": s.service, "module": s.module, "profiles": sorted(s.profiles)}
+            for s in expected
+        ],
     }
 
 
@@ -294,6 +349,117 @@ async def start_restore(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     return runner.status_to_dict(started)
+
+
+@router.post("/restore/scoped", status_code=status.HTTP_202_ACCEPTED)
+async def start_scoped_restore(
+    body: ScopedRestoreBody,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
+    """Restore part of a snapshot as an ordinary queued job.
+
+    This is the one restore that can run in-process, and the reason is narrow: a
+    selection carries no configdir artifact, so `$PAPAIA_CONFIG_DIR` is never
+    replaced -- and the job log lives at `$PAPAIA_CONFIG_DIR/manager/jobs`, which
+    is exactly the fact that forces the whole-snapshot restore into a detached
+    container (see app.core.runner). The manager's own profile declares no named
+    volume, so no selection can resolve to it either.
+
+    Both properties are enforced by `papaia-ctl restore-scoped` itself, not by
+    the flags built here.
+    """
+    verify_csrf(request)
+    backup_dir = _backup_dir(settings)
+
+    point = backups.find_restore_point(backup_dir, body.restore_point)
+    if point is None:
+        raise HTTPException(
+            status_code=404, detail=f"restore point {body.restore_point!r} not found"
+        )
+    if not point.is_usable:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"restore point {point.id} is marked 'failed' -- no archive could be "
+                "written during that backup, so there is nothing to restore from"
+            ),
+        )
+
+    manifest = backups.snapshot_manifest(backup_dir, point.id)
+    groups = restore_scope.build_groups(manifest)
+    if not groups:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"restore point {point.id} was written by an older core and carries no "
+                "grouping, so it can only be restored as a whole"
+            ),
+        )
+    if restore_scope.requires_full_restore(groups, body.only):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "this selection needs the stack configuration and must run as a full "
+                "restore; use POST /api/v1/maintenance/restore instead"
+            ),
+        )
+    try:
+        only_flag = ctl.selection_flag(
+            body.only, allowed=restore_scope.allowed_selectors(groups)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    await _require_no_runner()
+    queue = _queue()
+    active = queue.active_job()
+    if active is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"a {active.action} job is already running; wait for it to finish",
+        )
+
+    _username = _user_id(user)
+    _selection = sorted(set(body.only))
+    _flags = [
+        f"--backup-dir={backup_dir}",
+        f"--restore-point={point.id}",
+        only_flag,
+        "-y",
+    ]
+
+    async def _callback(ctx: JobContext) -> None:
+        ctx.log(f"[ctl] papaia-ctl restore-scoped {' '.join(_flags)}")
+        gen = await run_core_verb(
+            verb="restore-scoped",
+            workspace_dir=settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
+            extra_flags=_flags,
+        )
+        async for line in gen:
+            ctx.log(line)
+        # Unlike the whole-snapshot restore, this entry survives: the config
+        # directory it lives in is exactly what a scoped restore cannot replace.
+        write_audit_entry(
+            settings.papaia_config_dir,
+            user=_username,
+            action="restore-scoped",
+            target=point.id,
+            params={"only": _selection},
+            job_id=ctx.job.id,
+        )
+        ctx.log("[info] done")
+
+    job = await queue.enqueue(
+        action="restore-scoped",
+        target=point.id,
+        user=_username,
+        params={"only": _selection},
+        callback=_callback,
+    )
+    return {"job_id": job.id, "status": "queued"}
 
 
 @router.get("/restore/status")
