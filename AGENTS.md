@@ -98,8 +98,11 @@ Browser
   │  GET /addons
   ▼
 SessionMiddleware  (itsdangerous-signed cookie)
-  │  cookie present and valid?  →  extract OIDCClaims
-  │  no valid cookie            →  302 /auth/login
+  │  cookie present and valid?    →  extract OIDCClaims
+  │  access token near expiry?    →  refresh silently via the stored refresh
+  │                                  token (deps.py → OIDCClient.refresh)
+  │  no session / refresh failed  →  navigation: 307 /auth/login?next=<path>
+  │                                  HTMX or /api/ request: 401 (JSON)
   ▼
 role dependency  (deps.py → roles.py)
   │  AdminUser  →  MANAGER_ADMIN_ROLE required        (add-ons, catalogs, jobs,
@@ -126,7 +129,8 @@ Browser → /auth/callback?code&state
   Manager: verify state, exchange code+verifier for tokens (OIDC_ISSUER_KC_TOKEN)
   Manager: validate id_token via JWKS (OIDC_ISSUER_KC_CERTS)
   Manager: require admin OR user role, else 403 without a session
-  Manager: set session cookie → 302 /
+  Manager: store refresh token in the session for silent renewal
+  Manager: set session cookie → 302 to the remembered `next`, else /
 ```
 
 ### Job model

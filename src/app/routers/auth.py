@@ -5,12 +5,13 @@ import hashlib
 import hmac
 import logging
 from typing import Annotated
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse, Response
 
 from app.auth.csrf import verify_csrf
-from app.auth.oidc import OIDCClient, OIDCError, _pkce_pair
+from app.auth.oidc import OIDCError, _pkce_pair, get_oidc_client
 from app.auth.roles import has_manager_access
 from app.config import Settings, get_settings
 
@@ -19,17 +20,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth")
 
 
-def _oidc_client(settings: Settings) -> OIDCClient:
-    return OIDCClient(
-        auth_endpoint=settings.oidc_issuer_kc_auth,
-        token_endpoint=settings.oidc_issuer_kc_token,
-        jwks_endpoint=settings.oidc_issuer_kc_certs,
-        client_id=settings.manager_oidc_client_id,
-        client_secret=settings.manager_oidc_client_secret,
-        redirect_uri=settings.oidc_redirect_uri,
-        role_claim=settings.oidc_role_claim,
-        ssl_cert_file=settings.ssl_cert_file,
-    )
+def _safe_next(raw: str) -> str | None:
+    """Return `raw` if it is a safe same-origin path to redirect back to.
+
+    Only absolute paths on this origin: no scheme, no host, no
+    protocol-relative "//host" form, no backslash or control-character tricks.
+    """
+    if not raw or not raw.startswith("/") or raw.startswith("//"):
+        return None
+    if any(ch in raw for ch in ("\\", "\x00", "\n", "\r", "\t")):
+        return None
+    parts = urlsplit(raw)
+    if parts.scheme or parts.netloc:
+        return None
+    return raw
 
 
 def _make_state(secret: str, verifier: str) -> str:
@@ -58,9 +62,18 @@ def _parse_state(secret: str, state: str) -> str | None:
 async def login(
     request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
+    next_: Annotated[str, Query(alias="next")] = "",
 ) -> RedirectResponse:
-    """Redirect the browser to Keycloak with a PKCE challenge."""
-    client = _oidc_client(settings)
+    """Redirect the browser to Keycloak with a PKCE challenge.
+
+    A safe same-origin `next` path is remembered in the session so the
+    callback can return the browser to where it was sent away from.
+    """
+    dest = _safe_next(next_)
+    if dest is not None:
+        request.session["post_login_redirect"] = dest
+
+    client = get_oidc_client()
     verifier, challenge = _pkce_pair()
     state = _make_state(settings.manager_session_secret, verifier)
     auth_url = client.build_auth_url(state, challenge)
@@ -97,9 +110,9 @@ async def callback(
             detail="missing authorization code",
         )
 
-    client = _oidc_client(settings)
+    client = get_oidc_client()
     try:
-        claims = await client.exchange_code(code=code, code_verifier=code_verifier)
+        token_set = await client.exchange_code(code=code, code_verifier=code_verifier)
     except OIDCError as exc:
         logger.warning("OIDC token exchange failed: %s", exc)
         raise HTTPException(
@@ -107,6 +120,7 @@ async def callback(
             detail="authentication failed",
         ) from exc
 
+    claims = token_set.claims
     # Gate the session on holding *any* known role. Per-surface authorization
     # happens in the route dependencies; rejecting non-admins here would lock
     # dashboard users out of the application entirely.
@@ -117,8 +131,16 @@ async def callback(
         )
 
     request.session["user"] = claims.to_dict()
+    if token_set.refresh_token:
+        # Lets the session be renewed on its own until the Keycloak SSO session
+        # itself ends -- see app.auth.deps._refresh_session.
+        request.session["oidc"] = {"refresh_token": token_set.refresh_token}
     logger.info("user %s authenticated successfully", claims.preferred_username)
-    return RedirectResponse("/", status_code=status.HTTP_302_FOUND)
+
+    dest = request.session.pop("post_login_redirect", "/")
+    if not isinstance(dest, str) or not dest.startswith("/"):
+        dest = "/"
+    return RedirectResponse(dest, status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/logout")

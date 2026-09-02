@@ -86,6 +86,27 @@
 
     sidebarWide.addEventListener("change", syncSidebarToBreakpoint);
 
+    // ── Session expiry ───────────────────────────────────────────────────
+    // The server renews an expiring Keycloak token on its own; this path is
+    // only reached once the SSO session itself is over. An XHR cannot follow
+    // the cross-origin login redirect, so reload: that re-runs auth in the
+    // top-level context and the server sends it on to Keycloak, then back here.
+    function _reauth() {
+      window.location.reload();
+    }
+    function _authGuard(response) {
+      if (response && response.status === 401) {
+        _reauth();
+        return true;
+      }
+      return false;
+    }
+    document.addEventListener("htmx:responseError", (event) => {
+      if (event.detail && event.detail.xhr && event.detail.xhr.status === 401) {
+        _reauth();
+      }
+    });
+
     // Shared helpers for addon lifecycle actions.
     // _addonPost: sends the action request and returns a Promise<data|null>.
     // _pollJob:   polls /api/v1/jobs/{id} every 2 s and calls onDone() on completion.
@@ -100,6 +121,7 @@
         },
         body: JSON.stringify(body || {}),
       }).then(async (r) => {
+        if (_authGuard(r)) return null;
         if (!r.ok) {
           let detail = r.status;
           try {
@@ -115,8 +137,12 @@
 
     function _pollJob(jobId, onDone) {
       fetch("/api/v1/jobs/" + jobId)
-        .then(r => r.json())
+        .then(r => {
+          if (_authGuard(r)) return null;
+          return r.json();
+        })
         .then(job => {
+          if (!job) return;
           if (job.status === "succeeded" || job.status === "failed") {
             onDone(job);
           } else {
@@ -212,6 +238,7 @@
         },
         body: JSON.stringify(body || {}),
       }).then(async (r) => {
+        if (_authGuard(r)) return null;
         if (!r.ok) {
           let detail = r.status;
           try {
@@ -258,6 +285,7 @@
         method: "POST",
         headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
       }).then(async (r) => {
+        if (_authGuard(r)) return false;
         if (!r.ok) {
           let detail = r.status;
           try {
@@ -294,6 +322,7 @@
         },
         body: JSON.stringify(body),
       }).then(async (r) => {
+        if (_authGuard(r)) return false;
         if (!r.ok) {
           let detail = r.status;
           try {
@@ -317,6 +346,7 @@
         method: "DELETE",
         headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
       }).then(async (r) => {
+        if (_authGuard(r)) return false;
         if (!r.ok) {
           let detail = r.status;
           try {

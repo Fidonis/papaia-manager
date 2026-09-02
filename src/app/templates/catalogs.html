@@ -131,6 +131,7 @@ function submitAddCatalog(event) {
     },
     body: JSON.stringify(body),
   }).then(async function(r) {
+    if (_authGuard(r)) return;
     if (!r.ok) {
       var detail = r.status;
       try { var e = await r.json(); detail = e.detail || JSON.stringify(e); } catch (_) {}

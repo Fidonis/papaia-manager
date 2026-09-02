@@ -26,7 +26,7 @@
     {% endif %}
     {% if not stack.running %}
       <button class="btn btn-ghost btn-xs ml-auto"
-              @click="fetch('/api/v1/stack/runner/clear', { method: 'POST', headers: { 'X-CSRF-Token': document.querySelector('meta[name=csrf]').content } }).then(() => refreshStackRunner())">
+              @click="fetch('/api/v1/stack/runner/clear', { method: 'POST', headers: { 'X-CSRF-Token': document.querySelector('meta[name=csrf]').content } }).then((r) => { if (!_authGuard(r)) refreshStackRunner(); })">
         Dismiss
       </button>
     {% endif %}

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import logging.config
+from urllib.parse import quote
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
@@ -65,8 +66,18 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
     @app.exception_handler(401)
-    async def _redirect_to_login(request: Request, exc: Exception) -> RedirectResponse:
-        return RedirectResponse(url="/auth/login")
+    async def _handle_unauthorized(request: Request, exc: Exception) -> Response:
+        """Send XHR callers a bare 401; navigations get the login redirect.
+
+        HTMX and fetch() cannot usefully follow a cross-origin redirect to
+        Keycloak -- the request dies at the CORS boundary and the caller sees
+        nothing. A 401 they can act on (reload, which re-authenticates in the
+        top-level context) is the useful answer. Only a real navigation gets
+        the 307, and it carries where to return afterwards.
+        """
+        if request.headers.get("HX-Request") or request.url.path.startswith("/api/"):
+            return JSONResponse({"detail": "session expired"}, status_code=401)
+        return RedirectResponse(url="/auth/login?next=" + quote(request.url.path, safe="/"))
 
     @app.exception_handler(status.HTTP_403_FORBIDDEN)
     async def _forbidden(request: Request, exc: Exception) -> Response:

@@ -375,6 +375,7 @@
           headers: tilesCsrf(),
           body: JSON.stringify({ values: [dialog.tile.href, dialog.tile.icon || ""] }),
         });
+        if (_authGuard(response)) return;
         if (!response.ok) return;
         const results = await response.json();
         if (this.dialog !== dialog) return;
@@ -388,6 +389,7 @@
 
       async openRaw() {
         const response = await fetch("/api/v1/tiles/raw", { headers: tilesCsrf() });
+        if (_authGuard(response)) return;
         if (!response.ok) {
           showToast("error", "Could not read tiles.yaml: " + tilesEscape(await tilesDetail(response)));
           return;
@@ -411,6 +413,7 @@
             headers: tilesCsrf(),
             body: JSON.stringify({ revision: this.raw.revision, yaml: this.raw.text }),
           });
+          if (_authGuard(response)) return;
           if (!response.ok) {
             this.raw.problem = await tilesDetail(response);
             return;
@@ -449,6 +452,7 @@
             }),
           });
 
+          if (_authGuard(response)) return;
           if (response.status === 409) {
             showToast(
               "error",

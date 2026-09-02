@@ -9,12 +9,15 @@ import pytest
 
 from app.auth.oidc import (
     OIDCClaims,
+    OIDCClient,
     OIDCError,
+    TokenSet,
     _algorithm_for_key,
     _extract_claims,
     _find_jwk,
     _pkce_pair,
 )
+from app.routers.auth import _safe_next
 
 # ---------------------------------------------------------------------------
 # PKCE
@@ -172,3 +175,120 @@ def test_algorithm_explicit_not_allowed() -> None:
 def test_algorithm_unknown_kty() -> None:
     with pytest.raises(OIDCError, match="unsupported"):
         _algorithm_for_key({"kty": "oct"})
+
+
+# ---------------------------------------------------------------------------
+# Token exchange and refresh
+# ---------------------------------------------------------------------------
+
+
+_CLAIMS = OIDCClaims(
+    sub="u-1",
+    preferred_username="alice",
+    roles=["admin"],
+    exp=int(time.time()) + 3600,
+)
+
+
+def _client() -> OIDCClient:
+    return OIDCClient(
+        auth_endpoint="https://kc.example/auth",
+        token_endpoint="https://kc.example/token",
+        jwks_endpoint="https://kc.example/certs",
+        client_id="papaia-manager",
+        client_secret="secret",
+        redirect_uri="https://manager.example/auth/callback",
+    )
+
+
+def _areturn(value: object):
+    """A stand-in for an async method that just resolves to `value`."""
+
+    async def _inner(*_args: object, **_kwargs: object) -> object:
+        return value
+
+    return _inner
+
+
+async def test_exchange_code_returns_a_token_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _client()
+    monkeypatch.setattr(
+        client,
+        "_token_request",
+        _areturn({"id_token": "x", "access_token": "a", "refresh_token": "rt"}),
+    )
+    monkeypatch.setattr(client, "_validate_id_token", _areturn(_CLAIMS))
+
+    token_set = await client.exchange_code(code="c", code_verifier="v")
+
+    assert isinstance(token_set, TokenSet)
+    assert token_set.refresh_token == "rt"
+    assert token_set.claims.roles == ["admin"]
+
+
+async def test_refresh_returns_the_rotated_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _client()
+    monkeypatch.setattr(
+        client,
+        "_token_request",
+        _areturn({"id_token": "x", "access_token": "a", "refresh_token": "new-rt"}),
+    )
+    monkeypatch.setattr(client, "_validate_id_token", _areturn(_CLAIMS))
+
+    token_set = await client.refresh(refresh_token="old-rt")
+
+    assert token_set.refresh_token == "new-rt"
+    assert token_set.claims.sub == "u-1"
+
+
+async def test_refresh_keeps_the_current_token_when_none_is_returned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client()
+    monkeypatch.setattr(
+        client, "_token_request", _areturn({"id_token": "x", "access_token": "a"})
+    )
+    monkeypatch.setattr(client, "_validate_id_token", _areturn(_CLAIMS))
+
+    token_set = await client.refresh(refresh_token="old-rt")
+
+    assert token_set.refresh_token == "old-rt"
+
+
+async def test_refresh_propagates_a_token_endpoint_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client()
+
+    async def _boom(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise OIDCError("token request failed with HTTP 400")
+
+    monkeypatch.setattr(client, "_token_request", _boom)
+
+    with pytest.raises(OIDCError):
+        await client.refresh(refresh_token="dead-rt")
+
+
+# ---------------------------------------------------------------------------
+# _safe_next (post-login redirect target)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value", ["/", "/addons", "/jobs/abc?tab=log"])
+def test_safe_next_accepts_local_paths(value: str) -> None:
+    assert _safe_next(value) == value
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "addons",
+        "//evil.com",
+        "https://evil.com",
+        "/\\evil.com",
+        "/x\nSet-Cookie: y",
+    ],
+)
+def test_safe_next_rejects_everything_else(value: str) -> None:
+    assert _safe_next(value) is None
