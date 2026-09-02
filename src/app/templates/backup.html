@@ -225,6 +225,7 @@ function startBackup(onJobId) {
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
     body: JSON.stringify(body),
   }).then(async function (r) {
+    if (_authGuard(r)) return false;
     if (!r.ok) {
       showToast('error', 'Backup failed: ' + (await _apiError(r)));
       refreshBackupJobStatus();
@@ -275,6 +276,7 @@ function submitRestore() {
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
     body: JSON.stringify(body),
   }).then(async function (r) {
+    if (_authGuard(r)) return;
     if (!r.ok) {
       showToast('error', 'Restore could not be started: ' + (await _apiError(r)));
       document.getElementById('restore-go').disabled = false;
@@ -295,6 +297,7 @@ function acknowledgeRestore() {
     method: 'DELETE',
     headers: { 'X-CSRF-Token': _csrf() },
   }).then(async function (r) {
+    if (_authGuard(r)) return;
     if (!r.ok) {
       showToast('error', 'Could not dismiss the restore: ' + (await _apiError(r)));
       return;
@@ -316,6 +319,7 @@ function openRestorePointDetail(id) {
 
   fetch('/api/v1/maintenance/restore-points/' + encodeURIComponent(id))
     .then(async function (r) {
+      if (_authGuard(r)) return;
       if (!r.ok) {
         body.textContent = 'Could not load details: ' + (await _apiError(r));
         return;

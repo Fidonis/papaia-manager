@@ -156,12 +156,28 @@ def _as(client: TestClient, *roles: str) -> TestClient:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("path", [*DASHBOARD_PATHS, *ADMIN_PAGES, *ADMIN_APIS])
-def test_anonymous_is_sent_to_login(client: TestClient, path: str) -> None:
+@pytest.mark.parametrize("path", [*DASHBOARD_PATHS, *ADMIN_PAGES])
+def test_anonymous_navigation_is_redirected_to_login(client: TestClient, path: str) -> None:
     client.cookies.clear()
     response = client.get(path)
     assert response.status_code == 307
-    assert response.headers["location"] == "/auth/login"
+    assert response.headers["location"].startswith("/auth/login?next=")
+
+
+@pytest.mark.parametrize("path", ADMIN_APIS)
+def test_anonymous_api_read_is_rejected_401(client: TestClient, path: str) -> None:
+    client.cookies.clear()
+    assert client.get(path).status_code == 401
+
+
+@pytest.mark.parametrize(
+    "path", [*ADMIN_PARTIALS, "/partials/tiles", "/partials/service-status"]
+)
+def test_anonymous_htmx_request_is_rejected_401(client: TestClient, path: str) -> None:
+    # An XHR cannot follow the cross-origin redirect to Keycloak, so the 401
+    # handler must hand HTMX a status it can act on rather than a 307.
+    client.cookies.clear()
+    assert client.get(path, headers={"HX-Request": "true"}).status_code == 401
 
 
 def test_health_stays_open(client: TestClient) -> None:
@@ -205,7 +221,7 @@ def test_user_role_is_denied_stack_control(client: TestClient, path: str) -> Non
 @pytest.mark.parametrize("path", ADMIN_WRITE_APIS)
 def test_anonymous_is_denied_stack_control(client: TestClient, path: str) -> None:
     client.cookies.clear()
-    assert client.post(path, json={}).status_code == 307
+    assert client.post(path, json={}).status_code == 401
 
 
 @pytest.mark.parametrize("path", ADMIN_APIS_SELF_CONTAINED)
@@ -224,7 +240,7 @@ def test_user_role_is_denied_the_tile_write_path(client: TestClient, path: str) 
 @pytest.mark.parametrize("path", ["/api/v1/tiles", "/api/v1/tiles/raw"])
 def test_anonymous_is_denied_the_tile_write_path(client: TestClient, path: str) -> None:
     client.cookies.clear()
-    assert client.put(path, json={}).status_code == 307
+    assert client.put(path, json={}).status_code == 401
 
 
 def test_user_role_is_denied_link_resolution(client: TestClient) -> None:

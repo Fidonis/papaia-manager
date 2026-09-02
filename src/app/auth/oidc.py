@@ -8,6 +8,8 @@ import logging
 import os
 import secrets
 import time
+from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 from urllib.parse import urlencode
 
@@ -66,6 +68,14 @@ class OIDCClaims:
             roles=[str(r) for r in data.get("roles", [])],
             exp=int(data["exp"]),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class TokenSet:
+    """Validated claims together with the refresh token that produced them."""
+
+    claims: OIDCClaims
+    refresh_token: str | None
 
 
 class OIDCClient:
@@ -137,49 +147,87 @@ class OIDCClient:
         }
         return f"{self._auth_endpoint}?{urlencode(params)}"
 
-    async def exchange_code(self, *, code: str, code_verifier: str) -> OIDCClaims:
-        """Exchange an authorization code for validated OIDC claims."""
-        token_response = await self._fetch_tokens(code=code, code_verifier=code_verifier)
-        id_token = token_response.get("id_token")
-        if not isinstance(id_token, str) or not id_token:
-            raise OIDCError("Token response missing id_token")
-        access_token: str | None = token_response.get("access_token") or None
-        claims = await self._validate_id_token(id_token, access_token=access_token)
+    async def exchange_code(self, *, code: str, code_verifier: str) -> TokenSet:
+        """Exchange an authorization code for a validated token set."""
+        token_response = await self._token_request(
+            {
+                "grant_type": "authorization_code",
+                "client_id": self._client_id,
+                "client_secret": self._client_secret,
+                "redirect_uri": self._redirect_uri,
+                "code": code,
+                "code_verifier": code_verifier,
+            }
+        )
+        return await self._token_set_from_response(token_response)
 
-        # In a default Keycloak setup roles live in the access token under
-        # realm_access.roles, not the ID token. Fall back to the access token
-        # when the ID token carries no roles at the configured claim path.
-        if not claims.roles and access_token:
-            fallback_paths = [self._role_claim, "realm_access.roles"]
-            roles = _roles_from_unverified_jwt(access_token, fallback_paths)
-            if roles:
-                claims = OIDCClaims(
-                    sub=claims.sub,
-                    preferred_username=claims.preferred_username,
-                    roles=roles,
-                    exp=claims.exp,
-                )
+    async def refresh(self, *, refresh_token: str) -> TokenSet:
+        """Exchange a refresh token for a fresh token set.
 
-        return claims
+        A rejected or expired refresh token surfaces as OIDCError -- the normal
+        outcome once the Keycloak SSO session behind it has ended.
+        """
+        token_response = await self._token_request(
+            {
+                "grant_type": "refresh_token",
+                "client_id": self._client_id,
+                "client_secret": self._client_secret,
+                "refresh_token": refresh_token,
+            }
+        )
+        token_set = await self._token_set_from_response(token_response)
+        if token_set.refresh_token is not None:
+            return token_set
+        # Keycloak normally rotates the token; keep the current one if it did not.
+        return TokenSet(claims=token_set.claims, refresh_token=refresh_token)
 
-    async def _fetch_tokens(self, *, code: str, code_verifier: str) -> dict[str, Any]:
-        data = {
-            "grant_type": "authorization_code",
-            "client_id": self._client_id,
-            "client_secret": self._client_secret,
-            "redirect_uri": self._redirect_uri,
-            "code": code,
-            "code_verifier": code_verifier,
-        }
+    async def _token_request(self, data: dict[str, str]) -> dict[str, Any]:
         async with httpx.AsyncClient(
             timeout=self._http_timeout, verify=self._ssl_verify
         ) as client:
             response = await client.post(self._token_endpoint, data=data)
         if response.status_code != 200:
             logger.warning("token endpoint returned HTTP %d", response.status_code)
-            raise OIDCError("token exchange failed")
+            raise OIDCError(f"token request failed with HTTP {response.status_code}")
         result: dict[str, Any] = response.json()
         return result
+
+    async def _token_set_from_response(self, token_response: dict[str, Any]) -> TokenSet:
+        id_token = token_response.get("id_token")
+        if not isinstance(id_token, str) or not id_token:
+            raise OIDCError("Token response missing id_token")
+        access_token: str | None = token_response.get("access_token") or None
+        claims = await self._validate_id_token(id_token, access_token=access_token)
+        claims = self._apply_role_fallback(claims, access_token)
+        refresh_token = token_response.get("refresh_token")
+        return TokenSet(
+            claims=claims,
+            refresh_token=refresh_token
+            if isinstance(refresh_token, str) and refresh_token
+            else None,
+        )
+
+    def _apply_role_fallback(
+        self, claims: OIDCClaims, access_token: str | None
+    ) -> OIDCClaims:
+        """Fill roles from the access token when the ID token carried none.
+
+        In a default Keycloak setup roles live in the access token under
+        realm_access.roles, not the ID token.
+        """
+        if claims.roles or not access_token:
+            return claims
+        roles = _roles_from_unverified_jwt(
+            access_token, [self._role_claim, "realm_access.roles"]
+        )
+        if not roles:
+            return claims
+        return OIDCClaims(
+            sub=claims.sub,
+            preferred_username=claims.preferred_username,
+            roles=roles,
+            exp=claims.exp,
+        )
 
     async def _validate_id_token(
         self, id_token: str, *, access_token: str | None = None
@@ -340,4 +388,27 @@ def _extract_claims(payload: dict[str, Any], role_claim: str) -> OIDCClaims:
         preferred_username=preferred_username,
         roles=roles,
         exp=int(exp),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_oidc_client() -> OIDCClient:
+    """Process-wide OIDC client, so the JWKS cache is shared across requests.
+
+    The login and callback routes and the session-refresh dependency all go
+    through this one instance rather than building a client (and re-fetching
+    the signing keys) per request.
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    return OIDCClient(
+        auth_endpoint=settings.oidc_issuer_kc_auth,
+        token_endpoint=settings.oidc_issuer_kc_token,
+        jwks_endpoint=settings.oidc_issuer_kc_certs,
+        client_id=settings.manager_oidc_client_id,
+        client_secret=settings.manager_oidc_client_secret,
+        redirect_uri=settings.oidc_redirect_uri,
+        role_claim=settings.oidc_role_claim,
+        ssl_cert_file=settings.ssl_cert_file,
     )
