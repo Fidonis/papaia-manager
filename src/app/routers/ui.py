@@ -14,7 +14,7 @@ from app.auth.deps import AdminUser, AnyUser
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
-from app.core import backups, runner
+from app.core import backups, restore_scope, runner
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
 from app.core.inventory import SELF_PROFILE
@@ -468,6 +468,12 @@ async def partial_job_log(
     queue = _queue()
     job = queue.get_job(job_id) if queue else None
     terminal = job is not None and job.status.value in ("succeeded", "failed")
+    raw = queue.read_log(job_id) if queue else ""
+    # A scoped restore reports per-step state through the same log. Rendering
+    # those lines as a checklist is what lets the job model stay unchanged --
+    # `Job` gains no progress field to keep in sync. Every other job's log
+    # carries no markers and comes through untouched.
+    steps = restore_scope.parse_steps(raw)
     resp = _templates.TemplateResponse(
         request,
         "partials/job_log_text.html",
@@ -475,7 +481,8 @@ async def partial_job_log(
             request,
             user,
             job_id=job_id,
-            log=queue.read_log(job_id) if queue else "",
+            log=restore_scope.strip_steps(raw) if steps else raw,
+            steps=steps,
             terminal=terminal,
         ),
     )

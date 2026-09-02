@@ -36,9 +36,25 @@ ALLOWED_VERBS: frozenset[str] = frozenset(
 # `restore` remains deliberately absent. It tears the core stack down via
 # `docker compose down` unconditionally, so there is no scoping that would make
 # it safe to run here.
-ALLOWED_CORE_VERBS: frozenset[str] = frozenset({"backup", "start", "stop"})
+#
+# `restore-scoped` is a different verb, not the same one with flags. It requires
+# `--only` and refuses `--restart-clean` in papaia-ctl itself, before it
+# delegates, so it cannot replace $PAPAIA_CONFIG_DIR however it is called. That
+# makes the property structural: allowing `restore` and passing the right flags
+# would be safe only for as long as every call site keeps passing them.
+ALLOWED_CORE_VERBS: frozenset[str] = frozenset(
+    {"backup", "start", "stop", "restore-scoped"}
+)
 
 _ADDON_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+
+# Restore selectors, mirroring the grammar in the core's tools/lib/backup.py.
+# The prefix is mandatory there because `librechat` is at once a module, a
+# service, a profile and the prefix of six volume names.
+_MODULE_SELECTOR_RE = re.compile(r"^(module|addon):[a-z0-9][a-z0-9-]{0,31}$")
+_VOLUME_SELECTOR_RE = re.compile(r"^volume:[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+MAX_SELECTORS = 32
 
 # Compose profile names, same shape as an add-on name. The pattern is the cheap
 # half of the check -- `profiles_flag` also requires membership in the set read
@@ -129,6 +145,38 @@ def profiles_flag(names: Iterable[str], *, allowed: Collection[str]) -> str:
         if name not in allowed:
             raise ValueError(f"profile {name!r} is not a service group of this deployment")
     return f"--profiles={','.join(ordered)}"
+
+
+def selection_flag(selectors: Iterable[str], *, allowed: Collection[str]) -> str:
+    """Build `--only=a,b` after checking every selector against `allowed`.
+
+    Same two-stage shape as `profiles_flag`: the pattern is the cheap half, and
+    `allowed` -- derived from the snapshot's own manifest, not from a pattern --
+    is what stops a well-formed selector naming something this restore point
+    does not contain.
+
+    `module:manager` is refused regardless of what `allowed` holds, for the same
+    reason `profiles_flag` refuses the profile: it runs this panel.
+    """
+    ordered = sorted(set(selectors))
+    if not ordered:
+        raise ValueError("no selection given")
+    if len(ordered) > MAX_SELECTORS:
+        raise ValueError(f"at most {MAX_SELECTORS} selectors, got {len(ordered)}")
+    for selector in ordered:
+        if not (
+            _MODULE_SELECTOR_RE.match(selector) or _VOLUME_SELECTOR_RE.match(selector)
+        ):
+            raise ValueError(
+                f"selector {selector!r} is not module:NAME, addon:NAME or volume:NAME"
+            )
+        if selector == f"module:{SELF_PROFILE}":
+            raise ValueError(
+                f"selector {selector!r} runs this panel and cannot be restored from it"
+            )
+        if selector not in allowed:
+            raise ValueError(f"selector {selector!r} is not part of this restore point")
+    return f"--only={','.join(ordered)}"
 
 
 async def run_core_verb(

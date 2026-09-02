@@ -11,9 +11,11 @@ import pytest
 from app.core.ctl import (
     ALLOWED_CORE_VERBS,
     ALLOWED_VERBS,
+    MAX_SELECTORS,
     profiles_flag,
     run_addon_verb,
     run_core_verb,
+    selection_flag,
 )
 
 # The deployment's real profile set, as `inventory.core_groups` would report it.
@@ -33,15 +35,20 @@ ALLOWED = {
 
 def test_the_core_verbs_are_exactly_the_scoped_ones_plus_backup() -> None:
     # `start` and `stop` are reachable only because the callers scope them with
-    # --profiles=. Anything else added here runs unscoped against the project
-    # this container is part of.
-    assert set(ALLOWED_CORE_VERBS) == {"backup", "start", "stop"}
+    # --profiles=. `restore-scoped` is reachable because papaia-ctl refuses it
+    # without --only and with --restart-clean, so it cannot replace the config
+    # directory however this process calls it. Anything else added here runs
+    # unscoped against the project this container is part of.
+    assert set(ALLOWED_CORE_VERBS) == {"backup", "start", "stop", "restore-scoped"}
 
 
 def test_restore_stays_out_of_the_core_verbs() -> None:
     # It tears the core stack down unconditionally, so no scoping makes it safe
     # to run as a child of this process. It goes through app.core.runner.
+    # `restore-scoped` is a different verb with the refusals built in, not this
+    # one with flags -- the distinction is the whole safety argument.
     assert "restore" not in ALLOWED_CORE_VERBS
+    assert "restore-scoped" in ALLOWED_CORE_VERBS
 
 
 async def test_an_unlisted_core_verb_is_refused_before_anything_forks() -> None:
@@ -114,3 +121,83 @@ def test_an_empty_selection_is_refused() -> None:
     # stack, which is emphatically not what "no groups selected" means.
     with pytest.raises(ValueError, match="no service group"):
         profiles_flag([], allowed=ALLOWED)
+
+
+# ---------------------------------------------------------------------------
+# selection_flag
+#
+# Same two-stage shape as profiles_flag: the pattern is the cheap half, and the
+# allowlist -- derived from the snapshot's own manifest -- is what stops a
+# well-formed selector naming something that restore point does not contain.
+# ---------------------------------------------------------------------------
+
+# What `restore_scope.allowed_selectors` would report for one snapshot.
+SELECTORS = {
+    "module:keycloak",
+    "module:librechat",
+    "addon:paperless",
+    "volume:papaia_librechat-mongodb",
+    "volume:papaia_searxng_config",
+    "config",
+}
+
+
+def test_selectors_are_sorted_and_deduplicated() -> None:
+    flag = selection_flag(
+        ["module:librechat", "module:keycloak", "module:librechat"], allowed=SELECTORS
+    )
+    assert flag == "--only=module:keycloak,module:librechat"
+
+
+def test_a_volume_selector_may_carry_underscores() -> None:
+    # Real names look like this: papaia_searxng_config, paperless-dir_paperless-data.
+    assert selection_flag(["volume:papaia_searxng_config"], allowed=SELECTORS) == (
+        "--only=volume:papaia_searxng_config"
+    )
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [
+        "librechat",  # module, service, profile and volume prefix all at once
+        "profile:librechat",  # deliberately not in the grammar
+        "module:../etc",
+        "module:-y",
+        "module:--restart-clean",
+        "volume:../../etc/passwd",
+        "volume:a b",
+        "volume:x;rm -rf /",
+        "module:Keycloak",
+        "module:",
+        ":librechat",
+        "",
+    ],
+)
+def test_a_malformed_selector_is_refused_by_shape(selector: str) -> None:
+    with pytest.raises(ValueError):
+        selection_flag([selector], allowed=SELECTORS | {selector})
+
+
+def test_the_manager_module_is_refused_even_if_allowed_lists_it() -> None:
+    # It runs this panel. Same rule as profiles_flag's `manager`, and it holds
+    # regardless of what the snapshot happens to contain.
+    with pytest.raises(ValueError, match="runs this panel"):
+        selection_flag(["module:manager"], allowed=SELECTORS | {"module:manager"})
+
+
+def test_a_selector_outside_the_restore_point_is_refused() -> None:
+    with pytest.raises(ValueError, match="not part of this restore point"):
+        selection_flag(["module:litellm"], allowed=SELECTORS)
+
+
+def test_an_empty_selection_flag_is_refused() -> None:
+    # An empty --only= would be a whole-snapshot restore, which is the opposite
+    # of what "nothing selected" means.
+    with pytest.raises(ValueError, match="no selection"):
+        selection_flag([], allowed=SELECTORS)
+
+
+def test_too_many_selectors_are_refused() -> None:
+    many = {f"module:m{i}" for i in range(MAX_SELECTORS + 1)}
+    with pytest.raises(ValueError, match="at most"):
+        selection_flag(many, allowed=SELECTORS | many)
