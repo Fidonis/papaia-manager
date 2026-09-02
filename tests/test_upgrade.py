@@ -227,12 +227,22 @@ def test_neither_source_is_an_empty_answer_not_a_crash() -> None:
 # ---------------------------------------------------------------------------
 
 
-_LOG = """2026-06-14T08:22:10Z upgrade from=0.8.0 to=1.0.0 result=ok migrations=1 restore_point=2026-06-14_10-21-55
-2026-09-01T09:00:00Z upgrade from=1.0.0 to=1.2.0 result=checkout restore_point=2026-09-01_10-59-12
-2026-09-01T09:04:31Z upgrade from=1.0.0 to=1.2.0 result=failed stage=migration id=1.2.0__qdrant_rename
-this line is not an upgrade record at all
-2026-09-02T11:00:00Z upgrade from=1.0.0 to=1.1.0 result=ok migrations=1 restore_point=none
-"""
+# Assembled rather than written as one block only to keep the source lines
+# short: the value is byte-for-byte what `_upgrade_log` appends.
+_LOG = "".join(
+    line + "\n"
+    for line in (
+        "2026-06-14T08:22:10Z upgrade from=0.8.0 to=1.0.0 result=ok"
+        " migrations=1 restore_point=2026-06-14_10-21-55",
+        "2026-09-01T09:00:00Z upgrade from=1.0.0 to=1.2.0 result=checkout"
+        " restore_point=2026-09-01_10-59-12",
+        "2026-09-01T09:04:31Z upgrade from=1.0.0 to=1.2.0 result=failed"
+        " stage=migration id=1.2.0__qdrant_rename",
+        "this line is not an upgrade record at all",
+        "2026-09-02T11:00:00Z upgrade from=1.0.0 to=1.1.0 result=ok"
+        " migrations=1 restore_point=none",
+    )
+)
 
 
 def _log_dir() -> str:
@@ -292,21 +302,24 @@ _RUNNING_LOG = """[papaia-ctl] Creating a restore point before the upgrade...
 [papaia-ctl]   1.1.0__split_litellm_env
 """
 
-_COMPLETE_LOG = _RUNNING_LOG + """[papaia-ctl] Applying 1.2.0's configuration to /srv/papaia/config...
-[ok] setup complete (re-render only).
-[papaia-ctl] Starting the stack...
-[ok] start complete.
-[ok] upgrade complete: 1.0.0 -> 1.2.0
-"""
+_COMPLETE_LOG = _RUNNING_LOG + (
+    "[papaia-ctl] Applying 1.2.0's configuration to /srv/papaia/config...\n"
+    "[ok] setup complete (re-render only).\n"
+    "[papaia-ctl] Starting the stack...\n"
+    "[ok] start complete.\n"
+    "[ok] upgrade complete: 1.0.0 -> 1.2.0\n"
+)
 
-_FAILED_LOG = _RUNNING_LOG + """[error] Migration 1.2.0__qdrant_rename failed. The upgrade stops here.
-[error]
-[error] The checkout is on v1.2.0 and the stack is stopped.
-[error]
-[error] To go back to 1.0.0:
-[error]     git -C /srv/papaia/papaia checkout v1.0.0
-[error]     papaia-ctl restore --restore-point=2026-09-02_14-03-19 --config-dir=/srv/papaia/config
-"""
+_FAILED_LOG = _RUNNING_LOG + (
+    "[error] Migration 1.2.0__qdrant_rename failed. The upgrade stops here.\n"
+    "[error]\n"
+    "[error] The checkout is on v1.2.0 and the stack is stopped.\n"
+    "[error]\n"
+    "[error] To go back to 1.0.0:\n"
+    "[error]     git -C /srv/papaia/papaia checkout v1.0.0\n"
+    "[error]     papaia-ctl restore --restore-point=2026-09-02_14-03-19"
+    " --config-dir=/srv/papaia/config\n"
+)
 
 
 def _states(log: str, *, running: bool) -> dict[str, str]:
@@ -345,7 +358,10 @@ def test_a_phase_that_never_ran_is_skipped_not_pending() -> None:
 def test_no_migrations_still_counts_as_that_phase() -> None:
     # "No migrations to run." replaces the "Running N migration(s)" line, and a
     # release without migrations must not look stuck on the one before it.
-    log = _RUNNING_LOG.rsplit("[papaia-ctl] Running 2", 1)[0] + "[papaia-ctl] No migrations to run.\n"
+    log = (
+        _RUNNING_LOG.rsplit("[papaia-ctl] Running 2", 1)[0]
+        + "[papaia-ctl] No migrations to run.\n"
+    )
     phases = {p.key: p for p in phases_from_log(log, running=True)}
     assert phases["migrations"].state == PHASE_RUNNING
     assert phases["migrations"].detail == "none in this release"
