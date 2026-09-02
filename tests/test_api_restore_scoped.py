@@ -247,7 +247,7 @@ def test_the_selectors_endpoint_reports_what_a_snapshot_offers(client: TestClien
     body = response.json()
     assert body["supported"] is True
     assert {g["selector"] for g in body["groups"]} == {
-        "module:keycloak", "module:librechat", "addon:paperless"
+        "config", "module:keycloak", "module:librechat", "addon:paperless"
     }
     assert body["notes"]
 
@@ -265,7 +265,11 @@ def test_the_payload_carries_the_target_state_for_the_impact_preview(
     assert "papaia-manager" in services
 
 
-def test_an_older_snapshot_reports_that_it_offers_nothing(client: TestClient) -> None:
+def test_an_older_snapshot_offers_nothing_below_the_whole_point(
+    client: TestClient,
+) -> None:
+    # It carries no grouping, so `supported` is false -- but it has no configdir
+    # artifact either, so there is nothing at all to list.
     body = _admin(client).get(
         f"/api/v1/maintenance/restore-points/{_V1_POINT}/selectors"
     ).json()

@@ -325,6 +325,10 @@ function _freshScope(id, artifacts, result) {
     id: id, artifacts: artifacts, result: result, supported: false,
     groups: [], services: [], notes: [], configSelector: 'config',
     mode: 'all', selected: new Set(), step: 1,
+    // Which disclosures are open. Has to live here, not in the DOM: ticking a
+    // checkbox rebuilds the picker, and a freshly built list would come back
+    // collapsed under the hand that just opened it.
+    expanded: new Set(),
   };
 }
 
@@ -387,26 +391,31 @@ function _renderPicker() {
   }
   box.classList.remove('hidden');
 
-  if (!_scope.supported) {
-    box.appendChild(_node('p', 'p-4 text-sm opacity-70',
-      'This restore point was written by an older core and carries no grouping, ' +
-      'so it can only be restored as a whole.'));
-    _el('restore-tally').textContent = '';
-    _updateNextButton();
-    return;
-  }
+  // Re-rendering resets the scroll box to the top, which throws the cursor off
+  // the row that was just clicked once the list is longer than the panel.
+  var scrollTop = box.scrollTop;
 
+  var headings = { config: 'Stack', module: 'Core services', addon: 'Add-ons' };
   var lastKind = '';
   _scope.groups.forEach(function (group) {
     if (group.kind !== lastKind) {
       lastKind = group.kind;
       box.appendChild(_node('div',
         'px-3 py-1.5 text-xs uppercase tracking-wide opacity-50 bg-base-200',
-        group.kind === 'addon' ? 'Add-ons' : 'Core services'));
+        headings[group.kind] || 'Other'));
     }
     box.appendChild(_groupRow(group));
   });
 
+  // Not instead of the groups: such a snapshot still offers its configuration,
+  // and the note says what it does not offer.
+  if (!_scope.supported) {
+    box.appendChild(_node('p', 'px-3 py-3 text-sm opacity-70 border-t border-base-300',
+      'This restore point was written by an older core and carries no per-service ' +
+      'grouping, so its volumes can only be restored as part of the whole point.'));
+  }
+
+  box.scrollTop = scrollTop;
   _scope.notes.forEach(function (note) { notes.appendChild(_node('span', '', note)); });
   _updateTally();
 }
@@ -448,7 +457,9 @@ function _groupRow(group) {
     var alert = _node('div', 'alert alert-warning text-xs mt-2 py-2');
     var inner = _node('div', '');
     inner.appendChild(_node('span', 'font-semibold block',
-      group.label + ' brings the stack configuration with it.'));
+      group.kind === 'config'
+        ? 'Restoring the configuration restores the whole point.'
+        : group.label + ' brings the stack configuration with it.'));
     group.hazards.forEach(function (h) { inner.appendChild(_node('span', 'block', h)); });
     inner.appendChild(_node('span', 'block mt-1', 'This therefore runs as a full restore.'));
     alert.appendChild(inner);
@@ -456,11 +467,17 @@ function _groupRow(group) {
   }
 
   if (group.items.length > 1) {
-    var toggle = _node('button', 'btn btn-ghost btn-xs mt-1 ml-7', 'Show volumes');
+    var open = _scope.expanded.has(group.selector);
+    var toggle = _node('button', 'btn btn-ghost btn-xs mt-1 ml-7',
+                       open ? 'Hide volumes' : 'Show volumes');
     toggle.type = 'button';
-    var list = _node('div', 'ml-7 mt-1 pl-3 border-l border-base-300 hidden');
+    var list = _node('div', 'ml-7 mt-1 pl-3 border-l border-base-300' + (open ? '' : ' hidden'));
     group.items.forEach(function (item) { list.appendChild(_itemRow(group, item)); });
+    // The set is the source of truth, not the class: an item checkbox rebuilds
+    // this whole row, and a DOM-only toggle would come back collapsed.
     toggle.addEventListener('click', function () {
+      if (_scope.expanded.has(group.selector)) _scope.expanded.delete(group.selector);
+      else _scope.expanded.add(group.selector);
       var hidden = list.classList.toggle('hidden');
       toggle.textContent = hidden ? 'Show volumes' : 'Hide volumes';
     });

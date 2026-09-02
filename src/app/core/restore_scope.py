@@ -190,12 +190,34 @@ def _title(name: str) -> str:
     return name.replace("-", " ").replace("_", " ").strip().capitalize() or name
 
 
-def build_groups(manifest: dict[str, Any] | None) -> list[ScopeGroup]:
-    """The selectable groups of one restore point, ordered core first.
+_CONFIG_PRESENTATION = _Presentation(
+    label="Stack configuration",
+    summary="Environment files, rendered service configs, proxy database and certificates",
+    requires_config=True,
+    hazards=(
+        "The configuration archive covers the whole bundle and cannot be unpacked in "
+        "part, and every core service bind-mounts individual files out of it -- so all "
+        "containers have to be removed and recreated for the restored files to be "
+        "picked up.",
+        "Because that includes this panel, the operation runs in its own container and "
+        "this page is unreachable while it does.",
+    ),
+)
 
-    Empty when the manifest predates selection: without a module on the
-    artifacts there is no honest grouping to offer, and reconstructing one from
-    volume names is exactly what the core refuses to do.
+
+def build_groups(manifest: dict[str, Any] | None) -> list[ScopeGroup]:
+    """The selectable groups of one restore point, configuration first.
+
+    The configuration is offered as its own entry even though it is one
+    monolithic archive with no module: an operator recovering a broken `.env` or
+    a mangled realm needs to be able to find it. What it cannot be is *scoped* --
+    picking it turns the operation into a whole-stack restore, which
+    `requires_full_restore` reports and the confirmation step spells out.
+
+    Module and add-on groups are absent for a manifest that predates the
+    grouping fields: without a module on the artifacts there is no honest
+    grouping to offer, and reconstructing one from volume names is exactly what
+    the core refuses to do.
     """
     if not manifest:
         return []
@@ -209,7 +231,21 @@ def build_groups(manifest: dict[str, Any] | None) -> list[ScopeGroup]:
         module = str(raw.get("module", ""))
         owner = str(raw.get("owner", ""))
         target = str(raw.get("target", ""))
-        if kind == "configdir" or not module:
+        if kind == "configdir":
+            groups.setdefault(
+                CONFIG_SELECTOR,
+                ScopeGroup(
+                    selector=CONFIG_SELECTOR,
+                    kind="config",
+                    name=CONFIG_SELECTOR,
+                    label=_CONFIG_PRESENTATION.label,
+                    summary=_CONFIG_PRESENTATION.summary,
+                    hazards=_CONFIG_PRESENTATION.hazards,
+                    requires_config=True,
+                ),
+            ).archives += 1
+            continue
+        if not module:
             continue
 
         is_addon = owner.startswith("addon:")
@@ -249,11 +285,24 @@ def build_groups(manifest: dict[str, Any] | None) -> list[ScopeGroup]:
             )
         )
 
-    # Core before add-ons, ordinary before advanced, then alphabetical -- the
-    # order the picker renders in, decided once here rather than in the template.
+    # Configuration, then core, then add-ons; ordinary before advanced, then
+    # alphabetical. The order the picker renders in, decided once here rather
+    # than in the template.
+    rank = {"config": 0, "module": 1, "addon": 2}
     return sorted(
-        groups.values(), key=lambda g: (g.kind != "module", g.advanced, g.label.lower())
+        groups.values(),
+        key=lambda g: (rank.get(g.kind, 3), g.advanced, g.label.lower()),
     )
+
+
+def has_selectable_groups(groups: list[ScopeGroup]) -> bool:
+    """Whether anything below the whole snapshot can actually be picked.
+
+    The configuration alone does not count: choosing it restores the whole
+    restore point. A snapshot offering only that is one an older core wrote, and
+    saying "supported" of it would promise a partial restore it cannot do.
+    """
+    return any(group.kind in ("module", "addon") for group in groups)
 
 
 def allowed_selectors(groups: list[ScopeGroup]) -> set[str]:

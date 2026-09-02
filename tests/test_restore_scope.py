@@ -94,31 +94,43 @@ def _by_selector(manifest: dict[str, Any]) -> dict[str, restore_scope.ScopeGroup
 # ---------------------------------------------------------------------------
 
 
-def test_groups_are_modules_and_add_ons() -> None:
+def test_groups_are_the_configuration_plus_modules_and_add_ons() -> None:
     groups = _by_selector(_full_manifest())
     assert set(groups) == {
-        "module:keycloak", "module:librechat", "module:searxng", "addon:paperless"
+        restore_scope.CONFIG_SELECTOR,
+        "module:keycloak", "module:librechat", "module:searxng", "addon:paperless",
     }
 
 
-def test_core_groups_come_before_add_ons_and_advanced_ones_come_last() -> None:
+def test_the_configuration_comes_first_then_core_then_add_ons() -> None:
     ordered = [g.selector for g in restore_scope.build_groups(_full_manifest())]
+    assert ordered[0] == restore_scope.CONFIG_SELECTOR
     assert ordered.index("module:keycloak") < ordered.index("addon:paperless")
     # SearXNG is the advanced one; it sorts behind the ordinary core modules.
     assert ordered.index("module:librechat") < ordered.index("module:searxng")
 
 
-def test_the_config_directory_is_never_a_group() -> None:
-    # It is one monolithic archive whose restore wipes the target first, and it
-    # is what forces a restore out of this process. It has no module, so it
-    # cannot become a group -- this pins that.
-    for group in restore_scope.build_groups(_full_manifest()):
-        assert group.kind in ("module", "addon")
-        assert "config" not in group.selector
+def test_the_configuration_is_offered_but_can_never_be_scoped() -> None:
+    """An operator recovering a broken .env has to be able to find it. What it
+    must not do is look like a partial restore: it is one monolithic archive,
+    every core service bind-mounts files out of it, and restoring it therefore
+    takes the whole stack with it."""
+    config = _by_selector(_full_manifest())[restore_scope.CONFIG_SELECTOR]
+    assert config.kind == "config"
+    assert config.requires_config is True
+    assert config.items == []
+    assert config.profiles == []
+    assert config.hazards
+    groups = restore_scope.build_groups(_full_manifest())
+    assert restore_scope.requires_full_restore(groups, [restore_scope.CONFIG_SELECTOR])
 
 
-def test_a_v1_manifest_offers_no_groups() -> None:
+def test_a_v1_manifest_offers_its_configuration_but_nothing_below_it() -> None:
+    # An older core wrote no grouping, so its volumes cannot be picked apart --
+    # but the configuration archive is still there and still restorable, as part
+    # of the whole point.
     v1 = _manifest(
+        _artifact("configdir", "papaia-config.tar.gz", "/srv/papaia-config"),
         {
             "kind": "volume",
             "archive": "volumes/papaia_librechat-mongodb.tar.gz",
@@ -127,7 +139,17 @@ def test_a_v1_manifest_offers_no_groups() -> None:
         },
         version=1,
     )
-    assert restore_scope.build_groups(v1) == []
+    groups = restore_scope.build_groups(v1)
+    assert [g.selector for g in groups] == [restore_scope.CONFIG_SELECTOR]
+    # And "supported" must stay false: offering only the configuration is not a
+    # partial restore, so promising one would be a lie.
+    assert restore_scope.has_selectable_groups(groups) is False
+
+
+def test_a_snapshot_with_modules_is_reported_as_selectable() -> None:
+    assert restore_scope.has_selectable_groups(
+        restore_scope.build_groups(_full_manifest())
+    ) is True
 
 
 def test_a_missing_manifest_offers_no_groups() -> None:
@@ -179,9 +201,11 @@ def test_keycloak_cannot_be_restored_without_the_configuration() -> None:
 
 
 def test_no_other_module_drags_the_configuration_in() -> None:
-    groups = _by_selector(_full_manifest())
-    for selector, group in groups.items():
-        if selector != "module:keycloak":
+    # Keycloak is the coupled one; the configuration entry is itself, by
+    # definition. Everything else must stay scopeable.
+    coupled = {"module:keycloak", restore_scope.CONFIG_SELECTOR}
+    for selector, group in _by_selector(_full_manifest()).items():
+        if selector not in coupled:
             assert group.requires_config is False
 
 

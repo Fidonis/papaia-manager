@@ -200,7 +200,9 @@ async def restore_point_selectors(
         inventory.active_profiles(settings.papaia_config_dir),
     )
     return {
-        "supported": bool(groups),
+        # The configuration on its own does not make a snapshot selectable: it
+        # restores the whole point. Only module and add-on groups do.
+        "supported": restore_scope.has_selectable_groups(groups),
         "groups": [restore_scope.group_to_dict(g) for g in groups],
         "notes": list(restore_scope.NOTES),
         "config_selector": restore_scope.CONFIG_SELECTOR,
@@ -389,7 +391,7 @@ async def start_scoped_restore(
 
     manifest = backups.snapshot_manifest(backup_dir, point.id)
     groups = restore_scope.build_groups(manifest)
-    if not groups:
+    if not restore_scope.has_selectable_groups(groups):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
