@@ -12,6 +12,48 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [0.6.0] - 2026-09-02
+
+### Added
+- **Dashboard editor.** `/dashboard` is now its own editor for administrators: groups and
+  tiles are created, renamed, reordered, moved between groups and deleted from the page
+  instead of by editing `tiles.yaml` over SSH. Edits are staged as a client-side draft and
+  one **Save changes** writes the whole document atomically; **Discard** reverts everything.
+  The write is a whole-document `PUT` carrying a `revision` hash — an edit made on the host
+  while the editor was open is refused with 409 rather than overwritten. Link and `{{KEY}}`
+  placeholder validation moved into the tile dialog, which previews the resolved address and
+  reports the problem before saving; placeholder resolution stays server-side behind
+  `POST /api/v1/tiles/resolve` so no core `.env` value reaches the browser. A raw-YAML editor
+  covers bulk edits, and drag-and-drop reordering uses SortableJS as a progressive
+  enhancement over the existing menu commands.
+- **Selective restore.** The single `Restore` menu entry becomes a three-step flow — choose,
+  review impact, confirm. Restore points can be recovered per module ("LibreChat —
+  conversations, uploads, search index and embeddings") instead of only as a whole; the
+  impact step is computed from Compose profiles (what actually stops), and ticking Keycloak
+  pulls the configuration archive in and explains why. A scoped restore runs as an ordinary
+  queued job with a live log — `$PAPAIA_CONFIG_DIR` is never replaced — behind the new
+  `POST /api/v1/restore/scoped` route and the `restore-scoped` core verb. Against an older
+  core the wizard reports the point as restorable only as a whole.
+- **Core upgrade.** A new admin-only **Update** page (`/upgrade`) moves the deployment to a
+  newer papAIa release from the panel. A read-only check resolves the target tag, runs the
+  add-on compatibility gate against a temporary `git worktree`, and lists the release
+  migrations that would run — every version decision delegated to the core's own
+  `upgrade-resolve` / `upgrade-plan` / `addon-check --json` sub-commands. The upgrade itself
+  runs in a detached container (it removes the container serving the request and re-execs
+  from the target tree), with `--version` always pinned and readiness rows shown before the
+  operator commits. There is no automatic rollback: a failed upgrade renders the recovery
+  commands verbatim.
+
+### Fixed
+- The manager session is now renewed against Keycloak before the access token expires,
+  using a refresh token stored at login, so operators are no longer silently logged out
+  after ~5 minutes. HTMX and `/api/` callers receive a bare `401` they can act on while only
+  real navigations get a `307` redirect, which now carries a validated `?next=` so the
+  callback returns to the originating page. Concurrent pollers share a single token
+  round-trip.
+- A `tiles.yaml` that cannot be parsed no longer answers `/dashboard` with a 500; the raw
+  editor surfaces the parse error instead.
+
 ## [0.5.0] - 2026-08-18
 
 ### Added
@@ -263,6 +305,8 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[0.6.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.6.0
+
 [0.5.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.5.0
 
 [0.4.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.4.0
@@ -273,4 +317,4 @@ based on merged pull requests; this file mirrors the published releases.
 
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.6.0...HEAD
