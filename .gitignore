@@ -42,4 +42,5 @@ Thumbs.db
 src/app/static/app.css
 src/app/static/htmx.min.js
 src/app/static/alpine.min.js
+src/app/static/sortable.min.js
 src/app/static/fonts/

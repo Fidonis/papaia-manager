@@ -35,7 +35,15 @@ from app.core.state import (
     deployment_addons_by_name,
     load_deployment_yaml,
 )
-from app.core.tiles import TileGroup, load_tiles, visible_groups
+from app.core.tiles import (
+    TileGroup,
+    TilesFileError,
+    config_to_json,
+    link_placeholder_keys,
+    load_tiles,
+    tiles_revision,
+    visible_groups,
+)
 from app.templating import templates as _templates
 
 router = APIRouter()
@@ -210,11 +218,30 @@ async def partial_tiles(
     user: AnyUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
-    groups = await asyncio.get_running_loop().run_in_executor(
+    groups, tiles_error = await asyncio.get_running_loop().run_in_executor(
         None, _gather_tiles, settings, is_admin(user, settings)
     )
     resp = _templates.TemplateResponse(
-        request, "partials/tile_gallery.html", _ctx(request, user, groups=groups)
+        request,
+        "partials/tile_gallery.html",
+        _ctx(request, user, groups=groups, tiles_error=tiles_error),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/tiles/edit", response_class=HTMLResponse)
+async def partial_tiles_edit(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The dashboard, editable. Administrators only -- the gallery is not."""
+    editor = await asyncio.get_running_loop().run_in_executor(
+        None, _gather_tile_draft, settings
+    )
+    resp = _templates.TemplateResponse(
+        request, "partials/tile_editor.html", _ctx(request, user, **editor)
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -608,11 +635,47 @@ async def _load_stack_snapshot(settings: Settings) -> StackSnapshot:
     )
 
 
-def _gather_tiles(settings: Settings, is_admin_user: bool) -> list[TileGroup]:
-    """Load the dashboard tiles a caller may see. Synchronous file I/O."""
-    config = load_tiles(settings.papaia_config_dir)
+def _gather_tiles(
+    settings: Settings, is_admin_user: bool
+) -> tuple[list[TileGroup], str | None]:
+    """Load the dashboard tiles a caller may see. Synchronous file I/O.
+
+    A broken file is reported rather than raised: the dashboard is the landing
+    page for every role, and answering it with a 500 hides the one piece of
+    information that would let an administrator fix it.
+    """
+    try:
+        config = load_tiles(settings.papaia_config_dir)
+    except TilesFileError as exc:
+        return [], str(exc)
     core_env = load_env_file(Path(settings.papaia_config_dir) / ".env")
-    return visible_groups(config, is_admin=is_admin_user, env=core_env)
+    return visible_groups(config, is_admin=is_admin_user, env=core_env), None
+
+
+def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
+    """The editor's starting state: the config as written, not as rendered.
+
+    Unfiltered on purpose. `visible_groups` drops restricted tiles and empty
+    groups, and an editor that could not show a group it had just created
+    would be unusable.
+    """
+    try:
+        config = load_tiles(settings.papaia_config_dir)
+    except TilesFileError as exc:
+        return {
+            "error": str(exc),
+            "revision": "",
+            "draft": {"version": 1, "groups": []},
+            "link_keys": [],
+        }
+
+    core_env = load_env_file(Path(settings.papaia_config_dir) / ".env")
+    return {
+        "error": None,
+        "revision": tiles_revision(settings.papaia_config_dir),
+        "draft": config_to_json(config),
+        "link_keys": link_placeholder_keys(core_env),
+    }
 
 
 async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:

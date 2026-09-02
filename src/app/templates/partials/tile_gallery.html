@@ -1,10 +1,50 @@
-{% if not groups %}
-<div class="flex flex-col items-center py-24 gap-4 opacity-60">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+{# The page header lives outside this swap target, so the dashboard's own
+   action slot is filled out of band. Always emitted, including empty for a
+   non-administrator: leaving the editor swaps this partial back in, and the
+   editor's cluster has to go away with it. #}
+<div id="dashboard-actions" hx-swap-oob="true" class="flex items-center gap-2">
+  {% if is_admin %}
+  <button class="btn btn-primary btn-sm" onclick="tilesEnterEdit()">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+    </svg>
+    Edit dashboard
+  </button>
+  {% endif %}
+</div>
+
+{% if tiles_error %}
+{# A file the loader cannot parse. Everyone sees that the dashboard is out of
+   order; only an administrator is told which file and offered the editor,
+   since only they can act on either. #}
+<div class="alert alert-warning">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M4.93 19h14.14a2 2 0 001.74-3L13.74 4a2 2 0 00-3.48 0L3.19 16a2 2 0 001.74 3z"/>
+  </svg>
+  <div>
+    <p class="font-semibold">The application list could not be read</p>
+    {% if is_admin %}
+    <p class="text-sm opacity-80">{{ tiles_error }}</p>
+    {% else %}
+    <p class="text-sm opacity-80">Ask an administrator to check the dashboard configuration.</p>
+    {% endif %}
+  </div>
+  {% if is_admin %}
+  <button class="btn btn-sm" onclick="tilesEnterEdit()">Open editor</button>
+  {% endif %}
+</div>
+
+{% elif not groups %}
+<div class="flex flex-col items-center py-24 gap-4">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
     <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
   </svg>
-  <p class="text-lg font-semibold">No applications configured</p>
-  <p class="text-sm">Dashboard tiles are defined in <code>manager/tiles.yaml</code>.</p>
+  <p class="text-lg font-semibold opacity-60">No applications configured</p>
+  {% if is_admin %}
+  <button class="btn btn-primary btn-sm" onclick="tilesEnterEdit()">Add your first group</button>
+  {% else %}
+  <p class="text-sm opacity-60">An administrator has not added any applications yet.</p>
+  {% endif %}
 </div>
 {% else %}
 

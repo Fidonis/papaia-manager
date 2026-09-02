@@ -8,7 +8,7 @@ This document provides structural and architectural context for contributors and
 
 papaia-manager is a web-based control plane for the papAIa stack's addon lifecycle. It provides a browser UI for discovering, installing, starting, stopping, removing, and updating papAIa addons. It wraps `papaia-ctl` as a subprocess for all mutating operations and imports `lib.*` modules directly from the mounted papAIa workspace for read-only state queries.
 
-It also serves the stack dashboard: a tile overview of the deployed applications, configured through `manager/tiles.yaml` in the papAIa config directory.
+It also serves the stack dashboard: a tile overview of the deployed applications, held in `manager/tiles.yaml` in the papAIa config directory and editable in place by administrators.
 
 A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
@@ -44,7 +44,7 @@ papaia-manager/
 │       │   ├── backups.py      # Read-only backup.yaml / manifest.yaml catalogue access
 │       │   ├── runner.py       # Detached `papaia-ctl restore` container
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
-│       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering
+│       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering, validation
 │       │   ├── services.py     # Container status from docker ps, by module label; declared
 │       │   │                   #   vs. live merge; shared snapshot for the addon surfaces
 │       │   ├── inventory.py    # Declared state: compose fragments × profiles, addon manifests
@@ -64,7 +64,8 @@ papaia-manager/
 │       │   ├── api_catalogs.py # /api/v1/catalogs — catalog CRUD + refresh
 │       │   ├── api_addons.py   # /api/v1/addons — addon lifecycle verbs
 │       │   ├── api_jobs.py     # /api/v1/jobs — job status + log streaming
-│       │   └── api_maintenance.py # /api/v1/maintenance — backup + restore
+│       │   ├── api_maintenance.py # /api/v1/maintenance — backup + restore
+│       │   └── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
 │       │       ├── _addon_controls.html      # Per-addon action buttons (install/start/stop/...)
@@ -74,8 +75,10 @@ papaia-manager/
 │       │       ├── catalog_list.html         # Catalog table rows
 │       │       ├── job_status.html           # Polled job progress/log fragment
 │       │       ├── restore_point_list.html   # Restore point cards
-│       │       └── restore_status.html       # Polled restore-runner state
-│       └── static/             # htmx.min.js, alpine.min.js, app.css (Tailwind build)
+│       │       ├── restore_status.html       # Polled restore-runner state
+│       │       ├── tile_editor.html          # Dashboard editor (admin-only, client-side draft)
+│       │       └── tile_gallery.html         # Dashboard tile grid, visibility-filtered
+│       └── static/             # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)
 └── docker/
     ├── Dockerfile          # Multi-stage build; installs Docker CLI + compose plugin
