@@ -12,6 +12,8 @@ It also serves the stack dashboard: a tile overview of the deployed applications
 
 A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
+A fifth surface, Update (`/upgrade`), moves the deployment to a newer papAIa release. It is split in two: a read-only check that resolves the target tag, gates the active add-ons against it and lists the pending migrations, and the upgrade itself, which runs `papaia-ctl upgrade` in a detached container (see the Upgrade model section below).
+
 A fourth surface, Services, reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. The page also drives lifecycle: one Compose profile at a time via `papaia-ctl start`/`stop --profiles=`, several profiles at once, or the whole stack in a detached container (see the Service group control section below). Two aggregates of the same snapshot render as status pills in the header of every page, one per section, for every authenticated role.
 
 That snapshot is also the single Docker reading behind the add-on surfaces: `state.compute_status` takes its set of running Compose projects from `StackSnapshot.running_projects` rather than issuing a `docker ps` of its own, so `/addons` and `/services` cannot disagree about whether an add-on is up.
@@ -40,9 +42,12 @@ papaia-manager/
 │       ├── core/
 │       │   ├── papaia_lib.py   # sys.path bootstrap + core version handshake
 │       │   ├── ctl.py          # Whitelisted subprocess wrapper for papaia-ctl
-│       │   │                   #   (separate allowlists for addon and core verbs)
+│       │   │                   #   (separate allowlists for addon verbs, core verbs
+│       │   │                   #    and the core's read-only python sub-commands)
 │       │   ├── backups.py      # Read-only backup.yaml / manifest.yaml catalogue access
-│       │   ├── runner.py       # Detached `papaia-ctl restore` container
+│       │   ├── runner.py       # Detached papaia-ctl container: restore, stack, upgrade
+│       │   ├── upgrade.py      # Core release check: git state, target resolution,
+│       │   │                   #   add-on gate, migration plan, runner-log phases
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
 │       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering, validation
 │       │   ├── services.py     # Container status from docker ps, by module label; declared
@@ -65,6 +70,7 @@ papaia-manager/
 │       │   ├── api_addons.py   # /api/v1/addons — addon lifecycle verbs
 │       │   ├── api_jobs.py     # /api/v1/jobs — job status + log streaming
 │       │   ├── api_maintenance.py # /api/v1/maintenance — backup + restore
+│       │   ├── api_upgrade.py  # /api/v1/upgrade — release check + core upgrade
 │       │   └── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
@@ -153,6 +159,30 @@ Consequences worth remembering when touching this area:
 - Backup and restore are mutually exclusive, enforced in `routers/api_maintenance.py` with 409s.
 - The restore-point id is validated against an exact timestamp pattern before it reaches a path join or an argv.
 - `PAPAIA_BACKUP_DIR` must be mounted at its host path, or the catalogue is invisible to the container.
+
+### Upgrade model
+
+Upgrade is the second mutating operation that is **not** a job, for a stronger version of restore's reason: `papaia-ctl upgrade` runs `cmd_stop --clean-up --addons` between its two phases, unconditionally and unscoped. It also `exec`s itself from the target release's tree after moving the checkout, so it cannot be a streamed in-process job even setting the teardown aside.
+
+The read half and the execute half are deliberately separate.
+
+**The check** (`core/upgrade.py`) never changes anything and is split by cost. `current_version`, `checkout_state` and `read_upgrade_log` are file reads plus three local `git` calls, cheap enough to render on page load. `run_check` fetches from the remote and materialises a `git worktree` of the target tag, because the add-on gate has no honest answer without one — only the target's tree carries its own `ADDON_API` window and its Compose service names. It is an explicit operator action, serialised behind an `asyncio.Lock`, and its result is cached for the process.
+
+The arithmetic itself is delegated straight back to the core: `ALLOWED_PY_COMMANDS` in `core/ctl.py` allows `upgrade-resolve`, `upgrade-plan` and `addon-check`, invoked through `run_py_cli` as `python3 -m lib.cli` with the workspace on `PYTHONPATH` — the same shape `papaia-ctl` uses for itself. Parsing four lines of TSV is the price of the manager and a shell on the host never reaching different verdicts about the same checkout. `upgrade-record` is deliberately absent: it writes the migration ledger, and only the upgrade's own second phase may do that.
+
+**The upgrade** goes through `core/runner.py` as a third `RunnerKind`, next to restore and stack. `--version` is always pinned, never omitted: without it papaia-ctl means "go to whatever is newest", and a tag published between the operator reading the migration list and clicking the button would move the deployment somewhere nobody reviewed. It also makes the runner name deterministic, which is the real mutual exclusion — `docker run` refuses a duplicate name.
+
+Consequences worth remembering when touching this area:
+
+- `ALLOWED_CORE_VERBS` deliberately does **not** contain `upgrade`, and `ALLOWED_PY_COMMANDS` is a separate set with no overlap.
+- The manager upgrades itself. The target release pins its own `papaia-manager` image in `papaia/src/manager/docker-compose.yml`, so the `up` at the end of phase 2 recreates this container from a different image than the runner was cloned from. The session survives (`setup --env-only` keeps `MANAGER_SESSION_SECRET`); the page an operator returns to does not — the success strip tells them to reload.
+- Phase 2 therefore runs the *new* core's Python under the *old* image's interpreter. Fine today; there is no manager-side mitigation if a future core raises its Python floor.
+- `/partials/upgrade/runner` is a **frozen path**. A tab open across the upgrade keeps polling the URL baked into the previous image's markup, so renaming it would leave that tab on a 404 for the whole outage.
+- An upgrade is mutually exclusive with every job, restore and stack action, and the guards are symmetric — `api_maintenance.py` and `api_stack.py` refuse while an upgrade runs, not just `api_upgrade.py`.
+- A finished upgrade runner is **not** cleared automatically the way a stack runner is. It holds the outcome of the last attempt, and `$CONFIG_DIR/upgrade.log` is what makes dismissing it safe.
+- There is no automatic rollback, by design in papaia-ctl. The failure panel renders `_upgrade_failed`'s recovery block verbatim rather than re-deriving it.
+- A dirty checkout blocks the upgrade with no override. `--force` degrades the add-on gate only, and is refused outright when the gate passed or failed on an `ERROR`.
+- The target version reaches both an argv and a container name, so it is validated with `\Z`-anchored patterns in both `core/upgrade.py` and `core/runner.py` — `$` would also match before a trailing newline.
 
 ### Service group control
 

@@ -1,0 +1,82 @@
+{# What the last check found: the release picker and the migrations that come
+   with it. The readiness rows live in upgrade_status.html; this is the part
+   that describes the target rather than the deployment.
+
+   Never runs a check of its own. The check fetches from the remote and
+   materialises a worktree of the target tag, and a GET rendering a partial is
+   the wrong place for either. #}
+<div id="upgrade-check">
+
+{% if not check %}
+  <div class="rounded-xl border border-base-300 px-5 py-8 text-center">
+    <span class="loading loading-spinner loading-md text-primary"></span>
+    <p class="text-sm opacity-60 mt-3">Looking for newer releases&hellip;</p>
+  </div>
+
+{% elif check.up_to_date %}
+  <div class="rounded-xl border border-success bg-success/10 px-5 py-4">
+    <div class="flex items-center gap-3">
+      <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
+      <p class="text-sm font-semibold">papAIa {{ check.current }} is the newest release</p>
+    </div>
+    {% if check.fetch_error %}
+    <p class="text-xs opacity-60 mt-2 leading-relaxed">
+      The remote could not be reached, so this compares against the tags already in the
+      checkout &mdash; a newer release may exist that is not visible here.
+      <span class="font-mono block mt-1 break-all">{{ check.fetch_error }}</span>
+    </p>
+    {% endif %}
+  </div>
+
+{% else %}
+  {# The picker. Every stable release ahead of the installed one, newest first,
+     so an intermediate version can be targeted deliberately. Which of them the
+     upgrade may actually move to is still decided by papaia-ctl, which is
+     handed the choice back as --version=. #}
+  {% if check.available | length > 1 %}
+  <div class="rounded-xl border border-base-300 px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
+    <label for="upgrade-version" class="text-sm font-medium">Release</label>
+    <select id="upgrade-version" class="select select-bordered select-sm font-mono"
+            onchange="recheckVersion(this.value)">
+      {% for version in check.available %}
+      <option value="{{ version }}" {% if version == check.target %}selected{% endif %}>
+        {{ version }}{% if loop.first %} — newest{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    <span class="text-xs opacity-50">
+      Choosing another release re-runs the compatibility check against it.
+    </span>
+  </div>
+  {% endif %}
+
+  {# The migration list. Read out of the target tag's own tree -- the only tree
+     that carries the intermediate steps of a multi-release jump. #}
+  <div class="rounded-xl border border-base-300 overflow-hidden">
+    <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-base-300">
+      <h2 class="font-brand text-base font-bold">Migrations in this update</h2>
+      <span class="text-xs opacity-60">
+        {% if check.migrations %}{{ check.migrations | length }} to run{% else %}none{% endif %}
+      </span>
+    </div>
+
+    {% if check.migrations %}
+    <ul class="divide-y divide-base-300">
+      {% for migration in check.migrations %}
+      <li class="px-4 py-2.5">
+        <p class="text-sm font-mono">{{ migration.id }}</p>
+        <p class="text-xs opacity-50 mt-0.5">
+          ships with {{ migration.version }} &middot; {{ migration.kind }}
+        </p>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="px-4 py-3 text-sm opacity-60">
+      This release ships no migrations. The configuration is still re-rendered against it.
+    </p>
+    {% endif %}
+  </div>
+{% endif %}
+
+</div>

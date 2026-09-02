@@ -1,0 +1,253 @@
+{# Version, checkout and backup location -- everything that costs no network.
+
+   This partial is the page's authority on whether an upgrade may start at all.
+   The header button lives outside it, in the `page_actions` block, so the same
+   technique as the backup strip applies: an out-of-band swap of that cluster
+   would rebuild the <dialog> it contains and close it under the operator's
+   hand. The strip announces its state instead, and the button listens.
+
+   Class names are spelled out per branch rather than assembled from a variable:
+   app.css is built by scanning these templates, and a computed class name would
+   not survive the purge. #}
+<div id="upgrade-status">
+
+  {# Two version sources, and they disagree in exactly one situation: an upgrade
+     that died after the checkout moved but before the configuration was
+     re-rendered. papaia-ctl does not surface that; two file reads here do, and
+     it is the difference between "nothing happened" and "something stopped
+     halfway". #}
+  {% if version.mismatch %}
+  <div class="alert alert-warning mb-4">
+    <div>
+      <p class="font-semibold text-sm mb-0.5">An upgrade did not finish</p>
+      <p class="text-xs leading-relaxed">
+        The checkout is on <span class="font-mono">{{ version.checkout }}</span> but the
+        configuration is still at <span class="font-mono">{{ version.recorded }}</span>.
+        The configuration is what an upgrade starts from, so this deployment counts as
+        {{ version.recorded }}. The history below says which attempt stopped and where.
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card bg-base-200 shadow-sm mb-6">
+    <div class="card-body p-5 gap-4">
+
+      <div class="flex flex-wrap items-end gap-x-8 gap-y-3">
+        <div>
+          <p class="text-xs uppercase tracking-wide opacity-50 mb-1">Installed</p>
+          <p class="font-brand text-2xl font-bold leading-none">
+            {{ version.current if version.current else "unknown" }}
+          </p>
+        </div>
+
+        {% if check and not check.up_to_date %}
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mb-1 opacity-30" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+        </svg>
+        <div>
+          <p class="text-xs uppercase tracking-wide opacity-50 mb-1">Available</p>
+          <p class="font-brand text-2xl font-bold leading-none text-primary">
+            {{ check.target }}
+          </p>
+        </div>
+        {% endif %}
+
+        <div class="ml-auto text-right">
+          <p class="text-xs uppercase tracking-wide opacity-50 mb-1">Checkout</p>
+          {% if not checkout.is_git %}
+            <span class="badge badge-warning badge-sm">not a git checkout</span>
+          {% elif checkout.tag %}
+            <span class="badge badge-ghost badge-sm font-mono">{{ checkout.tag }}</span>
+          {% else %}
+            <span class="badge badge-ghost badge-sm font-mono">{{ checkout.head }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if check and check.checked_at %}
+      <p class="text-xs opacity-50">
+        Checked {{ check.checked_at[:19] | replace("T", " ") }} UTC
+        {% if check.fetch_error %}
+        &middot; the remote could not be reached, so this is what the checkout already knew
+        {% endif %}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Readiness ──────────────────────────────────────────
+     Every condition that makes `papaia-ctl upgrade` exit before it touches
+     anything, reached by the same commands and shown before the operator
+     commits rather than after the stack is already down. #}
+  <h2 class="font-brand text-lg font-bold mb-3">Before you start</h2>
+
+  <div class="rounded-xl border border-base-300 divide-y divide-base-300 mb-6">
+
+    {# 1. The checkout. There is no override for this one: --force degrades the
+       add-on gate and nothing else, and the upgrade would take uncommitted
+       edits along to the release tag. #}
+    <div class="flex gap-3 px-4 py-3">
+      {% if not checkout.is_git %}
+        <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium">This installation cannot be upgraded from here</p>
+          <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
+            The papaia workspace is not a git checkout, and the upgrade moves the checkout
+            to a release tag. Re-clone the repository on the host and re-run
+            <span class="font-mono">papaia-ctl setup</span> against the existing
+            configuration directory.
+          </p>
+        </div>
+      {% elif checkout.error %}
+        <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium">The checkout could not be inspected</p>
+          <p class="text-xs opacity-60 mt-0.5 font-mono break-all">{{ checkout.error }}</p>
+        </div>
+      {% elif not checkout.clean %}
+        <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium">The checkout has uncommitted changes</p>
+          <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
+            Commit, stash or discard them on the host first &mdash; the upgrade moves the
+            checkout to a release tag and would otherwise take these edits with it.
+          </p>
+          <pre class="mt-2 max-h-40 overflow-y-auto rounded bg-base-300 p-3 text-xs whitespace-pre-wrap">{{ checkout.dirty }}</pre>
+        </div>
+      {% else %}
+        <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-success"></span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium">The checkout is clean</p>
+          <p class="text-xs opacity-60 mt-0.5">
+            No uncommitted changes to tracked files, so it can be moved to a release tag.
+            {% if checkout.is_git and not checkout.tag %}
+            It is not sitting on a tag right now, which only matters if an upgrade fails:
+            the way back names a tag.
+            {% endif %}
+          </p>
+        </div>
+      {% endif %}
+    </div>
+
+    {# 2. The add-on gate. Evaluated against a worktree of the target tag, so it
+       reads the target's own add-on API window rather than this release's. #}
+    <div class="flex gap-3 px-4 py-3">
+      {% if not check or check.up_to_date %}
+        <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-base-300"></span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium opacity-60">Add-on compatibility</p>
+          <p class="text-xs opacity-60 mt-0.5">Checked against a release once there is one.</p>
+        </div>
+      {% elif check.gate.passed %}
+        <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-success"></span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium">Add-ons are compatible with {{ check.target }}</p>
+          <p class="text-xs opacity-60 mt-0.5">
+            {% if check.gate.results %}
+            {{ check.gate.results | length }} active add-on(s) checked against the target release.
+            {% else %}
+            No active add-ons to check.
+            {% endif %}
+          </p>
+        </div>
+      {% else %}
+        <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium">Add-ons are not compatible with {{ check.target }}</p>
+          <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
+            {% if check.gate.has_error %}
+            One add-on's manifest could not be read. papaia-ctl refuses that regardless of
+            any override &mdash; fix the add-on before upgrading.
+            {% else %}
+            Update the add-ons first, or start the upgrade anyway and accept that they run
+            against a core they declare they do not support.
+            {% endif %}
+          </p>
+          <ul class="mt-2 space-y-1">
+            {% for result in check.gate.blocking %}
+            <li class="text-xs">
+              <span class="font-mono font-medium">{{ result.name }}</span>
+              <span class="badge badge-error badge-xs ml-1">{{ result.status }}</span>
+              <span class="opacity-60">{{ result.reason }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+
+    {# 3. Where the restore point lands. Pre-flighted here rather than
+       discovered by cmd_backup after the confirmation, which is the one moment
+       it is too late to say so. #}
+    <div class="flex gap-3 px-4 py-3">
+      {% if not backup_dir %}
+        <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-warning"></span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium">No restore point can be written</p>
+          <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
+            <span class="font-mono">PAPAIA_BACKUP_DIR</span> is not set in the stack
+            configuration. Set it on the host, or start the upgrade without a restore point
+            and accept that there is nothing to roll back to.
+          </p>
+        </div>
+      {% elif not backup_dir_reachable %}
+        <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-warning"></span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium">The backup directory is not reachable</p>
+          <p class="text-xs opacity-60 mt-0.5">
+            <span class="font-mono">{{ backup_dir }}</span> is not visible from this
+            container, so the restore point would fail after the stack is already down.
+          </p>
+        </div>
+      {% else %}
+        <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-success"></span>
+        <div class="min-w-0">
+          <p class="text-sm font-medium">A restore point is written first</p>
+          <p class="text-xs opacity-60 mt-0.5">
+            Into <span class="font-mono">{{ backup_dir }}</span>. It is what the way back
+            points at if a migration fails.
+          </p>
+        </div>
+      {% endif %}
+    </div>
+
+    {# 4. The outage. Not a check that can pass or fail -- it is what the
+       operation costs, and the last row is where it is read. #}
+    <div class="flex gap-3 px-4 py-3">
+      <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-warning"></span>
+      <div class="min-w-0">
+        <p class="text-sm font-medium">The whole stack goes down, this panel included</p>
+        <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
+          Containers are removed and recreated; volumes are kept. The upgrade runs in its
+          own container, so it finishes even once this page is gone, and the result appears
+          here again afterwards &mdash; on the papaia-manager version that ships with the
+          new release.
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  {# Same technique as the backup strip: this element owns the answer, the header
+     button subscribes to it. `target` is null unless there is something to
+     install, which is what keeps the button disabled in every other state.
+
+     `ready` also requires a gate the operator can get past. A gate that failed
+     on an INCOMPATIBLE is passable, from the modal, with --force; one that
+     failed on an ERROR is not, at any price, so an enabled button there could
+     only ever produce a 409. The row above already says which it is. #}
+  <script>
+    window.dispatchEvent(new CustomEvent("papaia-upgrade-state", { detail: {
+      target: {{ (check.target | tojson) if (check and not check.up_to_date) else "null" }},
+      ready: {{ "true" if (checkout.upgradable and check and not check.up_to_date
+                           and (check.gate.passed or check.gate.forceable)) else "false" }},
+      forceable: {{ "true" if (check and check.gate.forceable) else "false" }},
+      gatePassed: {{ "true" if (not check or check.gate.passed) else "false" }},
+      hasBackupDir: {{ "true" if (backup_dir and backup_dir_reachable) else "false" }},
+      available: {{ (check.available | tojson) if check else "[]" }},
+      current: {{ (version.current | tojson) }},
+    }}));
+  </script>
+</div>

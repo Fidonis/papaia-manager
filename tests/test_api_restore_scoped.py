@@ -206,7 +206,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     app_main._job_queue = None  # noqa: SLF001
 
 
-async def _no_runner() -> None:
+async def _no_runner(kind: object = None) -> None:
+    # Takes the kind the caller passes: the guard asks about a restore runner
+    # and an upgrade runner separately, and a fake that only accepted the
+    # default would fail on the second question rather than answering it.
     return None
 
 

@@ -18,6 +18,8 @@ from app.core.runner import (
     _status_from_inspect,
     build_run_args,
     build_stack_run_args,
+    build_upgrade_run_args,
+    is_valid_target_version,
     runner_name,
 )
 
@@ -323,3 +325,108 @@ def test_the_legacy_restore_point_label_is_still_read() -> None:
     payload[0]["Name"] = "/papaia-restore-something-else"
     payload[0]["Config"]["Labels"] = {"de.fidonis.restore-point": _RESTORE_POINT}
     assert _status_from_inspect(payload).target == _RESTORE_POINT
+
+
+# ---------------------------------------------------------------------------
+# Upgrade runner
+# ---------------------------------------------------------------------------
+
+
+def _upgrade(spec: ContainerSpec, version: str = "1.2.0", **kwargs: object) -> list[str]:
+    return build_upgrade_run_args(
+        spec,
+        target_version=version,
+        workspace_dir=_WORKSPACE,
+        config_dir=_CONFIG,
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def test_an_upgrade_runner_is_told_apart_from_a_restore_and_a_stack(
+    spec: ContainerSpec,
+) -> None:
+    args = _upgrade(spec)
+    labels = [args[i + 1] for i, a in enumerate(args) if a == "--label"]
+    assert "de.fidonis.module=papaia-upgrade" in labels
+    assert "de.fidonis.runner-target=1.2.0" in labels
+    assert args[args.index("--name") + 1] == "papaia-upgrade-1.2.0"
+
+
+def test_the_upgrade_runner_pins_the_target_version(spec: ContainerSpec) -> None:
+    # Never omitted. Without --version papaia-ctl means "go to whatever is
+    # newest", and a tag published between the operator reading the migration
+    # list and clicking the button would move the deployment somewhere nobody
+    # reviewed.
+    assert "--version=1.2.0" in _upgrade(spec)
+
+
+def test_the_upgrade_is_non_interactive(spec: ContainerSpec) -> None:
+    # There is no TTY here, and cmd_upgrade refuses to proceed without a
+    # confirmation. The operator gave it in the browser; this flag is that.
+    assert "-y" in _upgrade(spec)
+
+
+def test_the_upgrade_runs_papaia_ctl_from_the_mounted_workspace(
+    spec: ContainerSpec,
+) -> None:
+    assert _command(_upgrade(spec), spec) == (
+        f"bash {_WORKSPACE}/papaia/tools/papaia-ctl upgrade"
+        f" --config-dir={_CONFIG} --version=1.2.0 -y"
+    )
+
+
+def test_force_and_no_backup_are_absent_unless_requested(spec: ContainerSpec) -> None:
+    args = _upgrade(spec)
+    assert "--force" not in args
+    assert "--no-backup" not in args
+
+
+def test_force_and_no_backup_are_passed_when_requested(spec: ContainerSpec) -> None:
+    args = _upgrade(spec, force=True, no_backup=True)
+    assert "--force" in args
+    assert "--no-backup" in args
+
+
+def test_the_upgrade_runner_never_passes_a_backup_dir(spec: ContainerSpec) -> None:
+    # papaia-ctl upgrade has no such flag -- it delegates to cmd_backup, which
+    # resolves the directory from the config bundle. Passing one would be
+    # rejected as an unknown option, after the confirmation and before anything
+    # useful happened.
+    assert not any(a.startswith("--backup-dir") for a in _upgrade(spec))
+
+
+def test_the_upgrade_runner_inherits_the_managers_mounts(spec: ContainerSpec) -> None:
+    args = _upgrade(spec)
+    volumes = [a for i, a in enumerate(args) if args[i - 1] == "--volume"]
+    assert f"{_WORKSPACE}:{_WORKSPACE}" in volumes
+    assert f"{_CONFIG}:{_CONFIG}" in volumes
+    assert f"{_BACKUP}:{_BACKUP}" in volumes
+    assert "/var/run/docker.sock:/var/run/docker.sock" in volumes
+    assert args[args.index("--user") + 1] == "1000:1000"
+    assert args[args.index("--group-add") + 1] == "999"
+
+
+def test_the_upgrade_runner_is_never_restarted_by_the_daemon(spec: ContainerSpec) -> None:
+    # An upgrade that failed has to stay failed and visible, not be retried by
+    # the daemon against a half-migrated configuration.
+    args = _upgrade(spec)
+    assert args[args.index("--restart") + 1] == "no"
+
+
+@pytest.mark.parametrize(
+    "version",
+    ["", "1.2", "v1.2.0", "1.2.0-rc.1", "1.2.0; rm -rf /", "--force", "../1.2.0", "1.2.0\n"],
+)
+def test_an_invalid_target_version_is_refused_before_any_argv_is_built(
+    spec: ContainerSpec, version: str
+) -> None:
+    # The value reaches both a `--version=` argv and the container name, so a
+    # well-formed release version is the only thing that may get past here.
+    assert not is_valid_target_version(version)
+    with pytest.raises(ValueError, match="is not a release version"):
+        _upgrade(spec, version)
+
+
+def test_a_release_version_is_accepted() -> None:
+    assert is_valid_target_version("1.2.0")
+    assert is_valid_target_version("10.0.11")

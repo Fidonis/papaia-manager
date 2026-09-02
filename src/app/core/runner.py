@@ -1,12 +1,24 @@
 """Detached container that runs papaia-ctl operations which outlive the manager.
 
-Two operations cannot run as a job in this process, for the same reason.
+Three operations cannot run as a job in this process, for the same reason.
 `papaia-ctl restore` tears the core stack down with `docker compose down` before
-unpacking any archive, and a stack-wide `stop` or `restart` does the same by
-definition -- while papaia-manager is itself a service of that core project
-(profile `manager`). Either one started here would be SIGKILLed the moment
+unpacking any archive, a stack-wide `stop` or `restart` does the same by
+definition, and `papaia-ctl upgrade` runs `stop --clean-up --addons` between its
+two phases -- while papaia-manager is itself a service of that core project
+(profile `manager`). Any of them started here would be SIGKILLed the moment
 teardown removed its own container, after the stack is down and before the work
 is done.
+
+The upgrade adds a wrinkle the other two do not have: it replaces the manager
+itself. The target release pins its own `papaia-manager` image in
+`src/manager/docker-compose.yml`, so the `up` at the end of phase 2 recreates
+this container from a *different* image than the runner was cloned from. The
+runner is unaffected -- its argv was fixed at `docker create` time and is never
+re-read, and its only path arguments are bind-mounted, so the papaia-ctl it
+`exec`s after the checkout moves is by design the target release's. What it does
+mean is that phase 2 runs the new core's Python under the *old* image's
+interpreter, and that the page an operator returns to was served by a different
+build than the one they left.
 
 So the manager starts papaia-ctl in a *separate* container and steps out of the
 way. That container is built from the manager's own container spec: same image,
@@ -14,10 +26,10 @@ same binds, same user, same supplementary groups. Cloning the spec rather than
 re-deriving it means path parity and Docker socket access hold by construction,
 and the compose fragment stays the single place those mounts are declared.
 
-The two runner flavours are told apart by a label and a name prefix, bundled in
-`RunnerKind`, so a stack restart in flight can never be mistaken for a restore
-and vice versa. Profile-scoped group actions do *not* come through here: they
-leave the manager's own profile alone and therefore run as ordinary jobs.
+The three runner flavours are told apart by a label and a name prefix, bundled
+in `RunnerKind`, so a stack restart in flight can never be mistaken for a
+restore or an upgrade. Profile-scoped group actions do *not* come through here:
+they leave the manager's own profile alone and therefore run as ordinary jobs.
 
 State lives in Docker, not on disk. The runner is started without `--rm`, so
 after it exits `docker inspect` still yields its status and exit code and
@@ -33,6 +45,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -61,6 +74,17 @@ TARGET_LABEL_KEY = "de.fidonis.runner-target"
 STACK_LABEL_VALUE = "papaia-stack"
 STACK_NAME_PREFIX = "papaia-stack-"
 
+UPGRADE_LABEL_VALUE = "papaia-upgrade"
+UPGRADE_NAME_PREFIX = "papaia-upgrade-"
+
+# Release versions the upgrade may be pointed at. Anchored and exact: the value
+# reaches a `--version=` argv and the runner's own container name, so this is
+# the guard against both a traversal and a value read as another flag.
+#
+# `\Z` rather than `$`: `$` also matches before a trailing newline, so `1.2.0\n`
+# would pass this check and be handed to docker with the newline attached.
+_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+\Z")
+
 # Stack-wide actions. `restart` is composed rather than dispatched, because
 # papaia-ctl has no restart verb -- see `_stack_command`.
 STACK_ACTIONS = frozenset({"start", "stop", "restart"})
@@ -70,10 +94,10 @@ STACK_ACTIONS = frozenset({"start", "stop", "restart"})
 class RunnerKind:
     """What a runner is for, and how to find it again.
 
-    Restore and stack runners share every mechanic and differ only in these two
-    strings. Passing the kind around rather than branching on a flag is what
-    keeps `find_runner` from ever returning a restore when asked for a stack
-    operation -- the label filter does the separating.
+    Restore, stack and upgrade runners share every mechanic and differ only in
+    these two strings. Passing the kind around rather than branching on a flag
+    is what keeps `find_runner` from ever returning a restore when asked for a
+    stack operation -- the label filter does the separating.
     """
 
     label_value: str
@@ -82,11 +106,17 @@ class RunnerKind:
 
 RESTORE_KIND = RunnerKind(RUNNER_LABEL_VALUE, RUNNER_NAME_PREFIX)
 STACK_KIND = RunnerKind(STACK_LABEL_VALUE, STACK_NAME_PREFIX)
+UPGRADE_KIND = RunnerKind(UPGRADE_LABEL_VALUE, UPGRADE_NAME_PREFIX)
 
 # How much of the runner's output the status endpoint returns. A restore logs one
 # line per artifact plus the stack start, so this covers a full run with room to
 # spare while keeping the polled payload small.
 LOG_TAIL_LINES = 500
+
+# An upgrade logs a backup, every migration, a full configuration render and a
+# full stack start, so the default tail would drop its opening phases -- which
+# are exactly the ones the failure path refers back to.
+UPGRADE_LOG_TAIL_LINES = 2000
 
 _DOCKER_TIMEOUT = 30.0
 
@@ -329,6 +359,94 @@ def build_stack_run_args(
     return args + _stack_command(
         action, str(papaia_ctl_path(workspace_dir)), config_dir, clean_up
     )
+
+
+def is_valid_target_version(value: str) -> bool:
+    """True if `value` is shaped like a release version an upgrade may target."""
+    return bool(_VERSION_RE.match(value))
+
+
+def build_upgrade_run_args(
+    spec: ContainerSpec,
+    *,
+    target_version: str,
+    workspace_dir: str,
+    config_dir: str,
+    force: bool = False,
+    no_backup: bool = False,
+) -> list[str]:
+    """Assemble the full `docker run` argv for an upgrade runner.
+
+    `--version` is always passed, never omitted. Without it papaia-ctl means "go
+    to whatever is newest", and between the operator reading a target's
+    migration list and clicking the button a new tag can appear -- the upgrade
+    would then move somewhere nobody reviewed. Pinning it also makes the runner
+    name deterministic, which is what stops two administrators starting the same
+    upgrade twice: `docker run` refuses a duplicate name outright.
+
+    `-y` stands in for the confirmation the operator gave in the browser. There
+    is no TTY here, and `cmd_upgrade` refuses to proceed without one; the same
+    reasoning as `build_run_args`.
+
+    There is no `--backup-dir`: `papaia-ctl upgrade` has no such flag. It calls
+    `cmd_backup`, which resolves the directory from the config bundle's own .env,
+    and the runner inherits the manager's backup bind, so the path parity that
+    makes this work is a property of the inherited spec rather than of an
+    argument.
+    """
+    if not is_valid_target_version(target_version):
+        raise ValueError(f"target version {target_version!r} is not a release version")
+
+    args = _base_run_args(
+        spec,
+        name=runner_name(target_version, UPGRADE_KIND),
+        kind=UPGRADE_KIND,
+        target=target_version,
+    )
+    args += [
+        "bash",
+        str(papaia_ctl_path(workspace_dir)),
+        "upgrade",
+        f"--config-dir={config_dir}",
+        f"--version={target_version}",
+        "-y",
+    ]
+    if force:
+        args.append("--force")
+    if no_backup:
+        args.append("--no-backup")
+    return args
+
+
+async def start_upgrade(
+    *,
+    target_version: str,
+    workspace_dir: str,
+    config_dir: str,
+    force: bool = False,
+    no_backup: bool = False,
+) -> RunnerStatus:
+    """Start a detached upgrade runner and return its initial status."""
+    spec = await self_spec()
+    args = build_upgrade_run_args(
+        spec,
+        target_version=target_version,
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        force=force,
+        no_backup=no_backup,
+    )
+    logger.info(
+        "starting upgrade runner for %s (force=%s, no_backup=%s)",
+        target_version,
+        force,
+        no_backup,
+    )
+    await _docker(*args)
+    status = await find_runner(UPGRADE_KIND)
+    if status is None:
+        raise RunnerError("the upgrade runner exited before it could be inspected")
+    return status
 
 
 async def find_runner(kind: RunnerKind = RESTORE_KIND) -> RunnerStatus | None:

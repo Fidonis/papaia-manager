@@ -1,0 +1,49 @@
+{# Every upgrade this installation has recorded, newest first.
+
+   Read from `$PAPAIA_CONFIG_DIR/upgrade.log`, which papaia-ctl appends to and an
+   upgrade re-renders around rather than replacing. That is what makes it the
+   durable half of this page: the runner container can be dismissed and the
+   record of what it did stays. #}
+{% if not entries %}
+<p class="text-sm opacity-60 px-4 py-3">
+  No upgrade has been recorded for this installation yet.
+</p>
+{% else %}
+<ul class="divide-y divide-base-300">
+  {% for entry in entries %}
+  <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+    {% if entry.result == "ok" %}
+      <span class="badge badge-success badge-sm">ok</span>
+    {% elif entry.result == "failed" %}
+      <span class="badge badge-error badge-sm">failed</span>
+    {% else %}
+      {# `checkout` is written between the two phases. On its own -- with no
+         later line for the same attempt -- it means the upgrade never got past
+         the tag move, which is worth showing rather than hiding as unknown. #}
+      <span class="badge badge-warning badge-sm">{{ entry.result }}</span>
+    {% endif %}
+
+    <span class="text-sm font-mono">{{ entry.from_version }} &rarr; {{ entry.to_version }}</span>
+
+    {% if entry.stage %}
+    <span class="text-xs opacity-60">stopped at {{ entry.stage }}</span>
+    {% endif %}
+    {% if entry.details.id %}
+    <span class="text-xs opacity-60 font-mono">{{ entry.details.id }}</span>
+    {% endif %}
+    {% if entry.details.migrations %}
+    <span class="text-xs opacity-50">{{ entry.details.migrations }} migration(s)</span>
+    {% endif %}
+
+    <span class="grow"></span>
+
+    {% if entry.restore_point %}
+    <a href="/backup" class="link link-hover text-xs opacity-60 font-mono">
+      {{ entry.restore_point }}
+    </a>
+    {% endif %}
+    <span class="text-xs opacity-40 font-mono">{{ entry.at }}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
