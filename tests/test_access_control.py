@@ -103,6 +103,7 @@ ADMIN_WRITE_APIS = [
     "/api/v1/stack/restart",
     "/api/v1/stack/runner/clear",
     "/api/v1/addons/paperless/restart",
+    "/api/v1/maintenance/restore-points/delete",
     "/api/v1/upgrade",
     "/api/v1/upgrade/check",
     "/api/v1/upgrade/runner/clear",

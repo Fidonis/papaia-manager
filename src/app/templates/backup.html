@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/_actions.html" import bulk_bar %}
 {% block title %}Backup / Restore — papAIa manager{% endblock %}
 
 {% block page_title %}Backup / Restore{% endblock %}
@@ -99,7 +100,15 @@
 </p>
 {% endif %}
 
-<!-- ── Restore points ─────────────────────────────────── -->
+<!-- ── Restore points ─────────────────────────────────────
+     `x-data` sits here rather than on #restore-point-list because that element's
+     innerHTML is swapped on every refresh -- the selection has to outlive the
+     swap, exactly like the service-group selection on the services page. The
+     confirmation `<dialog>` stays plain DOM (no `x-ref`/`x-effect`): the same
+     `x-show`-killing trap the restore wizard avoids. -->
+<div id="backup-selection"
+     x-data="backupSelection()"
+     @papaia-backups-deleted.window="sel = []">
 <div class="mb-3 flex items-center justify-between gap-3">
   <h2 class="font-brand text-lg font-bold">Restore points</h2>
   <button class="btn btn-ghost btn-xs btn-square"
@@ -122,6 +131,19 @@
   <div class="flex justify-center py-20">
     <span class="loading loading-spinner loading-lg text-primary"></span>
   </div>
+</div>
+
+{# Tier 3: bulk delete. Pinned to the bottom edge for as long as a selection
+   exists, so it stays with the list it acts on. #}
+{% call bulk_bar("sel.length") %}
+  <span class="text-sm flex-1 min-w-48">
+    <span x-text="sel.length"></span>
+    <span x-text="sel.length === 1 ? 'restore point' : 'restore points'"></span> selected
+  </span>
+  <button class="btn btn-error btn-sm" :disabled="busy"
+          @click="openDeleteBackupModal(sel)">Delete selected</button>
+  <button class="btn btn-ghost btn-sm" :disabled="busy" @click="sel = []">Clear</button>
+{% endcall %}
 </div>
 
 <!-- Restore wizard: choose, review the impact, confirm.
@@ -243,6 +265,32 @@
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
 
+<!-- Delete confirmation. Plain DOM, opened by id from openDeleteBackupModal --
+     no Alpine on the <dialog>, same reason as the restore wizard. The list of
+     ids is filled with textContent nodes, never innerHTML. -->
+<dialog id="delete-backup-modal" class="modal">
+  <div class="modal-box max-w-md">
+    <h3 class="font-bold text-base mb-1">
+      Delete <span id="delete-backup-count"></span>?
+    </h3>
+    <p class="text-sm opacity-60 mb-3">
+      Removes the snapshot archive and its catalogue entry. Restoring from
+      <span id="delete-backup-which">it</span> will no longer be possible.
+    </p>
+    <ul id="delete-backup-id-list"
+        class="rounded-lg border border-base-300 px-4 py-2 mb-4 max-h-48 overflow-y-auto text-sm font-mono"></ul>
+    <div class="alert alert-warning py-2 mb-4">
+      <span class="text-xs leading-snug">This cannot be undone.</span>
+    </div>
+    <div class="modal-action mt-0">
+      <button class="btn btn-ghost btn-sm"
+              onclick="document.getElementById('delete-backup-modal').close()">Cancel</button>
+      <button class="btn btn-error btn-sm" onclick="confirmDeleteBackups()">Delete</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
 <script>
 // Shared error extraction: the API answers with {detail: ...} on every 4xx.
 async function _apiError(r) {
@@ -301,6 +349,81 @@ function startBackup(onJobId) {
         }
         resolve(true);
       });
+    });
+  });
+}
+
+// ── Delete restore points ────────────────────────────────────────────────
+//
+// The selection is an array on #backup-selection so it survives the list
+// refresh, the same shape as the services page. The confirmation dialog is
+// plain DOM; only the POST + job poll differ from startBackup.
+function backupSelection() {
+  return {
+    sel: [],
+    busy: false,
+    toggle(id) {
+      this.sel = this.sel.includes(id)
+        ? this.sel.filter(function (x) { return x !== id; })
+        : this.sel.concat([id]);
+    },
+  };
+}
+
+var _pendingDeleteIds = [];
+
+function openDeleteBackupModal(ids) {
+  _pendingDeleteIds = (ids || []).slice();
+  if (_pendingDeleteIds.length === 0) return;
+
+  var many = _pendingDeleteIds.length > 1;
+  _el('delete-backup-count').textContent = many
+    ? _pendingDeleteIds.length + ' restore points'
+    : 'restore point ' + _pendingDeleteIds[0];
+  _el('delete-backup-which').textContent = many ? 'them' : 'it';
+
+  var list = _el('delete-backup-id-list');
+  list.textContent = '';
+  _pendingDeleteIds.forEach(function (id) {
+    var li = document.createElement('li');
+    li.textContent = id;
+    list.appendChild(li);
+  });
+
+  _el('delete-backup-modal').showModal();
+}
+
+function confirmDeleteBackups() {
+  var ids = _pendingDeleteIds.slice();
+  _el('delete-backup-modal').close();
+  if (ids.length === 0) return;
+
+  return fetch('/api/v1/maintenance/restore-points/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
+    body: JSON.stringify({ restore_points: ids }),
+  }).then(async function (r) {
+    if (_authGuard(r)) return;
+    if (!r.ok) {
+      showToast('error', 'Delete failed: ' + (await _apiError(r)));
+      refreshBackupJobStatus();
+      return;
+    }
+    var data = await r.json();
+    refreshBackupJobStatus();
+    _pollJob(data.job_id, function (job) {
+      htmx.ajax('GET', '/partials/backup/restore-points',
+                { target: '#restore-point-list', swap: 'innerHTML' });
+      refreshBackupJobStatus();
+      if (job.status === 'succeeded') {
+        window.dispatchEvent(new CustomEvent('papaia-backups-deleted'));
+        showToast('success', ids.length > 1
+          ? ids.length + ' restore points deleted.'
+          : 'Restore point deleted.');
+      } else {
+        showToast('error', 'Delete failed. <a href="/jobs/' + data.job_id +
+                           '" class="link">View log</a>');
+      }
     });
   });
 }
