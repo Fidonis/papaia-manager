@@ -679,6 +679,7 @@ async def partial_upgrade_check(
 async def partial_upgrade_runner(
     request: Request,
     user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
     """Polled while an upgrade runs, and once more after the manager is back.
 
@@ -696,6 +697,32 @@ async def partial_upgrade_runner(
         if status_obj is not None
         else ""
     )
+    # Prefer the block papaia-ctl printed itself. It is missing for the one
+    # failure it cannot narrate: the hand-off between phases replaces the shell,
+    # so a run that dies there (a non-executable entrypoint in the target
+    # release, exit 126) leaves the checkout moved, the config behind and no way
+    # back on screen. Rebuild one from the recorded versions for that case.
+    recovery = upgrade.recovery_from_log(log)
+    recovery_generated = False
+    if (
+        not recovery
+        and status_obj is not None
+        and not status_obj.is_running
+        and not status_obj.succeeded
+    ):
+        version = upgrade.current_version(
+            settings.papaia_config_dir, settings.papaia_workspace_dir
+        )
+        last = upgrade.read_upgrade_log(settings.papaia_config_dir, limit=1)
+        recovery = upgrade.synthetic_recovery(
+            version,
+            workspace_dir=settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
+            target=status_obj.target,
+            restore_point=last[0].restore_point if last else "",
+            exit_code=status_obj.exit_code,
+        )
+        recovery_generated = bool(recovery)
     resp = _templates.TemplateResponse(
         request,
         "partials/upgrade_runner.html",
@@ -708,7 +735,8 @@ async def partial_upgrade_runner(
             phases=upgrade.phases_from_log(
                 log, running=status_obj.is_running if status_obj else False
             ),
-            recovery=upgrade.recovery_from_log(log),
+            recovery=recovery,
+            recovery_generated=recovery_generated,
         ),
     )
     resp.headers["Cache-Control"] = "no-store"

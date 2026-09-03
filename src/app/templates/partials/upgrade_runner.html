@@ -121,17 +121,28 @@
         Manager not reachable &mdash; reconnecting&hellip;
       </div>
 
-      {# The way back, exactly as papaia-ctl printed it. Not re-derived: the
-         shell already knows which of the two forms applies, and a second copy
-         of that logic here would drift from the one that owns it. #}
+      {# The way back. Normally taken verbatim from papaia-ctl's output -- the
+         shell already knows which of the two forms applies. `recovery_generated`
+         is the exception: a run that died at the phase hand-off replaces the
+         shell before it can print anything, so the manager rebuilds the block
+         from the recorded versions instead. #}
       {% if recovery %}
       <div class="rounded-lg border border-error bg-error/10 p-4">
+        {% if recovery_generated %}
+        <p class="text-sm font-semibold mb-1">How to get back</p>
+        <p class="text-xs opacity-70 mb-3 leading-relaxed">
+          The upgrade stopped between steps, before papaia-ctl could print its own way
+          back. These commands are assembled from the recorded versions &mdash; run them
+          on the host:
+        </p>
+        {% else %}
         <p class="text-sm font-semibold mb-1">There is no automatic rollback</p>
         <p class="text-xs opacity-70 mb-3 leading-relaxed">
           A rollback that fails after a migration failed would leave an installation nobody
           can reason about, so papaia-ctl stops instead and says how to get back. Run these
           on the host:
         </p>
+        {% endif %}
         <pre class="rounded bg-base-300 p-3 text-xs whitespace-pre-wrap overflow-x-auto">{{ recovery }}</pre>
       </div>
       {% endif %}
