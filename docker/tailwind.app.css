@@ -1,4 +1,4 @@
-/* fidonis-brand: 1 -- the application shell (sidebar geometry). Tracked
+/* fidonis-brand: 2 -- the application shell (sidebar geometry). Tracked
    alongside the brand layer, adapted per interface rather than shared
    verbatim -- see tailwind.brand.css for the file that is. */
 
@@ -24,8 +24,10 @@
   --sidebar-peek-shadow: 0 0 2rem rgb(0 0 0 / 35%);
 }
 
-/* A drop shadow alone is invisible where the panel overlays base-100 #071422,
-   so the dark theme separates the peeked panel with a hairline instead. */
+/* A drop shadow alone is invisible where the panel overlays base-200 #101214,
+   so the dark theme separates the peeked panel with a hairline instead. Since
+   the card surfaces carry borders rather than shadows now, this is the rule
+   everything else follows rather than the exception it used to be. */
 [data-theme="fidonis-dark"] {
   --sidebar-peek-shadow: 0 0 0 1px rgb(255 255 255 / 10%), 0 0 2rem rgb(0 0 0 / 60%);
 }
@@ -169,6 +171,31 @@
   [data-sidebar="open"] .sidebar-icon-expand {
     display: none;
   }
+}
+
+/* ── Focus ────────────────────────────────────────────────────────────────
+   Unlayered for the same reason as the sidebar block: a rule that has to
+   survive the purge cannot depend on a class name appearing in the markup.
+
+   `--s` is the secondary role, which is the navigation-and-links blue in both
+   themes -- the same colour the active nav row is tinted with, so keyboard
+   focus and "you are here" read as one system. daisyUI 4 stores it as bare
+   OKLCH components, so it needs oklch() around it and the same --fallback-s
+   guard daisyUI's own rules use. Wrapping it in hsl() parses as an invalid
+   colour, which drops the whole shorthand and leaves outline-style: none --
+   a focus ring that silently does not exist.
+
+   This is the floor, not a reset: daisyUI ships its own :focus-visible rules
+   for .btn, .card, .link, .tab, .checkbox and friends, and those are class
+   selectors, so they keep winning on the components they are tuned for. What
+   is left over -- the nav rows, the sidebar toggle, plain anchors -- had no
+   visible focus state at all before this.
+
+   :focus-visible only: a mouse click on a card must not paint a ring. */
+:focus-visible {
+  outline: 2px solid var(--fallback-s, oklch(var(--s)));
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
