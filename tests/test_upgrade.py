@@ -29,6 +29,7 @@ from app.core.upgrade import (
     phases_from_log,
     read_upgrade_log,
     recovery_from_log,
+    synthetic_recovery,
 )
 
 _RESOLVE = "CURRENT\t1.0.0\nTARGET\t1.2.0\nTAG\tv1.2.0\nSTATUS\tok\n"
@@ -395,3 +396,66 @@ def test_the_error_prefix_is_stripped_from_the_recovery_block() -> None:
 
 def test_a_successful_run_has_no_recovery_block() -> None:
     assert recovery_from_log(_COMPLETE_LOG) == ""
+
+
+# ---------------------------------------------------------------------------
+# The way back, rebuilt when the hand-off ate the shell
+# ---------------------------------------------------------------------------
+
+
+# The run gets as far as moving the checkout and then the container exits: the
+# phase-1 -> phase-2 `exec` failed, so phase 2 never prints and neither does
+# `_upgrade_failed`. This is byte-for-byte what such a log looks like.
+_HANDOFF_ABORT_LOG = """[papaia-ctl] Stopping and removing the containers (volumes are kept)...
+[ok] stop complete.
+[papaia-ctl] Moving the checkout to v1.1.0...
+"""
+
+
+def test_a_run_that_dies_at_the_hand_off_carries_no_recovery_block() -> None:
+    assert recovery_from_log(_HANDOFF_ABORT_LOG) == ""
+
+
+def test_synthetic_recovery_rebuilds_a_way_back_from_the_versions() -> None:
+    config, workspace = _dirs("platform_version: 1.0.0\n", "1.1.0\n")
+    text = synthetic_recovery(
+        current_version(config, workspace),
+        workspace_dir=workspace,
+        config_dir=config,
+        target="1.1.0",
+        exit_code=126,
+    )
+    assert "exit 126" in text
+    assert f"git -C {Path(workspace, 'papaia')} checkout v1.0.0" in text
+    assert "start --addons" in text
+    assert "upgrade --version=1.1.0" in text
+    assert "restore --restore-point" not in text
+
+
+def test_synthetic_recovery_prefers_a_restore_point_when_one_exists() -> None:
+    config, workspace = _dirs("platform_version: 1.0.0\n", "1.1.0\n")
+    text = synthetic_recovery(
+        current_version(config, workspace),
+        workspace_dir=workspace,
+        config_dir=config,
+        target="1.1.0",
+        restore_point="2026-09-01_10-59-12",
+        exit_code=126,
+    )
+    assert "restore --restore-point=2026-09-01_10-59-12" in text
+    assert "start --addons" not in text
+
+
+def test_synthetic_recovery_is_empty_once_the_versions_agree() -> None:
+    # After a successful re-run the bundle records the target too; the block
+    # must disappear rather than linger on the acknowledged runner.
+    config, workspace = _dirs("platform_version: 1.1.0\n", "1.1.0\n")
+    assert (
+        synthetic_recovery(
+            current_version(config, workspace),
+            workspace_dir=workspace,
+            config_dir=config,
+            target="1.1.0",
+        )
+        == ""
+    )
