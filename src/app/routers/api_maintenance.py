@@ -63,6 +63,18 @@ class ScopedRestoreBody(BaseModel):
     only: list[str] = Field(min_length=1, max_length=ctl.MAX_SELECTORS)
 
 
+class DeleteRestorePointsBody(BaseModel):
+    """One or more restore points to delete.
+
+    A list rather than a path parameter so a multi-select in the UI is one
+    request and one `papaia-ctl backup-delete` call -- which is one atomic
+    rewrite of `backup.yaml` rather than N racing ones. The single-row action
+    sends a one-element list. Capped at the same ceiling as a scoped selection.
+    """
+
+    restore_points: list[str] = Field(min_length=1, max_length=ctl.MAX_SELECTORS)
+
+
 def _queue() -> JobQueue:
     from app.main import _job_queue  # noqa: PLC0415
 
@@ -282,6 +294,85 @@ async def create_backup(
         target=str(backup_dir),
         user=_username,
         params={"retention_days": _retention},
+        callback=_callback,
+    )
+    return {"job_id": job.id, "status": "queued"}
+
+
+@router.post("/restore-points/delete", status_code=status.HTTP_202_ACCEPTED)
+async def delete_restore_points(
+    body: DeleteRestorePointsBody,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
+    """Delete one or more restore points via `papaia-ctl backup-delete`.
+
+    A queued job, the same shape as a backup: `backup-delete` is not a hot path
+    -- it removes a directory and rewrites `backup.yaml` -- but routing it
+    through the single-flight worker is what serialises it against a `backup`
+    that is writing the same catalogue.
+    """
+    verify_csrf(request)
+
+    ids = list(dict.fromkeys(body.restore_points))
+    malformed = [rp for rp in ids if not backups.is_valid_restore_point_id(rp)]
+    if malformed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"not restore point ids: {', '.join(malformed)}",
+        )
+
+    backup_dir = _backup_dir(settings)
+    missing = [rp for rp in ids if backups.find_restore_point(backup_dir, rp) is None]
+    if missing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"restore point(s) not found: {', '.join(missing)}",
+        )
+
+    await _require_no_runner()
+
+    queue = _queue()
+    active = queue.active_job()
+    if active is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"a {active.action} job is already running; wait for it to finish",
+        )
+
+    _username = _user_id(user)
+    _flags = [
+        f"--backup-dir={backup_dir}",
+        *(f"--restore-point={rp}" for rp in ids),
+        "-y",
+    ]
+
+    async def _callback(ctx: JobContext) -> None:
+        ctx.log(f"[ctl] papaia-ctl backup-delete {' '.join(_flags)}")
+        gen = await run_core_verb(
+            verb="backup-delete",
+            workspace_dir=settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
+            extra_flags=_flags,
+        )
+        async for line in gen:
+            ctx.log(line)
+        write_audit_entry(
+            settings.papaia_config_dir,
+            user=_username,
+            action="backup-delete",
+            target=",".join(ids),
+            params={"restore_points": ids},
+            job_id=ctx.job.id,
+        )
+        ctx.log("[info] done")
+
+    job = await queue.enqueue(
+        action="backup-delete",
+        target=",".join(ids),
+        user=_username,
+        params={"restore_points": ids},
         callback=_callback,
     )
     return {"job_id": job.id, "status": "queued"}

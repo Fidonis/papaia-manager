@@ -43,8 +43,14 @@ ALLOWED_VERBS: frozenset[str] = frozenset(
 # delegates, so it cannot replace $PAPAIA_CONFIG_DIR however it is called. That
 # makes the property structural: allowing `restore` and passing the right flags
 # would be safe only for as long as every call site keeps passing them.
+#
+# `backup-delete` is safe for the same reason `backup` is: it runs no
+# `docker compose` command at all -- it only removes a snapshot directory and
+# rewrites `backup.yaml` under $PAPAIA_BACKUP_DIR -- and papaia-ctl requires an
+# explicit `--restore-point=ID` for every point it deletes (each a guarded
+# timestamp id), so no call from here can widen it into a mass delete.
 ALLOWED_CORE_VERBS: frozenset[str] = frozenset(
-    {"backup", "start", "stop", "restore-scoped"}
+    {"backup", "backup-delete", "start", "stop", "restore-scoped"}
 )
 
 # `upgrade` is deliberately absent from the set above, for a stronger version of

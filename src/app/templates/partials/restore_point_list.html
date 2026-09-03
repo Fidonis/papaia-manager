@@ -25,6 +25,16 @@
     <div class="card-body p-4">
       <div class="flex items-center justify-between gap-2 flex-wrap">
         <div class="flex items-center gap-2 flex-wrap">
+          {# Selection lives on #backup-selection in backup.html, outside the
+             partial this list is swapped into, so it survives a refresh. Single
+             quotes around the id: `tojson` emits its own double quotes and marks
+             the result safe, which would close a double-quoted attribute early.
+             An id is `\d{4}-..._..-..-..`, so it needs no escaping. #}
+          <input type="checkbox" class="checkbox checkbox-sm shrink-0"
+                 aria-label="select restore point {{ p.id }}"
+                 :checked="sel.includes('{{ p.id }}')"
+                 :disabled="busy"
+                 @change.prevent="toggle('{{ p.id }}')">
           <span class="font-semibold font-mono">{{ p.id }}</span>
           {% if p.result == "ok" %}
             <span class="badge badge-success badge-sm">ok</span>
@@ -60,6 +70,11 @@
             {% else %}
             <li class="disabled"><a title="This backup wrote no archive, so there is nothing to restore from.">Restore</a></li>
             {% endif %}
+            {# Destructive: `text-error`, and it confirms in a dialog. Offered for
+               every point, `failed` ones included -- a run that wrote no archive
+               is exactly the kind an operator wants to clear. #}
+            <li><a class="text-error"
+                   onclick='openDeleteBackupModal([{{ p.id|tojson }}])'>Delete</a></li>
           {% endcall %}
         {% endcall %}
       </div>

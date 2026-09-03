@@ -39,9 +39,26 @@ def test_the_core_verbs_are_exactly_the_scoped_ones_plus_backup() -> None:
     # `start` and `stop` are reachable only because the callers scope them with
     # --profiles=. `restore-scoped` is reachable because papaia-ctl refuses it
     # without --only and with --restart-clean, so it cannot replace the config
-    # directory however this process calls it. Anything else added here runs
-    # unscoped against the project this container is part of.
-    assert set(ALLOWED_CORE_VERBS) == {"backup", "start", "stop", "restore-scoped"}
+    # directory however this process calls it. `backup-delete` runs no
+    # `docker compose` command at all -- it only rewrites backup.yaml and removes
+    # a snapshot directory -- and needs an explicit --restore-point per point.
+    # Anything else added here runs unscoped against the project this container
+    # is part of.
+    assert set(ALLOWED_CORE_VERBS) == {
+        "backup",
+        "backup-delete",
+        "start",
+        "stop",
+        "restore-scoped",
+    }
+
+
+def test_backup_delete_is_a_core_verb_and_nothing_else() -> None:
+    # It is dispatched as `papaia-ctl backup-delete`, never as an addon verb or
+    # a python sub-command.
+    assert "backup-delete" in ALLOWED_CORE_VERBS
+    assert "backup-delete" not in ALLOWED_VERBS
+    assert "backup-delete" not in ALLOWED_PY_COMMANDS
 
 
 def test_restore_stays_out_of_the_core_verbs() -> None:
