@@ -26,12 +26,15 @@
       <div class="flex items-center justify-between gap-2 flex-wrap">
         <div class="flex items-center gap-2 flex-wrap">
           {# Selection lives on #backup-selection in backup.html, outside the
-             partial that this list is swapped into, so it survives a refresh. #}
+             partial this list is swapped into, so it survives a refresh. Single
+             quotes around the id: `tojson` emits its own double quotes and marks
+             the result safe, which would close a double-quoted attribute early.
+             An id is `\d{4}-..._..-..-..`, so it needs no escaping. #}
           <input type="checkbox" class="checkbox checkbox-sm shrink-0"
                  aria-label="select restore point {{ p.id }}"
-                 :checked="sel.includes({{ p.id|tojson }})"
+                 :checked="sel.includes('{{ p.id }}')"
                  :disabled="busy"
-                 @change.prevent="toggle({{ p.id|tojson }})">
+                 @change.prevent="toggle('{{ p.id }}')">
           <span class="font-semibold font-mono">{{ p.id }}</span>
           {% if p.result == "ok" %}
             <span class="badge badge-success badge-sm">ok</span>

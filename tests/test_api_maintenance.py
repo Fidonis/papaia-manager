@@ -145,6 +145,30 @@ def _run_callback(job_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# the restore-point list markup
+# ---------------------------------------------------------------------------
+
+
+def test_the_selection_checkbox_binding_is_well_formed(client: TestClient) -> None:
+    """`{{ p.id | tojson }}` emits its own double quotes and is marked safe, so
+    inside a double-quoted `:checked` / `@change` it closes the attribute early
+    and the checkbox never wires up to Alpine -- which silently disables the
+    bulk-delete bar. The id must be single-quoted instead."""
+    html = _admin(client).get("/partials/backup/restore-points").text
+    assert 'sel.includes("' not in html
+    assert f":checked=\"sel.includes('{_POINTS[0]}')\"" in html
+    assert f"@change.prevent=\"toggle('{_POINTS[0]}')\"" in html
+
+
+def test_the_backup_page_carries_the_bulk_delete_scaffolding(client: TestClient) -> None:
+    html = _admin(client).get("/backup").text
+    assert 'id="backup-selection"' in html
+    assert 'x-data="backupSelection()"' in html
+    assert 'x-show="sel.length"' in html
+    assert 'id="delete-backup-modal"' in html
+
+
+# ---------------------------------------------------------------------------
 # happy path + argv
 # ---------------------------------------------------------------------------
 
