@@ -4,7 +4,7 @@ Page routes and the application-level error handlers both render templates.
 Sharing one environment keeps a single template search path and one compiled
 template cache, instead of each module standing up its own.
 
-fidonis-brand: 1 -- the asset fingerprinting below is vendored verbatim into
+fidonis-brand: 2 -- the asset fingerprinting below is vendored verbatim into
 Fidonis/qdrant-ingest's src/ui/templating.py. Keep the two in step; see that
 repo's docs/ui.md.
 """

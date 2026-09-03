@@ -17,17 +17,28 @@
   </p>
 </div>
 
-<div class="overflow-hidden rounded-xl border border-base-300 mb-8">
+<div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   {% for module in modules %}
   {% set mh = module.health | string %}
   {% set first_of_addon = module.addon and (loop.first or modules[loop.index0 - 1].addon != module.addon) %}
 
-  {# ── Module header ── #}
-  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 border-base-300
+  {# ── Module header ──
+     State rides on a left edge stripe rather than on a wash across the whole
+     row. A 10 % tint was barely there on the old navy ground and shouted on
+     white; an edge is the same weight in both themes, and it runs down the
+     module's container rows below, which a row wash could not do.
+
+     Healthy takes the neutral border on purpose: with most modules up, a green
+     stripe on every one of them is noise, and the dot beside the name already
+     says healthy. The stripe is there to route attention to the exceptions.
+
+     Classes are spelled out per branch and never assembled -- app.css is built
+     by scanning these templates, so a computed class name would not survive. #}
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 bg-base-200 border-base-300 border-l-4
               {% if not loop.first %}border-t-2{% endif %}
-              {% if mh in ('missing', 'stopped') %}bg-error/10
-              {% elif mh in ('unhealthy', 'starting') %}bg-warning/10
-              {% else %}bg-base-200{% endif %}">
+              {% if mh in ('missing', 'stopped') %}border-l-error
+              {% elif mh in ('unhealthy', 'starting') %}border-l-warning
+              {% else %}border-l-base-300{% endif %}">
     {% if module.addon %}
       <span class="h-4 w-4 shrink-0"></span>
     {% else %}
@@ -59,7 +70,10 @@
   {% for container in module.containers %}
   {% set ch = container.health | string %}
   <div class="grid grid-cols-2 md:grid-cols-4 items-center gap-x-4 gap-y-1 px-5 py-2.5 text-sm
-              border-t border-base-300
+              border-t border-base-300 border-l-4
+              {% if mh in ('missing', 'stopped') %}border-l-error
+              {% elif mh in ('unhealthy', 'starting') %}border-l-warning
+              {% else %}border-l-base-300{% endif %}
               {% if ch == 'missing' %}bg-base-100/50{% else %}bg-base-100{% endif %}">
     <div class="col-span-2 md:col-span-1 min-w-0 truncate">
       {{ container.service }}
@@ -110,32 +124,44 @@
 </div>
 {% else %}
 
-{# ── Stats row ──────────────────────────────────────────────────── #}
-<div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+{# ── Stats row ────────────────────────────────────────────────────
+   One strip rather than five floating tiles -- see the same change in
+   addon_gallery.html. Five 3xl figures pushed the first module row off the
+   first screen on this page, which is the one page where the rows are the
+   point. The hint line under each figure went with them: "healthy" and "not
+   serving" restate the label, and "configured, no container" belongs to the
+   rows that show it. The dot repeats what the colour says, for print and for
+   a colour-blind reader. #}
+<div class="grid grid-cols-2 lg:grid-cols-5 overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l lg:first:border-l-0">
     <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Modules</p>
-    <p class="mt-1 text-3xl font-bold font-brand">{{ total }}</p>
-    <p class="text-xs opacity-40 mt-0.5">Total</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ total }}
+    </p>
   </div>
-  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+  <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l">
     <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Running</p>
-    <p class="mt-1 text-3xl font-bold font-brand text-success">{{ cnt_running }}</p>
-    <p class="text-xs opacity-40 mt-0.5">healthy</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-success">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span>{{ cnt_running }}
+    </p>
   </div>
-  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+  <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l">
     <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Degraded</p>
-    <p class="mt-1 text-3xl font-bold font-brand text-warning">{{ cnt_degraded }}</p>
-    <p class="text-xs opacity-40 mt-0.5">starting or failing</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-warning">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>{{ cnt_degraded }}
+    </p>
   </div>
-  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+  <div class="px-5 py-3.5 border-base-300 lg:border-l">
     <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Stopped</p>
-    <p class="mt-1 text-3xl font-bold font-brand text-error">{{ cnt_stopped }}</p>
-    <p class="text-xs opacity-40 mt-0.5">not serving</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-error">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-error"></span>{{ cnt_stopped }}
+    </p>
   </div>
-  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+  <div class="px-5 py-3.5 border-base-300 border-l">
     <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Not deployed</p>
-    <p class="mt-1 text-3xl font-bold font-brand text-error">{{ cnt_missing }}</p>
-    <p class="text-xs opacity-40 mt-0.5">configured, no container</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-error">
+      <span class="h-2 w-2 shrink-0 rounded-full border-2 border-error"></span>{{ cnt_missing }}
+    </p>
   </div>
 </div>
 

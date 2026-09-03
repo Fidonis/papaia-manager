@@ -182,23 +182,6 @@
         return !this.preview || tile.visibility === "all";
       },
 
-      // Listed literally so Tailwind keeps them; the cycle matches the gallery.
-      // bg-primary text-primary-content bg-secondary text-secondary-content
-      // bg-accent text-accent-content bg-success text-success-content
-      // bg-info text-info-content
-      badge(gi, ti) {
-        const palette = [
-          "bg-primary text-primary-content",
-          "bg-secondary text-secondary-content",
-          "bg-accent text-accent-content",
-          "bg-success text-success-content",
-          "bg-info text-info-content",
-        ];
-        let index = ti;
-        for (let i = 0; i < gi; i += 1) index += this.groups[i].tiles.length;
-        return palette[index % palette.length];
-      },
-
       // ── Groups ───────────────────────────────────────────────────────────
 
       addGroup() {

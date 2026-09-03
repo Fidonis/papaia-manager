@@ -84,17 +84,18 @@
 {% endmacro %}
 
 
-{# `bg-base-200` rather than the tinted `bg-primary/10` the services bar used
-   while it was a static block: sticky, it now floats over the list, and a 10 %
-   tint would let the rows underneath read through it. The primary border and
-   the primary count carry the "selection active" signal instead.
+{# `bg-base-100` -- the raised surface -- rather than the tinted `bg-primary/10`
+   the services bar used while it was a static block: sticky, it floats over the
+   list, and a 10 % tint would let the rows underneath read through it. It is the
+   one surface here that keeps a shadow, because it genuinely hovers. The primary
+   border and the primary count carry the "selection active" signal instead.
 
    `style="display:none"` rather than `x-cloak`, which needs a stylesheet rule
    this project does not carry -- same anti-FOUC convention as the addon
    controls. #}
 {% macro bulk_bar(show) %}
 <div style="display:none" x-show="{{ show }}"
-     class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 mt-4 px-5 py-3 rounded-xl border border-primary bg-base-200 shadow-lg">
+     class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 mt-4 px-5 py-3 rounded-xl border border-primary bg-base-100 shadow-lg">
   {{ caller() }}
 </div>
 {% endmacro %}

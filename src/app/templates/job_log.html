@@ -2,9 +2,9 @@
 {% block title %}Job {{ job_id }} — papAIa manager{% endblock %}
 
 {% block page_title %}Job Log{% endblock %}
-{% block page_subtitle %}
-<a href="/jobs" class="mt-0.5 text-sm opacity-50 hover:opacity-80 transition-opacity flex items-center gap-1">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+{% block page_breadcrumb %}
+<a href="/jobs" class="mb-0.5 inline-flex items-center gap-1 text-xs opacity-50 hover:opacity-80 transition-opacity">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
   </svg>
   Jobs
@@ -12,7 +12,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="card bg-base-200 shadow">
+<div class="card bg-base-100 border border-base-300">
   <div class="card-body">
     <div class="flex items-center gap-3 mb-2">
       <h2 class="card-title text-base font-semibold">Job <span class="font-mono text-sm opacity-60">{{ job_id }}</span></h2>

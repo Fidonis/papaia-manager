@@ -18,26 +18,36 @@
                     + addons | selectattr('status', 'equalto', 'installed') | list | length %}
 {% set cnt_avail    = addons | selectattr('status', 'equalto', 'available') | list | length %}
 
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+{# One strip rather than four floating tiles. Four cards with 3xl figures took
+   most of the first screen before the first add-on appeared, and the reading
+   they support -- how the counts compare -- is easier side by side with a rule
+   between them than across four gaps. The dot repeats the state the colour
+   already carries, so the row survives a monochrome print and a colour-blind
+   reader. Classes are spelled out per figure; nothing is assembled. #}
+<div class="grid grid-cols-2 lg:grid-cols-4 overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l lg:first:border-l-0">
     <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Add-Ons</p>
-    <p class="mt-1 text-3xl font-bold font-brand">{{ cnt_total }}</p>
-    <p class="text-xs opacity-40 mt-0.5">Total</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ cnt_total }}
+    </p>
   </div>
-  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+  <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l">
     <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Active</p>
-    <p class="mt-1 text-3xl font-bold font-brand text-success">{{ cnt_running }}</p>
-    <p class="text-xs opacity-40 mt-0.5">running</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-success">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span>{{ cnt_running }}
+    </p>
   </div>
-  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+  <div class="px-5 py-3.5 border-base-300 lg:border-l">
     <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Disabled</p>
-    <p class="mt-1 text-3xl font-bold font-brand text-warning">{{ cnt_inactive }}</p>
-    <p class="text-xs opacity-40 mt-0.5">paused</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-warning">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>{{ cnt_inactive }}
+    </p>
   </div>
-  <div class="rounded-xl bg-base-200 px-5 py-4 shadow-sm">
+  <div class="px-5 py-3.5 border-base-300 border-l">
     <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Available</p>
-    <p class="mt-1 text-3xl font-bold font-brand">{{ cnt_avail }}</p>
-    <p class="text-xs opacity-40 mt-0.5">from catalog</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ cnt_avail }}
+    </p>
   </div>
 </div>
 
@@ -48,26 +58,22 @@
   <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Add-Ons &nbsp;·&nbsp; {{ cnt_total }} modules</p>
 </div>
 
-{# ── Icon colour cycling (all classes listed literally for Tailwind) #}
-{# bg-primary text-primary-content                                   #}
-{# bg-secondary text-secondary-content                               #}
-{# bg-accent text-accent-content                                     #}
-{# bg-success text-success-content                                   #}
-{# bg-info text-info-content                                         #}
-{% set _icon_bg = ['bg-primary',   'bg-secondary',   'bg-accent',   'bg-success',   'bg-info']   %}
-{% set _icon_fg = ['text-primary-content', 'text-secondary-content', 'text-accent-content', 'text-success-content', 'text-info-content'] %}
+{# The monogram is decoration, so it takes a neutral surface. It used to cycle
+   through primary/secondary/accent/success/info, which put a green square
+   beside a green status badge and an amber one beside a real warning -- five
+   colours that looked like they meant something and did not. Every accent role
+   now carries exactly one meaning, and none of them is "next in the list". #}
 
 {# ── Add-on card grid ───────────────────────────────────────────── #}
 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
   {% for addon in addons %}
-  {% set ci = loop.index0 % 5 %}
-  <div x-data="{ busy: false, activeVerb: '' }" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow flex flex-col">
+  <div x-data="{ busy: false, activeVerb: '' }" class="card bg-base-100 border border-base-300 hover:border-base-content/25 transition-colors flex flex-col">
     <div class="card-body p-5 flex flex-col gap-3">
 
       {# Header: icon + name/meta + badge #}
       <div class="flex items-start gap-3">
         <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-extrabold font-brand uppercase
-                     {{ _icon_bg[ci] }} {{ _icon_fg[ci] }}">
+                     bg-base-300 text-base-content">
           {{ addon.name[0] }}
         </span>
         <div class="flex-1 min-w-0">
@@ -108,7 +114,7 @@
           <span class="badge badge-outline badge-xs">v{{ addon.catalog_version }}</span>
         {% endif %}
         {% if addon.update_available %}
-          <span class="badge badge-warning badge-xs">Update</span>
+          <span class="badge badge-accent badge-xs">Update</span>
         {% endif %}
         {% if addon.shadowed_by %}
           <span class="badge badge-outline badge-xs" title="Same version also in: {{ addon.shadowed_by | join(', ') }}">also in {{ addon.shadowed_by | join(', ') }}</span>

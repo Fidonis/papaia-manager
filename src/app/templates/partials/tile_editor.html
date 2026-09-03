@@ -118,8 +118,8 @@
           <template x-for="(tile, ti) in group.tiles" :key="tile._id">
             {# `overflow-visible` because daisyUI's card clips its content and
                the overflow menu is absolutely positioned inside it. #}
-            <div class="card bg-base-200 shadow-sm overflow-visible relative"
-                 :class="$store.tiles.preview ? '' : 'cursor-pointer hover:shadow-md transition-shadow'"
+            <div class="card bg-base-100 border border-base-300 overflow-visible relative"
+                 :class="$store.tiles.preview ? '' : 'cursor-pointer hover:border-base-content/25 transition-colors'"
                  :data-tile-id="tile._id"
                  x-show="$store.tiles.tileVisible(tile)"
                  @click="if (!$store.tiles.preview) $store.tiles.openTile(gi, ti)">
@@ -128,11 +128,11 @@
                 <div class="flex items-start gap-3">
                   <template x-if="tile.icon">
                     <img :src="tile.icon" alt=""
-                         class="h-11 w-11 shrink-0 rounded-xl object-contain bg-base-100 p-1">
+                         class="h-11 w-11 shrink-0 rounded-xl object-contain bg-base-200 p-1">
                   </template>
                   <template x-if="!tile.icon">
-                    <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-extrabold font-brand uppercase"
-                          :class="$store.tiles.badge(gi, ti)"
+                    <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-extrabold font-brand uppercase
+                                 bg-base-300 text-base-content"
                           x-text="(tile.name || '?').charAt(0)"></span>
                   </template>
 
@@ -220,7 +220,7 @@
      the list above it and must not scroll away from it. #}
   <div style="display:none"
        x-show="$store.tiles.dirty > 0 && !$store.tiles.preview"
-       class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 mt-6 px-5 py-3 rounded-xl border border-primary bg-base-200 shadow-lg">
+       class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 mt-6 px-5 py-3 rounded-xl border border-primary bg-base-100 shadow-lg">
     <span class="text-sm">
       <span class="font-semibold" x-text="$store.tiles.dirty"></span>
       <span x-text="$store.tiles.dirty === 1 ? 'unsaved change' : 'unsaved changes'"></span>
@@ -329,7 +329,7 @@
             <div class="rounded-xl bg-base-200 p-4">
               <p class="text-xs uppercase tracking-wide opacity-50 mb-3">Live preview</p>
 
-              <div class="card bg-base-100 shadow-sm">
+              <div class="card bg-base-100 border border-base-300">
                 <div class="card-body p-4 gap-2">
                   <div class="flex items-start gap-3">
                     <template x-if="$store.tiles.dialog.tile.icon">

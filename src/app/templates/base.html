@@ -1,5 +1,5 @@
 {#
-  fidonis-brand: 1 -- four pieces of this template are vendored verbatim into
+  fidonis-brand: 2 -- four pieces of this template are vendored verbatim into
   Fidonis/qdrant-ingest's src/ui/templates/base.html: the theme-init script
   just below, the <meta name="theme-color">/favicon/stylesheet/script tags,
   the brand-mark SVG in the sidebar header, and the dark-mode toggle control.
@@ -37,7 +37,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf" content="{{ csrf_token }}">
-  <meta name="theme-color" content="#0a2f4d">
+  {# One per scheme: a single value painted the browser chrome navy next to a
+     light panel and next to a graphite one alike. #}
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101214" media="(prefers-color-scheme: dark)">
   <title>{% block title %}papAIa manager by Fidonis{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="{{ asset_url('favicon.svg') }}">
   <link rel="stylesheet" href="{{ asset_url('app.css') }}">
@@ -364,7 +367,7 @@
   </script>
 </head>
 <body
-  class="bg-base-100 text-base-content"
+  class="bg-base-200 text-base-content"
   hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'
   x-data
 >
@@ -387,7 +390,7 @@
      <html data-sidebar> in app.css -- see the "Sidebar" block in
      docker/tailwind.input.css. Alpine is used only to dismiss the mobile
      drawer; the collapse itself works without JavaScript having booted. #}
-  <aside class="app-sidebar fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-base-200 border-r border-base-300"
+  <aside class="app-sidebar fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-base-100 border-r border-base-300"
          x-data
          @click.outside="closeSidebarDrawer()">
 
@@ -411,11 +414,17 @@
        its own separating margin. #}
     <nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
 
-      {# aria-label on every nav row: the visible text is display:none while the
+      {# The active row is a tint, not a fill. Both `primary` and `secondary` are
+         blue in the dark theme, and what tells an action apart from a location
+         is the form rather than the hue: filled is something you do, tinted is
+         where you are. A filled active row would read as a second primary
+         button next to the real one in the header.
+
+         aria-label on every nav row: the visible text is display:none while the
          sidebar is a rail, which also removes it from the accessibility tree. #}
       <a href="/" aria-label="Dashboard"
          class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                {{ 'bg-primary text-primary-content' if nav_dashboard else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+                {{ 'bg-secondary/15 text-secondary font-semibold' if nav_dashboard else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
         </svg>
@@ -438,7 +447,7 @@
 
         <a href="/services" aria-label="Services"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-primary text-primary-content' if nav_services else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_services else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
           </svg>
@@ -447,7 +456,7 @@
 
         <a href="/addons" aria-label="Add-Ons"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-primary text-primary-content' if nav_addons else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_addons else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
           </svg>
@@ -456,7 +465,7 @@
 
         <a href="/catalogs" aria-label="Catalogs"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-primary text-primary-content' if nav_catalogs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_catalogs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
           </svg>
@@ -473,7 +482,7 @@
            The Jobs page itself is where it says what and since when. #}
         <a href="/jobs" aria-label="Jobs"
            class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-primary text-primary-content' if nav_jobs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_jobs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
           </svg>
@@ -489,7 +498,7 @@
            label spells out. #}
         <a href="/backup" aria-label="Backup / Restore"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-primary text-primary-content' if nav_backup else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_backup else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
           </svg>
@@ -507,7 +516,7 @@
            the cached check, never git or the network. #}
         <a href="/upgrade" aria-label="Update"
            class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-primary text-primary-content' if nav_upgrade else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_upgrade else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
           </svg>
@@ -565,12 +574,12 @@
       <div class="dropdown dropdown-top w-full">
         <div tabindex="0" role="button" aria-label="Account menu for {{ user.preferred_username }}"
              class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors w-full">
-          <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-content text-xs font-bold uppercase">
+          <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-300 text-base-content text-xs font-bold uppercase">
             {{ user.preferred_username[0] }}
           </span>
           <span class="sidebar-label truncate">{{ user.preferred_username }}</span>
         </div>
-        <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-10 w-52 p-2 shadow mb-1">
+        <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-10 w-52 p-2 shadow border border-base-300 mb-1">
           <li>
             <form method="post" action="/auth/logout">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -588,9 +597,19 @@
   <div class="app-main ml-64 flex min-h-screen w-full flex-col">
 
     <!-- Page header -->
+    {# The cap is on the inner row rather than on the header itself, so the
+       border and the background still run the full width -- the header has to
+       read as the top edge of the window, not as a floating band. #}
     <header class="sticky top-0 z-20 border-b border-base-300 bg-base-100 px-8 py-5">
-      <div class="flex items-center justify-between gap-4">
+      <div class="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-4">
         <div class="min-w-0">
+          {# Two slots around the title, and a page fills at most one of them.
+             `page_breadcrumb` is for a page that sits under another one and
+             says where it came from; it goes above the title, because the path
+             is read before the name. `page_subtitle` describes a top-level page
+             and goes below. A page with a parent does not also need a sentence
+             about itself -- the parent already said it. #}
+          {% block page_breadcrumb %}{% endblock %}
           {# `truncate`, because the action cluster next to it is `shrink-0`: an
              add-on name in a narrow viewport has to give way, and ellipsising is
              the graceful version of that -- without it the whole title collapses
@@ -631,7 +650,9 @@
 
     <!-- Content -->
     <main class="flex-1 px-8 py-6">
-      {% block content %}{% endblock %}
+      <div class="mx-auto w-full max-w-[1680px]">
+        {% block content %}{% endblock %}
+      </div>
     </main>
 
   </div>

@@ -1,4 +1,4 @@
-/* fidonis-brand: 1 -- vendored verbatim (as of this stamp) into
+/* fidonis-brand: 2 -- vendored verbatim (as of this stamp) into
    Fidonis/qdrant-ingest's docker/tailwind.brand.css. Bump the stamp here and
    there, in the same milestone, whenever this file changes. See
    Fidonis/qdrant-ingest's docs/ui.md for the counterpart's side of the
@@ -64,12 +64,14 @@
 
   /* Logo mark: the gold square is fixed-color (matches fidonis.de); the
      three navy squares lighten in dark mode so the mark stays legible
-     against the dark navy background. */
+     against the dark ground. The dark value is desaturated against the
+     former #d0e6f5: on graphite rather than navy the old tint read as a
+     cold highlight instead of as the mark. */
   .brand-mark-ink {
     fill: #0a2f4d;
   }
   [data-theme="fidonis-dark"] .brand-mark-ink {
-    fill: #d0e6f5;
+    fill: #c3d2de;
   }
 
   [data-theme="fidonis-light"] {
