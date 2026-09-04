@@ -12,6 +12,36 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [1.0.0] - 2026-09-04
+
+### Added
+- **Neutral dark theme and modernised panel layout.** The navy dark theme is replaced with a
+  cool-neutral graphite one so status colours no longer sit on blue; each accent role now
+  carries one meaning — primary is a filled action, secondary is navigation and links, accent
+  is "update available", and the state colours mean only state. Seven layout corrections ship
+  alongside it: `base-100` is the raised surface and `base-200` the page ground in both
+  themes, card shadows become hairline borders, the active navigation row is a tint rather
+  than a filled block, monogram squares stop cycling through success/info, stat tiles condense
+  into one bordered strip, module state moves to a left-edge stripe running down the module's
+  container rows, and content is capped at 1680px with a breadcrumb above the title on detail
+  pages. The light theme keeps its role assignment and navy primary; only its neutral ramp and
+  state colours change — those had been badge colours used as body copy and read as low as
+  1.76:1 on white, now clearing 4.5:1 against both surfaces.
+- **Delete restore points from the Backup page.** A per-row **Delete** action and checkbox
+  multi-select with a bulk **Delete selected** bar, backed by a new
+  `POST /api/v1/maintenance/restore-points/delete`. The endpoint validates each id against the
+  catalogue (400 for a malformed id, 404 for an unknown one) and runs a queued job invoking
+  `papaia-ctl backup-delete`, serialised against a concurrent backup through the same job
+  queue; refused while another job or a restore/upgrade runner is active.
+
+### Fixed
+- The Update panel now always shows a way back when an upgrade run aborts between phases.
+  `papaia-ctl` re-execs itself from the target tree at the phase-1 → phase-2 hand-off, so a run
+  that dies there previously left the panel with only a raw exit code — checkout on the new
+  tag, config on the old version, stack down, and no recovery guidance. A recovery block is
+  now synthesised from the recorded version state whenever the log carries none, labelled as
+  manager-assembled rather than verbatim `papaia-ctl` output.
+
 ## [0.6.0] - 2026-09-02
 
 ### Added
@@ -305,6 +335,8 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[1.0.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.0.0
+
 [0.6.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.6.0
 
 [0.5.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.5.0
@@ -317,4 +349,4 @@ based on merged pull requests; this file mirrors the published releases.
 
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.0.0...HEAD

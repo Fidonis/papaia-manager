@@ -48,16 +48,12 @@
 </div>
 {% else %}
 
-{# ── Icon colour cycling (all classes listed literally for Tailwind) #}
-{# bg-primary text-primary-content                                   #}
-{# bg-secondary text-secondary-content                               #}
-{# bg-accent text-accent-content                                     #}
-{# bg-success text-success-content                                   #}
-{# bg-info text-info-content                                         #}
-{% set _icon_bg = ['bg-primary',   'bg-secondary',   'bg-accent',   'bg-success',   'bg-info']   %}
-{% set _icon_fg = ['text-primary-content', 'text-secondary-content', 'text-accent-content', 'text-success-content', 'text-info-content'] %}
+{# The monogram is decoration, so it takes a neutral surface. It used to cycle
+   through primary/secondary/accent/success/info, which put a green square
+   beside a green status badge and an amber one beside a real warning -- five
+   colours that looked like they meant something and did not. Every accent role
+   now carries exactly one meaning, and none of them is "next in the list". #}
 
-{% set _ns = namespace(index=0) %}
 {% for group in groups %}
 <section class="{% if not loop.first %}mt-10{% endif %}">
 
@@ -70,22 +66,20 @@
 
   <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
     {% for tile in group.tiles %}
-    {% set ci = _ns.index % 5 %}
-    {% set _ns.index = _ns.index + 1 %}
     <a href="{{ tile.href }}"
        target="_blank"
        rel="noopener noreferrer"
-       class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow flex flex-col group">
+       class="card bg-base-100 border border-base-300 hover:border-base-content/25 transition-colors flex flex-col group">
       <div class="card-body p-5 flex flex-col gap-3">
 
         {# Header: icon + name #}
         <div class="flex items-start gap-3">
           {% if tile.icon %}
             <img src="{{ tile.icon }}" alt=""
-                 class="h-11 w-11 shrink-0 rounded-xl object-contain bg-base-100 p-1">
+                 class="h-11 w-11 shrink-0 rounded-xl object-contain bg-base-200 p-1">
           {% else %}
             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-extrabold font-brand uppercase
-                         {{ _icon_bg[ci] }} {{ _icon_fg[ci] }}">
+                         bg-base-300 text-base-content">
               {{ tile.name[0] }}
             </span>
           {% endif %}

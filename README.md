@@ -226,10 +226,11 @@ GET /api/v1/jobs/{id}/log
 GET    /api/v1/maintenance/backup-dir
 GET    /api/v1/maintenance/restore-points
 GET    /api/v1/maintenance/restore-points/{id}
-POST   /api/v1/maintenance/backup            # {retention_days?} → 202 {job_id}
-POST   /api/v1/maintenance/restore           # {restore_point, restart_clean?} → 202
+POST   /api/v1/maintenance/restore-points/delete  # {ids} → 202 {job_id}
+POST   /api/v1/maintenance/backup                 # {retention_days?} → 202 {job_id}
+POST   /api/v1/maintenance/restore                # {restore_point, restart_clean?} → 202
 GET    /api/v1/maintenance/restore/status
-DELETE /api/v1/maintenance/restore           # acknowledge a finished restore
+DELETE /api/v1/maintenance/restore                # acknowledge a finished restore
 
 GET    /api/v1/stack/groups                  # the deployment's service groups
 POST   /api/v1/stack/groups/start            # {groups} → 202 {job_id}

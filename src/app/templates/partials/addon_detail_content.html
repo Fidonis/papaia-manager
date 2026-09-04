@@ -68,7 +68,7 @@
 <!-- Configuration -->
 {% if addon.env_fields %}
 {% set editable = s in ("running", "installed", "inactive") and addon.installed_version %}
-<div class="card bg-base-200 mb-6" x-data="{ editMode: false, dirty: false, busy: false }">
+<div class="card bg-base-100 border border-base-300 mb-6" x-data="{ editMode: false, dirty: false, busy: false }">
   <div class="card-body">
     <div class="flex items-center justify-between mb-2">
       <h3 class="card-title text-base">Configuration</h3>

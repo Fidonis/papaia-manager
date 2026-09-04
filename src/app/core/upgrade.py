@@ -626,6 +626,63 @@ def recovery_from_log(log: str) -> str:
     return ""
 
 
+def synthetic_recovery(
+    version: VersionState,
+    *,
+    workspace_dir: str,
+    config_dir: str,
+    target: str = "",
+    restore_point: str = "",
+    exit_code: int | None = None,
+) -> str:
+    """A way back for a run that died between phases without printing one.
+
+    `papaia-ctl` re-execs itself from the target tree at the phase-1 -> phase-2
+    boundary. When that hand-off is what failed -- a non-executable entrypoint in
+    the target release (exit 126), a bad interpreter (127), or a noexec checkout
+    -- the shell is already gone, so `_upgrade_failed`'s block never reaches the
+    log and `recovery_from_log` returns "". The numbers to rebuild it are still
+    on hand: the version the bundle records, the tag the checkout was moved to,
+    and the two paths.
+
+    Returns "" unless the state looks like that half-finished upgrade -- the
+    checkout moved, the configuration did not -- so the caller keeps preferring
+    the verbatim block whenever the log carries one.
+    """
+    frm = version.recorded.strip()
+    to = (target or version.checkout).strip()
+    if not frm or not to or frm == to:
+        return ""
+    repo = repo_path(workspace_dir)
+    ctl = repo / "tools" / "papaia-ctl"
+    lines: list[str] = []
+    if exit_code in (126, 127):
+        lines += [
+            f"# exit {exit_code} means {to}'s tools/papaia-ctl was not executable when the",
+            "# upgrade handed off to it (or the checkout is on a noexec mount).",
+            "",
+        ]
+    lines += [
+        f"The checkout was moved to v{to} but the configuration is still {frm}, and the",
+        "stack is stopped. The upgrade stopped before it could print its own way back.",
+        "",
+        f"To go back to {frm}:",
+        f"    git -C {repo} checkout v{frm}",
+    ]
+    if restore_point:
+        lines.append(
+            f"    bash {ctl} restore --restore-point={restore_point} --config-dir={config_dir}"
+        )
+    else:
+        lines.append(f"    bash {ctl} start --addons --config-dir={config_dir}")
+    lines += [
+        "",
+        f"To go forward to {to} once the cause is fixed:",
+        f"    bash {ctl} upgrade --version={to} --config-dir={config_dir}",
+    ]
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # The check
 # ---------------------------------------------------------------------------
