@@ -45,7 +45,7 @@ the VM boundary.
 ## How it works
 
 **Dashboard and access tiers.** Two Keycloak realm roles gate the UI.
-`MANAGER_ADMIN_ROLE` (default `admin`) reaches every surface;
+`MANAGER_ADMIN_ROLE` (default `manager-admin`) reaches every surface;
 `MANAGER_USER_ROLE` (default `user`) reaches the dashboard only. Accounts
 holding neither role are rejected at login. The dashboard at `/` is a tile
 overview of the deployed applications, held in

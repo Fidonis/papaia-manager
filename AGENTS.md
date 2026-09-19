@@ -113,7 +113,7 @@ SessionMiddleware  (itsdangerous-signed cookie)
 role dependency  (deps.py → roles.py)
   │  AdminUser  →  MANAGER_ADMIN_ROLE required        (add-ons, catalogs, jobs,
   │                                                    backup, services)
-  │  AnyUser    →  admin OR MANAGER_USER_ROLE         (dashboard, status pill)
+  │  AnyUser    →  MANAGER_ADMIN_ROLE OR MANAGER_USER_ROLE (dashboard, status pill)
   │  role missing  →  403  (HTML page, or JSON under /api/)
   ▼
 Route handler
@@ -264,7 +264,7 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `OIDC_ISSUER_KC_AUTH` | Browser-side Keycloak authorization endpoint |
 | `OIDC_ISSUER_KC_TOKEN` | Server-side token endpoint (internal Docker DNS) |
 | `OIDC_ISSUER_KC_CERTS` | JWKS endpoint for id_token validation |
-| `MANAGER_ADMIN_ROLE` | Keycloak realm role granting full access — add-ons, catalogs, jobs, dashboard (default: `admin`) |
+| `MANAGER_ADMIN_ROLE` | Keycloak realm role granting full access — add-ons, catalogs, jobs, dashboard (default: `manager-admin`) |
 | `MANAGER_USER_ROLE` | Keycloak realm role granting dashboard-only access (default: `user`) |
 | `MANAGER_HOST` | Public base URL of the manager (used as OIDC redirect URI base) |
 | `MANAGER_OIDC_CLIENT_ID` | Keycloak client ID (default: `papaia-manager`) |
