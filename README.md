@@ -168,7 +168,7 @@ its status and log stay readable by the recreated manager container once the
 stack is back up. The page loses its connection while that happens, reconnects on
 its own, and reports the outcome.
 
-**Core updates.** An admin-only `/upgrade` page that moves the whole deployment
+**Core upgrades.** An admin-only `/upgrade` page that moves the whole deployment
 to a newer papAIa release. It is two halves. The check resolves the target tag,
 runs the add-on compatibility gate against a temporary worktree of it, and lists
 the release migrations that would run — all of it read-only, and all of it
@@ -186,6 +186,14 @@ shown as the phases papaia-ctl announces, over the raw log, with the outage
 handled as a reconnect. papaia-ctl has no automatic rollback by design, so a
 failed upgrade renders its recovery commands verbatim and links the restore point
 taken beforehand.
+
+Upgrades leave the previous versions of the stack's Docker images behind. The
+upgrade dialog offers to remove them once the upgrade has succeeded (selected by
+default), and the page lists whatever is still there afterwards — for the core
+stack and the installed add-ons — so it can be removed later. An image counts as
+outdated only if no container uses it, the installed release does not declare it,
+and it belongs to a repository the stack declares; unrelated images are never
+touched, and nothing is offered while the declared images cannot be resolved.
 
 **Updates.** Refresh the catalog, diff the candidate manifest's
 `.env.example` against the installed bundle (new `CHANGE_ME` keys prompt for
@@ -245,9 +253,11 @@ POST   /api/v1/stack/runner/clear            # acknowledge a finished action
 GET    /api/v1/upgrade/status                # version, checkout and backup state
 GET    /api/v1/upgrade/check                 # the last check, without running one
 POST   /api/v1/upgrade/check                 # {version?} fetch tags and evaluate
-POST   /api/v1/upgrade                       # {version, force?, no_backup?} → 202
+POST   /api/v1/upgrade                       # {version, force?, no_backup?, prune_images?} → 202
 GET    /api/v1/upgrade/runner                # its status and log
 POST   /api/v1/upgrade/runner/clear          # acknowledge a finished upgrade
+GET    /api/v1/upgrade/images                # outdated Docker images of the stack and add-ons
+POST   /api/v1/upgrade/images/prune          # {images?} remove them (all, or the named ids)
 ```
 
 ## Layout

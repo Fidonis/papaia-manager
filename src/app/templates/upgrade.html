@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Update — papAIa manager{% endblock %}
+{% block title %}Upgrade — papAIa manager{% endblock %}
 
-{% block page_title %}Update{% endblock %}
+{% block page_title %}Upgrade{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Move this deployment to a newer papAIa release</p>{% endblock %}
 
 {# Tier 1: one filled primary button, and it ships disabled.
@@ -17,16 +17,17 @@
        ready: false, target: null, checkFailed: false, forceable: false, gatePassed: true,
        hasBackupDir: false, current: '', runnerActive: false,
        checking: true, starting: false,
-       force: false, noBackup: false, confirmed: false,
+       force: false, noBackup: false, pruneImages: true, confirmed: false,
        get blocked() { return this.runnerActive || this.checking || this.starting },
        open() {
-         this.force = false; this.noBackup = !this.hasBackupDir; this.confirmed = false;
+         this.force = false; this.noBackup = !this.hasBackupDir; this.pruneImages = true;
+         this.confirmed = false;
          $refs.upgradeModal.showModal();
        },
        run() {
          $refs.upgradeModal.close();
          this.starting = true;
-         startUpgrade(this.target, this.force, this.noBackup)
+         startUpgrade(this.target, this.force, this.noBackup, this.pruneImages)
            .then(ok => { if (!ok) this.starting = false });
        }
      }"
@@ -40,7 +41,7 @@
                                    checking = false"
      @papaia-upgrade-runner.window="runnerActive = $event.detail.active">
 
-  <button class="btn btn-ghost btn-sm btn-square" aria-label="Check for updates"
+  <button class="btn btn-ghost btn-sm btn-square" aria-label="Check for upgrades"
           :disabled="checking || starting"
           @click="checking = true; runCheck(null).finally(() => checking = false)">
     <span style="display:none" x-show="checking" class="loading loading-spinner loading-xs"></span>
@@ -65,7 +66,7 @@
   <dialog x-ref="upgradeModal" class="modal">
     <div class="modal-box max-w-lg">
       <h3 class="font-bold text-base mb-1">
-        Update to <span x-text="target"></span>?
+        Upgrade to <span x-text="target"></span>?
       </h3>
       <p class="text-sm opacity-60 mb-4 leading-relaxed">
         papAIa moves from <span class="font-mono" x-text="current"></span> to
@@ -83,6 +84,7 @@
         <li>The checkout moves to <span class="font-mono" x-text="'v' + target"></span></li>
         <li>The release migrations run against the configuration</li>
         <li>The stack and every active add-on start again</li>
+        <li style="display:none" x-show="pruneImages">Outdated Docker images are removed</li>
       </ol>
 
       <div class="alert alert-warning py-2 mb-4">
@@ -122,6 +124,21 @@
         </span>
       </label>
 
+      {# On by default, unlike the two options above: it is housekeeping, not a
+         risk the operator accepts. Nothing a running container uses is touched,
+         and what it removes can be pulled again -- but it only runs once the
+         upgrade has succeeded, so a failed run leaves every image in place. #}
+      <label class="flex items-start gap-2 text-sm mb-3">
+        <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="pruneImages">
+        <span>
+          Remove outdated Docker images afterwards
+          <span class="block text-xs opacity-50">
+            Images of the core stack and the installed add-ons that the new release no
+            longer uses. Only after a successful upgrade; volumes are never touched.
+          </span>
+        </span>
+      </label>
+
       <label class="flex items-start gap-2 text-sm mb-4">
         <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="confirmed">
         <span>
@@ -136,7 +153,7 @@
       <div class="modal-action mt-0">
         <button class="btn btn-ghost btn-sm" @click="$refs.upgradeModal.close()">Cancel</button>
         <button class="btn btn-primary btn-sm" :disabled="!confirmed" @click="run()">
-          Start update
+          Start upgrade
         </button>
       </div>
     </div>
@@ -172,6 +189,42 @@
      hx-trigger="load"
      hx-swap="innerHTML"></div>
 
+{# Images the stack no longer needs. Lazy, and never part of the page shell: it
+   runs `docker compose config` for the core and every installed add-on, which
+   costs seconds. The partial owns its own heading and refresh button. #}
+<div id="upgrade-images-slot" class="mb-6"
+     hx-get="/partials/upgrade/images"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <div class="flex justify-center py-10">
+    <span class="loading loading-spinner loading-md text-primary"></span>
+  </div>
+</div>
+
+{# Plain DOM rather than Alpine, and outside the slot above: the slot is swapped
+   after every removal and must not rebuild a dialog that is open. The list is
+   filled with textContent nodes, never innerHTML -- image names come from the
+   daemon. #}
+<dialog id="prune-images-modal" class="modal">
+  <div class="modal-box max-w-md">
+    <h3 class="font-bold text-base mb-1">
+      Remove <span id="prune-images-count"></span>?
+    </h3>
+    <p class="text-sm opacity-60 mb-3 leading-relaxed">
+      No container uses them and the deployed release does not declare them. Volumes are not
+      touched, and an image that is needed again is pulled again on the next start.
+    </p>
+    <ul id="prune-images-list"
+        class="rounded-lg border border-base-300 px-4 py-2 mb-4 max-h-48 overflow-y-auto text-xs font-mono"></ul>
+    <div class="modal-action mt-0">
+      <button class="btn btn-ghost btn-sm"
+              onclick="document.getElementById('prune-images-modal').close()">Cancel</button>
+      <button class="btn btn-error btn-sm" onclick="confirmPruneImages()">Remove</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
 <div class="mb-3 flex items-center justify-between gap-3">
   <h2 class="font-brand text-lg font-bold">History</h2>
 </div>
@@ -184,7 +237,7 @@
 <script>
 // The check is not run by any GET: it fetches from the remote and materialises a
 // git worktree of the target tag. So the page asks for one explicitly on load,
-// which is what makes "open the page" mean "look for updates".
+// which is what makes "open the page" mean "look for upgrades".
 function _csrfToken() {
   return document.querySelector('meta[name=csrf]').content;
 }
@@ -221,14 +274,14 @@ function runCheck(version) {
   }).then(async function (r) {
     if (_authGuard(r)) return false;
     if (!r.ok) {
-      showToast('error', 'Update check failed: ' + (await _upgradeError(r)));
+      showToast('error', 'Upgrade check failed: ' + (await _upgradeError(r)));
       refreshUpgradeStatus();
       return false;
     }
     refreshUpgradeStatus();
     return true;
   }).catch(function () {
-    showToast('error', 'Update check failed: the manager could not be reached');
+    showToast('error', 'Upgrade check failed: the manager could not be reached');
     return false;
   });
 }
@@ -240,27 +293,31 @@ function recheckVersion(version) {
 // startUpgrade: 202 and then nothing to poll in this request -- the runner
 // outlives us. #upgrade-runner picks the outcome back up, here and after the
 // reload that follows the manager being recreated.
-function startUpgrade(version, force, noBackup) {
+function startUpgrade(version, force, noBackup, pruneImages) {
   return fetch('/api/v1/upgrade', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken() },
-    body: JSON.stringify({ version: version, force: force, no_backup: noBackup }),
+    body: JSON.stringify({
+      version: version, force: force, no_backup: noBackup, prune_images: pruneImages,
+    }),
   }).then(async function (r) {
     if (_authGuard(r)) return false;
     if (!r.ok) {
-      showToast('error', 'Update refused: ' + (await _upgradeError(r)));
+      showToast('error', 'Upgrade refused: ' + (await _upgradeError(r)));
       refreshUpgradeRunner();
       return false;
     }
     refreshUpgradeRunner();
-    showToast('info', 'Update started — this panel will go down with the stack');
+    showToast('info', 'Upgrade started — this panel will go down with the stack');
     return true;
   });
 }
 
 // acknowledgeUpgrade: drop the finished runner so the next upgrade can start.
 // The record of what it did stays in upgrade.log, which is why this is safe to
-// offer as a single click.
+// offer as a single click. A run that was started with the image cleanup gets a
+// second pass here, because the runner container itself held the previous
+// panel image until now -- the response says what that pass did.
 function acknowledgeUpgrade() {
   fetch('/api/v1/upgrade/runner/clear', {
     method: 'POST',
@@ -271,14 +328,114 @@ function acknowledgeUpgrade() {
       showToast('error', 'Could not dismiss the upgrade: ' + (await _upgradeError(r)));
       return;
     }
+    var data = await r.json();
+    if (data.images) {
+      if (data.images.error) {
+        showToast('warning', 'Dismissed, but outdated images could not be removed: ' + _esc(data.images.error));
+      } else if (data.images.removed.length) {
+        showToast('success', 'Dismissed; removed ' + data.images.removed.length +
+                  ' more image(s), up to ' + data.images.reclaimed_human + ' reclaimed');
+      }
+    }
     refreshUpgradeRunner();
     refreshUpgradeStatus();
+    refreshUpgradeImages();
     htmx.ajax('GET', '/partials/upgrade/log',
               { target: '#upgrade-log-slot', swap: 'innerHTML' });
   });
 }
 
-// Opening the page is what means "look for updates". The cached result is
+// showToast() assigns innerHTML, and image names and daemon error text come from
+// Docker rather than from this page.
+function _esc(text) {
+  var div = document.createElement('div');
+  div.textContent = String(text);
+  return div.innerHTML;
+}
+
+function refreshUpgradeImages() {
+  htmx.ajax('GET', '/partials/upgrade/images',
+            { target: '#upgrade-images-slot', swap: 'innerHTML' });
+}
+
+// The rows the operator is looking at, read back from the DOM: what the dialog
+// lists and what the request names are the same set, so a row that became
+// outdated between render and click is not removed on their behalf.
+function _imageRows(onlyChecked) {
+  var sel = onlyChecked ? '.prune-image-check:checked' : '.prune-image-check';
+  return Array.prototype.map.call(document.querySelectorAll(sel), function (box) {
+    return { id: box.value, name: box.getAttribute('data-name') };
+  });
+}
+
+// Bound to the list's checkboxes: keeps the bulk button and the master box honest.
+function updatePruneSelection() {
+  var all = document.querySelectorAll('.prune-image-check');
+  var picked = document.querySelectorAll('.prune-image-check:checked');
+  var button = document.getElementById('prune-selected-button');
+  if (button) {
+    button.disabled = picked.length === 0;
+    button.textContent = picked.length ? 'Remove selected (' + picked.length + ')' : 'Remove selected';
+  }
+  var master = document.getElementById('prune-master-check');
+  if (master) {
+    master.checked = all.length > 0 && picked.length === all.length;
+    master.indeterminate = picked.length > 0 && picked.length < all.length;
+  }
+}
+
+function togglePruneAll(checked) {
+  document.querySelectorAll('.prune-image-check').forEach(function (box) {
+    box.checked = checked;
+  });
+  updatePruneSelection();
+}
+
+var _pendingPrune = [];
+
+function openPruneImagesModal(onlyChecked) {
+  _pendingPrune = _imageRows(onlyChecked);
+  if (_pendingPrune.length === 0) return;
+  document.getElementById('prune-images-count').textContent =
+    _pendingPrune.length === 1 ? '1 image' : _pendingPrune.length + ' images';
+  var list = document.getElementById('prune-images-list');
+  list.textContent = '';
+  _pendingPrune.forEach(function (row) {
+    var li = document.createElement('li');
+    li.textContent = row.name;
+    list.appendChild(li);
+  });
+  document.getElementById('prune-images-modal').showModal();
+}
+
+function confirmPruneImages() {
+  var ids = _pendingPrune.map(function (row) { return row.id; });
+  document.getElementById('prune-images-modal').close();
+  if (ids.length === 0) return;
+  return fetch('/api/v1/upgrade/images/prune', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken() },
+    body: JSON.stringify({ images: ids }),
+  }).then(async function (r) {
+    if (_authGuard(r)) return;
+    if (!r.ok) {
+      showToast('error', 'Could not remove images: ' + (await _upgradeError(r)));
+      refreshUpgradeImages();
+      return;
+    }
+    var data = await r.json();
+    if (data.failed.length) {
+      showToast('warning', 'Removed ' + data.removed.length + ', kept ' + data.failed.length +
+                ': ' + _esc(data.failed[0].name) + ' — ' + _esc(data.failed[0].error));
+    } else {
+      showToast('success', 'Removed ' + data.removed.length + ' image(s), up to ' +
+                data.reclaimed_human + ' reclaimed');
+    }
+    refreshUpgradeImages();
+  });
+}
+
+// Opening the page is what means "look for upgrades". The cached result is
 // rendered declaratively above, so the page is never empty while this runs.
 //
 // DOMContentLoaded rather than the bare script body: htmx and Alpine are

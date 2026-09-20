@@ -67,6 +67,10 @@
         different build than the one that started the upgrade.
         <button class="link" onclick="window.location.reload()">Reload the page</button>
         to pick it up.
+        {% if upgrade_runner.prune_images %}
+        The previous papaia-manager image is still held by this result; it is removed
+        when you dismiss it.
+        {% endif %}
       </p>
       {% endif %}
 
@@ -107,7 +111,14 @@
             </div>
           {% elif phase.state == "skipped" %}
             <span class="h-1.5 w-1.5 mt-2 shrink-0 rounded-full bg-base-300"></span>
-            <p class="text-sm opacity-40">{{ phase.label }} &mdash; skipped</p>
+            <div class="min-w-0">
+              <p class="text-sm opacity-40">{{ phase.label }} &mdash; skipped</p>
+              {# The image cleanup says why it did not run. The upgrade itself
+                 has succeeded by then, so this is information, not an error. #}
+              {% if phase.detail %}
+              <p class="text-xs opacity-50 font-mono break-all">{{ phase.detail }}</p>
+              {% endif %}
+            </div>
           {% else %}
             <span class="h-1.5 w-1.5 mt-2 shrink-0 rounded-full bg-base-300"></span>
             <p class="text-sm opacity-40">{{ phase.label }}</p>

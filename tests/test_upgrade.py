@@ -386,6 +386,95 @@ def test_the_checkout_phase_carries_the_tag() -> None:
 
 
 # ---------------------------------------------------------------------------
+# The optional image-cleanup phase
+# ---------------------------------------------------------------------------
+#
+# Announced by the manager's own runner script after papaia-ctl has already
+# printed "upgrade complete", so it has to be judged on its own lines rather
+# than on the upgrade's marker.
+
+_CLEANUP_STARTED = _COMPLETE_LOG + "[papaia-manager] Removing outdated Docker images...\n"
+_CLEANUP_DONE = (
+    _CLEANUP_STARTED
+    + "[papaia-manager]   removed ghcr.io/berriai/litellm:v1.91.1 (1.5 GB)\n"
+    + "[papaia-manager] Image cleanup finished: 3 removed, up to 4.2 GB reclaimed\n"
+)
+
+
+def _images(log: str, *, running: bool, prune: bool = True) -> upgrade.Phase | None:
+    phases = {p.key: p for p in phases_from_log(log, running=running, prune_images=prune)}
+    return phases.get("images")
+
+
+def test_a_run_without_the_cleanup_lists_no_such_step() -> None:
+    assert _images(_COMPLETE_LOG, running=False, prune=False) is None
+    assert len(phases_from_log(_COMPLETE_LOG, running=False)) == 6
+
+
+def test_the_cleanup_is_pending_until_it_is_announced() -> None:
+    phase = _images(_COMPLETE_LOG, running=True)
+    assert phase is not None
+    assert phase.state == PHASE_PENDING
+
+
+def test_the_cleanup_runs_after_the_upgrade_has_already_completed() -> None:
+    # "upgrade complete" is in the log and the container is still running: the
+    # six upgrade phases are done, the cleanup is not.
+    phases = {
+        p.key: p.state
+        for p in phases_from_log(_CLEANUP_STARTED, running=True, prune_images=True)
+    }
+    assert phases["images"] == PHASE_RUNNING
+    assert phases["start"] == PHASE_DONE
+
+
+def test_a_finished_cleanup_carries_its_summary() -> None:
+    phase = _images(_CLEANUP_DONE, running=False)
+    assert phase is not None
+    assert phase.state == PHASE_DONE
+    assert phase.detail == "3 removed, up to 4.2 GB reclaimed"
+
+
+def test_a_cleanup_that_could_not_run_is_skipped_with_the_reason() -> None:
+    log = _CLEANUP_STARTED + (
+        "[papaia-manager] Image cleanup skipped -- nothing was removed: "
+        "core: docker compose config failed: boom\n"
+    )
+    phase = _images(log, running=False)
+    assert phase is not None
+    assert phase.state == PHASE_SKIPPED
+    assert phase.detail == "nothing was removed: core: docker compose config failed: boom"
+
+
+def test_a_cleanup_that_stopped_midway_is_marked_failed() -> None:
+    phase = _images(_CLEANUP_STARTED, running=False)
+    assert phase is not None
+    assert phase.state == PHASE_FAILED
+
+
+def test_a_failed_upgrade_never_reaches_the_cleanup() -> None:
+    phase = _images(_FAILED_LOG, running=False)
+    assert phase is not None
+    assert phase.state == PHASE_SKIPPED
+
+
+def test_a_failing_cleanup_does_not_turn_the_upgrade_phases_red() -> None:
+    log = _CLEANUP_STARTED
+    states = {p.key: p.state for p in phases_from_log(log, running=False, prune_images=True)}
+    assert {k: v for k, v in states.items() if k != "images"} == {
+        k: PHASE_DONE for k in states if k != "images"
+    }
+
+
+def test_the_managers_own_prefix_is_stripped_like_papaia_ctls() -> None:
+    from app.core.upgrade import _strip_prefix
+
+    assert _strip_prefix("[papaia-manager] Removing outdated Docker images...") == (
+        "Removing outdated Docker images..."
+    )
+
+
+# ---------------------------------------------------------------------------
 # The way back
 # ---------------------------------------------------------------------------
 

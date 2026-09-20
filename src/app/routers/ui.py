@@ -14,7 +14,7 @@ from app.auth.deps import AdminUser, AnyUser
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
-from app.core import backups, restore_scope, runner, upgrade
+from app.core import backups, images, restore_scope, runner, upgrade
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
 from app.core.inventory import SELF_PROFILE
@@ -193,7 +193,7 @@ async def upgrade_page(
     request: Request,
     user: AdminUser,
 ) -> HTMLResponse:
-    """Move this deployment to a newer papAIa release.
+    """Upgrade this deployment to a newer papAIa release.
 
     The shell and nothing else: every subprocess this page needs -- git, the
     core's Python entry point, docker -- lives in a partial or an API call. So
@@ -733,11 +733,37 @@ async def partial_upgrade_runner(
             upgrade_log=log,
             upgrade_error=error,
             phases=upgrade.phases_from_log(
-                log, running=status_obj.is_running if status_obj else False
+                log,
+                running=status_obj.is_running if status_obj else False,
+                prune_images=status_obj.prune_images if status_obj else False,
             ),
             recovery=recovery,
             recovery_generated=recovery_generated,
         ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/upgrade/images", response_class=HTMLResponse)
+async def partial_upgrade_images(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """Images the stack no longer needs, with the reason when none can be offered.
+
+    Not part of the page shell and not polled: it runs `docker compose config`
+    for the core and every installed add-on, which costs seconds. The page asks
+    for it on load, and again after every removal.
+    """
+    report = await images.gather_report(
+        settings.papaia_config_dir, settings.papaia_workspace_dir
+    )
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/upgrade_images.html",
+        _ctx(request, user, report=report),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -764,7 +790,7 @@ async def partial_nav_upgrade_indicator(
     request: Request,
     user: AdminUser,
 ) -> HTMLResponse:
-    """The dot on the Update nav entry.
+    """The dot on the Upgrade nav entry.
 
     Reads the cached check and nothing else -- no git, no network, no Docker.
     It renders in the sidebar of every admin page, so anything more expensive
