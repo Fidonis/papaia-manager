@@ -668,6 +668,16 @@ _PHASES: tuple[tuple[str, str, str, str], ...] = (
 # Reached only at the very end, after `cmd_start` returned.
 _COMPLETE_MARKER = "upgrade complete:"
 
+# The optional seventh step. It is announced by the manager's own runner script
+# (`images.START_LINE` / `images.DONE_PREFIX`), not by papaia-ctl, and it comes
+# after `_COMPLETE_MARKER`: the upgrade is over by then, and a cleanup that
+# fails must not read as an upgrade that did. Kept out of `_PHASES` so the six
+# above keep their meaning for a run that never asked for it.
+_IMAGES_KEY = "images"
+_IMAGES_LABEL = "Remove outdated Docker images"
+_IMAGES_START = "Removing outdated Docker images"
+_IMAGES_DONE = "Image cleanup "
+
 # The first line of `_upgrade_failed`'s block. Everything from here on is the
 # operator's way back, printed by papaia-ctl itself.
 _RECOVERY_MARKER = "The checkout is on v"
@@ -695,7 +705,7 @@ def _strip_prefix(line: str) -> str:
     separator lines sit inside the recovery block, so leaving their prefix on
     would put `[error]` in the middle of what an operator pastes into a shell.
     """
-    for prefix in ("[papaia-ctl]", "[ok]", "[error]", "[!]"):
+    for prefix in ("[papaia-ctl]", "[papaia-manager]", "[ok]", "[error]", "[!]"):
         if line == prefix:
             return ""
         if line.startswith(prefix + " "):
@@ -709,12 +719,18 @@ def _phase_match(key: str, prefix: str, contains: str, line: str) -> bool:
     return line.startswith(prefix) and (not contains or contains in line)
 
 
-def phases_from_log(log: str, *, running: bool = True) -> list[Phase]:
-    """Turn the runner's output into the six phases, in order.
+def phases_from_log(
+    log: str, *, running: bool = True, prune_images: bool = False
+) -> list[Phase]:
+    """Turn the runner's output into the six phases, in order -- seven with a cleanup.
 
     `running` is the container's own state. It is what tells a log that simply
     stops -- because the manager was killed mid-phase and the tail was captured
     then -- apart from one that stopped because the phase failed.
+
+    `prune_images` is whether the run was started with the image cleanup. Without
+    it the step is not listed at all, so a run that never asked for it does not
+    show a "skipped" row.
     """
     lines = [_strip_prefix(raw.strip()) for raw in log.splitlines()]
     seen: dict[str, str] = {}
@@ -742,7 +758,34 @@ def phases_from_log(log: str, *, running: bool = True) -> list[Phase]:
             # it "waiting" would leave a spinner on a step that never runs.
             state = PHASE_SKIPPED if index < last_seen else PHASE_PENDING
         phases.append(Phase(key=key, label=label, state=state, detail=_detail(key, seen)))
+    if prune_images:
+        phases.append(_images_phase(lines, running=running))
     return phases
+
+
+def _images_phase(lines: list[str], *, running: bool) -> Phase:
+    """The cleanup step, which has its own start and end announcements.
+
+    The upgrade's own completion marker is not consulted: it is printed *before*
+    the cleanup begins, so a container that is still running after it is not
+    done yet.
+    """
+
+    def phase(state: str, detail: str = "") -> Phase:
+        return Phase(key=_IMAGES_KEY, label=_IMAGES_LABEL, state=state, detail=detail)
+
+    start = next((i for i, line in enumerate(lines) if line.startswith(_IMAGES_START)), None)
+    if start is None:
+        # Not announced. While the container runs there is still a chance it will
+        # be; once it has stopped, it never was -- the upgrade failed first.
+        return phase(PHASE_PENDING if running else PHASE_SKIPPED)
+    done = next((line for line in lines[start + 1 :] if line.startswith(_IMAGES_DONE)), None)
+    if done is None:
+        return phase(PHASE_RUNNING if running else PHASE_FAILED)
+    outcome = done.removeprefix(_IMAGES_DONE)
+    if outcome.startswith("skipped"):
+        return phase(PHASE_SKIPPED, outcome.removeprefix("skipped").lstrip(" -"))
+    return phase(PHASE_DONE, outcome.removeprefix("finished:").strip())
 
 
 def _detail(key: str, seen: dict[str, str]) -> str:

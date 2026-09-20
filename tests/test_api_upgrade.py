@@ -177,7 +177,7 @@ def test_a_release_found_locally_still_warns_that_the_fetch_failed() -> None:
     # newest one, and the page has to say so.
     html = _render_check(_unreachable(up_to_date=False))
     assert "Could not check for new releases" in html
-    assert "Migrations in this update" in html
+    assert "Migrations in this upgrade" in html
 
 
 def test_the_header_button_learns_the_check_failed() -> None:

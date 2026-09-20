@@ -1,0 +1,101 @@
+{# Docker images the stack no longer needs -- the leftovers of earlier upgrades.
+
+   `report` is `images.ImageReport`. The verdict is not made here: an image
+   appears only if no container uses it, the deployed release does not declare
+   it, and it lives in a repository the core stack or an installed add-on
+   declares. When the declared images cannot be read at all, the report carries
+   the reason and no rows -- listing candidates anyway would be guessing about
+   what a stopped add-on still needs.
+
+   The selection lives in the DOM (`.prune-image-check`) and is read back by
+   `openPruneImagesModal` in upgrade.html, so the dialog and the request name
+   exactly the rows that were on screen. Class names are spelled out for the
+   Tailwind scan. #}
+<div id="upgrade-images">
+
+  <div class="mb-3 flex items-center justify-between gap-3 flex-wrap">
+    <div>
+      <h2 class="font-brand text-lg font-bold">Docker images</h2>
+      <p class="text-xs opacity-50 mt-0.5">
+        Left behind by earlier upgrades: no container uses them and the installed release
+        does not declare them.
+      </p>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button class="btn btn-ghost btn-sm btn-square" aria-label="Look for outdated images"
+              onclick="refreshUpgradeImages()">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+      </button>
+      {% if report.outdated %}
+      <button id="prune-selected-button" class="btn btn-outline btn-sm" disabled
+              onclick="openPruneImagesModal(true)">Remove selected</button>
+      <button class="btn btn-error btn-sm" onclick="openPruneImagesModal(false)">
+        Remove all ({{ report.outdated | length }})
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if report.errors %}
+  <div class="alert alert-warning">
+    <div>
+      <p class="font-semibold text-sm mb-0.5">Outdated images cannot be determined right now</p>
+      <p class="text-xs leading-relaxed mb-1">
+        Which images the stack still needs is read from its Compose files. While that fails,
+        nothing is offered for removal.
+      </p>
+      <ul class="text-xs font-mono space-y-0.5">
+        {% for error in report.errors %}
+        <li class="break-all">{{ error }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  {% elif not report.outdated %}
+  <div class="rounded-xl border border-base-300 px-4 py-3">
+    <p class="text-sm font-medium">No outdated images</p>
+    <p class="text-xs opacity-60 mt-0.5">
+      Every image of the core stack and the installed add-ons is either in use or part of the
+      installed release.
+    </p>
+  </div>
+
+  {% else %}
+  <div class="rounded-xl border border-base-300 overflow-hidden">
+    <div class="flex items-center gap-3 px-4 py-2 bg-base-200 border-b border-base-300">
+      <input id="prune-master-check" type="checkbox" class="checkbox checkbox-sm shrink-0"
+             aria-label="select all images" onchange="togglePruneAll(this.checked)">
+      <span class="text-xs opacity-60">
+        {{ report.outdated | length }} image{{ '' if report.outdated | length == 1 else 's' }}
+        &middot; up to {{ report.total_size_human }}
+      </span>
+    </div>
+    <ul class="divide-y divide-base-300">
+      {% for image in report.outdated %}
+      <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+        <input type="checkbox" class="checkbox checkbox-sm shrink-0 prune-image-check"
+               value="{{ image.id }}" data-name="{{ image.name }}"
+               aria-label="select {{ image.name }}" onchange="updatePruneSelection()">
+        <span class="text-sm font-mono break-all min-w-0">{{ image.name }}</span>
+        <span class="badge badge-ghost badge-sm">{{ image.source }}</span>
+        <span class="grow"></span>
+        {% if image.created %}
+        <span class="text-xs opacity-40 font-mono">{{ image.created[:10] }}</span>
+        {% endif %}
+        <span class="text-xs opacity-60 font-mono w-20 text-right">{{ image.size_human }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  <p class="text-xs opacity-50 mt-2 leading-relaxed">
+    Sizes are the images' own, so layers two of them share are counted twice &mdash; the space
+    actually freed can be less. Images that only a stopped container still holds are kept.
+  </p>
+  {% endif %}
+
+</div>
