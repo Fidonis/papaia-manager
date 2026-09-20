@@ -14,7 +14,7 @@
 {% block page_actions %}
 <div class="flex items-center gap-2"
      x-data="{
-       ready: false, target: null, forceable: false, gatePassed: true,
+       ready: false, target: null, checkFailed: false, forceable: false, gatePassed: true,
        hasBackupDir: false, current: '', runnerActive: false,
        checking: true, starting: false,
        force: false, noBackup: false, confirmed: false,
@@ -32,6 +32,7 @@
      }"
      @papaia-upgrade-state.window="ready = $event.detail.ready;
                                    target = $event.detail.target;
+                                   checkFailed = $event.detail.checkFailed;
                                    forceable = $event.detail.forceable;
                                    gatePassed = $event.detail.gatePassed;
                                    hasBackupDir = $event.detail.hasBackupDir;
@@ -51,10 +52,11 @@
 
   <button class="btn btn-primary btn-sm" :disabled="!ready || blocked"
           :title="runnerActive ? 'An upgrade is already in flight'
-                  : (!ready ? 'Nothing to install, or something in the list below has to be fixed first' : '')"
+                  : (checkFailed ? 'The remote could not be reached, so it is not known whether a newer release exists'
+                  : (!ready ? 'Nothing to install, or something in the list below has to be fixed first' : ''))"
           @click="open()">
     <span style="display:none" x-show="starting" class="loading loading-spinner loading-xs"></span>
-    <span x-show="!starting" x-text="target ? ('Install ' + target) : 'Up to date'"></span>
+    <span x-show="!starting" x-text="target ? ('Install ' + target) : (checkFailed ? 'Check failed' : 'Up to date')"></span>
   </button>
 
   {# The confirmation. Everything it says is what papaia-ctl is about to do, in
