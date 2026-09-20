@@ -32,11 +32,13 @@ import logging
 import os
 import re
 import shutil
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.core.state import load_deployment_yaml
 
@@ -288,23 +290,165 @@ async def local_tags(workspace_dir: str) -> list[str]:
     return parse_tags(out.splitlines())
 
 
+async def origin_url(workspace_dir: str) -> str:
+    """The URL `origin` points at, or "" when there is none. Local, no network."""
+    try:
+        return (await _git(repo_path(workspace_dir), "remote", "get-url", "origin")).strip()
+    except UpgradeError:
+        return ""
+
+
 async def fetch_tags(workspace_dir: str) -> str:
     """Fetch release tags from the remote. Returns "" on success, else the reason.
 
     A failure is deliberately not raised. `cmd_upgrade` warns and carries on with
     the tags already in the checkout, and the page has to behave the same way or
     it stops working the moment the deployment has no route to the remote.
+
+    An SSH `origin` is fetched through its HTTPS equivalent instead. This process
+    has no SSH client, key or known_hosts, so the SSH attempt can only fail --
+    and it is how a checkout cloned as `git@host:owner/repo.git` ends up unable
+    to see any release published after it was cloned. Passing the URL on the
+    command line leaves the checkout's configuration alone: `origin` stays what
+    the operator set. A remote that is private still fails, and says so.
     """
+    remote = "origin"
+    over_https = https_equivalent(await origin_url(workspace_dir))
+    if over_https is not None:
+        logger.info("origin is an SSH URL; fetching tags over HTTPS from %s", over_https)
+        remote = over_https
     try:
         await _run_git(
             repo_path(workspace_dir),
-            ("fetch", "--tags", "--quiet", "origin"),
+            ("fetch", "--tags", "--quiet", remote),
             _FETCH_TIMEOUT,
         )
     except UpgradeError as exc:
         logger.info("could not fetch tags: %s", exc)
         return str(exc)
     return ""
+
+
+# `git@host:owner/repo.git` -- git's scp-like form. The user is required: without
+# it `C:/repo` on a Windows host would read as host `C`. `(?!//)` keeps a URL
+# with a scheme (`https://host/...`) out of this branch.
+_SCP_URL_RE = re.compile(r"^[\w.-]+@(?P<host>[\w.-]+):(?!//)(?P<path>\S+)$")
+
+# `ssh://[user@]host[:port]/owner/repo.git`. The port is an SSH port and means
+# nothing to HTTPS, so it is matched and dropped.
+_SSH_URL_RE = re.compile(r"^ssh://(?:[^@/\s]+@)?(?P<host>[\w.-]+)(?::\d+)?/(?P<path>\S+)$")
+
+
+def https_equivalent(url: str) -> str | None:
+    """The HTTPS URL for the same repository, or None if `url` is not an SSH one.
+
+    Only the shape is translated. Whether the repository is readable without
+    credentials is not something a string can say, so a private remote fails at
+    the fetch, where `fetch_hint` explains it.
+    """
+    text = url.strip()
+    match = _SCP_URL_RE.match(text) or _SSH_URL_RE.match(text)
+    if match is None:
+        return None
+    return f"https://{match.group('host')}/{match.group('path').lstrip('/')}"
+
+
+# Substrings of git's stderr, lower-cased. They are what `fetch_hint` sorts a
+# failure by; a message that matches none of them gets the generic hint, which
+# is still correct, only less specific.
+_PERMISSION_MARKS = (
+    "fetch_head",
+    "read-only file system",
+    "insufficient permission",
+    "permission denied",
+)
+_NETWORK_MARKS = (
+    "could not resolve host",
+    "timed out",
+    "failed to connect",
+    "connection refused",
+    "network is unreachable",
+)
+_SSH_MARKS = ("publickey", "host key verification", "cannot run ssh")
+
+
+def _process_user() -> tuple[int, int]:
+    """The uid and gid this process runs as -- what a `chown` has to hand `.git` to.
+
+    The guard is for the type checker on a Windows workstation, where `os` has no
+    `getuid`; the manager itself only ever runs in a Linux container.
+    """
+    if sys.platform == "win32":
+        return 0, 0
+    return os.getuid(), os.getgid()
+
+
+def fetch_hint(error: str, *, repo: Path, origin: str, uid: int, gid: int) -> str:
+    """The commands that fix a failed tag fetch, or "" when the fetch worked.
+
+    Every branch ends with the same fallback: a fetch on the host. The checkout
+    is a plain directory the manager shares with it, and the manager reads its
+    tags, so a fetch there is what makes a release visible whatever kept the
+    container from fetching it. The branches differ in what would let the
+    manager do it on its own next time.
+    """
+    if not error:
+        return ""
+    low = error.lower()
+    https = https_equivalent(origin)
+    host_fetch = f"git -C {repo} fetch --tags origin"
+    note = "# on the host, as the owner of the checkout; then press Refresh"
+
+    # Order matters: an SSH failure prints "Permission denied (publickey)", which
+    # would otherwise be read as a filesystem problem.
+    if any(mark in low for mark in _SSH_MARKS):
+        kind = "ssh"
+    elif any(mark in low for mark in _PERMISSION_MARKS):
+        kind = "permissions"
+    elif any(mark in low for mark in _NETWORK_MARKS):
+        kind = "network"
+    elif https is not None:
+        kind = "ssh"
+    else:
+        kind = "other"
+
+    lines: list[str] = []
+    if kind == "ssh":
+        lines.append(
+            "origin is an SSH URL and the manager container has no SSH key, so it fetched over "
+            "HTTPS instead; that needs a repository readable without credentials."
+            if https is not None
+            else "origin is an SSH URL and the manager container has no SSH key."
+        )
+        lines += ["", f"{host_fetch}   {note}"]
+        if https is not None:
+            lines += [
+                "",
+                "# optional: let the manager fetch on its own without going through the fallback",
+                f"git -C {repo} remote set-url origin {https}",
+            ]
+    elif kind == "permissions":
+        lines += [
+            "The manager cannot write to the checkout's .git directory.",
+            "",
+            f"chown -R {uid}:{gid} {repo}/.git   # as root on the host; that is the manager's user",
+            "",
+            f"{host_fetch}   {note}",
+        ]
+    elif kind == "network":
+        host = urlsplit(https or origin).hostname or "the remote"
+        lines += [
+            f"The manager container cannot reach {host}. Allow outbound HTTPS (port 443) to it.",
+            "",
+            f"{host_fetch}   {note}",
+        ]
+    else:
+        lines += [
+            "The fetch failed for a reason the manager does not recognise.",
+            "",
+            f"{host_fetch}   {note}",
+        ]
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -700,6 +844,7 @@ class UpgradeCheck:
     migrations: list[Migration] = field(default_factory=list)
     gate: Gate = field(default_factory=Gate)
     fetch_error: str = ""
+    fetch_hint: str = ""
     checked_at: str = ""
 
     @property
@@ -747,6 +892,16 @@ async def run_check(
             )
 
         fetch_error = await fetch_tags(workspace_dir)
+        hint = ""
+        if fetch_error:
+            uid, gid = _process_user()
+            hint = fetch_hint(
+                fetch_error,
+                repo=repo,
+                origin=await origin_url(workspace_dir),
+                uid=uid,
+                gid=gid,
+            )
         tags = await local_tags(workspace_dir)
 
         with tempfile.TemporaryDirectory(prefix="papaia-upgrade-") as tmp:
@@ -775,6 +930,7 @@ async def run_check(
             status=resolved.get("STATUS", ""),
             available=newer_than(tags, current),
             fetch_error=fetch_error,
+            fetch_hint=hint,
             checked_at=datetime.now(tz=UTC).isoformat(timespec="seconds"),
         )
 

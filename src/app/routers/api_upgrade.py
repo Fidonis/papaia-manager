@@ -412,6 +412,7 @@ def _check_to_dict(check: upgrade.UpgradeCheck) -> dict[str, Any]:
         "up_to_date": check.up_to_date,
         "available": check.available,
         "fetch_error": check.fetch_error,
+        "fetch_hint": check.fetch_hint,
         "migrations": [
             {"id": m.id, "version": m.version, "kind": m.kind} for m in check.migrations
         ],

@@ -243,6 +243,7 @@
       target: {{ (check.target | tojson) if (check and not check.up_to_date) else "null" }},
       ready: {{ "true" if (checkout.upgradable and check and not check.up_to_date
                            and (check.gate.passed or check.gate.forceable)) else "false" }},
+      checkFailed: {{ "true" if (check and check.up_to_date and check.fetch_error) else "false" }},
       forceable: {{ "true" if (check and check.gate.forceable) else "false" }},
       gatePassed: {{ "true" if (not check or check.gate.passed) else "false" }},
       hasBackupDir: {{ "true" if (backup_dir and backup_dir_reachable) else "false" }},
