@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth.csrf import get_csrf_token
@@ -15,6 +15,7 @@ from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
 from app.core import backups, images, restore_scope, runner, upgrade
+from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
 from app.core.inventory import SELF_PROFILE
@@ -224,6 +225,33 @@ async def job_log_page(
     )
 
 
+@router.get("/audit", response_class=HTMLResponse)
+async def audit_page(request: Request, user: AdminUser) -> HTMLResponse:
+    """Who did what, newest first.
+
+    Filters live in the query string rather than in page-local state, so a
+    filtered view is a link an operator can bookmark or hand to someone else.
+    The query string is also what seeds the first `/partials/audit` fetch below
+    -- the shell renders the filter bar and lets that request bring the rows.
+    """
+    params = request.query_params
+    return _templates.TemplateResponse(
+        request,
+        "audit.html",
+        _ctx(
+            request,
+            user,
+            filter_user=params.get("user", ""),
+            filter_action=params.get("action", ""),
+            filter_result=params.get("result", ""),
+            filter_target=params.get("target", ""),
+            filter_since=params.get("since", ""),
+            filter_before=params.get("before", ""),
+            initial_query=request.url.query,
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # HTMX partials
 # ---------------------------------------------------------------------------
@@ -427,6 +455,54 @@ async def partial_jobs(
         request,
         "partials/job_list.html",
         _ctx(request, user, jobs=queue.list_jobs() if queue else []),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/audit", response_class=HTMLResponse)
+async def partial_audit(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+    user_filter: Annotated[str | None, Query(alias="user")] = None,
+    action: str | None = None,
+    result: str | None = None,
+    target: str | None = None,
+    since: str | None = None,
+    before: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> HTMLResponse:
+    flt: AuditFilter
+    try:
+        flt = build_filter(
+            user=user_filter, action=action, result=result, target=target,
+            since=since, before=before,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    page = query_entries(settings.papaia_config_dir, flt, limit=limit, offset=offset)
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/audit_list.html",
+        _ctx(
+            request,
+            user,
+            entries=page.entries,
+            total=page.total,
+            corrupt_lines=page.corrupt_lines,
+            facets=page.facets,
+            limit=limit,
+            offset=offset,
+            filter_user=user_filter,
+            filter_action=action,
+            filter_result=result,
+            filter_target=target,
+            filter_since=since,
+            filter_before=before,
+        ),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

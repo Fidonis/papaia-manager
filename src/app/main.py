@@ -18,6 +18,7 @@ from app.core.jobs import JobQueue
 from app.core.papaia_lib import bootstrap
 from app.routers import (
     api_addons,
+    api_audit,
     api_catalogs,
     api_jobs,
     api_maintenance,
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(ui.router)
+    app.include_router(api_audit.router)
     app.include_router(api_catalogs.router)
     app.include_router(api_addons.router)
     app.include_router(api_jobs.router)
