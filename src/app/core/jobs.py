@@ -12,6 +12,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from app.core.audit import write_audit_entry
+
 logger = logging.getLogger(__name__)
 
 
@@ -171,6 +173,18 @@ class JobQueue:
                     ctx.log(f"--- ERROR: {exc} ---")
                     job.status = JobStatus.FAILED
                     job.exit_code = 1
+                    # One place for every job failure, rather than a change to each
+                    # of the callbacks above -- which otherwise only ever write an
+                    # entry on success.
+                    write_audit_entry(
+                        self._config_dir,
+                        user=job.user,
+                        action=job.action,
+                        target=job.target,
+                        job_id=job.id,
+                        result="error",
+                        params={"error": type(exc).__name__},
+                    )
                 finally:
                     job.finished_at = datetime.now(tz=UTC)
                     self._append_index(job)

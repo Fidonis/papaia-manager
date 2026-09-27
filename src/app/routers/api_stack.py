@@ -253,6 +253,7 @@ async def stack_action(
         action=f"stack-{action}",
         target="core",
         params={"clean_up": body.clean_up},
+        result="started",
     )
     return runner.status_to_dict(started, target_key="action")
 
@@ -265,7 +266,11 @@ async def stack_runner_status(user: AdminUser) -> dict[str, Any]:
 
 
 @router.post("/runner/clear")
-async def clear_stack_runner(request: Request, user: AdminUser) -> dict[str, str]:
+async def clear_stack_runner(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
     verify_csrf(request)
     active = await _find(runner.STACK_KIND)
     if active is None:
@@ -274,6 +279,12 @@ async def clear_stack_runner(request: Request, user: AdminUser) -> dict[str, str
         await runner.clear_runner(active.name, runner.STACK_KIND)
     except runner.RunnerError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    write_audit_entry(
+        settings.papaia_config_dir,
+        user=_user_id(user),
+        action="stack-runner-clear",
+        target=active.target,
+    )
     return {"status": "cleared"}
 
 

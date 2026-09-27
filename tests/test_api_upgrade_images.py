@@ -305,6 +305,17 @@ def _finished_runner(monkeypatch: pytest.MonkeyPatch, status: runner.RunnerStatu
     return cleared
 
 
+def test_dismissing_a_finished_upgrade_runner_is_audited(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _finished_runner(monkeypatch, _status(running=False, prune=False))
+    body = _post(client, "/api/v1/upgrade/runner/clear").json()
+    assert body == {"status": "cleared"}
+
+    (entry,) = [e for e in _audit() if e["action"] == "upgrade-runner-clear"]
+    assert entry["target"] == "1.2.0"
+
+
 def test_dismissing_a_successful_cleanup_run_removes_what_the_runner_held(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -407,6 +418,16 @@ def test_the_option_reaches_the_runner_and_the_audit_log(
     assert _start(client, monkeypatch, {"prune_images": True})["prune_images"] is True
     (entry,) = [e for e in _audit() if e["action"] == "upgrade"]
     assert entry["params"]["prune_images"] is True
+
+
+def test_starting_an_upgrade_is_audited_as_started(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The runner is detached and outlives this request, so the entry has to
+    # describe a launch, not an outcome nobody has seen yet.
+    _start(client, monkeypatch, {})
+    (entry,) = [e for e in _audit() if e["action"] == "upgrade"]
+    assert entry["result"] == "started"
 
 
 # ---------------------------------------------------------------------------

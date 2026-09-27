@@ -447,6 +447,7 @@ async def start_restore(
         action="restore",
         target=point.id,
         params={"restart_clean": body.restart_clean},
+        result="started",
     )
 
     try:
@@ -593,6 +594,7 @@ async def restore_status(user: AdminUser) -> dict[str, Any]:
 async def clear_restore(
     request: Request,
     user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
     """Acknowledge a finished restore by removing its runner container."""
     verify_csrf(request)
@@ -603,3 +605,9 @@ async def clear_restore(
         await runner.clear_runner(active.name)
     except runner.RunnerError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    write_audit_entry(
+        settings.papaia_config_dir,
+        user=_user_id(user),
+        action="restore-clear",
+        target=active.target,
+    )
