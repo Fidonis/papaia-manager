@@ -8,7 +8,9 @@ from pydantic import BaseModel, field_validator
 
 from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
+from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
+from app.core.audit import redact_params, write_audit_entry
 from app.core.catalogs import (
     Catalog,
     load_registry,
@@ -48,6 +50,10 @@ class CatalogUpdateBody(BaseModel):
     enabled: bool | None = None
     token: str | None = None
     path: str | None = None
+
+
+def _user_id(user: OIDCClaims) -> str:
+    return user.preferred_username or user.sub
 
 
 @router.get("")
@@ -91,6 +97,21 @@ async def create_catalog(
     )
     registry.catalogs.append(catalog)
     save_registry(settings.papaia_config_dir, registry)
+    write_audit_entry(
+        settings.papaia_config_dir,
+        user=_user_id(user),
+        action="catalog-create",
+        target=body.name,
+        params=redact_params(
+            {
+                "type": body.type,
+                "url": body.url,
+                "ref": body.ref,
+                "enabled": body.enabled,
+                "path": body.path,
+            }
+        ),
+    )
     return _catalog_summary(catalog)
 
 
@@ -108,19 +129,31 @@ async def update_catalog(
     if catalog is None:
         raise HTTPException(status_code=404, detail=f"catalog {name!r} not found")
 
+    changed: dict[str, Any] = {}
     if body.url is not None:
         validate_catalog_url(body.url)
         catalog.url = body.url
+        changed["url"] = body.url
     if body.ref is not None:
         validate_ref(body.ref)
         catalog.ref = body.ref
+        changed["ref"] = body.ref
     if body.enabled is not None:
         catalog.enabled = body.enabled
+        changed["enabled"] = body.enabled
     if body.path is not None:
         validate_local_path(body.path, settings.papaia_workspace_dir)
         catalog.path = body.path
+        changed["path"] = body.path
 
     save_registry(settings.papaia_config_dir, registry)
+    write_audit_entry(
+        settings.papaia_config_dir,
+        user=_user_id(user),
+        action="catalog-update",
+        target=name,
+        params=redact_params(changed),
+    )
     return _catalog_summary(catalog)
 
 
@@ -138,6 +171,12 @@ async def delete_catalog(
     if len(registry.catalogs) == before:
         raise HTTPException(status_code=404, detail=f"catalog {name!r} not found")
     save_registry(settings.papaia_config_dir, registry)
+    write_audit_entry(
+        settings.papaia_config_dir,
+        user=_user_id(user),
+        action="catalog-delete",
+        target=name,
+    )
 
 
 @router.post("/{name}/refresh", status_code=status.HTTP_202_ACCEPTED)
@@ -164,12 +203,20 @@ async def refresh_catalog(
     async def _callback(ctx: JobContext) -> None:
         if _catalog.type == "local":
             ctx.log("[info] local catalog — no git refresh needed")
-            return
-        ctx.log(f"[info] refreshing catalog {_catalog.name!r} from {_catalog.url}")
-        lines = await refresh_catalog_clone(_catalog, settings.papaia_workspace_dir)
-        for line in lines:
-            ctx.log(line)
-        ctx.log("[info] done")
+        else:
+            ctx.log(f"[info] refreshing catalog {_catalog.name!r} from {_catalog.url}")
+            lines = await refresh_catalog_clone(_catalog, settings.papaia_workspace_dir)
+            for line in lines:
+                ctx.log(line)
+            ctx.log("[info] done")
+        write_audit_entry(
+            settings.papaia_config_dir,
+            user=_username,
+            action="catalog-refresh",
+            target=name,
+            params=redact_params({"url": _catalog.url}) if _catalog.url else None,
+            job_id=ctx.job.id,
+        )
 
     job = await _job_queue.enqueue(
         action="catalog:refresh",

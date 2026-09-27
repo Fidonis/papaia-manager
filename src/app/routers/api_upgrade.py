@@ -471,6 +471,7 @@ async def start_upgrade(
             "no_backup": body.no_backup,
             "prune_images": body.prune_images,
         },
+        result="started",
     )
 
     try:
@@ -524,6 +525,12 @@ async def clear_upgrade_runner(
         await runner.clear_runner(active.name, runner.UPGRADE_KIND)
     except runner.RunnerError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    write_audit_entry(
+        settings.papaia_config_dir,
+        user=_user_id(user),
+        action="upgrade-runner-clear",
+        target=active.target,
+    )
     response: dict[str, Any] = {"status": "cleared"}
     if clean_up_after:
         response["images"] = await _prune_after_dismiss(user, settings)
