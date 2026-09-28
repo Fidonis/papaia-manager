@@ -15,18 +15,27 @@ based on merged pull requests; this file mirrors the published releases.
 ## [1.1.0] - 2026-09-28
 
 ### Added
-- Audit log viewer at `/audit` with filtering, CSV/JSONL export and retention pruning (#101).
+- Audit log viewer at `/audit` with filtering, CSV/JSONL export and retention pruning
+  ([#101](https://github.com/Fidonis/papaia-manager/pull/101); closes
+  [#99](https://github.com/Fidonis/papaia-manager/issues/99)).
 - Audit recording closes prior gaps: failed jobs, catalog changes and runner-clear
-  acknowledgements are now logged (#100).
-- The Upgrade page offers to remove outdated Docker images after a successful upgrade (#97).
+  acknowledgements are now logged ([#100](https://github.com/Fidonis/papaia-manager/pull/100)).
+- The Upgrade page offers to remove outdated Docker images after a successful upgrade
+  ([#97](https://github.com/Fidonis/papaia-manager/pull/97); closes
+  [#96](https://github.com/Fidonis/papaia-manager/issues/96)).
 
 ### Changed
-- **Breaking:** `MANAGER_ADMIN_ROLE` default changes from `admin` to `manager-admin` (#93).
-- The "Update" page and menu entry are renamed **Upgrade** (#97).
+- **Breaking:** `MANAGER_ADMIN_ROLE` default changes from `admin` to `manager-admin`
+  ([#93](https://github.com/Fidonis/papaia-manager/pull/93); closes
+  [#92](https://github.com/Fidonis/papaia-manager/issues/92)).
+- The "Update" page and menu entry are renamed **Upgrade**
+  ([#97](https://github.com/Fidonis/papaia-manager/pull/97)).
 
 ### Fixed
 - Release-tag checks no longer fail silently for SSH-origin checkouts; a failed check now
-  shows a warning instead of a false "up to date" (#95).
+  shows a warning instead of a false "up to date"
+  ([#95](https://github.com/Fidonis/papaia-manager/pull/95); closes
+  [#94](https://github.com/Fidonis/papaia-manager/issues/94)).
 
 ## [1.0.0] - 2026-09-04
 
