@@ -12,6 +12,22 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [1.1.0] - 2026-09-28
+
+### Added
+- Audit log viewer at `/audit` with filtering, CSV/JSONL export and retention pruning (#101).
+- Audit recording closes prior gaps: failed jobs, catalog changes and runner-clear
+  acknowledgements are now logged (#100).
+- The Upgrade page offers to remove outdated Docker images after a successful upgrade (#97).
+
+### Changed
+- **Breaking:** `MANAGER_ADMIN_ROLE` default changes from `admin` to `manager-admin` (#93).
+- The "Update" page and menu entry are renamed **Upgrade** (#97).
+
+### Fixed
+- Release-tag checks no longer fail silently for SSH-origin checkouts; a failed check now
+  shows a warning instead of a false "up to date" (#95).
+
 ## [1.0.0] - 2026-09-04
 
 ### Added
@@ -335,6 +351,8 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[1.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.1.0
+
 [1.0.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.0.0
 
 [0.6.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.6.0
@@ -349,4 +367,4 @@ based on merged pull requests; this file mirrors the published releases.
 
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.1.0...HEAD
