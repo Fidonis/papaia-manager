@@ -1,7 +1,7 @@
 """REST API — moving the core to a newer release.
 
 One operation, split across two halves that cost and risk entirely different
-things:
+things (plus the housekeeping that follows it, below):
 
 * **check** resolves a target release, gates the active add-ons against it and
   lists the pending migrations. It changes nothing, and the answer is what the
@@ -20,19 +20,26 @@ Nothing here decides *whether* an upgrade is safe -- that is `papaia-ctl`'s
 judgement, reached by the same commands this module calls to preview it. What it
 does decide is that the operator saw that judgement first: an upgrade is refused
 unless a check for the same version has run in this process.
+
+The images an upgrade leaves behind are handled here too, because they are its
+leftovers: the upgrade runner removes them itself when asked to (see
+`runner.build_upgrade_run_args`), and `/images` lists and removes whatever is
+still there afterwards. What counts as outdated is `app.core.images`' verdict;
+nothing in this module widens it.
 """
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core import backups, runner, upgrade
+from app.core import backups, images, runner, upgrade
 from app.core.audit import write_audit_entry
 from app.core.jobs import JobQueue
 
@@ -54,6 +61,20 @@ class UpgradeBody(BaseModel):
     # Skips the pre-upgrade restore point. Opt-in per request and never a stored
     # preference: it removes the only thing the failure path can point at.
     no_backup: bool = False
+    # Removes the images the release replaced, once the upgrade has succeeded.
+    # Off by default here: the page offers it preselected, but a script that
+    # never heard of the option must not start deleting images.
+    prune_images: bool = False
+
+
+class PruneBody(BaseModel):
+    # None means every image that is outdated right now. Named ids narrow that
+    # down; they never widen it -- see `images.prune`.
+    images: list[str] | None = Field(default=None, max_length=500)
+
+
+# `sha256:` and 64 hex digits, `\Z`-anchored for the reason `_VERSION_RE` is.
+_IMAGE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}\Z")
 
 
 def _queue() -> JobQueue | None:
@@ -102,16 +123,39 @@ async def _require_idle() -> None:
                 detail=f"a {label} of {active.target} is still running",
             )
 
+    _require_no_active_job("it would be killed when the upgrade stops the stack")
+
+
+def _require_no_active_job(consequence: str) -> None:
     queue = _queue()
     active_job = queue.active_job() if queue is not None else None
     if active_job is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"a {active_job.action} job is running; it would be killed when the "
-                "upgrade stops the stack"
-            ),
+            detail=f"a {active_job.action} job is running; {consequence}",
         )
+
+
+async def _require_quiet() -> None:
+    """Refuse an image removal while anything that pulls or starts images runs.
+
+    Narrower than `_require_idle`: a *finished* upgrade runner does not count
+    (its outcome is exactly what an operator returns to before cleaning up), but
+    a running one does, because it is recreating the containers whose images
+    decide what is outdated.
+    """
+    for kind, label in (
+        (runner.UPGRADE_KIND, "an upgrade"),
+        (runner.RESTORE_KIND, "a restore"),
+        (runner.STACK_KIND, "a stack action"),
+    ):
+        active = await _find(kind)
+        if active is not None and active.is_running:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"{label} is still running; remove images once it has finished",
+            )
+    _require_no_active_job("remove images once it has finished")
 
 
 def _check_force(body: UpgradeBody, check: upgrade.UpgradeCheck) -> None:
@@ -257,6 +301,74 @@ async def upgrade_runner_status(user: AdminUser) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Images the stack no longer needs
+# ---------------------------------------------------------------------------
+
+
+@router.get("/images")
+async def read_images(
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """The outdated images, or why none can be offered."""
+    report = await images.gather_report(
+        settings.papaia_config_dir, settings.papaia_workspace_dir
+    )
+    return _report_to_dict(report)
+
+
+@router.post("/images/prune")
+async def prune_images(
+    body: PruneBody,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """Remove outdated images -- every one, or only the ones named.
+
+    Named ids are matched against the verdict computed *now*, under a lock, so a
+    stale page (or a forged request) cannot get an image removed that is in use
+    or unrelated to the stack; whatever is not a candidate comes back as
+    `skipped`.
+    """
+    verify_csrf(request)
+    if body.images is not None:
+        bad = next((i for i in body.images if not _IMAGE_ID_RE.match(i)), None)
+        if bad is not None:
+            raise HTTPException(status_code=400, detail=f"{bad!r} is not an image id")
+    await _require_quiet()
+    try:
+        result = await images.prune(
+            settings.papaia_config_dir,
+            settings.papaia_workspace_dir,
+            only=set(body.images) if body.images is not None else None,
+        )
+    except images.ImagesError as exc:
+        # Fail closed: the declared images could not be read, so nothing was
+        # removed. A 409 rather than a 5xx -- the request is fine, the state is not.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    _audit_prune(user, settings, result, trigger="manual")
+    return _prune_to_dict(result)
+
+
+def _audit_prune(
+    user: OIDCClaims, settings: Settings, result: images.PruneResult, *, trigger: str
+) -> None:
+    write_audit_entry(
+        settings.papaia_config_dir,
+        user=_user_id(user),
+        action="images-prune",
+        target=trigger,
+        params={
+            "removed": [image.name for image in result.removed],
+            "failed": [image.name for image, _ in result.failed],
+            "reclaimed": result.reclaimed,
+        },
+        result="ok" if not result.failed else "partial",
+    )
+
+
+# ---------------------------------------------------------------------------
 # The upgrade — detached runner
 # ---------------------------------------------------------------------------
 
@@ -283,7 +395,7 @@ async def start_upgrade(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"no completed check for {body.version}; run the update check again "
+                f"no completed check for {body.version}; run the upgrade check again "
                 "before starting the upgrade"
             ),
         )
@@ -353,7 +465,13 @@ async def start_upgrade(
         user=_user_id(user),
         action="upgrade",
         target=body.version,
-        params={"from": check.current, "force": body.force, "no_backup": body.no_backup},
+        params={
+            "from": check.current,
+            "force": body.force,
+            "no_backup": body.no_backup,
+            "prune_images": body.prune_images,
+        },
+        result="started",
     )
 
     try:
@@ -363,6 +481,7 @@ async def start_upgrade(
             config_dir=settings.papaia_config_dir,
             force=body.force,
             no_backup=body.no_backup,
+            prune_images=body.prune_images,
         )
     except runner.RunnerError as exc:
         # Includes the duplicate-name refusal, which is the real mutual
@@ -378,22 +497,54 @@ async def start_upgrade(
 
 
 @router.post("/runner/clear")
-async def clear_upgrade_runner(request: Request, user: AdminUser) -> dict[str, str]:
+async def clear_upgrade_runner(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
     """Acknowledge a finished upgrade by removing its runner container.
 
     Safe in a way the restore equivalent is not: `$CONFIG_DIR/upgrade.log`
     records every attempt and survives the operation, so the outcome stays on the
     page after the container is gone.
+
+    A successful run that was started with the image cleanup gets a second pass
+    here. The runner removed everything it could, but the *previous*
+    papaia-manager image was held by the runner container itself -- a stopped
+    container still counts as a user of its image. Removing the runner is what
+    frees it, so this is the first moment it can go. A failed run is never
+    cleaned up: the checkout and the configuration may disagree, and with them
+    the answer to what is still needed.
     """
     verify_csrf(request)
     active = await _find(runner.UPGRADE_KIND)
     if active is None:
         return {"status": "nothing to clear"}
+    clean_up_after = active.succeeded and active.prune_images
     try:
         await runner.clear_runner(active.name, runner.UPGRADE_KIND)
     except runner.RunnerError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return {"status": "cleared"}
+    write_audit_entry(
+        settings.papaia_config_dir,
+        user=_user_id(user),
+        action="upgrade-runner-clear",
+        target=active.target,
+    )
+    response: dict[str, Any] = {"status": "cleared"}
+    if clean_up_after:
+        response["images"] = await _prune_after_dismiss(user, settings)
+    return response
+
+
+async def _prune_after_dismiss(user: OIDCClaims, settings: Settings) -> dict[str, Any]:
+    """Best effort: the run is already acknowledged, so this never fails the request."""
+    try:
+        result = await images.prune(settings.papaia_config_dir, settings.papaia_workspace_dir)
+    except images.ImagesError as exc:
+        return {"removed": [], "error": str(exc)}
+    _audit_prune(user, settings, result, trigger="dismiss")
+    return _prune_to_dict(result)
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +563,7 @@ def _check_to_dict(check: upgrade.UpgradeCheck) -> dict[str, Any]:
         "up_to_date": check.up_to_date,
         "available": check.available,
         "fetch_error": check.fetch_error,
+        "fetch_hint": check.fetch_hint,
         "migrations": [
             {"id": m.id, "version": m.version, "kind": m.kind} for m in check.migrations
         ],
@@ -431,6 +583,38 @@ def _check_to_dict(check: upgrade.UpgradeCheck) -> dict[str, Any]:
                 for r in check.gate.results
             ],
         },
+    }
+
+
+def _image_to_dict(image: images.OutdatedImage) -> dict[str, Any]:
+    return {
+        "id": image.id,
+        "name": image.name,
+        "source": image.source,
+        "size": image.size,
+        "size_human": image.size_human,
+        "created": image.created,
+    }
+
+
+def _report_to_dict(report: images.ImageReport) -> dict[str, Any]:
+    return {
+        "outdated": [_image_to_dict(image) for image in report.outdated],
+        "errors": report.errors,
+        "total_size": report.total_size,
+        "total_size_human": report.total_size_human,
+    }
+
+
+def _prune_to_dict(result: images.PruneResult) -> dict[str, Any]:
+    return {
+        "removed": [_image_to_dict(image) for image in result.removed],
+        "failed": [
+            {**_image_to_dict(image), "error": reason} for image, reason in result.failed
+        ],
+        "skipped": result.skipped,
+        "reclaimed": result.reclaimed,
+        "reclaimed_human": images.format_size(result.reclaimed),
     }
 
 

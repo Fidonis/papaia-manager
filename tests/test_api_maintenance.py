@@ -305,3 +305,72 @@ def test_delete_is_refused_while_a_restore_runner_is_active(
     monkeypatch.setattr(api_maintenance.runner, "find_runner", _restore_running)
     response = _delete(client, [_POINTS[0]])
     assert response.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# restore -- audit trail
+# ---------------------------------------------------------------------------
+
+
+def _audit_entries() -> list[dict[str, Any]]:
+    path = Path(_CONFIG_DIR, "manager", "audit.log")
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_starting_a_restore_is_audited_as_started(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _fake_start_restore(**kwargs: Any) -> api_maintenance.runner.RunnerStatus:
+        return api_maintenance.runner.RunnerStatus(
+            name="papaia-restore-x",
+            target=kwargs["restore_point"],
+            status="running",
+            exit_code=None,
+            started_at="",
+            finished_at="",
+        )
+
+    monkeypatch.setattr(api_maintenance.runner, "start_restore", _fake_start_restore)
+
+    response = _admin(client).post(
+        "/api/v1/maintenance/restore",
+        json={"restore_point": _POINTS[0]},
+        headers={"X-CSRF-Token": _CSRF},
+    )
+    assert response.status_code == 202, response.text
+
+    (entry,) = [e for e in _audit_entries() if e["action"] == "restore"]
+    assert entry["result"] == "started"
+
+
+def test_clearing_a_restore_runner_is_audited(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _find(kind: object = None) -> api_maintenance.runner.RunnerStatus:
+        return api_maintenance.runner.RunnerStatus(
+            name="papaia-restore-" + _POINTS[0],
+            target=_POINTS[0],
+            status="exited",
+            exit_code=0,
+            started_at="",
+            finished_at="",
+        )
+
+    cleared: list[str] = []
+
+    async def _clear(name: str, kind: object = None) -> None:
+        cleared.append(name)
+
+    monkeypatch.setattr(api_maintenance.runner, "find_runner", _find)
+    monkeypatch.setattr(api_maintenance.runner, "clear_runner", _clear)
+
+    response = _admin(client).delete(
+        "/api/v1/maintenance/restore", headers={"X-CSRF-Token": _CSRF}
+    )
+    assert response.status_code == 204
+    assert cleared == ["papaia-restore-" + _POINTS[0]]
+
+    (entry,) = [e for e in _audit_entries() if e["action"] == "restore-clear"]
+    assert entry["target"] == _POINTS[0]

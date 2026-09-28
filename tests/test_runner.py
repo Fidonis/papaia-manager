@@ -7,11 +7,18 @@ The runner's whole security and correctness surface is the argv it hands to
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
 from app.core.runner import (
+    _UPGRADE_WITH_PRUNE,
     RUNNER_NAME_PREFIX,
+    UPGRADE_KIND,
     ContainerSpec,
     RunnerError,
     _spec_from_inspect,
@@ -430,3 +437,104 @@ def test_an_invalid_target_version_is_refused_before_any_argv_is_built(
 def test_a_release_version_is_accepted() -> None:
     assert is_valid_target_version("1.2.0")
     assert is_valid_target_version("10.0.11")
+
+
+# ---------------------------------------------------------------------------
+# Upgrade runner with the image cleanup
+# ---------------------------------------------------------------------------
+
+
+def _labels(args: list[str]) -> list[str]:
+    return [args[i + 1] for i, a in enumerate(args) if a == "--label"]
+
+
+def test_the_cleanup_is_absent_unless_requested(spec: ContainerSpec) -> None:
+    # The bare papaia-ctl invocation is what every existing run was, and what an
+    # operator who unticked the box still gets -- no wrapper shell at all.
+    args = _upgrade(spec)
+    assert "-c" not in args
+    assert not any(label.startswith("de.fidonis.upgrade-prune-images") for label in _labels(args))
+
+
+def test_the_cleanup_is_a_wrapper_around_the_unchanged_papaia_ctl_command(
+    spec: ContainerSpec,
+) -> None:
+    args = _upgrade(spec, force=True, no_backup=True, prune_images=True)
+    tail = args[args.index(spec.image) + 1 :]
+    assert tail[:2] == ["bash", "-c"]
+    # `$0`, the two paths the cleanup needs, then papaia-ctl's whole argv --
+    # every value arrives as a positional parameter, none is spliced into the
+    # script text.
+    assert tail[3:6] == ["papaia-upgrade", _CONFIG, _WORKSPACE]
+    # The path is a `Path`, so it carries backslashes when the suite runs on Windows.
+    assert [a.replace("\\", "/") for a in tail[6:]] == [
+        "bash",
+        f"{_WORKSPACE}/papaia/tools/papaia-ctl",
+        "upgrade",
+        f"--config-dir={_CONFIG}",
+        "--version=1.2.0",
+        "-y",
+        "--force",
+        "--no-backup",
+    ]
+    script = tail[2]
+    assert _CONFIG not in script
+    assert _WORKSPACE not in script
+    assert "1.2.0" not in script
+
+
+def test_the_cleanup_runner_is_labelled(spec: ContainerSpec) -> None:
+    assert "de.fidonis.upgrade-prune-images=true" in _labels(_upgrade(spec, prune_images=True))
+
+
+def test_the_label_is_read_back_from_a_runner_the_previous_manager_started() -> None:
+    payload = json.loads(json.dumps(_INSPECT))
+    payload[0]["Name"] = "/papaia-upgrade-1.2.0"
+    payload[0]["Config"]["Labels"] = {
+        "de.fidonis.runner-target": "1.2.0",
+        "de.fidonis.upgrade-prune-images": "true",
+    }
+    assert _status_from_inspect(payload, UPGRADE_KIND).prune_images is True
+    payload[0]["Config"]["Labels"].pop("de.fidonis.upgrade-prune-images")
+    assert _status_from_inspect(payload, UPGRADE_KIND).prune_images is False
+
+
+# `bash` on a Windows PATH is usually the WSL launcher, which does not pass a
+# multi-line `-c` script through intact; the suite runs this on Linux in CI.
+@pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("bash") is None, reason="needs a POSIX bash"
+)
+@pytest.mark.parametrize(("ctl_exit", "cleanup_runs"), [(0, True), (3, False)])
+def test_the_wrapper_cleans_up_only_after_success_and_keeps_the_exit_code(
+    tmp_path: Path, ctl_exit: int, cleanup_runs: bool
+) -> None:
+    # Executed for real with a stand-in papaia-ctl and a stand-in `python`. Two
+    # properties carry the design: the cleanup must not run after a failed
+    # upgrade, and a cleanup that fails must not change the upgrade's outcome.
+    log = tmp_path / "cleanup.log"
+    (tmp_path / "ctl.sh").write_text(f"exit {ctl_exit}\n", encoding="utf-8", newline="\n")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake = fake_bin / "python"
+    fake.write_text(
+        f'#!/bin/bash\necho "$@" >> "{log.as_posix()}"\nexit 1\n', encoding="utf-8", newline="\n"
+    )
+    fake.chmod(0o755)
+
+    proc = subprocess.run(
+        ["bash", "-c", _UPGRADE_WITH_PRUNE, "papaia-upgrade", "/cfg", "/ws",
+         "bash", str(tmp_path / "ctl.sh")],
+        env={**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == ctl_exit
+    assert log.exists() is cleanup_runs
+    if cleanup_runs:
+        assert log.read_text().strip() == (
+            "-m app.core.images prune --config-dir /cfg --workspace-dir /ws"
+        )
+        # The stand-in failed (exit 1); the run still reports the upgrade's 0.
+        assert "Image cleanup skipped" in proc.stdout

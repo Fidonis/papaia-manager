@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # Manager application
     # Realm role granting full access (add-ons, catalogs, jobs and dashboard).
-    manager_admin_role: str = "admin"
+    manager_admin_role: str = "manager-admin"
     # Realm role granting dashboard-only access. Admins implicitly have it too.
     manager_user_role: str = "user"
     manager_host: str

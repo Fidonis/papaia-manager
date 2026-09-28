@@ -77,6 +77,32 @@ STACK_NAME_PREFIX = "papaia-stack-"
 UPGRADE_LABEL_VALUE = "papaia-upgrade"
 UPGRADE_NAME_PREFIX = "papaia-upgrade-"
 
+# Set on an upgrade runner that was asked to remove outdated images. Read back
+# from the container so a runner found after the manager was recreated -- on a
+# different image -- still knows what it was started for: the phase list shows
+# the cleanup step only when it was requested, and dismissing a successful run
+# repeats the cleanup once the runner no longer holds the previous image.
+PRUNE_LABEL_KEY = "de.fidonis.upgrade-prune-images"
+
+# What an upgrade runner executes when it also cleans up. The arguments arrive as
+# positional parameters -- config dir, workspace dir, then papaia-ctl's whole
+# argv -- so nothing is interpolated into the script text.
+#
+# The cleanup runs only after a zero exit, and never changes the exit code: a
+# failed cleanup after a successful upgrade must not turn the run into "upgrade
+# failed" with a recovery block for something that needs no recovery. papaia-ctl
+# `exec`s itself between its two phases, but that replaces the child bash this
+# script started, not the script -- so `$?` is still the upgrade's final status.
+_UPGRADE_WITH_PRUNE = """cfg=$1; ws=$2; shift 2
+"$@"
+rc=$?
+if [ "$rc" -eq 0 ]; then
+    python -m app.core.images prune --config-dir "$cfg" --workspace-dir "$ws" ||
+        echo "[papaia-manager] Image cleanup skipped -- it could not be started"
+fi
+exit "$rc"
+"""
+
 # Release versions the upgrade may be pointed at. Anchored and exact: the value
 # reaches a `--version=` argv and the runner's own container name, so this is
 # the guard against both a traversal and a value read as another flag.
@@ -150,6 +176,9 @@ class RunnerStatus:
     exit_code: int | None
     started_at: str
     finished_at: str
+    # Upgrade runners only: whether the operator asked for outdated images to be
+    # removed. Always False for the other kinds.
+    prune_images: bool = False
 
     @property
     def is_running(self) -> bool:
@@ -237,7 +266,14 @@ def _spec_from_inspect(payload: Any) -> ContainerSpec:
     )
 
 
-def _base_run_args(spec: ContainerSpec, *, name: str, kind: RunnerKind, target: str) -> list[str]:
+def _base_run_args(
+    spec: ContainerSpec,
+    *,
+    name: str,
+    kind: RunnerKind,
+    target: str,
+    extra_labels: tuple[str, ...] = (),
+) -> list[str]:
     """The `docker run` flags every runner shares, up to but not including the image."""
     args: list[str] = [
         "run",
@@ -254,6 +290,8 @@ def _base_run_args(spec: ContainerSpec, *, name: str, kind: RunnerKind, target: 
         "--restart",
         "no",
     ]
+    for label in extra_labels:
+        args += ["--label", label]
     for bind in spec.binds:
         args += ["--volume", bind]
     if spec.user:
@@ -374,6 +412,7 @@ def build_upgrade_run_args(
     config_dir: str,
     force: bool = False,
     no_backup: bool = False,
+    prune_images: bool = False,
 ) -> list[str]:
     """Assemble the full `docker run` argv for an upgrade runner.
 
@@ -393,6 +432,10 @@ def build_upgrade_run_args(
     and the runner inherits the manager's backup bind, so the path parity that
     makes this work is a property of the inherited spec rather than of an
     argument.
+
+    `prune_images` wraps the same command in a shell that removes the images the
+    release replaced once papaia-ctl exited cleanly -- see `_UPGRADE_WITH_PRUNE`.
+    Without it the argv is exactly the bare papaia-ctl invocation.
     """
     if not is_valid_target_version(target_version):
         raise ValueError(f"target version {target_version!r} is not a release version")
@@ -402,8 +445,9 @@ def build_upgrade_run_args(
         name=runner_name(target_version, UPGRADE_KIND),
         kind=UPGRADE_KIND,
         target=target_version,
+        extra_labels=(f"{PRUNE_LABEL_KEY}=true",) if prune_images else (),
     )
-    args += [
+    ctl = [
         "bash",
         str(papaia_ctl_path(workspace_dir)),
         "upgrade",
@@ -412,10 +456,21 @@ def build_upgrade_run_args(
         "-y",
     ]
     if force:
-        args.append("--force")
+        ctl.append("--force")
     if no_backup:
-        args.append("--no-backup")
-    return args
+        ctl.append("--no-backup")
+    if not prune_images:
+        return args + ctl
+    return [
+        *args,
+        "bash",
+        "-c",
+        _UPGRADE_WITH_PRUNE,
+        "papaia-upgrade",
+        config_dir,
+        workspace_dir,
+        *ctl,
+    ]
 
 
 async def start_upgrade(
@@ -425,6 +480,7 @@ async def start_upgrade(
     config_dir: str,
     force: bool = False,
     no_backup: bool = False,
+    prune_images: bool = False,
 ) -> RunnerStatus:
     """Start a detached upgrade runner and return its initial status."""
     spec = await self_spec()
@@ -435,12 +491,14 @@ async def start_upgrade(
         config_dir=config_dir,
         force=force,
         no_backup=no_backup,
+        prune_images=prune_images,
     )
     logger.info(
-        "starting upgrade runner for %s (force=%s, no_backup=%s)",
+        "starting upgrade runner for %s (force=%s, no_backup=%s, prune_images=%s)",
         target_version,
         force,
         no_backup,
+        prune_images,
     )
     await _docker(*args)
     status = await find_runner(UPGRADE_KIND)
@@ -502,6 +560,7 @@ def _status_from_inspect(payload: Any, kind: RunnerKind = RESTORE_KIND) -> Runne
         exit_code=int(exit_code) if isinstance(exit_code, int) and status != "running" else None,
         started_at=str(state.get("StartedAt") or ""),
         finished_at=str(state.get("FinishedAt") or ""),
+        prune_images=labels.get(PRUNE_LABEL_KEY) == "true",
     )
 
 
@@ -603,5 +662,6 @@ def status_to_dict(
         "exit_code": status.exit_code,
         "started_at": status.started_at,
         "finished_at": status.finished_at,
+        "prune_images": status.prune_images,
         "log": log,
     }

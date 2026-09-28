@@ -10,6 +10,7 @@ worth anything if the route actually reaches it.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -22,7 +23,7 @@ from typing import Any
 
 import pytest
 
-from app.core.jobs import Job, JobQueue, JobStatus
+from app.core.jobs import Job, JobContext, JobQueue, JobStatus
 
 _SESSION_SECRET = "test-session-secret-value"
 _CONFIG_DIR = tempfile.mkdtemp(prefix="papaia-config-")
@@ -178,3 +179,43 @@ def test_a_finished_backup_does_not_block_the_next_one(client: TestClient) -> No
     # 202 means the guard let it through and the job was enqueued; the callback
     # only runs once a worker picks it up, which never happens here.
     assert _post_backup(_admin(client)).status_code == 202
+
+
+# ---------------------------------------------------------------------------
+# A failing callback is recorded, not just logged
+# ---------------------------------------------------------------------------
+
+
+def test_a_failing_callback_leaves_an_error_audit_entry() -> None:
+    # Runs the real worker loop -- unlike the tests above, this one is about
+    # what `_worker`'s except branch does, not about the registry it maintains.
+    config_dir = tempfile.mkdtemp(prefix="papaia-jobs-audit-")
+
+    async def _boom(ctx: JobContext) -> None:
+        raise RuntimeError("boom")
+
+    async def _run() -> Job:
+        queue = JobQueue(config_dir=config_dir)
+        queue.start()
+        job = await queue.enqueue(
+            action="addon-install", target="n8n", user="tester", callback=_boom
+        )
+        for _ in range(200):
+            current = queue.get_job(job.id)
+            assert current is not None
+            if current.status == JobStatus.FAILED:
+                break
+            await asyncio.sleep(0.01)
+        queue.stop()
+        return job
+
+    job = asyncio.run(_run())
+
+    audit_path = Path(config_dir, "manager", "audit.log")
+    entries = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
+    assert entries[-1]["user"] == "tester"
+    assert entries[-1]["action"] == "addon-install"
+    assert entries[-1]["target"] == "n8n"
+    assert entries[-1]["result"] == "error"
+    assert entries[-1]["job_id"] == job.id
+    assert entries[-1]["params"] == {"error": "RuntimeError"}

@@ -1,0 +1,114 @@
+{# The audit log, filtered and paginated by the caller.
+
+   Every badge branch spells its classes out, same rule as job_list.html:
+   app.css is built by scanning these templates, so a class assembled from a
+   variable would not survive the purge. `partial` is a real, pre-existing
+   value (images-prune's outcome when some images failed to remove) -- not
+   something this feature invented, so it needs a branch from day one. #}
+<script>
+  auditFillFacets({{ facets | tojson }});
+</script>
+
+{% if not entries and total == 0 %}
+<div class="rounded-xl border border-base-300 px-5 py-10 text-center">
+  <p class="text-sm font-semibold">
+    {% if filter_user or filter_action or filter_result or filter_target or filter_since or filter_before %}
+      No entries match
+    {% else %}
+      No audit entries yet
+    {% endif %}
+  </p>
+  <p class="mt-1 text-sm opacity-60">
+    Every install, backup, restore, upgrade and catalog change is recorded here
+    as it happens.
+  </p>
+</div>
+{% else %}
+
+{% if corrupt_lines %}
+<div class="alert alert-warning text-xs mb-3 py-2">
+  <span>{{ corrupt_lines }} log line{{ "s" if corrupt_lines != 1 }} could not be read and
+    {{ "are" if corrupt_lines != 1 else "is" }} not shown below.</span>
+</div>
+{% endif %}
+
+<div class="overflow-x-auto rounded-xl border border-base-300">
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>Time (UTC)</th>
+        <th>User</th>
+        <th>Action</th>
+        <th>Target</th>
+        <th>Result</th>
+        <th>Job</th>
+        <th>Details</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in entries %}
+      <tr>
+        <td class="text-xs whitespace-nowrap font-mono">
+          {{ entry.ts.replace("T", " ").split(".")[0].split("+")[0] }}
+        </td>
+        <td class="text-xs">{{ entry.user }}</td>
+        <td class="font-medium text-sm">{{ entry.action }}</td>
+        <td class="font-mono text-xs opacity-70 max-w-xs truncate" title="{{ entry.target }}">
+          {{ entry.target }}
+        </td>
+        <td>
+          {% if entry.result == "ok" %}
+            <span class="badge badge-success badge-sm">ok</span>
+          {% elif entry.result == "error" %}
+            <span class="badge badge-error badge-sm">error</span>
+          {% elif entry.result == "started" %}
+            <span class="badge badge-info badge-sm">started</span>
+          {% elif entry.result == "partial" %}
+            <span class="badge badge-warning badge-sm">partial</span>
+          {% else %}
+            <span class="badge badge-ghost badge-sm">{{ entry.result }}</span>
+          {% endif %}
+        </td>
+        <td class="text-xs">
+          {% if entry.job_id %}
+          <a href="/jobs/{{ entry.job_id }}" class="link link-hover opacity-70">view</a>
+          {% else %}
+          <span class="opacity-30">—</span>
+          {% endif %}
+        </td>
+        <td class="text-xs">
+          {% if entry.params %}
+          <details>
+            <summary class="cursor-pointer opacity-60">show</summary>
+            <pre class="mt-1 max-w-sm overflow-x-auto text-[11px]">{{ entry.params | tojson(indent=2) }}</pre>
+          </details>
+          {% else %}
+          <span class="opacity-30">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="mt-3 flex items-center justify-between">
+  <p class="text-xs opacity-60">
+    {{ offset + 1 }}–{{ offset + (entries | length) }} of {{ total }}
+  </p>
+  <div class="flex gap-2">
+    <button type="button" class="btn btn-ghost btn-sm" {{ "disabled" if offset == 0 }}
+            hx-get="/partials/audit" hx-target="#audit-list" hx-swap="innerHTML"
+            hx-include="#audit-filters"
+            hx-vals='{"offset": {{ [offset - limit, 0] | max }}, "limit": {{ limit }}}'>
+      Prev
+    </button>
+    <button type="button" class="btn btn-ghost btn-sm" {{ "disabled" if offset + limit >= total }}
+            hx-get="/partials/audit" hx-target="#audit-list" hx-swap="innerHTML"
+            hx-include="#audit-filters"
+            hx-vals='{"offset": {{ offset + limit }}, "limit": {{ limit }}}'>
+      Next
+    </button>
+  </div>
+</div>
+{% endif %}

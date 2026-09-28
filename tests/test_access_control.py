@@ -52,6 +52,7 @@ from app.main import create_app  # noqa: E402
 ADMIN_PAGES = [
     "/addons",
     "/addons/paperless",
+    "/audit",
     "/backup",
     "/catalogs",
     "/jobs",
@@ -60,6 +61,7 @@ ADMIN_PAGES = [
 ]
 ADMIN_PARTIALS = [
     "/partials/addons",
+    "/partials/audit",
     "/partials/backup/job-status",
     "/partials/backup/restore-points",
     "/partials/backup/restore-status",
@@ -77,6 +79,8 @@ ADMIN_PARTIALS = [
 ]
 ADMIN_APIS = [
     "/api/v1/addons",
+    "/api/v1/audit",
+    "/api/v1/audit/export",
     "/api/v1/catalogs",
     "/api/v1/jobs",
     "/api/v1/maintenance/backup-dir",
@@ -103,6 +107,7 @@ ADMIN_WRITE_APIS = [
     "/api/v1/stack/restart",
     "/api/v1/stack/runner/clear",
     "/api/v1/addons/paperless/restart",
+    "/api/v1/audit/prune",
     "/api/v1/maintenance/restore-points/delete",
     "/api/v1/upgrade",
     "/api/v1/upgrade/check",
@@ -120,6 +125,8 @@ DASHBOARD_PATHS = ["/", "/partials/tiles", "/partials/service-status"]
 # two maintenance reads only touch the config directory's .env, which this
 # module writes, so they are safe to exercise for real.
 ADMIN_APIS_SELF_CONTAINED = [
+    "/api/v1/audit",
+    "/api/v1/audit/export",
     "/api/v1/catalogs",
     "/api/v1/maintenance/backup-dir",
     "/api/v1/maintenance/restore-points",

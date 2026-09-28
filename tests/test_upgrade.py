@@ -8,20 +8,28 @@ papaia-ctl and `lib.cli` actually emit.
 """
 from __future__ import annotations
 
+import os
+import subprocess
 import tempfile
 from pathlib import Path
 
 import pytest
 
+from app.core import upgrade
 from app.core.upgrade import (
     PHASE_DONE,
     PHASE_FAILED,
     PHASE_PENDING,
     PHASE_RUNNING,
     PHASE_SKIPPED,
+    UpgradeError,
     current_version,
+    fetch_hint,
+    fetch_tags,
+    https_equivalent,
     is_valid_target_version,
     newer_than,
+    origin_url,
     parse_gate_json,
     parse_plan_tsv,
     parse_resolve_tsv,
@@ -378,6 +386,95 @@ def test_the_checkout_phase_carries_the_tag() -> None:
 
 
 # ---------------------------------------------------------------------------
+# The optional image-cleanup phase
+# ---------------------------------------------------------------------------
+#
+# Announced by the manager's own runner script after papaia-ctl has already
+# printed "upgrade complete", so it has to be judged on its own lines rather
+# than on the upgrade's marker.
+
+_CLEANUP_STARTED = _COMPLETE_LOG + "[papaia-manager] Removing outdated Docker images...\n"
+_CLEANUP_DONE = (
+    _CLEANUP_STARTED
+    + "[papaia-manager]   removed ghcr.io/berriai/litellm:v1.91.1 (1.5 GB)\n"
+    + "[papaia-manager] Image cleanup finished: 3 removed, up to 4.2 GB reclaimed\n"
+)
+
+
+def _images(log: str, *, running: bool, prune: bool = True) -> upgrade.Phase | None:
+    phases = {p.key: p for p in phases_from_log(log, running=running, prune_images=prune)}
+    return phases.get("images")
+
+
+def test_a_run_without_the_cleanup_lists_no_such_step() -> None:
+    assert _images(_COMPLETE_LOG, running=False, prune=False) is None
+    assert len(phases_from_log(_COMPLETE_LOG, running=False)) == 6
+
+
+def test_the_cleanup_is_pending_until_it_is_announced() -> None:
+    phase = _images(_COMPLETE_LOG, running=True)
+    assert phase is not None
+    assert phase.state == PHASE_PENDING
+
+
+def test_the_cleanup_runs_after_the_upgrade_has_already_completed() -> None:
+    # "upgrade complete" is in the log and the container is still running: the
+    # six upgrade phases are done, the cleanup is not.
+    phases = {
+        p.key: p.state
+        for p in phases_from_log(_CLEANUP_STARTED, running=True, prune_images=True)
+    }
+    assert phases["images"] == PHASE_RUNNING
+    assert phases["start"] == PHASE_DONE
+
+
+def test_a_finished_cleanup_carries_its_summary() -> None:
+    phase = _images(_CLEANUP_DONE, running=False)
+    assert phase is not None
+    assert phase.state == PHASE_DONE
+    assert phase.detail == "3 removed, up to 4.2 GB reclaimed"
+
+
+def test_a_cleanup_that_could_not_run_is_skipped_with_the_reason() -> None:
+    log = _CLEANUP_STARTED + (
+        "[papaia-manager] Image cleanup skipped -- nothing was removed: "
+        "core: docker compose config failed: boom\n"
+    )
+    phase = _images(log, running=False)
+    assert phase is not None
+    assert phase.state == PHASE_SKIPPED
+    assert phase.detail == "nothing was removed: core: docker compose config failed: boom"
+
+
+def test_a_cleanup_that_stopped_midway_is_marked_failed() -> None:
+    phase = _images(_CLEANUP_STARTED, running=False)
+    assert phase is not None
+    assert phase.state == PHASE_FAILED
+
+
+def test_a_failed_upgrade_never_reaches_the_cleanup() -> None:
+    phase = _images(_FAILED_LOG, running=False)
+    assert phase is not None
+    assert phase.state == PHASE_SKIPPED
+
+
+def test_a_failing_cleanup_does_not_turn_the_upgrade_phases_red() -> None:
+    log = _CLEANUP_STARTED
+    states = {p.key: p.state for p in phases_from_log(log, running=False, prune_images=True)}
+    assert {k: v for k, v in states.items() if k != "images"} == {
+        k: PHASE_DONE for k in states if k != "images"
+    }
+
+
+def test_the_managers_own_prefix_is_stripped_like_papaia_ctls() -> None:
+    from app.core.upgrade import _strip_prefix
+
+    assert _strip_prefix("[papaia-manager] Removing outdated Docker images...") == (
+        "Removing outdated Docker images..."
+    )
+
+
+# ---------------------------------------------------------------------------
 # The way back
 # ---------------------------------------------------------------------------
 
@@ -459,3 +556,223 @@ def test_synthetic_recovery_is_empty_once_the_versions_agree() -> None:
         )
         == ""
     )
+
+
+# ---------------------------------------------------------------------------
+# The tag fetch
+# ---------------------------------------------------------------------------
+#
+# An SSH `origin` cannot be fetched from inside the manager container -- there
+# is no SSH client, key or known_hosts -- and used to leave a checkout cloned as
+# `git@github.com:owner/repo.git` blind to every release published after it.
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("git@github.com:Fidonis/papaia.git", "https://github.com/Fidonis/papaia.git"),
+        ("git@git.example.org:team/sub/papaia.git", "https://git.example.org/team/sub/papaia.git"),
+        ("git@github.com:/Fidonis/papaia.git", "https://github.com/Fidonis/papaia.git"),
+        ("  git@github.com:Fidonis/papaia.git\n", "https://github.com/Fidonis/papaia.git"),
+        ("ssh://git@github.com/Fidonis/papaia.git", "https://github.com/Fidonis/papaia.git"),
+        (
+            "ssh://git@git.example.org:2222/team/papaia.git",
+            "https://git.example.org/team/papaia.git",
+        ),
+        ("ssh://github.com/Fidonis/papaia.git", "https://github.com/Fidonis/papaia.git"),
+    ],
+)
+def test_an_ssh_origin_has_an_https_equivalent(url: str, expected: str) -> None:
+    assert https_equivalent(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://github.com/Fidonis/papaia.git",
+        "http://git.example.org/papaia.git",
+        "file:///srv/git/papaia.git",
+        "/srv/git/papaia.git",
+        "C:/srv/git/papaia.git",
+        "../papaia.git",
+        "",
+        "   ",
+    ],
+)
+def test_anything_that_is_not_ssh_has_no_equivalent(url: str) -> None:
+    # None means "use origin as it is": there is nothing to translate, and a
+    # rewritten URL for a local path would send the fetch somewhere else.
+    assert https_equivalent(url) is None
+
+
+class _FakeGit:
+    """Stands in for `_run_git`: records every call, answers `remote get-url`."""
+
+    def __init__(self, origin: str, *, fetch_error: str = "") -> None:
+        self.origin = origin
+        self.fetch_error = fetch_error
+        self.calls: list[tuple[str, ...]] = []
+
+    async def __call__(self, repo: Path, args: tuple[str, ...], limit: float) -> str:
+        self.calls.append(args)
+        if args[:2] == ("remote", "get-url"):
+            return self.origin + "\n"
+        if args[0] == "fetch" and self.fetch_error:
+            raise UpgradeError(f"git fetch failed: {self.fetch_error}")
+        return ""
+
+    @property
+    def fetches(self) -> list[tuple[str, ...]]:
+        return [c for c in self.calls if c[0] == "fetch"]
+
+
+async def test_an_ssh_origin_is_fetched_over_https(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeGit("git@github.com:Fidonis/papaia.git")
+    monkeypatch.setattr(upgrade, "_run_git", fake)
+
+    assert await fetch_tags("/w") == ""
+
+    assert fake.fetches == [("fetch", "--tags", "--quiet", "https://github.com/Fidonis/papaia.git")]
+    # The checkout's configuration is the operator's; nothing here may write it.
+    assert not any(c[0] == "remote" and c[1] != "get-url" for c in fake.calls)
+    assert not any(c[0] == "config" for c in fake.calls)
+
+
+async def test_an_https_origin_is_fetched_as_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeGit("https://github.com/Fidonis/papaia.git")
+    monkeypatch.setattr(upgrade, "_run_git", fake)
+
+    assert await fetch_tags("/w") == ""
+
+    assert fake.fetches == [("fetch", "--tags", "--quiet", "origin")]
+
+
+async def test_a_failed_fetch_is_returned_not_raised(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeGit(
+        "git@github.com:Fidonis/papaia.git",
+        fetch_error="fatal: could not read Username for 'https://github.com'",
+    )
+    monkeypatch.setattr(upgrade, "_run_git", fake)
+
+    error = await fetch_tags("/w")
+
+    assert error.startswith("git fetch failed:")
+    assert "could not read Username" in error
+
+
+async def test_a_checkout_without_an_origin_falls_through_to_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def no_origin(repo: Path, args: tuple[str, ...], limit: float) -> str:
+        if args[:2] == ("remote", "get-url"):
+            raise UpgradeError("git remote failed: error: No such remote 'origin'")
+        raise UpgradeError("git fetch failed: fatal: 'origin' does not appear to be a repository")
+
+    monkeypatch.setattr(upgrade, "_run_git", no_origin)
+
+    assert await origin_url("/w") == ""
+    assert "does not appear to be a repository" in await fetch_tags("/w")
+
+
+def _run(cwd: Path, *args: str) -> None:
+    subprocess.run(  # noqa: S603
+        ["git", *args],  # noqa: S607
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.org",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.org",
+        },
+    )
+
+
+async def test_a_release_published_after_the_clone_becomes_visible(tmp_path: Path) -> None:
+    # Real git, no network: a bare repository stands in for the remote.
+    remote = tmp_path / "remote.git"
+    seed = tmp_path / "seed"
+    workspace = tmp_path / "ws"
+    seed.mkdir()
+    workspace.mkdir()
+    _run(tmp_path, "init", "--bare", "-b", "main", str(remote))
+    _run(seed, "init", "-b", "main")
+    (seed / "VERSION").write_text("1.1.0\n", encoding="utf-8")
+    _run(seed, "add", "VERSION")
+    _run(seed, "commit", "-m", "1.1.0")
+    _run(seed, "tag", "v1.1.0")
+    _run(seed, "push", str(remote), "main", "--tags")
+    _run(workspace, "clone", str(remote), "papaia")
+
+    (seed / "VERSION").write_text("1.2.0\n", encoding="utf-8")
+    _run(seed, "commit", "-am", "1.2.0")
+    _run(seed, "tag", "v1.2.0")
+    _run(seed, "push", str(remote), "main", "--tags")
+
+    assert await upgrade.local_tags(str(workspace)) == ["1.1.0"]
+    assert await fetch_tags(str(workspace)) == ""
+    assert await upgrade.local_tags(str(workspace)) == ["1.2.0", "1.1.0"]
+
+
+# ---------------------------------------------------------------------------
+# The hint
+# ---------------------------------------------------------------------------
+
+_REPO = Path("/srv/papaia/workspace/papaia")
+_SSH = "git@github.com:Fidonis/papaia.git"
+_HTTPS = "https://github.com/Fidonis/papaia.git"
+
+
+def _hint(error: str, origin: str = _HTTPS) -> str:
+    return fetch_hint(error, repo=_REPO, origin=origin, uid=1000, gid=1001)
+
+
+def test_a_fetch_that_worked_needs_no_hint() -> None:
+    assert _hint("") == ""
+
+
+def test_an_ssh_origin_names_the_host_fetch_and_the_https_switch() -> None:
+    text = _hint("git fetch failed: fatal: could not read Username", _SSH)
+    assert "SSH URL" in text
+    assert f"git -C {_REPO} fetch --tags origin" in text
+    assert f"git -C {_REPO} remote set-url origin {_HTTPS}" in text
+
+
+def test_ssh_key_errors_are_not_read_as_a_permission_problem() -> None:
+    text = _hint("git fetch failed: git@github.com: Permission denied (publickey).", _SSH)
+    assert "chown" not in text
+    assert "SSH" in text
+
+
+def test_a_permission_error_names_the_owner_the_container_runs_as() -> None:
+    text = _hint("git fetch failed: error: cannot open '.git/FETCH_HEAD': Permission denied")
+    assert f"chown -R 1000:1001 {_REPO}/.git" in text
+    assert f"git -C {_REPO} fetch --tags origin" in text
+
+
+def test_a_network_error_names_the_host() -> None:
+    text = _hint("git fetch failed: fatal: unable to access: Could not resolve host: github.com")
+    assert "github.com" in text
+    assert "443" in text
+    assert "chown" not in text
+
+
+def test_a_timeout_reads_as_a_network_problem() -> None:
+    assert "443" in _hint("git fetch timed out after 60s")
+
+
+def test_an_ssh_origin_whose_https_fetch_failed_still_gets_the_host_fetch() -> None:
+    # A private repository: the HTTPS fallback asks for credentials, which the
+    # manager cannot give. The host has the key, so the host fetch is the answer.
+    text = _hint("git fetch failed: fatal: could not read Username for 'https://github.com'", _SSH)
+    assert f"git -C {_REPO} fetch --tags origin" in text
+    assert "remote set-url" in text
+
+
+def test_an_unrecognised_error_still_names_the_host_fetch() -> None:
+    text = _hint("git fetch failed: something new")
+    assert "does not recognise" in text
+    assert f"git -C {_REPO} fetch --tags origin" in text
+    assert "remote set-url" not in text

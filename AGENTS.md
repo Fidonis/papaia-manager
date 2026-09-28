@@ -12,7 +12,9 @@ It also serves the stack dashboard: a tile overview of the deployed applications
 
 A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
-A fifth surface, Update (`/upgrade`), moves the deployment to a newer papAIa release. It is split in two: a read-only check that resolves the target tag, gates the active add-ons against it and lists the pending migrations, and the upgrade itself, which runs `papaia-ctl upgrade` in a detached container (see the Upgrade model section below).
+A fifth surface, Upgrade (`/upgrade`), moves the deployment to a newer papAIa release. It is split in two: a read-only check that resolves the target tag, gates the active add-ons against it and lists the pending migrations, and the upgrade itself, which runs `papaia-ctl upgrade` in a detached container (see the Upgrade model section below). The page also lists the Docker images an upgrade leaves behind and removes them on request.
+
+A sixth surface, Audit (`/audit`), reads, exports and prunes the audit log the other surfaces already write to — filtered, paginated JSON/HTML, CSV/JSONL export, and a dry-run-gated prune, all admin-only and CSRF-checked like every other mutating route.
 
 A fourth surface, Services, reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. The page also drives lifecycle: one Compose profile at a time via `papaia-ctl start`/`stop --profiles=`, several profiles at once, or the whole stack in a detached container (see the Service group control section below). Two aggregates of the same snapshot render as status pills in the header of every page, one per section, for every authenticated role.
 
@@ -46,6 +48,7 @@ papaia-manager/
 │       │   │                   #    and the core's read-only python sub-commands)
 │       │   ├── backups.py      # Read-only backup.yaml / manifest.yaml catalogue access
 │       │   ├── runner.py       # Detached papaia-ctl container: restore, stack, upgrade
+│       │   ├── images.py       # Outdated Docker images: declared vs. used vs. local, removal
 │       │   ├── upgrade.py      # Core release check: git state, target resolution,
 │       │   │                   #   add-on gate, migration plan, runner-log phases
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
@@ -70,7 +73,8 @@ papaia-manager/
 │       │   ├── api_addons.py   # /api/v1/addons — addon lifecycle verbs
 │       │   ├── api_jobs.py     # /api/v1/jobs — job status + log streaming
 │       │   ├── api_maintenance.py # /api/v1/maintenance — backup + restore
-│       │   ├── api_upgrade.py  # /api/v1/upgrade — release check + core upgrade
+│       │   ├── api_upgrade.py  # /api/v1/upgrade — release check, core upgrade, image cleanup
+│       │   ├── api_audit.py    # /api/v1/audit — read, export, prune
 │       │   └── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
@@ -113,7 +117,7 @@ SessionMiddleware  (itsdangerous-signed cookie)
 role dependency  (deps.py → roles.py)
   │  AdminUser  →  MANAGER_ADMIN_ROLE required        (add-ons, catalogs, jobs,
   │                                                    backup, services)
-  │  AnyUser    →  admin OR MANAGER_USER_ROLE         (dashboard, status pill)
+  │  AnyUser    →  MANAGER_ADMIN_ROLE OR MANAGER_USER_ROLE (dashboard, status pill)
   │  role missing  →  403  (HTML page, or JSON under /api/)
   ▼
 Route handler
@@ -166,7 +170,7 @@ Upgrade is the second mutating operation that is **not** a job, for a stronger v
 
 The read half and the execute half are deliberately separate.
 
-**The check** (`core/upgrade.py`) never changes anything and is split by cost. `current_version`, `checkout_state` and `read_upgrade_log` are file reads plus three local `git` calls, cheap enough to render on page load. `run_check` fetches from the remote and materialises a `git worktree` of the target tag, because the add-on gate has no honest answer without one — only the target's tree carries its own `ADDON_API` window and its Compose service names. It is an explicit operator action, serialised behind an `asyncio.Lock`, and its result is cached for the process.
+**The check** (`core/upgrade.py`) never changes anything and is split by cost. `current_version`, `checkout_state` and `read_upgrade_log` are file reads plus three local `git` calls, cheap enough to render on page load. `run_check` fetches from the remote and materialises a `git worktree` of the target tag, because the add-on gate has no honest answer without one — only the target's tree carries its own `ADDON_API` window and its Compose service names. It is an explicit operator action, serialised behind an `asyncio.Lock`, and its result is cached for the process. The fetch runs in the manager container, which has no SSH client or key, so an SSH `origin` is fetched through its HTTPS equivalent (`https_equivalent`, passed as a URL — the checkout's configuration is never written). A fetch that still fails is a warning carrying the commands from `fetch_hint`, never "the newest release": the page and the header button say "Could not check" / "Check failed" instead.
 
 The arithmetic itself is delegated straight back to the core: `ALLOWED_PY_COMMANDS` in `core/ctl.py` allows `upgrade-resolve`, `upgrade-plan` and `addon-check`, invoked through `run_py_cli` as `python3 -m lib.cli` with the workspace on `PYTHONPATH` — the same shape `papaia-ctl` uses for itself. Parsing four lines of TSV is the price of the manager and a shell on the host never reaching different verdicts about the same checkout. `upgrade-record` is deliberately absent: it writes the migration ledger, and only the upgrade's own second phase may do that.
 
@@ -183,6 +187,14 @@ Consequences worth remembering when touching this area:
 - There is no automatic rollback, by design in papaia-ctl. The failure panel renders `_upgrade_failed`'s recovery block verbatim rather than re-deriving it.
 - A dirty checkout blocks the upgrade with no override. `--force` degrades the add-on gate only, and is refused outright when the gate passed or failed on an `ERROR`.
 - The target version reaches both an argv and a container name, so it is validated with `\Z`-anchored patterns in both `core/upgrade.py` and `core/runner.py` — `$` would also match before a trailing newline.
+
+**Image cleanup.** `papaia-ctl upgrade` pulls the target's images through `docker compose up` and never removes the ones it replaced. `core/images.py` finds them, and it does so without the previous release's tree: an image is *outdated* when it is neither *declared* nor *used* and every reference it carries lives in a repository the stack declares. Declared is `docker compose config --images`, run the way papaia-ctl runs compose — the core file with every override in the config directory (the LocalAI GPU override swaps a tag, which reading the YAML would miss) and each installed add-on, active or not, with its own env file. Used is the image of every container on the host, stopped ones included. The repository condition is what keeps it from being `docker image prune -a`; the per-image (not per-repository) declared check is what keeps `postgres:16` next to `postgres:18.3`.
+
+- **Fail closed.** If any source's declared images cannot be resolved the report carries the reason and no candidate. Removal never uses `-f`, so the daemon's own refusal is the last line of defence.
+- `POST /api/v1/upgrade/images/prune` recomputes the candidates under a lock and treats the request's ids as a narrowing, never a widening. It is refused while an upgrade, restore, stack runner or job is running; a *finished* upgrade runner does not block it.
+- The option is `prune_images` on `POST /api/v1/upgrade`, off by default at the API and preselected in the dialog. With it, `build_upgrade_run_args` wraps papaia-ctl in a small shell (`runner._UPGRADE_WITH_PRUNE`) that runs `python -m app.core.images prune` only after a zero exit and always exits with papaia-ctl's status: a failed cleanup must not turn a successful upgrade into "upgrade failed". The runner carries the label `de.fidonis.upgrade-prune-images`, which is how the phase list knows to show the step and how a later manager finds out what it was started for.
+- The runner container holds the *previous* papaia-manager image, so that one cannot go during the run. `POST /runner/clear` therefore repeats the cleanup after removing a successful, labelled runner. A failed run is never cleaned up.
+- Known limits: an image of a service a release drops entirely stays (its repository is no longer declared), and sizes are the images' own, so shared layers are counted twice.
 
 ### Service group control
 
@@ -264,7 +276,7 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `OIDC_ISSUER_KC_AUTH` | Browser-side Keycloak authorization endpoint |
 | `OIDC_ISSUER_KC_TOKEN` | Server-side token endpoint (internal Docker DNS) |
 | `OIDC_ISSUER_KC_CERTS` | JWKS endpoint for id_token validation |
-| `MANAGER_ADMIN_ROLE` | Keycloak realm role granting full access — add-ons, catalogs, jobs, dashboard (default: `admin`) |
+| `MANAGER_ADMIN_ROLE` | Keycloak realm role granting full access — add-ons, catalogs, jobs, dashboard (default: `manager-admin`) |
 | `MANAGER_USER_ROLE` | Keycloak realm role granting dashboard-only access (default: `user`) |
 | `MANAGER_HOST` | Public base URL of the manager (used as OIDC redirect URI base) |
 | `MANAGER_OIDC_CLIENT_ID` | Keycloak client ID (default: `papaia-manager`) |

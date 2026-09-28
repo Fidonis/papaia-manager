@@ -11,8 +11,16 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from app.core.upgrade import Gate, GateResult, UpgradeCheck
-from app.routers.api_upgrade import UpgradeBody, _check_force, _check_gate
+from app.core.upgrade import (
+    CheckoutState,
+    Gate,
+    GateResult,
+    Migration,
+    UpgradeCheck,
+    VersionState,
+)
+from app.routers.api_upgrade import UpgradeBody, _check_force, _check_gate, _check_to_dict
+from app.templating import templates
 
 
 def _check(*, passed: bool = True, error: bool = False) -> UpgradeCheck:
@@ -99,3 +107,90 @@ def test_a_check_result_carries_the_version_it_was_run_for() -> None:
 
 def test_an_up_to_date_check_has_nothing_to_install() -> None:
     assert UpgradeCheck(current="1.2.0", target="1.2.0", status="up-to-date").up_to_date
+
+
+# ---------------------------------------------------------------------------
+# A check that could not reach the remote
+# ---------------------------------------------------------------------------
+#
+# The page used to say "papAIa X is the newest release" in green and label the
+# button "Up to date" when the fetch had failed. Nothing had been compared with
+# the remote, so neither was true.
+
+_FETCH_ERROR = "git fetch failed: fatal: could not read Username for 'https://github.com'"
+_FETCH_HINT = "git -C /w/papaia fetch --tags origin   # on the host"
+
+
+def _unreachable(*, up_to_date: bool = True) -> UpgradeCheck:
+    return UpgradeCheck(
+        current="1.1.0",
+        target="1.1.0" if up_to_date else "1.2.0",
+        tag="v1.1.0" if up_to_date else "v1.2.0",
+        status="up-to-date" if up_to_date else "ok",
+        available=[] if up_to_date else ["1.2.0"],
+        migrations=[] if up_to_date else [Migration(id="1.2.0__x", version="1.2.0", kind="sh")],
+        fetch_error=_FETCH_ERROR,
+        fetch_hint=_FETCH_HINT,
+        checked_at="2026-09-20T11:07:13+00:00",
+    )
+
+
+def _render_check(check: UpgradeCheck) -> str:
+    return templates.env.get_template("partials/upgrade_check.html").render(check=check)
+
+
+def _render_status(check: UpgradeCheck) -> str:
+    return templates.env.get_template("partials/upgrade_status.html").render(
+        version=VersionState(recorded="1.1.0", checkout="1.1.0"),
+        checkout=CheckoutState(is_git=True, clean=True, tag="v1.1.0"),
+        backup_dir=None,
+        backup_dir_reachable=False,
+        check=check,
+    )
+
+
+def test_the_api_carries_the_fetch_hint_beside_the_error() -> None:
+    body = _check_to_dict(_unreachable())
+    assert body["fetch_error"] == _FETCH_ERROR
+    assert body["fetch_hint"] == _FETCH_HINT
+
+
+def test_a_failed_fetch_is_a_warning_not_the_newest_release() -> None:
+    html = _render_check(_unreachable())
+    assert "Could not check for new releases" in html
+    assert "is the newest release" not in html
+    assert "could not read Username" in html
+    assert "fetch --tags origin" in html
+
+
+def test_a_reachable_remote_still_says_the_newest_release() -> None:
+    check = _unreachable()
+    check.fetch_error = ""
+    check.fetch_hint = ""
+    html = _render_check(check)
+    assert "papAIa 1.1.0 is the newest release" in html
+    assert "Could not check" not in html
+
+
+def test_a_release_found_locally_still_warns_that_the_fetch_failed() -> None:
+    # The tag was already in the checkout. It is on offer, but it may not be the
+    # newest one, and the page has to say so.
+    html = _render_check(_unreachable(up_to_date=False))
+    assert "Could not check for new releases" in html
+    assert "Migrations in this upgrade" in html
+
+
+def test_the_header_button_learns_the_check_failed() -> None:
+    assert "checkFailed: true" in _render_status(_unreachable())
+
+
+def test_a_reachable_remote_leaves_the_button_alone() -> None:
+    check = _unreachable()
+    check.fetch_error = ""
+    assert "checkFailed: false" in _render_status(check)
+
+
+def test_a_release_on_offer_is_not_a_failed_check() -> None:
+    # The button says "Install 1.2.0" there; "Check failed" is only for the case
+    # where it would otherwise claim there is nothing to install.
+    assert "checkFailed: false" in _render_status(_unreachable(up_to_date=False))
