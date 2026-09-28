@@ -200,6 +200,13 @@ touched, and nothing is offered while the declared images cannot be resolved.
 values before the job starts), stop the add-on, re-materialize the snapshot
 at the new commit, reinstall, and start again.
 
+**Audit log.** An admin-only `/audit` page lists every entry from the audit log,
+filtered by user, action, result, a target substring and a date range, newest
+first and paginated, with the filter facets drawn from the log itself. The same
+filters drive `GET /api/v1/audit/export` (CSV or JSONL). `POST /api/v1/audit/prune`
+permanently removes entries older than an operator-chosen cutoff date behind a
+dry-run preview; the prune itself is recorded as its own audit entry.
+
 ## REST API
 
 All mutating routes require the `MANAGER_ADMIN_ROLE` and a CSRF header.
@@ -230,6 +237,10 @@ POST /api/v1/addons/{name}/check           # synchronous compatibility check
 GET /api/v1/jobs
 GET /api/v1/jobs/{id}
 GET /api/v1/jobs/{id}/log
+
+GET    /api/v1/audit                       # ?user,action,result,target,since,before,limit,offset
+GET    /api/v1/audit/export                # {format=csv|jsonl} + same filters, streamed
+POST   /api/v1/audit/prune                 # {before, dry_run?} → removed/kept counts
 
 GET    /api/v1/maintenance/backup-dir
 GET    /api/v1/maintenance/restore-points

@@ -14,6 +14,8 @@ A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ct
 
 A fifth surface, Upgrade (`/upgrade`), moves the deployment to a newer papAIa release. It is split in two: a read-only check that resolves the target tag, gates the active add-ons against it and lists the pending migrations, and the upgrade itself, which runs `papaia-ctl upgrade` in a detached container (see the Upgrade model section below). The page also lists the Docker images an upgrade leaves behind and removes them on request.
 
+A sixth surface, Audit (`/audit`), reads, exports and prunes the audit log the other surfaces already write to — filtered, paginated JSON/HTML, CSV/JSONL export, and a dry-run-gated prune, all admin-only and CSRF-checked like every other mutating route.
+
 A fourth surface, Services, reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. The page also drives lifecycle: one Compose profile at a time via `papaia-ctl start`/`stop --profiles=`, several profiles at once, or the whole stack in a detached container (see the Service group control section below). Two aggregates of the same snapshot render as status pills in the header of every page, one per section, for every authenticated role.
 
 That snapshot is also the single Docker reading behind the add-on surfaces: `state.compute_status` takes its set of running Compose projects from `StackSnapshot.running_projects` rather than issuing a `docker ps` of its own, so `/addons` and `/services` cannot disagree about whether an add-on is up.
@@ -72,6 +74,7 @@ papaia-manager/
 │       │   ├── api_jobs.py     # /api/v1/jobs — job status + log streaming
 │       │   ├── api_maintenance.py # /api/v1/maintenance — backup + restore
 │       │   ├── api_upgrade.py  # /api/v1/upgrade — release check, core upgrade, image cleanup
+│       │   ├── api_audit.py    # /api/v1/audit — read, export, prune
 │       │   └── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
