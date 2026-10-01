@@ -13,7 +13,12 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from fastapi import Request
 from fastapi.templating import Jinja2Templates
+from jinja2 import pass_context
+
+from app.config import get_settings
+from app.core.settings_store import EffectiveBranding, effective_branding
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -60,3 +65,22 @@ def asset_url(name: str) -> str:
 
 
 templates.env.globals["asset_url"] = asset_url
+
+
+@pass_context
+def branding(context: dict[str, object]) -> EffectiveBranding:
+    """The configured sidebar branding, resolved against the defaults.
+
+    A global rather than a value in each route's context: the error handlers
+    render pages without going through the UI router's context builder, and
+    every one of them still has to carry the brand. The settings lookup honours
+    a dependency override so tests can point it at their own directory.
+    """
+    request = context.get("request")
+    resolver = get_settings
+    if isinstance(request, Request):
+        resolver = request.app.dependency_overrides.get(get_settings, get_settings)
+    return effective_branding(resolver().papaia_config_dir)
+
+
+templates.env.globals["branding"] = branding

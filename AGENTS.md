@@ -53,6 +53,7 @@ papaia-manager/
 │       │   │                   #   add-on gate, migration plan, runner-log phases
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
 │       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering, validation
+│       │   ├── settings_store.py # settings.yaml (one section per topic, e.g. branding) + logo files
 │       │   ├── services.py     # Container status from docker ps, by module label; declared
 │       │   │                   #   vs. live merge; shared snapshot for the addon surfaces
 │       │   ├── inventory.py    # Declared state: compose fragments × profiles, addon manifests
