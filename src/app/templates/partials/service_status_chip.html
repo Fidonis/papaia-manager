@@ -15,11 +15,11 @@
    lives in one place -- but the popover keeps the two apart, so a broken
    add-on out of a customer catalogue cannot make the core stack look down.
 
-   Nothing here names a service, for either role: a non-admin learns that
-   something is wrong without learning what, which is the point of putting it
-   in front of them at all. Only the link is admin-only -- /services enforces
-   the admin role itself, so pointing everyone at it would hand non-admins a
-   chip that answers with 403.
+   Nothing here names a service, a path or a host name, for either role: a
+   non-admin learns that something is wrong without learning what, which is the
+   point of putting it in front of them at all. Only the links are admin-only --
+   /services and /host enforce the admin role themselves, so pointing everyone
+   at them would hand non-admins a chip that answers with 403.
 
    Every branch spells its classes out. app.css is built by scanning these
    templates, so a class assembled from a variable would not survive the purge. #}
@@ -88,6 +88,20 @@
     </div>
     {% endif %}
 
+    {# The host joins the chip's verdict but not core's or the add-ons': its row
+       is its own, so a full disk cannot make the stack look down and a broken
+       add-on cannot make the disk look full. Counts only -- no path, no host
+       name -- for the same reason the rows above name no service. Absent when
+       there is no reading to judge by (a core without `doctor`, a run that
+       failed), which is not the same as healthy. #}
+    {% if host_total %}
+    <div class="mt-2 flex items-center gap-2 text-sm">
+      {{ dot(host_overall | string) }}
+      <span class="flex-1 font-medium">Host</span>
+      <span class="text-xs opacity-60">{{ host_ok }} / {{ host_total }} ok</span>
+    </div>
+    {% endif %}
+
     <div class="mt-3 flex items-center gap-2 border-t border-base-300 pt-2 text-xs opacity-60">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -95,6 +109,7 @@
       <span class="flex-1">checked <span data-checked-at="{{ checked_at }}"></span></span>
       {% if is_admin %}
       <a href="/services" class="link link-hover whitespace-nowrap">Services</a>
+      {% if host_total %}<a href="/host" class="link link-hover whitespace-nowrap">Host</a>{% endif %}
       {% endif %}
     </div>
 

@@ -16,7 +16,9 @@ A fifth surface, Upgrade (`/upgrade`), moves the deployment to a newer papAIa re
 
 A sixth surface, Audit (`/audit`), reads, exports and prunes the audit log the other surfaces already write to — filtered, paginated JSON/HTML, CSV/JSONL export, and a dry-run-gated prune, all admin-only and CSRF-checked like every other mutating route.
 
-A fourth surface, Services, reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. The page also drives lifecycle: one Compose profile at a time via `papaia-ctl start`/`stop --profiles=`, several profiles at once, or the whole stack in a detached container (see the Service group control section below). Two aggregates of the same snapshot render as status pills in the header of every page, one per section, for every authenticated role.
+A seventh surface, Host (`/host`), reports disk space and certificate expiry of the machine underneath the deployment. It measures nothing itself: it runs the core's `doctor` for the two checks it needs and shows the core's verdicts (see the Host health section below). Admin-only, like Services; the header chip carries its counts to every role.
+
+A fourth surface, Services, reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. The page also drives lifecycle: one Compose profile at a time via `papaia-ctl start`/`stop --profiles=`, several profiles at once, or the whole stack in a detached container (see the Service group control section below). The same snapshot drives the status chip in the header of every page, for every authenticated role; its popover keeps the core stack and the add-ons apart and adds a row for the host.
 
 That snapshot is also the single Docker reading behind the add-on surfaces: `state.compute_status` takes its set of running Compose projects from `StackSnapshot.running_projects` rather than issuing a `docker ps` of its own, so `/addons` and `/services` cannot disagree about whether an add-on is up.
 
@@ -54,6 +56,8 @@ papaia-manager/
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
 │       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering, validation
 │       │   ├── settings_store.py # settings.yaml (one section per topic, e.g. branding) + logo files
+│       │   ├── host_health.py  # Disk space + certificate expiry via the core's `doctor`;
+│       │   │                   #   cached, single-flight, never raises
 │       │   ├── services.py     # Container status from docker ps, by module label; declared
 │       │   │                   #   vs. live merge; shared snapshot for the addon surfaces
 │       │   ├── inventory.py    # Declared state: compose fragments × profiles, addon manifests
@@ -84,6 +88,7 @@ papaia-manager/
 │       │       ├── addon_detail_content.html # Addon detail tab content
 │       │       ├── addon_gallery.html        # Addon card grid
 │       │       ├── catalog_list.html         # Catalog table rows
+│       │       ├── host_list.html            # Host page body: disks, certificates, or why not
 │       │       ├── job_status.html           # Polled job progress/log fragment
 │       │       ├── restore_point_list.html   # Restore point cards
 │       │       ├── restore_status.html       # Polled restore-runner state
@@ -212,6 +217,24 @@ Further points that are easy to get wrong:
 - `--clean-up` (`docker compose down` instead of `stop`) attaches to anything that stops — a stop, and the stop half of a restart, where it turns the operation into a full recreate. It is **rejected with 400** on start, which has no such flag; ignoring the field there would confirm an operation that did not happen. After a stop with it the page reports the modules as *not deployed*: a removed container is indistinguishable from one that was never created.
 - A stack action never passes `--addons`. That flag exists and would take every add-on down with the core stack — the bulk action this surface deliberately omits. Add-ons are started, stopped and restarted one at a time.
 - The selection state lives in an Alpine scope in `services.html`, **outside** `#service-list`. That element is swapped every 15 s, and state held inside it would not survive a single poll — nor would an open confirmation dialog.
+
+### Host health
+
+The Host page and the chip's Host row read the machine, not the containers, and they read it from the core. `app/core/host_health.py` runs `doctor --json` through `run_py_cli` and keeps only `disk_space` and `certs`; the other five checks fork `docker`, resolve names and probe ports, which is not something to repeat on a poll, so they are skipped by name and the answer is filtered to the two that were asked for. A check the core adds later is ignored rather than shown unreviewed.
+
+Consequences worth remembering when touching this area:
+
+- **The verdict is the core's.** Its disk thresholds are free bytes (warn below 10 GiB, fail below 2 GiB) and its certificate thresholds are days (30 and 7). The percentage drawn next to a disk is for the eye and never picks a colour; a threshold of this panel's own would let it and a shell on the host disagree about the same disk. Changing a threshold is a change in the core.
+- **Not measured is not empty.** The manager mounts the config and backup directories, not `/var/lib/docker`, so the Docker data root is normally absent from `doctor`'s answer and the page says so. An unreadable certificate has no verdict and is left out of the counts.
+- **Not knowing is not the same as bad.** A core without `doctor` (checked as the existence of `lib/doctor.py` in the workspace, not as a version comparison), a timeout, an unparseable answer and a refused argument all yield `available=False` with a reason. The chip leaves the host out of its headline in that case, the way it leaves out an empty add-on section.
+- **Exit 2 is a result.** `doctor` exits 2 when a check failed and still prints the whole document. Exit 2 with nothing on stdout is a refused argument (for instance a skipped check the core renamed), and its first stderr line becomes the reason.
+- **Reading is cheap, running is not.** `load_host_health` serves a reading for 60 s (15 s for a failure) and runs at most one `doctor` at a time; concurrent callers share the task. The run belongs to the process, not to the request that started it, and is shielded, so a visitor who closes the tab does not cancel it for the next one. "Re-check" bypasses the TTL but not a five-second minimum interval.
+- **The chip and the sidebar dot never wait.** They render on every page every 30 s, so they read `cached_host_health()` and ask `ensure_fresh()` for a background refresh. With no page open nothing runs, and a cold cache shows no Host row for one poll.
+- **Counts only for non-admins.** The chip's Host row says `n / m ok`. Paths, host names and certificate names appear on `/host`, which is admin-only. A test asserts that none of them reaches the chip.
+- **`run_py_cli` takes a `limit`.** A child that outlives it is killed and reaped before `CtlError` (exit code 124) is raised. The default is no limit, which the upgrade check relies on.
+- **`doctor` is in `ALLOWED_PY_COMMANDS`.** It is read-only by the core's own contract; `tests/test_ctl.py` pins the set.
+
+Known limits: no history (that is what an observability stack is for), no GPU, CPU or memory figures (the core has no check for them), and the thresholds cannot be tuned from here.
 
 ---
 

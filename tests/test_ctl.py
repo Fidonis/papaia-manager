@@ -6,6 +6,9 @@ HTTP request and a command that starts and stops containers.
 """
 from __future__ import annotations
 
+import asyncio
+from typing import Any
+
 import pytest
 
 from app.core.ctl import (
@@ -13,6 +16,8 @@ from app.core.ctl import (
     ALLOWED_PY_COMMANDS,
     ALLOWED_VERBS,
     MAX_SELECTORS,
+    TIMEOUT_EXIT_CODE,
+    CtlError,
     profiles_flag,
     run_addon_verb,
     run_core_verb,
@@ -102,9 +107,16 @@ def test_upgrade_stays_out_of_the_core_verbs() -> None:
 
 
 def test_the_py_commands_are_exactly_the_read_only_ones() -> None:
-    # Every one of these resolves, lists or evaluates. None writes. Adding a
-    # command that does would put a write path behind a read-shaped helper.
-    assert set(ALLOWED_PY_COMMANDS) == {"upgrade-resolve", "upgrade-plan", "addon-check"}
+    # Every one of these resolves, lists, evaluates or measures. None writes.
+    # Adding a command that does would put a write path behind a read-shaped
+    # helper. `doctor` is here for the host page: the core documents it as
+    # changing nothing, and the caller skips every check but two.
+    assert set(ALLOWED_PY_COMMANDS) == {
+        "upgrade-resolve",
+        "upgrade-plan",
+        "addon-check",
+        "doctor",
+    }
 
 
 def test_upgrade_record_is_not_reachable_from_the_manager() -> None:
@@ -119,6 +131,69 @@ async def test_an_unlisted_py_command_is_refused_before_anything_forks() -> None
         await run_py_cli(
             command="upgrade-record", workspace_dir="/w", config_dir="/c"
         )
+
+
+class _HungProcess:
+    """A child that never answers, as a wedged `docker info` would look."""
+
+    returncode: int | None = None
+
+    def __init__(self) -> None:
+        self.killed = False
+        self.reaped = False
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        await asyncio.sleep(3600)
+        return b"", b""
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+    async def wait(self) -> int:
+        self.reaped = True
+        return -9
+
+
+async def test_a_py_command_that_outlives_its_limit_is_killed_and_reaped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    child = _HungProcess()
+
+    async def spawn(*_: Any, **__: Any) -> _HungProcess:
+        return child
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+
+    with pytest.raises(CtlError, match="timed out after 0.05s") as raised:
+        await run_py_cli(command="doctor", workspace_dir="/w", config_dir="/c", limit=0.05)
+
+    assert raised.value.exit_code == TIMEOUT_EXIT_CODE
+    # Killed and waited for: an unreaped child would be a zombie per request.
+    assert child.killed
+    assert child.reaped
+
+
+async def test_a_py_command_without_a_limit_is_not_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The upgrade check runs git and a fetch with a budget of its own. Adding a
+    # default here would cut it off.
+    class _Quick:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            await asyncio.sleep(0.05)
+            return b"out", b"err"
+
+    async def spawn(*_: Any, **__: Any) -> _Quick:
+        return _Quick()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+
+    result = await run_py_cli(command="addon-check", workspace_dir="/w", config_dir="/c")
+
+    assert result == (0, "out", "err")
 
 
 def test_the_py_commands_share_nothing_with_the_verb_allowlists() -> None:

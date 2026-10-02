@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Host — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Host{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Disk space and certificates of the machine this deployment runs on</p>{% endblock %}
+
+{# Tier 1: the one thing to do here is look again. `hx-disabled-elt` keeps a
+   second click from queueing behind the first, and the route folds a repeat
+   inside a few seconds into the run that just finished anyway. #}
+{% block page_actions %}
+<button type="button"
+        class="btn btn-primary btn-sm"
+        hx-get="/partials/host?fresh=true"
+        hx-target="#host-list"
+        hx-swap="innerHTML"
+        hx-disabled-elt="this">
+  Re-check
+</button>
+{% endblock %}
+
+{% block content %}
+{# Polled at the cache's own pace. `doctor` is not meant for tight polling, and
+   the core's thresholds are measured in days and gibibytes, so a minute is well
+   inside anything that changes here. #}
+<div
+  id="host-list"
+  hx-get="/partials/host"
+  hx-trigger="load, every 60s"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+{% endblock %}
