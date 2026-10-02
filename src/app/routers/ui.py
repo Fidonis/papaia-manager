@@ -333,7 +333,7 @@ async def partial_service_status(
     user: AnyUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
-    """The header status chip and its popover, for every authenticated role.
+    """The sidebar status row and its popover, for every authenticated role.
 
     Deliberately not filtered by visibility. Neither the chip nor the popover
     names a service, only how many are in which state, so a non-admin learns
@@ -485,7 +485,7 @@ async def partial_nav_host_indicator(
 
     Reads the cache and nothing else, like the Upgrade dot: it renders in the
     sidebar of every admin page, so anything more would put a subprocess behind
-    every navigation. The header chip's poll is what keeps the cache warm.
+    every navigation. The status row's poll is what keeps the cache warm.
     """
     health = host_health.cached_host_health()
     resp = _templates.TemplateResponse(

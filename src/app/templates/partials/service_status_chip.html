@@ -1,16 +1,14 @@
-{# Aggregate status, rendered into the header of every page.
+{# Aggregate status, rendered into the sidebar above the footer of every page.
 
-   One chip, not two pills. The two pills this replaces sat in the same
-   `shrink-0` box as the page's primary action and competed with it for the
-   right-hand corner; worse, their text length varied with the state, so the
-   header reflowed on every poll. The chip is a fixed width and always says the
-   same amount, and the breakdown moved into the popover behind it.
+   One row, not a pill per area: it always says the same amount, and the
+   breakdown is in the popover behind it. It is a `sidebar-row`, so the rail
+   treats it like every other entry -- the label goes, the dot stays, and the
+   dot is then the whole message, which is why `aria-label` carries the verdict.
 
-   It is also deliberately not a `badge`: as an outline badge it carried the
-   same visual weight as the decorative `v1.2` / `enabled` badges everywhere
-   else in this panel and read as decoration rather than as a state.
+   It is tinted only when something is wrong. The sidebar is made of quiet rows,
+   and a healthy stack should look like one of them.
 
-   Core and add-ons still do not share a verdict. The chip aggregates them for
+   Core and add-ons still do not share a verdict. The row aggregates them for
    its one line -- `worst()` in the router decides that, so the severity order
    lives in one place -- but the popover keeps the two apart, so a broken
    add-on out of a customer catalogue cannot make the core stack look down.
@@ -19,7 +17,7 @@
    non-admin learns that something is wrong without learning what, which is the
    point of putting it in front of them at all. Only the links are admin-only --
    /services and /host enforce the admin role themselves, so pointing everyone
-   at them would hand non-admins a chip that answers with 403.
+   at them would hand non-admins a popover that answers with 403.
 
    Every branch spells its classes out. app.css is built by scanning these
    templates, so a class assembled from a variable would not survive the purge. #}
@@ -41,38 +39,41 @@
 
 {# `dropdown-hover` on top of the default focus behaviour, not instead of it:
    the trigger stays a `tabindex="0"` element, so the popover is reachable by
-   keyboard as well. #}
-<div class="dropdown dropdown-end dropdown-hover shrink-0">
+   keyboard as well. It opens upwards, like the account menu in the same
+   footer, and the panel does not clip it (see the Sidebar block in
+   docker/tailwind.app.css), so it escapes the rail. #}
+<div class="dropdown dropdown-top dropdown-hover w-full">
 
-  {# Two fixed widths, one per breakpoint: `w-32` with the verdict spelled out
-     from `sm` up, and a dot-only `w-8` below it. Constant width is the point --
-     it is what stops the header reflowing on every poll -- but 8 rem of it on a
-     phone squeezed the page title out of existence, and knowing which page you
-     are on beats reading the verdict without opening the popover, which still
-     carries it either way. The `aria-label` says the same thing at both sizes. #}
+  {# The dot sits in a 1rem slot so it lines up with the icons of the rows above
+     it, and the row is as tall as they are, so the height reserved for it in
+     base.html is exact. #}
   {% if state in ("missing", "stopped") %}
   <div tabindex="0" role="button" aria-label="Stack status: {{ label }}"
-       class="inline-flex w-8 sm:w-32 items-center justify-center gap-2 rounded-full border border-error bg-error/10 px-3 py-1.5 text-xs font-medium text-error whitespace-nowrap">
-    <span class="h-2 w-2 shrink-0 rounded-full bg-error"></span><span class="hidden sm:inline">{{ label }}</span>
+       class="sidebar-row flex w-full items-center gap-3 rounded-lg bg-error/10 px-3 py-2.5 text-sm font-medium text-error">
+    <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-error"></span></span>
+    <span class="sidebar-label">{{ label }}</span>
   </div>
   {% elif state in ("unhealthy", "starting") %}
   <div tabindex="0" role="button" aria-label="Stack status: {{ label }}"
-       class="inline-flex w-8 sm:w-32 items-center justify-center gap-2 rounded-full border border-warning bg-warning/10 px-3 py-1.5 text-xs font-medium text-warning whitespace-nowrap">
-    <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span><span class="hidden sm:inline">{{ label }}</span>
+       class="sidebar-row flex w-full items-center gap-3 rounded-lg bg-warning/10 px-3 py-2.5 text-sm font-medium text-warning">
+    <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-warning"></span></span>
+    <span class="sidebar-label">{{ label }}</span>
   </div>
   {% elif state == "unknown" %}
   <div tabindex="0" role="button" aria-label="Stack status unknown"
-       class="inline-flex w-8 sm:w-32 items-center justify-center gap-2 rounded-full border border-base-300 bg-base-200 px-3 py-1.5 text-xs font-medium opacity-60 whitespace-nowrap">
-    <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span><span class="hidden sm:inline">Status unknown</span>
+       class="sidebar-row flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-base-content/70">
+    <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-neutral"></span></span>
+    <span class="sidebar-label">Status unknown</span>
   </div>
   {% else %}
   <div tabindex="0" role="button" aria-label="Stack status: all healthy"
-       class="inline-flex w-8 sm:w-32 items-center justify-center gap-2 rounded-full border border-success bg-success/10 px-3 py-1.5 text-xs font-medium text-success whitespace-nowrap">
-    <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span><span class="hidden sm:inline">All healthy</span>
+       class="sidebar-row flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-success">
+    <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-success"></span></span>
+    <span class="sidebar-label">All healthy</span>
   </div>
   {% endif %}
 
-  <div tabindex="0" class="dropdown-content z-30 mt-1 w-64 rounded-box border border-base-300 bg-base-100 p-3 shadow">
+  <div tabindex="0" class="dropdown-content z-30 mb-1 w-64 rounded-box border border-base-300 bg-base-100 p-3 shadow">
 
     <div class="flex items-center gap-2 text-sm">
       {{ dot(core_overall | string) }}

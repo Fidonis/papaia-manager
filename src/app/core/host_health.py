@@ -26,7 +26,7 @@ Four decisions here are load-bearing:
   verdict rather than painting the chip red over a missing probe.
 
 Reading is cheap and forking is not, so the two are separate. Pages that render
-on every navigation (the header chip, the sidebar dot) only look at the cache and
+on every navigation (the status row, the sidebar dot) only look at the cache and
 ask for a refresh in the background; the Host page itself awaits one. At most one
 `doctor` runs at a time, and a finished run is reused for a minute, however many
 people have a tab open.
@@ -59,7 +59,7 @@ _SKIPPED_CHECKS = ("docker_version", "ports", "dns", "addon_compat", "container_
 _SUPPORTED_SCHEMA = 1
 
 # A finished run is reused this long. `doctor` is documented as not meant for
-# tight polling, and the header chip asks every 30 s from every open tab.
+# tight polling, and the status row asks every 30 s from every open tab.
 CACHE_TTL_SECONDS = 60.0
 
 # A failed run is remembered for less, so a transient error clears itself soon
@@ -233,7 +233,7 @@ class HostHealth:
 
     @property
     def severity(self) -> ServiceHealth | None:
-        """The same verdict on the scale the header chip's `worst()` walks.
+        """The same verdict on the scale the status row's `worst()` walks.
 
         Used for ranking only. `None` means "leave me out": nothing was judged,
         and an installation without `doctor` must not read as "Status unknown".
