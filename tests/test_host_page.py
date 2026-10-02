@@ -1,4 +1,4 @@
-"""The Host page, its nav dot, and the Host row in the header chip.
+"""The Host page, its nav dot, and the Host row in the sidebar status.
 
 What matters most here is the edge between the two audiences. The page names
 paths and host names and is for administrators; the chip is in front of every
@@ -11,6 +11,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import tempfile
 import time
 from collections.abc import Iterator
@@ -323,6 +324,8 @@ def test_a_healthy_host_leaves_the_chip_green(
 
     assert "All healthy" in body
     assert "4 / 4 ok" in body
+    # A row of the sidebar, not a pill: in the rail the label goes and the dot stays.
+    assert '<span class="sidebar-label">All healthy</span>' in body
 
 
 def test_a_critical_host_turns_the_chip_red_without_touching_the_stack_rows(
@@ -332,7 +335,7 @@ def test_a_critical_host_turns_the_chip_red_without_touching_the_stack_rows(
 
     body = _as(client, "user").get("/partials/service-status").text
 
-    assert "border-error" in body
+    assert "text-error" in body
     assert "1 issue" in body
     # The core stack row still reads fully running: the host has its own row.
     assert "1 / 1 running" in body
@@ -350,6 +353,60 @@ def test_without_a_reading_the_chip_has_no_host_row_and_is_not_dragged_down(
 
     assert "All healthy" in body
     assert "ok</span>" not in body
+
+
+# ---------------------------------------------------------------------------
+# The sidebar
+# ---------------------------------------------------------------------------
+
+
+def _between(body: str, start: str, end: str) -> str:
+    return body[body.index(start) : body.index(end)]
+
+
+def _nav_groups(body: str) -> dict[str, list[str]]:
+    """Caption -> the entries under it, in order; the caption-less lead is ''."""
+    nav = _between(body, "<nav", "</nav>")
+    parts = re.split(r'<p class="sidebar-label[^>]*>([^<]+)</p>', nav)
+    groups = {"": re.findall(r'aria-label="([^"]+)"', parts[0])}
+    for caption, chunk in zip(parts[1::2], parts[2::2], strict=True):
+        groups[caption] = re.findall(r'aria-label="([^"]+)"', chunk)
+    return groups
+
+
+def test_the_admin_nav_is_grouped_by_what_an_entry_acts_on(client: TestClient) -> None:
+    groups = _nav_groups(_as(client, "admin").get("/host").text)
+
+    assert list(groups) == ["", "Monitor", "Extensions", "System"]
+    assert groups[""] == ["Dashboard"]
+    assert groups["Monitor"] == ["Services", "Host", "Jobs"]
+    assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
+    # Backup and upgrade are stack-level commands, so they sit with the system.
+    assert groups["System"] == ["Backup / Restore", "Upgrade", "Audit log", "Settings"]
+
+
+def test_a_user_without_the_admin_role_sees_the_dashboard_and_no_groups(
+    client: TestClient,
+) -> None:
+    assert _nav_groups(_as(client, "user").get("/").text) == {"": ["Dashboard"]}
+
+
+def test_the_status_row_is_in_the_sidebar_for_every_role_and_not_in_the_header(
+    client: TestClient,
+) -> None:
+    for roles in (("user",), ("admin",)):
+        body = _as(client, *roles).get("/").text
+        header = _between(body, "<header", "</header>")
+        sidebar = _between(body, "<aside", "</aside>")
+
+        assert "/partials/service-status" not in header
+        # Between the nav and the footer, so the footer's divider sits right
+        # under it and the nav can scroll without taking it along.
+        assert (
+            sidebar.index("</nav>")
+            < sidebar.index('hx-get="/partials/service-status"')
+            < sidebar.index('aria-label="Toggle sidebar"')
+        )
 
 
 # ---------------------------------------------------------------------------

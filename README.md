@@ -128,7 +128,7 @@ The profile serving this panel is the one group that cannot be selected. Stoppin
 it would remove the container handling the request, which could then never report
 whether it worked.
 
-The same data drives a status chip in the header of every page, visible to every
+The same data drives a status row in the sidebar of every page, visible to every
 authenticated account regardless of role. Its popover keeps three rows apart: the
 core stack, the add-ons and the host. Each carries counts only, so a user without
 the admin role learns that something is unhealthy, but not which service, disk or
@@ -142,7 +142,7 @@ every certificate (the bundled ones and Let's Encrypt). The manager measures
 nothing itself. It runs the core's `papaia-ctl doctor`, limited to its
 `disk_space` and `certs` checks, and shows the core's verdicts, so the page and a
 shell on the host cannot disagree about a threshold. That needs a core that has
-`doctor` (1.4.0 or newer); on an older one the page says so and the header chip
+`doctor` (1.4.0 or newer); on an older one the page says so and the status row
 carries on without a Host row. The Docker data root is listed as not measurable:
 the manager container sees the config and backup directories, not
 `/var/lib/docker`. A reading is cached for a minute and shared between everyone
