@@ -44,7 +44,10 @@ from app.main import create_app  # noqa: E402
 _CSRF = "test-csrf-token-value"
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
-_SVG = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'
+_SVG = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+    b'<rect width="10" height="10"/></svg>'
+)
 
 
 @pytest.fixture
@@ -212,7 +215,7 @@ def test_name_is_escaped(client: TestClient) -> None:
 
     html = _admin(client).get("/settings").text
     assert "&lt;b&gt;x&lt;/b&gt;" in html
-    assert ">&lt;b&gt;" in html and "<p class=\"font-brand font-extrabold text-base tracking-tight truncate\"><b>" not in html
+    assert "<b>x</b>" not in html
 
 
 def test_logo_replaces_the_builtin_mark(client: TestClient) -> None:
