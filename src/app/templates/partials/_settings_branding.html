@@ -74,6 +74,24 @@
   </div>
 </section>
 
+<dialog id="reset-branding-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="text-lg font-bold">Reset branding?</h3>
+    <p class="py-4 text-sm opacity-70">
+      The name and second line return to “{{ default_name }}” / “{{ default_tagline }}”
+      and the uploaded logo is deleted. This cannot be undone.
+    </p>
+    <div class="modal-action">
+      <form method="dialog">
+        <button class="btn btn-ghost btn-sm">Cancel</button>
+      </form>
+      <button id="reset-branding-confirm" type="button" class="btn btn-error btn-sm"
+              onclick="confirmResetBranding()">Reset to defaults</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button aria-label="Close">close</button></form>
+</dialog>
+
 <script>
   function reloadAfter(message) {
     showToast("success", message);
@@ -96,11 +114,19 @@
     if (data) reloadAfter("Branding saved");
   }
 
-  async function resetBranding() {
-    if (!confirm("Reset name, second line and logo to the defaults?")) return;
+  function resetBranding() {
+    document.getElementById("reset-branding-modal").showModal();
+  }
+
+  async function confirmResetBranding() {
+    const modal = document.getElementById("reset-branding-modal");
+    const button = document.getElementById("reset-branding-confirm");
+    button.disabled = true;
     const data = await settingsRequest("/api/v1/settings/branding/reset", {
       json: { revision: settingsRevision },
     });
+    button.disabled = false;
+    modal.close();
     if (data) reloadAfter("Branding reset");
   }
 

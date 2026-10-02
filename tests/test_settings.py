@@ -182,6 +182,13 @@ def test_default_rendering_is_unchanged(client: TestClient) -> None:
     assert "<title>Settings — papAIa manager</title>" in html
 
 
+def test_reset_asks_through_a_dialog_not_the_browser(client: TestClient) -> None:
+    html = _admin(client).get("/settings").text
+
+    assert 'id="reset-branding-modal"' in html
+    assert "confirm(" not in html
+
+
 def test_custom_branding_reaches_the_sidebar_and_titles(client: TestClient) -> None:
     assert _put_branding(client, name="Acme Hub", tagline="for Acme").status_code == 200
 
