@@ -1,0 +1,203 @@
+{# The body of the Host page: disk space and certificates, worst first, or the
+   reason there is nothing to show.
+
+   Rows follow the module rows on the Services page: state rides on a left edge
+   stripe, healthy takes the neutral border so the stripe routes attention to
+   the exceptions, and the dot repeats what the colour says for print and for a
+   colour-blind reader. The rows carry their own `border-t` rather than sitting in
+   a `divide-y` container: `divide-*` sets the colour of every side of every row
+   after the first, and wins on specificity over the stripe. Percentages are drawn for the eye; the colour is the
+   core's verdict (free bytes for a disk, days left for a certificate), never a
+   threshold of this page's own.
+
+   Classes are spelled out per branch rather than assembled from a variable:
+   app.css is built by scanning these templates, and a computed class name would
+   not survive the purge. #}
+
+{% macro dot(state) %}
+  {% if state == 'critical' %}
+    <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-error"></span>
+  {% elif state == 'warn' %}
+    <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-warning"></span>
+  {% elif state == 'unknown' %}
+    <span class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-base-content/40"></span>
+  {% else %}
+    <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-neutral"></span>
+  {% endif %}
+{% endmacro %}
+
+{% macro section_header(title, count_text) %}
+<div class="flex items-center justify-between mb-4">
+  <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">
+    {{ title }} &nbsp;·&nbsp; {{ count_text }}
+  </p>
+</div>
+{% endmacro %}
+
+{% if not host.available %}
+<div class="flex flex-col items-center py-24 gap-4 opacity-60 text-center">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+  </svg>
+  <p class="text-lg font-semibold">Host checks are not available</p>
+  <p class="max-w-xl text-sm">{{ host.reason }}</p>
+</div>
+{% elif not host.disks and not host.certs %}
+<div class="flex flex-col items-center py-24 gap-4 opacity-60 text-center">
+  <p class="text-lg font-semibold">Nothing to report</p>
+  {% for note in host.notes %}
+  <p class="max-w-xl text-sm">{{ note }}</p>
+  {% endfor %}
+</div>
+{% else %}
+
+{# ── Stats row ───────────────────────────────────────────────────── #}
+<div class="grid grid-cols-2 lg:grid-cols-4 overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Checks</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ host.total }}
+    </p>
+  </div>
+  <div class="px-5 py-3.5 border-base-300 border-b border-l lg:border-b-0">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">OK</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-success">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span>{{ host.ok_count }}
+    </p>
+  </div>
+  <div class="px-5 py-3.5 border-base-300 lg:border-l">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Warning</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-warning">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>{{ host.warn_count }}
+    </p>
+  </div>
+  <div class="px-5 py-3.5 border-base-300 border-l">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Critical</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-error">
+      <span class="h-2 w-2 shrink-0 rounded-full bg-error"></span>{{ host.critical_count }}
+    </p>
+  </div>
+</div>
+
+<div class="flex justify-end mb-2">
+  <p class="text-xs opacity-40">
+    Checked <span data-checked-at="{{ host.checked_at.isoformat() }}"></span> · refreshes every 60 s
+  </p>
+</div>
+
+{# ── Disk space ──────────────────────────────────────────────────── #}
+{% if host.disks %}
+{{ section_header("Disk space", host.disks | length ~ (" measured" if host.docker_root_measured else " measured, Docker data not visible")) }}
+<div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  {% for disk in host.disks %}
+  {% set st = disk.state | string %}
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 border-base-300 border-l-4
+              {% if not loop.first %}border-t{% endif %}
+              {% if st == 'critical' %}border-l-error
+              {% elif st == 'warn' %}border-l-warning
+              {% else %}border-l-base-300{% endif %}">
+    {{ dot(st) }}
+    <div class="min-w-0 basis-40 grow md:grow-0 md:basis-auto md:w-52">
+      <p class="text-sm font-semibold truncate">{{ disk.label }}</p>
+      <p class="font-mono text-xs opacity-50 truncate">{{ disk.detail }}</p>
+    </div>
+    <div class="order-last basis-full md:order-none md:basis-0 md:grow">
+      {% if disk.used_percent is not none %}
+        {% if st == 'critical' %}
+        <progress class="progress progress-error h-1.5 w-full" value="{{ disk.used_percent }}" max="100" aria-label="{{ disk.label }} used"></progress>
+        {% elif st == 'warn' %}
+        <progress class="progress progress-warning h-1.5 w-full" value="{{ disk.used_percent }}" max="100" aria-label="{{ disk.label }} used"></progress>
+        {% else %}
+        <progress class="progress h-1.5 w-full text-base-content/40" value="{{ disk.used_percent }}" max="100" aria-label="{{ disk.label }} used"></progress>
+        {% endif %}
+      {% endif %}
+    </div>
+    {# One wrapper so the two figures stay on one line when the row wraps, and
+       `md:contents` to dissolve it again where they are columns of their own. #}
+    <div class="ml-auto flex items-center gap-4 md:ml-0 md:contents">
+      <p class="text-xs text-right md:w-56 opacity-80">
+        {% if disk.free_bytes is not none %}{{ disk.free_text }} free of {{ disk.total_text }}{% else %}not measured{% endif %}
+      </p>
+      <p class="text-xs text-right w-20 tabular-nums
+                {% if st == 'critical' %}text-error
+                {% elif st == 'warn' %}text-warning
+                {% else %}opacity-60{% endif %}">
+        {% if disk.used_percent is not none %}{{ disk.used_percent | round | int }} % used{% endif %}
+      </p>
+    </div>
+  </div>
+  {% endfor %}
+
+  {# The Docker data root is the usual absentee: the manager mounts the config and
+     backup directories, not /var/lib/docker, and the core says as much itself.
+     Saying so beats leaving a gap that looks like a forgotten row. #}
+  {% if not host.docker_root_measured %}
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 border-base-300 border-t border-l-4 border-l-base-300 bg-base-200/50">
+    {{ dot('unknown') }}
+    <p class="text-sm font-semibold md:w-52">Docker data</p>
+    <p class="text-xs opacity-60">Not measurable from this panel; only the host can see it.</p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ── Certificates ────────────────────────────────────────────────── #}
+{% if host.certs %}
+{{ section_header("Certificates", host.certs | length) }}
+<div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  {% for cert in host.certs %}
+  {% set st = cert.state | string %}
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 border-base-300 border-l-4
+              {% if not loop.first %}border-t{% endif %}
+              {% if st == 'critical' %}border-l-error
+              {% elif st == 'warn' %}border-l-warning
+              {% else %}border-l-base-300{% endif %}">
+    {{ dot(st) }}
+    <div class="min-w-0 basis-40 grow md:grow-0 md:basis-auto md:w-52">
+      <p class="text-sm font-semibold truncate">{{ cert.label }}</p>
+      {% if cert.detail %}<p class="text-xs opacity-50 truncate">{{ cert.detail }}</p>{% endif %}
+    </div>
+    <div class="hidden md:block md:grow"></div>
+    {% if st == 'unknown' %}
+    <p class="ml-auto md:ml-0 text-xs text-right opacity-60">could not be read{% if cert.reason %}: {{ cert.reason }}{% endif %}</p>
+    {% else %}
+    <div class="ml-auto flex items-center gap-4 md:ml-0 md:contents">
+      <p class="text-xs text-right md:w-56 opacity-80">
+        {%- if cert.days_left is not none and cert.days_left < 0 %}expired{% else %}expires{% endif -%}
+        {%- if cert.expires_on %} {{ cert.expires_on }}{% endif -%}
+      </p>
+      <p class="text-xs text-right w-20 tabular-nums
+                {% if st == 'critical' %}text-error
+                {% elif st == 'warn' %}text-warning
+                {% else %}opacity-60{% endif %}">
+        {%- if cert.days_left is none -%}
+          —
+        {%- elif cert.days_left < 0 -%}
+          {{ -cert.days_left }} {{ 'day' if cert.days_left == -1 else 'days' }} ago
+        {%- else -%}
+          {{ cert.days_left }} {{ 'day' if cert.days_left == 1 else 'days' }}
+        {%- endif -%}
+      </p>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% for note in host.notes %}
+<p class="text-xs opacity-50 mb-2">{{ note }}</p>
+{% endfor %}
+
+{# The server sends UTC; the reader wants their own clock. No interval here on
+   purpose -- the surrounding element is replaced by the poll, and a ticker
+   started per swap would keep running against a detached node. #}
+<script>
+  (function () {
+    document.querySelectorAll("[data-checked-at]").forEach(function (el) {
+      var when = new Date(el.dataset.checkedAt);
+      el.textContent = isNaN(when.getTime()) ? "just now" : when.toLocaleTimeString();
+    });
+  })();
+</script>
+{% endif %}

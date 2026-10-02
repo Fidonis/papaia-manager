@@ -128,13 +128,26 @@ The profile serving this panel is the one group that cannot be selected. Stoppin
 it would remove the container handling the request, which could then never report
 whether it worked.
 
-The same data drives two status pills in the header of every page, visible to
-every authenticated account regardless of role: one for the core stack, one for
-add-ons. Each carries the aggregate only — the worst state in its section — and
-links to the matching page for administrators. A user without the admin role
-therefore learns that something is unhealthy, but not which service. Core and
-add-ons stay separate so that a failing add-on out of a customer catalogue does
-not report the stack itself as broken.
+The same data drives a status chip in the header of every page, visible to every
+authenticated account regardless of role. Its popover keeps three rows apart: the
+core stack, the add-ons and the host. Each carries counts only, so a user without
+the admin role learns that something is unhealthy, but not which service, disk or
+certificate. Core and add-ons stay separate so that a failing add-on out of a
+customer catalogue does not report the stack itself as broken. Administrators get
+links to the matching pages.
+
+**Host.** An admin-only page at `/host` showing the state of the machine under the
+deployment: free space on the config and backup directories, and the days left on
+every certificate (the bundled ones and Let's Encrypt). The manager measures
+nothing itself. It runs the core's `papaia-ctl doctor`, limited to its
+`disk_space` and `certs` checks, and shows the core's verdicts, so the page and a
+shell on the host cannot disagree about a threshold. That needs a core that has
+`doctor` (1.4.0 or newer); on an older one the page says so and the header chip
+carries on without a Host row. The Docker data root is listed as not measurable:
+the manager container sees the config and backup directories, not
+`/var/lib/docker`. A reading is cached for a minute and shared between everyone
+who has a page open; the page's Re-check button asks for a fresh one. The Host
+entry in the sidebar carries a dot while a check warns or has failed.
 
 **Catalogs.** A catalog is a source of add-ons — a public or private Git
 repository, or a local directory — registered at runtime (not versioned in

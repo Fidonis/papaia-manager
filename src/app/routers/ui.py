@@ -14,7 +14,7 @@ from app.auth.deps import AdminUser, AnyUser
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
-from app.core import backups, images, restore_scope, runner, upgrade
+from app.core import backups, host_health, images, restore_scope, runner, upgrade
 from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
@@ -160,6 +160,15 @@ async def services_page(
 ) -> HTMLResponse:
     """What this deployment is configured to run, against what is up."""
     return _templates.TemplateResponse(request, "services.html", _ctx(request, user))
+
+
+@router.get("/host", response_class=HTMLResponse)
+async def host_page(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """Disk space and certificates of the machine the deployment runs on."""
+    return _templates.TemplateResponse(request, "host.html", _ctx(request, user))
 
 
 @router.get("/catalogs", response_class=HTMLResponse)
@@ -345,6 +354,17 @@ async def partial_service_status(
     core_running = core_counts[ServiceHealth.HEALTHY] + core_counts[ServiceHealth.COMPLETED]
     addon_running = addon_counts[ServiceHealth.HEALTHY] + addon_counts[ServiceHealth.COMPLETED]
 
+    # The host reading comes from the cache and never from a `doctor` of its own:
+    # this partial renders on every page for every role, every 30 s. The refresh
+    # runs in the background, so a cold cache shows no Host row for one poll.
+    host_health.ensure_fresh(
+        config_dir=settings.papaia_config_dir, workspace_dir=settings.papaia_workspace_dir
+    )
+    reading = host_health.cached_host_health()
+    # Only a reading with something judged counts: an unavailable one, or one
+    # whose every certificate was unreadable, has no severity and no checks.
+    host = reading if reading is not None and reading.severity is not None else None
+
     # The chip's one-line verdict. `worst()` is reused rather than reimplemented
     # in the template: the severity order it walks is the single place that
     # decides what wins when two things are wrong at once, and a second copy of
@@ -352,8 +372,12 @@ async def partial_service_status(
     core_overall = overall_health(snapshot.core)
     addon_overall = overall_health(snapshot.addons)
     # An empty add-on section reports UNKNOWN, which must not drag the chip down
-    # to "status unknown" on a deployment that simply has no add-ons.
+    # to "status unknown" on a deployment that simply has no add-ons. The host
+    # is left out on the same terms: no reading, or nothing it could judge, is
+    # not a verdict.
     sections = [core_overall] + ([addon_overall] if snapshot.addons else [])
+    if host is not None and host.severity is not None:
+        sections.append(host.severity)
 
     resp = _templates.TemplateResponse(
         request,
@@ -362,13 +386,21 @@ async def partial_service_status(
             request,
             user,
             overall=worst(sections),
-            issues=(len(snapshot.core) - core_running) + (len(snapshot.addons) - addon_running),
+            issues=(len(snapshot.core) - core_running)
+            + (len(snapshot.addons) - addon_running)
+            + (host.issue_count if host is not None else 0),
             core_overall=core_overall,
             core_running=core_running,
             core_total=len(snapshot.core),
             addon_overall=addon_overall,
             addon_running=addon_running,
             addon_total=len(snapshot.addons),
+            # Counts and a severity, nothing else: no path, no host name. Same
+            # rule as for services -- a non-admin learns that something is wrong,
+            # not what.
+            host_overall=host.severity if host is not None else None,
+            host_ok=host.ok_count if host is not None else 0,
+            host_total=host.total if host is not None else 0,
             # Rendered as a local wall-clock time in the popover. Absolute
             # rather than relative on purpose: if the poll dies -- backgrounded
             # tab, manager restarted underneath -- a frozen clock says so,
@@ -412,6 +444,54 @@ async def partial_services(
             },
             self_profile=SELF_PROFILE,
         ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/host", response_class=HTMLResponse)
+async def partial_host(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+    fresh: bool = False,
+) -> HTMLResponse:
+    """The host page's body: disk space and certificates, or why there are none.
+
+    `fresh` is the "Re-check" button. It asks for a new run instead of the cached
+    one, and `load_host_health` still folds it into a run that is under way or
+    finished a few seconds ago, so the button cannot be used to hammer `doctor`.
+    """
+    health = await host_health.load_host_health(
+        config_dir=settings.papaia_config_dir,
+        workspace_dir=settings.papaia_workspace_dir,
+        force=fresh,
+    )
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/host_list.html",
+        _ctx(request, user, host=health),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/nav/host-indicator", response_class=HTMLResponse)
+async def partial_nav_host_indicator(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """The dot on the Host nav entry.
+
+    Reads the cache and nothing else, like the Upgrade dot: it renders in the
+    sidebar of every admin page, so anything more would put a subprocess behind
+    every navigation. The header chip's poll is what keeps the cache warm.
+    """
+    health = host_health.cached_host_health()
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/nav_host_indicator.html",
+        _ctx(request, user, state=str(health.overall) if health is not None else ""),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
