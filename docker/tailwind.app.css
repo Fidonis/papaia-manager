@@ -55,6 +55,17 @@
   white-space: nowrap;
 }
 
+/* A configured logo keeps its aspect ratio and is bounded by height (h-8) and
+   by width: wide in the full panel, square-ish in the rail so it cannot push
+   the rail's contents off-centre. */
+.brand-logo {
+  max-width: 9rem;
+}
+
+[data-sidebar="collapsed"] .brand-logo {
+  max-width: 2rem;
+}
+
 /* Only one of the two toggle glyphs is ever shown. */
 .sidebar-icon-expand {
   display: none;
@@ -100,6 +111,10 @@
 
   [data-sidebar="collapsed"] .app-sidebar:hover .sidebar-label {
     display: block;
+  }
+
+  [data-sidebar="collapsed"] .app-sidebar:hover .brand-logo {
+    max-width: 9rem;
   }
 
   [data-sidebar="collapsed"] .app-sidebar:hover .sidebar-row {
@@ -152,6 +167,14 @@
   [data-sidebar="open"] .app-sidebar {
     width: var(--sidebar-w);
     box-shadow: var(--sidebar-peek-shadow);
+  }
+
+  .brand-logo {
+    max-width: 2rem;
+  }
+
+  [data-sidebar="open"] .brand-logo {
+    max-width: 9rem;
   }
 
   [data-sidebar="open"] .sidebar-label {

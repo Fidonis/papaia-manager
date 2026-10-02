@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Settings — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Settings{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Configure this manager. Each section is saved on its own.</p>{% endblock %}
+
+{% block content %}
+{# One card per section. A new section (SMTP, ...) is another include here, its
+   own partial, its own model in core/settings_store.py and its own PUT route
+   in routers/api_settings.py -- nothing below depends on there being only one. #}
+<div class="space-y-6 max-w-3xl">
+  {% include "partials/_settings_branding.html" %}
+</div>
+
+<script>
+  // Shared by every settings section: send JSON/multipart with the CSRF
+  // header, surface the server's message, and keep the revision current.
+  let settingsRevision = {{ revision | tojson }};
+
+  async function settingsRequest(url, options) {
+    const headers = Object.assign(
+      { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
+      options.json !== undefined ? { "Content-Type": "application/json" } : {},
+    );
+    const res = await fetch(url, {
+      method: options.method || "POST",
+      headers: headers,
+      body: options.json !== undefined ? JSON.stringify(options.json) : options.body,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = typeof data.detail === "string" ? data.detail : "Request failed (" + res.status + ")";
+      showToast("error", detail);
+      return null;
+    }
+    settingsRevision = data.revision;
+    return data;
+  }
+</script>
+{% endblock %}

@@ -29,6 +29,12 @@ from app.core.services import (
     overall_health,
     worst,
 )
+from app.core.settings_store import (
+    DEFAULT_NAME,
+    DEFAULT_TAGLINE,
+    load_settings,
+    settings_revision,
+)
 from app.core.snapshots import load_installed, managed_snapshot_path
 from app.core.state import (
     AddonStatus,
@@ -203,6 +209,27 @@ async def upgrade_page(
     actually be moved.
     """
     return _templates.TemplateResponse(request, "upgrade.html", _ctx(request, user))
+
+
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_page(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """Manager settings: one card per section, each saved on its own."""
+    return _templates.TemplateResponse(
+        request,
+        "settings.html",
+        _ctx(
+            request,
+            user,
+            revision=settings_revision(settings.papaia_config_dir),
+            stored=load_settings(settings.papaia_config_dir),
+            default_name=DEFAULT_NAME,
+            default_tagline=DEFAULT_TAGLINE,
+        ),
+    )
 
 
 @router.get("/jobs", response_class=HTMLResponse)

@@ -44,6 +44,14 @@ the VM boundary.
 
 ## How it works
 
+**Settings and branding.** Administrators open **Settings** to change the
+name and second line shown at the top of the sidebar (defaults: "papAIa
+manager" / "by Fidonis") and to upload their own logo (PNG, JPEG, WebP or SVG,
+up to 512 KB; it is scaled to fit the header). The values are stored in
+`$PAPAIA_CONFIG_DIR/manager/settings.yaml`, one section per topic, and the logo
+in `$PAPAIA_CONFIG_DIR/manager/branding/`, so both are part of a backup.
+Without a settings file nothing changes.
+
 **Dashboard and access tiers.** Two Keycloak realm roles gate the UI.
 `MANAGER_ADMIN_ROLE` (default `manager-admin`) reaches every surface;
 `MANAGER_USER_ROLE` (default `user`) reaches the dashboard only. Accounts
