@@ -9,6 +9,7 @@ a formatting nicety.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -16,11 +17,16 @@ import yaml
 
 from app.core.backups import (
     RestorePoint,
+    count_older_than,
     find_restore_point,
     is_reachable,
     is_valid_restore_point_id,
+    last_backup_age,
+    last_successful_backup,
     load_restore_points,
+    newest_successful,
     resolve_backup_dir,
+    restore_point_time,
     restore_point_to_dict,
     snapshot_manifest,
 )
@@ -242,3 +248,85 @@ def test_a_snapshot_without_a_manifest_reads_as_none(backup_dir: Path) -> None:
     (backup_dir / "2026-07-30_12-41-24").mkdir()
     assert snapshot_manifest(backup_dir, "2026-07-30_12-41-24") is None
     assert snapshot_manifest(None, "2026-07-30_12-41-24") is None
+
+
+# ---------------------------------------------------------------------------
+# Age and retention arithmetic
+# ---------------------------------------------------------------------------
+
+_NOW = datetime(2026, 8, 1, 12, 0, tzinfo=UTC)
+
+
+def _at(created_at: str, result: str = "ok", ident: str = "x") -> RestorePoint:
+    return RestorePoint(id=ident, created_at=created_at, result=result)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("2026-07-30T08:19:41Z", datetime(2026, 7, 30, 8, 19, 41, tzinfo=UTC)),
+        ("2026-07-30T08:19:41+00:00", datetime(2026, 7, 30, 8, 19, 41, tzinfo=UTC)),
+        # No offset: the catalogue is UTC, so that is what it is read as.
+        ("2026-07-30T08:19:41", datetime(2026, 7, 30, 8, 19, 41, tzinfo=UTC)),
+        ("", None),
+        ("yesterday", None),
+    ],
+)
+def test_the_time_of_a_restore_point_is_read_as_utc(raw: str, expected: datetime | None) -> None:
+    assert restore_point_time(_at(raw)) == expected
+
+
+def test_the_newest_successful_point_ignores_partial_and_failed_runs() -> None:
+    points = [
+        _at("2026-07-30T08:00:00Z", "ok", "old-ok"),
+        _at("2026-07-31T08:00:00Z", "partial", "partial"),
+        _at("2026-08-01T08:00:00Z", "failed", "failed"),
+        _at("2026-07-31T09:00:00Z", "ok", "new-ok"),
+        _at("garbage", "ok", "no-time"),
+    ]
+    found = newest_successful(points)
+    assert found is not None
+    assert found.id == "new-ok"
+
+
+def test_no_successful_point_is_none() -> None:
+    assert newest_successful([]) is None
+    assert newest_successful([_at("2026-07-30T08:00:00Z", "failed")]) is None
+
+
+def test_the_last_successful_backup_comes_from_the_catalogue(backup_dir: Path) -> None:
+    found = last_successful_backup(backup_dir)
+    assert found is not None
+    # The newer entry is `partial`, which is a usable restore point but not a success.
+    assert found.id == "2026-07-30_10-19-38"
+    assert last_successful_backup(None) is None
+
+
+def test_the_age_is_measured_from_the_newest_success(tmp_path: Path, backup_dir: Path) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / ".env").write_text(f"PAPAIA_BACKUP_DIR={backup_dir}\n", encoding="utf-8")
+    now = datetime(2026, 7, 30, 20, 19, 41, tzinfo=UTC)
+    assert last_backup_age(str(config_dir), now=now) == timedelta(hours=12)
+
+
+def test_there_is_no_age_without_a_backup_directory_or_a_success(tmp_path: Path) -> None:
+    assert last_backup_age(str(tmp_path)) is None
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    (tmp_path / ".env").write_text(f"PAPAIA_BACKUP_DIR={empty}\n", encoding="utf-8")
+    assert last_backup_age(str(tmp_path)) is None
+
+
+def test_the_retention_count_matches_what_papaia_ctl_would_prune() -> None:
+    """Strictly older than the cutoff; an entry whose time cannot be read is kept --
+    the same rule as `prune` in the core's backup.py."""
+    points = [
+        _at("2026-07-18T12:00:00Z", ident="exactly-14-days"),
+        _at("2026-07-18T11:59:59Z", ident="just-older"),
+        _at("2026-06-01T00:00:00Z", "failed", "old-failed"),
+        _at("2026-07-31T00:00:00Z", ident="recent"),
+        _at("garbage", ident="unreadable"),
+    ]
+    assert count_older_than(points, 14, now=_NOW) == 2
+    assert count_older_than(points, 365, now=_NOW) == 0

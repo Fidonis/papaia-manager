@@ -14,7 +14,16 @@ from app.auth.deps import AdminUser, AnyUser
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
-from app.core import backups, docker_usage, host_health, images, restore_scope, runner, upgrade
+from app.core import (
+    backups,
+    docker_usage,
+    host_health,
+    images,
+    restore_scope,
+    runner,
+    schedule,
+    upgrade,
+)
 from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
@@ -72,6 +81,13 @@ def _queue() -> JobQueue | None:
     from app.main import _job_queue  # noqa: PLC0415
 
     return _job_queue
+
+
+def _next_scheduled_run() -> datetime | None:
+    """When the scheduler fires next; None if it is not running or nothing is scheduled."""
+    from app.main import _backup_scheduler  # noqa: PLC0415
+
+    return _backup_scheduler.next_run_time() if _backup_scheduler is not None else None
 
 
 def _backup_panel_ctx(queue: JobQueue | None) -> dict[str, Any]:
@@ -214,6 +230,9 @@ async def backup_page(
             user,
             backup_dir=str(backup_dir) if backup_dir else None,
             backup_dir_reachable=backups.is_reachable(backup_dir),
+            common_timezones=schedule.COMMON_TIMEZONES,
+            weekdays=[(day, schedule.WEEKDAY_LABELS[day][:3]) for day in schedule.WEEKDAYS],
+            hourly_choices=schedule.HOURLY_CHOICES,
             **_backup_panel_ctx(_queue()),
         ),
     )
@@ -798,6 +817,132 @@ async def partial_backup_job_status(
         request,
         "partials/backup_job_status.html",
         _ctx(request, user, **_backup_panel_ctx(_queue())),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/backup/schedule", response_class=HTMLResponse)
+async def partial_backup_schedule(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The schedule and last-backup strip above the restore points.
+
+    Shown with or without a schedule: the age of the newest backup is worth
+    seeing either way, and only a schedule can make it a warning.
+    """
+    next_run = _next_scheduled_run()
+    state = await asyncio.get_running_loop().run_in_executor(
+        None,
+        lambda: schedule.read_state(settings.papaia_config_dir, next_run=next_run),
+    )
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/backup_schedule.html",
+        _ctx(request, user, state=state, scheduler_running=next_run is not None),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+def _schedule_preview(
+    config_dir: str,
+    *,
+    mode: str,
+    time: str,
+    minute: str,
+    weekdays: list[str],
+    every_hours: int,
+    cron: str,
+    timezone: str,
+    retention_days: str,
+) -> dict[str, Any]:
+    """Validate what the editor holds right now and say what it would do.
+
+    Runs the same validation as saving, so a form that previews cleanly is a form
+    that saves -- the preview is the editor's live validation, and nothing is
+    written or scheduled by it.
+    """
+    try:
+        if mode == "hourly":
+            # The hourly preset has no time of day, only a minute past the hour.
+            if not minute.strip().isdigit() or int(minute) > 59:
+                raise schedule.ScheduleError("The minute must be between 0 and 59.")
+            time = f"00:{int(minute):02d}"
+        expression = schedule.compile_preset(
+            mode, time=time, weekdays=weekdays, every_hours=every_hours, cron=cron
+        )
+        raw_retention = retention_days.strip()
+        if raw_retention and not raw_retention.isdigit():
+            raise schedule.ScheduleError("The retention must be a whole number of days.")
+        retention = int(raw_retention) if raw_retention else None
+        chosen = schedule.build_schedule(
+            cron=expression,
+            timezone=timezone.strip() or schedule.default_timezone(),
+            retention_days=retention,
+        )
+    except schedule.ScheduleError as exc:
+        return {"error": str(exc)}
+
+    cadence = schedule.cadence_of(chosen.cron, chosen.timezone)
+    now = datetime.now(tz=UTC)
+    points = backups.load_restore_points(backups.resolve_backup_dir(config_dir))
+    runs = schedule.next_runs(chosen.cron, chosen.timezone, now=now)
+    return {
+        "cron": chosen.cron,
+        "timezone": chosen.timezone,
+        "description": schedule.describe(chosen.cron),
+        "runs": [schedule.format_moment(run, chosen.timezone) for run in runs],
+        "longest_gap": schedule.humanize(cadence.longest),
+        "min_retention": schedule.min_retention_days(cadence),
+        "would_delete": (
+            backups.count_older_than(points, chosen.retention_days, now=now)
+            if chosen.retention_days is not None
+            else None
+        ),
+        "retention_days": chosen.retention_days,
+    }
+
+
+@router.get("/partials/backup/schedule/preview", response_class=HTMLResponse)
+async def partial_backup_schedule_preview(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+    mode: str = "daily",
+    time: str = "03:00",
+    minute: str = "0",
+    weekdays: Annotated[list[str] | None, Query()] = None,
+    every_hours: int = 6,
+    cron: str = "",
+    timezone: str = "",
+    retention_days: str = "",
+) -> HTMLResponse:
+    """Live validation and the next runs for the schedule editor's current input.
+
+    A GET with the form in the query string: it changes nothing, so it needs no
+    CSRF token, and htmx re-issues it as the form is edited.
+    """
+    preview = await asyncio.get_running_loop().run_in_executor(
+        None,
+        lambda: _schedule_preview(
+            settings.papaia_config_dir,
+            mode=mode,
+            time=time,
+            minute=minute,
+            weekdays=weekdays or [],
+            every_hours=every_hours,
+            cron=cron,
+            timezone=timezone,
+            retention_days=retention_days,
+        ),
+    )
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/backup_schedule_preview.html",
+        _ctx(request, user, preview=preview),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
