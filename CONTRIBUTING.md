@@ -75,15 +75,19 @@ Type checking with [`mypy`](https://mypy-lang.org/) (strict mode) is configured 
 Run the checks locally before pushing:
 
 ```bash
-# YAML lint — from the repository root
+# Lint — from the repository root, as CI runs it
 yamllint .
+uv run --project src ruff check .
 
-# Python lint + type check — from src/
+# Type check and tests — from src/
 cd src
-uv run ruff check .
 uv run mypy .
 uv run pytest -q
 ```
+
+Run `ruff` from the repository root, not from `src/`: `tests/` sits next to `src/`, and
+`ruff check .` inside `src/` does not see it, so a line in a test that CI rejects would pass
+locally. `--project src` only makes `uv` use the environment that `uv sync` created there.
 
 ## Local development
 

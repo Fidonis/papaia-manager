@@ -281,17 +281,21 @@ All PRs are **squash-merged**. The PR title becomes the single commit message on
 Run all checks locally before pushing:
 
 ```bash
-# YAML — from the repository root
+# From the repository root: the two checks CI runs from there
 yamllint .
+uv run --project src ruff check .
 
-# Python — from src/
+# From src/
 cd src
-uv run ruff check .
 uv run mypy .
 uv run pytest -q
 ```
 
-- **Python linting**: ruff with rule sets E, F, I, B, UP, N, RET, SIM, ASYNC
+- **Python linting**: ruff with rule sets E, F, I, B, UP, N, RET, SIM, ASYNC. Run it from the
+  **repository root**, as CI does (`ruff check .` with the root `ruff.toml`): `tests/` is a
+  sibling of `src/`, so `uv run ruff check .` from inside `src/` lints `src/` only and passes
+  over a line in a test that CI then rejects. The `--project src` above only borrows the
+  environment `uv sync` made there.
 - **Type checking**: mypy in strict mode; all public functions must carry explicit type annotations
 - **Import style**: absolute imports (`from app.config import get_settings`)
 - **YAML**: yamllint with the project `.yamllint` config
