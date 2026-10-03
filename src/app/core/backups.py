@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -127,6 +129,63 @@ def load_restore_points(backup_dir: Path | None) -> list[RestorePoint]:
     # instead of in every caller and template.
     points.sort(key=lambda p: p.created_at, reverse=True)
     return points
+
+
+def restore_point_time(point: RestorePoint) -> datetime | None:
+    """When the restore point was taken, from the catalogue's UTC `created_at`.
+
+    None for a value that does not parse: such an entry takes part in nothing that
+    needs a time, the same way papaia-ctl's own retention leaves it alone.
+    """
+    if not point.created_at:
+        return None
+    try:
+        taken = datetime.fromisoformat(point.created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return taken if taken.tzinfo is not None else taken.replace(tzinfo=UTC)
+
+
+def newest_successful(points: Iterable[RestorePoint]) -> RestorePoint | None:
+    """The newest restore point whose run finished `ok`.
+
+    `partial` is a usable restore point but not a successful backup: some archive
+    failed, so it must not be what tells a schedule that all is well.
+    """
+    dated = [
+        (taken, point)
+        for point in points
+        if point.result == RESULT_OK and (taken := restore_point_time(point)) is not None
+    ]
+    return max(dated, key=lambda pair: pair[0])[1] if dated else None
+
+
+def last_successful_backup(backup_dir: Path | None) -> RestorePoint | None:
+    """The newest successfully completed restore point in the catalogue, or None."""
+    return newest_successful(load_restore_points(backup_dir))
+
+
+def last_backup_age(config_dir: str, *, now: datetime | None = None) -> timedelta | None:
+    """How long ago the newest successful backup was taken, or None if there is none.
+
+    One function for every consumer -- the Backup page's status strip, a dashboard
+    widget, an alert rule -- so that none of them computes it a little differently.
+    """
+    newest = last_successful_backup(resolve_backup_dir(config_dir))
+    taken = restore_point_time(newest) if newest is not None else None
+    if taken is None:
+        return None
+    return (now or datetime.now(tz=UTC)) - taken
+
+
+def count_older_than(points: Iterable[RestorePoint], days: int, *, now: datetime) -> int:
+    """How many restore points papaia-ctl's retention would delete at `days`.
+
+    The same rule as the core's `prune`: strictly older than the cutoff, and an
+    entry whose time cannot be read is kept.
+    """
+    cutoff = now - timedelta(days=days)
+    return sum(1 for p in points if (taken := restore_point_time(p)) is not None and taken < cutoff)
 
 
 def find_restore_point(backup_dir: Path | None, restore_point_id: str) -> RestorePoint | None:

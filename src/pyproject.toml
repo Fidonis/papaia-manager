@@ -18,6 +18,11 @@ dependencies = [
     "pydantic>=2.7.0",
     "pydantic-settings>=2.5.0",
     "anyio>=4.4.0",
+    # Backup schedule. 3.x on purpose: every 4.x release is still an alpha.
+    "apscheduler>=3.10,<4",
+    # The schedule carries an IANA timezone name; `zoneinfo` needs this on a base
+    # image or a development machine (Windows) that ships no zone database.
+    "tzdata>=2024.1",
 ]
 
 [dependency-groups]
@@ -48,7 +53,7 @@ disallow_untyped_defs = true
 no_implicit_optional = true
 # Stubs for pyyaml types are incomplete; suppress missing-import noise.
 [[tool.mypy.overrides]]
-module = ["jose.*"]
+module = ["jose.*", "apscheduler.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
