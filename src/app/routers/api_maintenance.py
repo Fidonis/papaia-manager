@@ -16,8 +16,9 @@ pull the config directory out from under it.
 """
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -26,10 +27,11 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core import backups, ctl, inventory, restore_scope, runner
+from app.core import backup_run, backups, ctl, inventory, restore_scope, runner, schedule
 from app.core.audit import write_audit_entry
 from app.core.ctl import run_core_verb
 from app.core.jobs import JobContext, JobQueue
+from app.core.scheduler import BackupScheduler
 
 router = APIRouter(prefix="/api/v1/maintenance")
 
@@ -39,6 +41,23 @@ class BackupBody(BaseModel):
     # --retention-period-days is passed, so absence and 0 are different requests
     # and 0 (delete everything older than today) must stay expressible.
     retention_days: int | None = Field(default=None, ge=0)
+
+
+class ScheduleBody(BaseModel):
+    """The backup schedule as the editor submits it.
+
+    `cron` is the one canonical form; the editor's presets (daily, weekly, every
+    N hours) are compiled to it before they get here. Only the fields that are
+    sent change from their defaults, and `retention_days: null` is a request to
+    keep every restore point, not an absent value.
+    """
+
+    enabled: bool = True
+    cron: str
+    timezone: str | None = None
+    retention_days: int | None = None
+    misfire_grace_seconds: int | None = None
+    run_on_startup: Literal["never", "if_missed"] | None = None
 
 
 class RestoreBody(BaseModel):
@@ -87,6 +106,21 @@ def _user_id(user: OIDCClaims) -> str:
     return user.preferred_username or user.sub
 
 
+def _scheduler() -> BackupScheduler | None:
+    """The running scheduler, or None when it did not start (or has not yet)."""
+    from app.main import _backup_scheduler  # noqa: PLC0415
+
+    return _backup_scheduler
+
+
+async def _schedule_state(settings: Settings) -> schedule.ScheduleState:
+    scheduler = _scheduler()
+    next_run = scheduler.next_run_time() if scheduler is not None else None
+    return await asyncio.get_running_loop().run_in_executor(
+        None, lambda: schedule.read_state(settings.papaia_config_dir, next_run=next_run)
+    )
+
+
 def _backup_dir(settings: Settings) -> Path:
     """Resolved backup directory, or 409 when it is unusable.
 
@@ -122,22 +156,12 @@ async def _require_no_runner() -> None:
     migrates and re-renders it while the stack is down. An archive taken across
     either one captures a state that never existed.
     """
-    try:
-        candidates = [
-            (await runner.find_runner(runner.RESTORE_KIND), "restore"),
-            (await runner.find_runner(runner.UPGRADE_KIND), "upgrade"),
-        ]
-    except runner.RunnerError:
-        # Docker unreachable is the restore path's problem, not the backup
-        # path's -- a backup shells out to papaia-ctl, which reports its own
-        # docker failures in the job log.
-        return
-    for active, label in candidates:
-        if active is not None and active.is_running:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"a {label} of {active.target} is still running",
-            )
+    blocking = await backup_run.blocking_runner()
+    if blocking is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"a {blocking.label} of {blocking.target} is still running",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -263,40 +287,95 @@ async def create_backup(
             detail=f"a {active.action} job is already running; wait for it to finish",
         )
 
-    _username = _user_id(user)
-    _retention = body.retention_days
-    _flags = [f"--backup-dir={backup_dir}"]
-    if _retention is not None:
-        _flags.append(f"--retention-period-days={_retention}")
-
-    async def _callback(ctx: JobContext) -> None:
-        ctx.log(f"[ctl] papaia-ctl backup {' '.join(_flags)}")
-        gen = await run_core_verb(
-            verb="backup",
-            workspace_dir=settings.papaia_workspace_dir,
-            config_dir=settings.papaia_config_dir,
-            extra_flags=_flags,
-        )
-        async for line in gen:
-            ctx.log(line)
-        write_audit_entry(
-            settings.papaia_config_dir,
-            user=_username,
-            action="backup",
-            target=str(backup_dir),
-            params={"retention_days": _retention},
-            job_id=ctx.job.id,
-        )
-        ctx.log("[info] done")
-
-    job = await queue.enqueue(
-        action="backup",
-        target=str(backup_dir),
-        user=_username,
-        params={"retention_days": _retention},
-        callback=_callback,
+    job = await backup_run.enqueue_backup(
+        queue,
+        settings,
+        backup_dir,
+        user=_user_id(user),
+        retention_days=body.retention_days,
     )
     return {"job_id": job.id, "status": "queued"}
+
+
+# ---------------------------------------------------------------------------
+# Backup schedule
+# ---------------------------------------------------------------------------
+#
+# The schedule lives in $PAPAIA_CONFIG_DIR/manager/schedule.yaml and is run by an
+# in-process scheduler (app.core.scheduler). Writing it is a settings change, not a
+# job: it only edits a file and the scheduler's in-memory job, so it takes effect
+# at once instead of waiting behind a backup in the queue. A *scheduled run* is the
+# job, and goes through the queue like the button does.
+
+
+@router.get("/schedule")
+async def get_schedule(
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """The schedule, whether it is active, and how the newest backup compares."""
+    return schedule.state_to_dict(await _schedule_state(settings))
+
+
+@router.put("/schedule")
+async def put_schedule(
+    body: ScheduleBody,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    verify_csrf(request)
+    # A schedule that can never run is a trap: it would read as set and do nothing.
+    backup_dir = _backup_dir(settings)
+    # A restore or an upgrade replaces $PAPAIA_CONFIG_DIR, and a schedule written
+    # while one runs would be overwritten with the state it is restoring.
+    await _require_no_runner()
+
+    fields = body.model_dump(exclude_unset=True)
+    for name in ("timezone", "misfire_grace_seconds", "run_on_startup"):
+        if fields.get(name) is None:
+            fields.pop(name, None)
+    try:
+        new = schedule.build_schedule(**fields)
+    except schedule.ScheduleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    schedule.save_schedule(settings.papaia_config_dir, new)
+    write_audit_entry(
+        settings.papaia_config_dir,
+        user=_user_id(user),
+        action="backup.schedule.update",
+        target=str(backup_dir),
+        params=new.model_dump(mode="json"),
+    )
+    scheduler = _scheduler()
+    if scheduler is not None:
+        scheduler.apply(new)
+    return schedule.state_to_dict(await _schedule_state(settings))
+
+
+@router.delete("/schedule")
+async def delete_schedule(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """Remove the schedule. Removing one that does not exist is not an error."""
+    verify_csrf(request)
+    await _require_no_runner()
+
+    removed = schedule.delete_schedule(settings.papaia_config_dir)
+    write_audit_entry(
+        settings.papaia_config_dir,
+        user=_user_id(user),
+        action="backup.schedule.delete",
+        target=str(schedule.schedule_path(settings.papaia_config_dir)),
+        params={"removed": removed},
+    )
+    scheduler = _scheduler()
+    if scheduler is not None:
+        scheduler.apply(None)
+    return schedule.state_to_dict(await _schedule_state(settings))
 
 
 @router.post("/restore-points/delete", status_code=status.HTTP_202_ACCEPTED)

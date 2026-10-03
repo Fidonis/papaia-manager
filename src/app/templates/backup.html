@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/_actions.html" import bulk_bar %}
-{% block title %}Backup / Restore — papAIa manager{% endblock %}
+{% block title %}Backup / Restore — {{ branding().name }}{% endblock %}
 
 {% block page_title %}Backup / Restore{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Back up and restore the stack</p>{% endblock %}
@@ -99,6 +99,17 @@
   {% endif %}
 </p>
 {% endif %}
+
+<!-- ── Schedule and last backup ───────────────────────────
+     Swapped in, and re-read once a minute. The editor is the <dialog> at the end
+     of this page, outside the slot, so the refresh cannot close it. -->
+<div
+  id="backup-schedule-slot"
+  class="mb-6"
+  hx-get="/partials/backup/schedule"
+  hx-trigger="load, every 60s"
+  hx-swap="innerHTML"
+></div>
 
 <!-- ── Restore points ─────────────────────────────────────
      `x-data` sits here rather than on #restore-point-list because that element's
@@ -943,6 +954,261 @@ function openRestorePointDetail(id) {
       wrapper.appendChild(table);
       body.appendChild(wrapper);
     });
+}
+</script>
+
+<!-- Schedule editor. Plain DOM, like the other dialogs on this page: the fields are
+     filled from JSON after it opens, and htmx re-validates the form into
+     #schedule-preview as it is edited. The presets (every day, on chosen days, every
+     N hours) are compiled to cron on the server, in the preview, so what Save sends
+     is exactly what the preview showed. -->
+<dialog id="schedule-modal" class="modal">
+  <div class="modal-box max-w-xl">
+    <h3 class="font-bold text-base mb-1">Backup schedule</h3>
+    <p class="text-sm opacity-60 mb-4">
+      Starts a backup by itself at these times, the same way the Create backup button
+      does. A run is held back while a restore, an upgrade or another job is running,
+      and tried again a few minutes later.
+    </p>
+
+    <form id="schedule-form" onsubmit="return false"
+          hx-get="/partials/backup/schedule/preview"
+          hx-trigger="input delay:300ms, change"
+          hx-target="#schedule-preview"
+          hx-swap="innerHTML">
+
+      <label class="label cursor-pointer justify-start gap-3 mb-2">
+        <input id="schedule-enabled" type="checkbox" class="checkbox checkbox-sm">
+        <span class="label-text text-sm">Schedule is active</span>
+      </label>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div class="form-control">
+          <label class="label py-1" for="schedule-mode"><span class="label-text text-sm">Repeat</span></label>
+          <select id="schedule-mode" name="mode" class="select select-bordered select-sm"
+                  onchange="scheduleModeChanged()">
+            <option value="daily">Every day</option>
+            <option value="weekly">On chosen days</option>
+            <option value="hourly">Every few hours</option>
+            <option value="custom">Cron expression</option>
+          </select>
+        </div>
+
+        <div id="schedule-time-row" class="form-control">
+          <label class="label py-1" for="schedule-time"><span class="label-text text-sm">At</span></label>
+          <input id="schedule-time" name="time" type="time" value="03:00"
+                 class="input input-bordered input-sm">
+        </div>
+
+        <div id="schedule-hours-row" class="form-control hidden">
+          <label class="label py-1" for="schedule-every-hours"><span class="label-text text-sm">Every</span></label>
+          <select id="schedule-every-hours" name="every_hours" class="select select-bordered select-sm">
+            {% for n in hourly_choices %}<option value="{{ n }}">{{ n }} hour{{ "" if n == 1 else "s" }}</option>{% endfor %}
+          </select>
+        </div>
+
+        <div id="schedule-minute-row" class="form-control hidden">
+          <label class="label py-1" for="schedule-minute"><span class="label-text text-sm">Minute past the hour</span></label>
+          <input id="schedule-minute" name="minute" type="number" min="0" max="59" value="0"
+                 class="input input-bordered input-sm">
+        </div>
+      </div>
+
+      <div id="schedule-weekdays-row" class="mt-3 hidden">
+        <div class="flex flex-wrap gap-x-4 gap-y-1">
+          {% for value, label in weekdays %}
+          <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+            <input type="checkbox" name="weekdays" value="{{ value }}" class="checkbox checkbox-xs">
+            {{ label }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div id="schedule-cron-row" class="form-control mt-3 hidden">
+        <label class="label py-1" for="schedule-cron">
+          <span class="label-text text-sm">Cron expression (minute hour day month weekday)</span>
+        </label>
+        <input id="schedule-cron" name="cron" type="text" placeholder="0 3 * * *" autocomplete="off"
+               class="input input-bordered input-sm font-mono">
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2 mt-3">
+        <div class="form-control">
+          <label class="label py-1" for="schedule-timezone"><span class="label-text text-sm">Timezone</span></label>
+          <input id="schedule-timezone" name="timezone" type="text" list="schedule-tz-list" autocomplete="off"
+                 class="input input-bordered input-sm">
+          <datalist id="schedule-tz-list">
+            {% for tz in common_timezones %}<option value="{{ tz }}"></option>{% endfor %}
+          </datalist>
+        </div>
+
+        <div class="form-control">
+          <label class="label py-1" for="schedule-retention"><span class="label-text text-sm">Keep restore points for (days)</span></label>
+          <input id="schedule-retention" name="retention_days" type="number" min="1" step="1" placeholder="keep all"
+                 class="input input-bordered input-sm">
+        </div>
+      </div>
+
+      <label class="label cursor-pointer justify-start gap-3 mt-2">
+        <input id="schedule-catchup" type="checkbox" class="checkbox checkbox-sm">
+        <span class="label-text text-sm">Make up a missed run after the manager restarts</span>
+      </label>
+    </form>
+
+    <p class="text-xs opacity-50 mt-1">
+      Older restore points are deleted after each scheduled backup. The deletion is
+      held back while the newest successful restore point is overdue, so a run of
+      failed backups cannot wipe out the good ones.
+    </p>
+
+    <div id="schedule-preview" class="mt-4 rounded-lg border border-base-300 px-4 py-3 text-sm"></div>
+
+    <div class="modal-action">
+      <button id="schedule-remove" type="button" class="btn btn-ghost btn-sm text-error mr-auto hidden"
+              onclick="removeSchedule()">Remove schedule</button>
+      <button type="button" class="btn btn-ghost btn-sm"
+              onclick="document.getElementById('schedule-modal').close()">Cancel</button>
+      <button id="schedule-save" type="button" class="btn btn-primary btn-sm" disabled
+              onclick="saveSchedule()">Save schedule</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<script>
+// ── Backup schedule ──────────────────────────────────────────────────────────
+//
+// The page only edits the form and posts what the preview validated. Compiling a
+// preset to cron, checking the expression, the timezone, the retention and the
+// shortest allowed interval all happen on the server -- the same code the PUT
+// uses -- so there is no second copy of those rules in this file.
+function refreshScheduleStrip() {
+  htmx.ajax('GET', '/partials/backup/schedule',
+            { target: '#backup-schedule-slot', swap: 'innerHTML' });
+}
+
+// Which rows apply to the chosen repeat. Hidden fields are still part of the form
+// and still sent; the server reads only the ones its mode uses.
+function scheduleModeChanged() {
+  var mode = _el('schedule-mode').value;
+  _el('schedule-time-row').classList.toggle('hidden', !(mode === 'daily' || mode === 'weekly'));
+  _el('schedule-weekdays-row').classList.toggle('hidden', mode !== 'weekly');
+  _el('schedule-hours-row').classList.toggle('hidden', mode !== 'hourly');
+  _el('schedule-minute-row').classList.toggle('hidden', mode !== 'hourly');
+  _el('schedule-cron-row').classList.toggle('hidden', mode !== 'custom');
+}
+
+function _fillScheduleForm(data) {
+  var s = data.schedule;
+  var p = data.preset;
+  _el('schedule-enabled').checked = s ? s.enabled : true;
+  _el('schedule-mode').value = p ? p.mode : 'daily';
+  _el('schedule-time').value = p && (p.mode === 'daily' || p.mode === 'weekly') ? p.time : '03:00';
+  document.querySelectorAll('input[name=weekdays]').forEach(function (box) {
+    box.checked = !!p && p.mode === 'weekly' && p.weekdays.indexOf(box.value) !== -1;
+  });
+  _el('schedule-every-hours').value = String(p ? p.every_hours : 6);
+  _el('schedule-minute').value = p && p.mode === 'hourly' ? parseInt(p.time.slice(3), 10) : 0;
+  _el('schedule-cron').value = p && p.mode === 'custom' ? p.cron : (s ? s.cron : '');
+  _el('schedule-timezone').value = s ? s.timezone : data.timezone;
+  _el('schedule-retention').value = s && s.retention_days ? s.retention_days : '';
+  _el('schedule-catchup').checked = s ? s.run_on_startup === 'if_missed' : true;
+  // An unreadable schedule.yaml has no schedule to show, but it can be removed.
+  _el('schedule-remove').classList.toggle('hidden', !data.configured && !data.error);
+  _disarmRemoveSchedule();
+  scheduleModeChanged();
+}
+
+function openScheduleModal() {
+  fetch('/api/v1/maintenance/schedule').then(async function (r) {
+    if (_authGuard(r)) return;
+    if (!r.ok) {
+      showToast('error', 'Could not load the schedule: ' + (await _apiError(r)));
+      return;
+    }
+    _fillScheduleForm(await r.json());
+    _el('schedule-save').disabled = true;
+    _el('schedule-modal').showModal();
+    htmx.trigger('#schedule-form', 'change');
+  });
+}
+
+// Save is only offered for a form the server has just validated, and not while a
+// newer validation is still on its way -- otherwise a quick click would send the
+// values of the previous keystroke.
+document.addEventListener('htmx:beforeRequest', function (e) {
+  if (e.detail.elt && e.detail.elt.id === 'schedule-form') _el('schedule-save').disabled = true;
+});
+document.addEventListener('htmx:afterSwap', function (e) {
+  if (e.detail.target && e.detail.target.id === 'schedule-preview') {
+    _el('schedule-save').disabled =
+      !document.querySelector('#schedule-preview [data-valid="true"]');
+  }
+});
+
+function saveSchedule() {
+  if (!document.querySelector('#schedule-preview [data-valid="true"]')) {
+    showToast('error', 'Fix the schedule first.');
+    return;
+  }
+  var raw = _el('schedule-retention').value.trim();
+  var body = {
+    enabled: _el('schedule-enabled').checked,
+    cron: _el('schedule-compiled-cron').value,
+    timezone: _el('schedule-compiled-timezone').value,
+    retention_days: raw === '' ? null : parseInt(raw, 10),
+    run_on_startup: _el('schedule-catchup').checked ? 'if_missed' : 'never',
+  };
+  _el('schedule-save').disabled = true;
+  fetch('/api/v1/maintenance/schedule', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
+    body: JSON.stringify(body),
+  }).then(async function (r) {
+    if (_authGuard(r)) return;
+    if (!r.ok) {
+      showToast('error', 'The schedule was not saved: ' + (await _apiError(r)));
+      _el('schedule-save').disabled = false;
+      return;
+    }
+    _el('schedule-modal').close();
+    showToast('success', body.enabled ? 'Schedule saved.' : 'Schedule saved and paused.');
+    refreshScheduleStrip();
+  });
+}
+
+// Removing is two clicks on the same button: the first arms it, the second does it.
+// A dialog for a confirmation inside a dialog is more ceremony than a file this
+// small deserves.
+var _removeScheduleTimer = null;
+
+function _disarmRemoveSchedule() {
+  clearTimeout(_removeScheduleTimer);
+  _removeScheduleTimer = null;
+  _el('schedule-remove').textContent = 'Remove schedule';
+}
+
+function removeSchedule() {
+  if (_removeScheduleTimer === null) {
+    _el('schedule-remove').textContent = 'Click again to remove';
+    _removeScheduleTimer = setTimeout(_disarmRemoveSchedule, 4000);
+    return;
+  }
+  _disarmRemoveSchedule();
+  fetch('/api/v1/maintenance/schedule', {
+    method: 'DELETE',
+    headers: { 'X-CSRF-Token': _csrf() },
+  }).then(async function (r) {
+    if (_authGuard(r)) return;
+    if (!r.ok) {
+      showToast('error', 'The schedule was not removed: ' + (await _apiError(r)));
+      return;
+    }
+    _el('schedule-modal').close();
+    showToast('success', 'Schedule removed.');
+    refreshScheduleStrip();
+  });
 }
 </script>
 {% endblock %}

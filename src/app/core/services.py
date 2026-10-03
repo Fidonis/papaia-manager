@@ -98,8 +98,8 @@ _INSPECT_TIMEOUT_SECONDS = 5
 # allowed to finish.
 _SERVICE_RESTART_POLICIES = frozenset({"always", "unless-stopped"})
 
-# How long a `docker ps` result is reused. The header pills render on every page
-# and poll, and `/addons` reads the same snapshot, so without this a single page
+# How long a `docker ps` result is reused. The sidebar status row renders on every page
+# and polls, and `/addons` reads the same snapshot, so without this a single page
 # load would fork several subprocesses; five seconds is short enough that the
 # polled views still feel live.
 _CACHE_TTL_SECONDS = 5.0

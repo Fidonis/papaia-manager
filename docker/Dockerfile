@@ -89,7 +89,9 @@ RUN cat tailwind.brand.css tailwind.app.css > tailwind.input.css \
 # ---- runtime: minimal image with Docker CLI, git, and the venv ----
 FROM python:3.12-slim AS runtime
 
-# Install Docker CE CLI + Compose plugin and runtime system deps.
+# Install Docker CE CLI + Compose plugin and runtime system deps. `openssl` is
+# for the core's `doctor`, which reads certificate expiry with the CLI; it is
+# listed rather than left to arrive with ca-certificates.
 # The Docker APT repo is the only source that provides docker-compose-plugin.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -98,6 +100,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         gnupg \
+        openssl \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
         -o /etc/apt/keyrings/docker.asc \

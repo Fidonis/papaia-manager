@@ -14,7 +14,16 @@ from app.auth.deps import AdminUser, AnyUser
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
-from app.core import backups, images, restore_scope, runner, upgrade
+from app.core import (
+    backups,
+    docker_usage,
+    host_health,
+    images,
+    restore_scope,
+    runner,
+    schedule,
+    upgrade,
+)
 from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
@@ -28,6 +37,17 @@ from app.core.services import (
     load_snapshot,
     overall_health,
     worst,
+)
+from app.core.settings_store import (
+    DEFAULT_NAME,
+    DEFAULT_REFRESH_SECONDS,
+    DEFAULT_TAGLINE,
+    MAX_REFRESH_SECONDS,
+    MIN_REFRESH_SECONDS,
+    format_interval,
+    load_settings,
+    refresh_interval,
+    settings_revision,
 )
 from app.core.snapshots import load_installed, managed_snapshot_path
 from app.core.state import (
@@ -61,6 +81,13 @@ def _queue() -> JobQueue | None:
     from app.main import _job_queue  # noqa: PLC0415
 
     return _job_queue
+
+
+def _next_scheduled_run() -> datetime | None:
+    """When the scheduler fires next; None if it is not running or nothing is scheduled."""
+    from app.main import _backup_scheduler  # noqa: PLC0415
+
+    return _backup_scheduler.next_run_time() if _backup_scheduler is not None else None
 
 
 def _backup_panel_ctx(queue: JobQueue | None) -> dict[str, Any]:
@@ -156,6 +183,25 @@ async def services_page(
     return _templates.TemplateResponse(request, "services.html", _ctx(request, user))
 
 
+@router.get("/host", response_class=HTMLResponse)
+async def host_page(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """Resources, disk space and certificates of the machine the deployment runs on.
+
+    The poll interval is rendered into the shell's markup: the polling element is
+    never swapped, so an open page keeps the interval it was loaded with until it
+    is reloaded. That is acceptable for a value changed on another page.
+    """
+    return _templates.TemplateResponse(
+        request,
+        "host.html",
+        _ctx(request, user, refresh_seconds=refresh_interval(settings.papaia_config_dir)),
+    )
+
+
 @router.get("/catalogs", response_class=HTMLResponse)
 async def catalogs_page(
     request: Request,
@@ -184,6 +230,9 @@ async def backup_page(
             user,
             backup_dir=str(backup_dir) if backup_dir else None,
             backup_dir_reachable=backups.is_reachable(backup_dir),
+            common_timezones=schedule.COMMON_TIMEZONES,
+            weekdays=[(day, schedule.WEEKDAY_LABELS[day][:3]) for day in schedule.WEEKDAYS],
+            hourly_choices=schedule.HOURLY_CHOICES,
             **_backup_panel_ctx(_queue()),
         ),
     )
@@ -203,6 +252,30 @@ async def upgrade_page(
     actually be moved.
     """
     return _templates.TemplateResponse(request, "upgrade.html", _ctx(request, user))
+
+
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_page(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """Manager settings: one card per section, each saved on its own."""
+    return _templates.TemplateResponse(
+        request,
+        "settings.html",
+        _ctx(
+            request,
+            user,
+            revision=settings_revision(settings.papaia_config_dir),
+            stored=load_settings(settings.papaia_config_dir),
+            default_name=DEFAULT_NAME,
+            default_tagline=DEFAULT_TAGLINE,
+            refresh_min=MIN_REFRESH_SECONDS,
+            refresh_max=MAX_REFRESH_SECONDS,
+            refresh_default=DEFAULT_REFRESH_SECONDS,
+        ),
+    )
 
 
 @router.get("/jobs", response_class=HTMLResponse)
@@ -297,7 +370,7 @@ async def partial_service_status(
     user: AnyUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
-    """The header status chip and its popover, for every authenticated role.
+    """The sidebar status row and its popover, for every authenticated role.
 
     Deliberately not filtered by visibility. Neither the chip nor the popover
     names a service, only how many are in which state, so a non-admin learns
@@ -318,6 +391,17 @@ async def partial_service_status(
     core_running = core_counts[ServiceHealth.HEALTHY] + core_counts[ServiceHealth.COMPLETED]
     addon_running = addon_counts[ServiceHealth.HEALTHY] + addon_counts[ServiceHealth.COMPLETED]
 
+    # The host reading comes from the cache and never from a `doctor` of its own:
+    # this partial renders on every page for every role, every 30 s. The refresh
+    # runs in the background, so a cold cache shows no Host row for one poll.
+    host_health.ensure_fresh(
+        config_dir=settings.papaia_config_dir, workspace_dir=settings.papaia_workspace_dir
+    )
+    reading = host_health.cached_host_health()
+    # Only a reading with something judged counts: an unavailable one, or one
+    # whose every certificate was unreadable, has no severity and no checks.
+    host = reading if reading is not None and reading.severity is not None else None
+
     # The chip's one-line verdict. `worst()` is reused rather than reimplemented
     # in the template: the severity order it walks is the single place that
     # decides what wins when two things are wrong at once, and a second copy of
@@ -325,8 +409,12 @@ async def partial_service_status(
     core_overall = overall_health(snapshot.core)
     addon_overall = overall_health(snapshot.addons)
     # An empty add-on section reports UNKNOWN, which must not drag the chip down
-    # to "status unknown" on a deployment that simply has no add-ons.
+    # to "status unknown" on a deployment that simply has no add-ons. The host
+    # is left out on the same terms: no reading, or nothing it could judge, is
+    # not a verdict.
     sections = [core_overall] + ([addon_overall] if snapshot.addons else [])
+    if host is not None and host.severity is not None:
+        sections.append(host.severity)
 
     resp = _templates.TemplateResponse(
         request,
@@ -335,13 +423,21 @@ async def partial_service_status(
             request,
             user,
             overall=worst(sections),
-            issues=(len(snapshot.core) - core_running) + (len(snapshot.addons) - addon_running),
+            issues=(len(snapshot.core) - core_running)
+            + (len(snapshot.addons) - addon_running)
+            + (host.issue_count if host is not None else 0),
             core_overall=core_overall,
             core_running=core_running,
             core_total=len(snapshot.core),
             addon_overall=addon_overall,
             addon_running=addon_running,
             addon_total=len(snapshot.addons),
+            # Counts and a severity, nothing else: no path, no host name. Same
+            # rule as for services -- a non-admin learns that something is wrong,
+            # not what.
+            host_overall=host.severity if host is not None else None,
+            host_ok=host.ok_count if host is not None else 0,
+            host_total=host.total if host is not None else 0,
             # Rendered as a local wall-clock time in the popover. Absolute
             # rather than relative on purpose: if the poll dies -- backgrounded
             # tab, manager restarted underneath -- a frozen clock says so,
@@ -385,6 +481,70 @@ async def partial_services(
             },
             self_profile=SELF_PROFILE,
         ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/host", response_class=HTMLResponse)
+async def partial_host(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+    fresh: bool = False,
+) -> HTMLResponse:
+    """The host page's body: resources, disk space and certificates, or why none.
+
+    `fresh` is the "Re-check" button. It asks for a new run instead of the cached
+    one, and `load_host_health` still folds it into a run that is under way or
+    finished a few seconds ago, so the button cannot be used to hammer `doctor`.
+    """
+    # Two readings, side by side. Docker's disk use is the slow one and has its own
+    # cache: it is served as it stands when it is stale, and neither its cost nor its
+    # failure can hold up or take rows from the host reading.
+    health, usage = await asyncio.gather(
+        host_health.load_host_health(
+            config_dir=settings.papaia_config_dir,
+            workspace_dir=settings.papaia_workspace_dir,
+            force=fresh,
+        ),
+        docker_usage.load_docker_usage(
+            config_dir=settings.papaia_config_dir,
+            workspace_dir=settings.papaia_workspace_dir,
+            force=fresh,
+        ),
+    )
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/host_list.html",
+        _ctx(
+            request,
+            user,
+            host=health,
+            usage=usage,
+            refresh_text=format_interval(refresh_interval(settings.papaia_config_dir)),
+        ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/nav/host-indicator", response_class=HTMLResponse)
+async def partial_nav_host_indicator(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse:
+    """The dot on the Host nav entry.
+
+    Reads the cache and nothing else, like the Upgrade dot: it renders in the
+    sidebar of every admin page, so anything more would put a subprocess behind
+    every navigation. The status row's poll is what keeps the cache warm.
+    """
+    health = host_health.cached_host_health()
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/nav_host_indicator.html",
+        _ctx(request, user, state=str(health.overall) if health is not None else ""),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -657,6 +817,132 @@ async def partial_backup_job_status(
         request,
         "partials/backup_job_status.html",
         _ctx(request, user, **_backup_panel_ctx(_queue())),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/backup/schedule", response_class=HTMLResponse)
+async def partial_backup_schedule(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The schedule and last-backup strip above the restore points.
+
+    Shown with or without a schedule: the age of the newest backup is worth
+    seeing either way, and only a schedule can make it a warning.
+    """
+    next_run = _next_scheduled_run()
+    state = await asyncio.get_running_loop().run_in_executor(
+        None,
+        lambda: schedule.read_state(settings.papaia_config_dir, next_run=next_run),
+    )
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/backup_schedule.html",
+        _ctx(request, user, state=state, scheduler_running=next_run is not None),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+def _schedule_preview(
+    config_dir: str,
+    *,
+    mode: str,
+    time: str,
+    minute: str,
+    weekdays: list[str],
+    every_hours: int,
+    cron: str,
+    timezone: str,
+    retention_days: str,
+) -> dict[str, Any]:
+    """Validate what the editor holds right now and say what it would do.
+
+    Runs the same validation as saving, so a form that previews cleanly is a form
+    that saves -- the preview is the editor's live validation, and nothing is
+    written or scheduled by it.
+    """
+    try:
+        if mode == "hourly":
+            # The hourly preset has no time of day, only a minute past the hour.
+            if not minute.strip().isdigit() or int(minute) > 59:
+                raise schedule.ScheduleError("The minute must be between 0 and 59.")
+            time = f"00:{int(minute):02d}"
+        expression = schedule.compile_preset(
+            mode, time=time, weekdays=weekdays, every_hours=every_hours, cron=cron
+        )
+        raw_retention = retention_days.strip()
+        if raw_retention and not raw_retention.isdigit():
+            raise schedule.ScheduleError("The retention must be a whole number of days.")
+        retention = int(raw_retention) if raw_retention else None
+        chosen = schedule.build_schedule(
+            cron=expression,
+            timezone=timezone.strip() or schedule.default_timezone(),
+            retention_days=retention,
+        )
+    except schedule.ScheduleError as exc:
+        return {"error": str(exc)}
+
+    cadence = schedule.cadence_of(chosen.cron, chosen.timezone)
+    now = datetime.now(tz=UTC)
+    points = backups.load_restore_points(backups.resolve_backup_dir(config_dir))
+    runs = schedule.next_runs(chosen.cron, chosen.timezone, now=now)
+    return {
+        "cron": chosen.cron,
+        "timezone": chosen.timezone,
+        "description": schedule.describe(chosen.cron),
+        "runs": [schedule.format_moment(run, chosen.timezone) for run in runs],
+        "longest_gap": schedule.humanize(cadence.longest),
+        "min_retention": schedule.min_retention_days(cadence),
+        "would_delete": (
+            backups.count_older_than(points, chosen.retention_days, now=now)
+            if chosen.retention_days is not None
+            else None
+        ),
+        "retention_days": chosen.retention_days,
+    }
+
+
+@router.get("/partials/backup/schedule/preview", response_class=HTMLResponse)
+async def partial_backup_schedule_preview(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+    mode: str = "daily",
+    time: str = "03:00",
+    minute: str = "0",
+    weekdays: Annotated[list[str] | None, Query()] = None,
+    every_hours: int = 6,
+    cron: str = "",
+    timezone: str = "",
+    retention_days: str = "",
+) -> HTMLResponse:
+    """Live validation and the next runs for the schedule editor's current input.
+
+    A GET with the form in the query string: it changes nothing, so it needs no
+    CSRF token, and htmx re-issues it as the form is edited.
+    """
+    preview = await asyncio.get_running_loop().run_in_executor(
+        None,
+        lambda: _schedule_preview(
+            settings.papaia_config_dir,
+            mode=mode,
+            time=time,
+            minute=minute,
+            weekdays=weekdays or [],
+            every_hours=every_hours,
+            cron=cron,
+            timezone=timezone,
+            retention_days=retention_days,
+        ),
+    )
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/backup_schedule_preview.html",
+        _ctx(request, user, preview=preview),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

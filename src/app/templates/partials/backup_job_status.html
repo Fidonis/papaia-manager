@@ -65,7 +65,7 @@
 {# The header button lives outside this element, in the page_actions block, and
    an out-of-band swap of that cluster would rebuild the <dialog> it contains --
    closing an open confirmation on every poll. So the strip announces its state
-   instead and the button listens. Same technique as the header status chip:
+   instead and the button listens. Same technique as the sidebar status row:
    an inline script in a swapped partial. #}
 <script>
   window.dispatchEvent(new CustomEvent("papaia-job-state", { detail: {

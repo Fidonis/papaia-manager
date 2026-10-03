@@ -1,0 +1,35 @@
+{# What the schedule editor would do with its current input.
+
+   Re-rendered by htmx as the form is edited. `data-valid` is what the dialog's
+   Save reads, and the hidden inputs carry the validated, compiled values so that
+   Save sends exactly what was previewed -- the presets are compiled to cron here,
+   on the server, and nowhere in the page's script. #}
+{% if preview.error %}
+<div data-valid="false" class="alert alert-error py-2">
+  <span class="text-sm">{{ preview.error }}</span>
+</div>
+{% else %}
+<div data-valid="true">
+  <input type="hidden" id="schedule-compiled-cron" value="{{ preview.cron }}">
+  <input type="hidden" id="schedule-compiled-timezone" value="{{ preview.timezone }}">
+  <p class="text-sm font-semibold">{{ preview.description }}
+    <span class="font-normal opacity-60">&middot; {{ preview.timezone }}</span></p>
+  <p class="mt-1 text-xs uppercase tracking-wide opacity-50">Next runs</p>
+  <ul class="text-sm font-mono">
+    {% for run in preview.runs %}<li>{{ run }}</li>{% endfor %}
+  </ul>
+  <p class="mt-2 text-xs opacity-50">
+    Cron <span class="font-mono">{{ preview.cron }}</span>. Longest gap between runs: {{ preview.longest_gap }}.
+    {% if preview.retention_days is none %}A retention would have to be at least {{ preview.min_retention }} day{{ "" if preview.min_retention == 1 else "s" }} for this schedule.{% endif %}
+  </p>
+  {% if preview.retention_days is not none %}
+  <p class="mt-1 text-xs opacity-60">
+    {% if preview.would_delete %}
+    The next run would delete {{ preview.would_delete }} existing restore point{{ "" if preview.would_delete == 1 else "s" }} older than {{ preview.retention_days }} days.
+    {% else %}
+    No existing restore point is older than {{ preview.retention_days }} days.
+    {% endif %}
+  </p>
+  {% endif %}
+</div>
+{% endif %}

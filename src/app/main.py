@@ -16,12 +16,14 @@ from app.auth.oidc import OIDCClaims
 from app.config import get_settings
 from app.core.jobs import JobQueue
 from app.core.papaia_lib import bootstrap
+from app.core.scheduler import BackupScheduler
 from app.routers import (
     api_addons,
     api_audit,
     api_catalogs,
     api_jobs,
     api_maintenance,
+    api_settings,
     api_stack,
     api_tiles,
     api_upgrade,
@@ -32,6 +34,7 @@ from app.routers import (
 from app.templating import templates
 
 _job_queue: JobQueue | None = None
+_backup_scheduler: BackupScheduler | None = None
 
 
 def create_app() -> FastAPI:
@@ -63,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(api_addons.router)
     app.include_router(api_jobs.router)
     app.include_router(api_maintenance.router)
+    app.include_router(api_settings.router)
     app.include_router(api_stack.router)
     app.include_router(api_tiles.router)
     app.include_router(api_upgrade.router)
@@ -113,7 +117,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _startup() -> None:
-        global _job_queue  # noqa: PLW0603
+        global _job_queue, _backup_scheduler  # noqa: PLW0603
 
         logger = logging.getLogger(__name__)
 
@@ -124,10 +128,27 @@ def create_app() -> FastAPI:
 
         _job_queue = JobQueue(settings.papaia_config_dir)
         _job_queue.start()
+
+        # After the queue: a scheduled run is enqueued onto it. Built here, inside
+        # the running event loop, because AsyncIOScheduler binds to the loop it is
+        # created in. A scheduler that cannot start costs the schedule, not the
+        # manager -- everything else on the panel works without it.
+        scheduler: BackupScheduler | None = None
+        try:
+            scheduler = BackupScheduler(settings, _job_queue)
+            scheduler.start()
+            _backup_scheduler = scheduler
+        except Exception:
+            logger.exception("backup scheduler failed to start; continuing without it")
+            if scheduler is not None:
+                scheduler.shutdown()
+            _backup_scheduler = None
         logger.info("papaia-manager started (host=%s)", settings.manager_host)
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
+        if _backup_scheduler is not None:
+            _backup_scheduler.shutdown()
         if _job_queue is not None:
             _job_queue.stop()
 

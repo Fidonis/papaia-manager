@@ -1,0 +1,16 @@
+{# The dot on the Host nav entry. Renders to nothing unless the last reading found
+   something to look at, which is the state it exists to announce.
+
+   It reads the cache and nothing else -- the sidebar is on every admin page, and
+   a `doctor` behind this poll would put a subprocess on every navigation. The
+   status row's poll keeps the cache warm, so the dot follows the host within a
+   minute or two without ever causing a run itself.
+
+   `aria-label` rather than a title: collapsed to a rail the nav row has no
+   visible text at all, so the dot is the whole message. Classes are spelled out
+   per branch because app.css is built by scanning these templates. #}
+{% if state == "critical" %}
+<span class="h-2 w-2 shrink-0 rounded-full bg-error" aria-label="Host needs attention"></span>
+{% elif state == "warn" %}
+<span class="h-2 w-2 shrink-0 rounded-full bg-warning" aria-label="Host needs attention"></span>
+{% endif %}

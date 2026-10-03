@@ -59,16 +59,25 @@ ALLOWED_CORE_VERBS: frozenset[str] = frozenset(
 # through a detached runner instead; see app.core.runner.
 
 # The core's Python entry point, `python3 -m lib.cli <command>`. Every command
-# here is read-only -- they resolve a version, list pending migrations, and
-# evaluate the addon compatibility gate. None of them writes anything.
+# here is read-only -- they resolve a version, list pending migrations, evaluate
+# the addon compatibility gate, and run the host diagnostics. None of them
+# writes anything.
+#
+# `doctor` is allowed for its `disk_space` and `certs` checks only; the caller
+# (`app.core.host_health`) skips the rest, because the others fork `docker`,
+# resolve names and probe ports, which is not something to repeat on a poll.
 #
 # `upgrade-record` is the one that would belong here by shape and does not: it
 # appends to the migration ledger, and only the upgrade's own second phase may
 # do that. A ledger entry written by the manager would make a migration that
 # never ran look applied.
 ALLOWED_PY_COMMANDS: frozenset[str] = frozenset(
-    {"upgrade-resolve", "upgrade-plan", "addon-check"}
+    {"upgrade-resolve", "upgrade-plan", "addon-check", "doctor"}
 )
+
+# Exit status `run_py_cli` reports for a child it had to kill, the one the
+# shell's `timeout` uses.
+TIMEOUT_EXIT_CODE = 124
 
 _ADDON_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
@@ -241,6 +250,7 @@ async def run_py_cli(
     config_dir: str,
     repo_root: str | None = None,
     extra_flags: list[str] | None = None,
+    limit: float | None = None,
 ) -> tuple[int, str, str]:
     """Run one of the core's read-only Python sub-commands and collect its output.
 
@@ -258,6 +268,12 @@ async def run_py_cli(
     raising on it, and keeps stderr separate. Both differences are `addon-check`:
     it exits 2 to *mean* "incompatible" and still prints its JSON, so a non-zero
     status here is a result to read, not a failure to report.
+
+    `limit` bounds the whole run, in seconds. The default is no bound, which is what the
+    upgrade check wants: it fetches from a remote and has its own budget. A
+    caller that polls passes one, and a child that outlives it is killed and
+    reaped before `CtlError` (exit code `TIMEOUT_EXIT_CODE`) is raised, so a
+    hung probe cannot pile up one process per request.
     """
     if command not in ALLOWED_PY_COMMANDS:
         raise ValueError(
@@ -292,7 +308,16 @@ async def run_py_cli(
         )
     except (FileNotFoundError, OSError) as exc:
         raise CtlError(f"cannot invoke the core's python entry point: {exc}", exit_code=1) from exc
-    raw_out, raw_err = await proc.communicate()
+    try:
+        async with asyncio.timeout(limit):
+            raw_out, raw_err = await proc.communicate()
+    except TimeoutError as exc:
+        proc.kill()
+        await proc.wait()
+        raise CtlError(
+            f"python3 -m lib.cli {command} timed out after {limit:g}s",
+            exit_code=TIMEOUT_EXIT_CODE,
+        ) from exc
     return (
         proc.returncode if proc.returncode is not None else 1,
         raw_out.decode(errors="replace"),

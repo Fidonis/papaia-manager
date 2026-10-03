@@ -1,0 +1,141 @@
+{# Branding card. Expects: stored (ManagerSettings), default_name,
+   default_tagline, branding() global for what is currently in effect. #}
+{% set current = branding() %}
+<section class="card bg-base-100 border border-base-300">
+  <div class="card-body gap-5">
+    <div>
+      <h2 class="font-brand text-lg font-bold">Branding</h2>
+      <p class="text-sm opacity-60">Name, second line and logo shown at the top of the sidebar.</p>
+    </div>
+
+    <form id="branding-form" class="space-y-4" onsubmit="saveBranding(event)">
+      <label class="form-control w-full">
+        <span class="label-text mb-1 text-sm font-medium">Name</span>
+        <input id="branding-name" type="text" maxlength="40" class="input input-bordered w-full"
+               value="{{ stored.branding.name or '' }}" placeholder="{{ default_name }}">
+        <span class="label-text-alt mt-1 opacity-60">Leave empty to use “{{ default_name }}”.</span>
+      </label>
+
+      <label class="form-control w-full">
+        <span class="label-text mb-1 text-sm font-medium">Second line</span>
+        <input id="branding-tagline" type="text" maxlength="60" class="input input-bordered w-full"
+               value="{{ stored.branding.tagline if stored.branding.tagline is not none else '' }}"
+               placeholder="{{ default_tagline }}">
+        <span class="label-text-alt mt-1 opacity-60">
+          Default is “{{ default_tagline }}”. Leave the field empty to keep the default,
+          or tick the box below to show no second line.
+        </span>
+      </label>
+
+      <label class="flex items-center gap-2 text-sm cursor-pointer">
+        <input id="branding-hide-tagline" type="checkbox" class="checkbox checkbox-sm"
+               {% if stored.branding.tagline == "" %}checked{% endif %}>
+        Hide the second line
+      </label>
+
+      <div class="flex flex-wrap gap-2">
+        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="resetBranding()">Reset to defaults</button>
+      </div>
+    </form>
+
+    <div class="divider my-0"></div>
+
+    <div class="space-y-3">
+      <div>
+        <h3 class="text-sm font-semibold">Logo</h3>
+        <p class="text-sm opacity-60">
+          PNG, JPEG, WebP or SVG, up to 512&nbsp;KB. It is scaled to fit the sidebar header,
+          keeping its proportions.
+        </p>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <div class="flex h-14 w-40 items-center justify-center rounded-lg border border-base-300 bg-base-200 px-3">
+          {% if current.logo_url %}
+          <img id="logo-preview" src="{{ current.logo_url }}" alt="Current logo"
+               class="h-8 w-auto max-w-full object-contain">
+          {% else %}
+          <span id="logo-preview" class="text-xs opacity-50">Built-in logo</span>
+          {% endif %}
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <label class="btn btn-sm btn-outline">
+            Upload logo
+            <input id="logo-file" type="file" class="hidden"
+                   accept="image/png,image/jpeg,image/webp,image/svg+xml" onchange="uploadLogo(this)">
+          </label>
+          {% if current.logo_url %}
+          <button type="button" class="btn btn-sm btn-ghost" onclick="removeLogo()">Remove logo</button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<dialog id="reset-branding-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="text-lg font-bold">Reset branding?</h3>
+    <p class="py-4 text-sm opacity-70">
+      The name and second line return to “{{ default_name }}” / “{{ default_tagline }}”
+      and the uploaded logo is deleted. This cannot be undone.
+    </p>
+    <div class="modal-action">
+      <form method="dialog">
+        <button class="btn btn-ghost btn-sm">Cancel</button>
+      </form>
+      <button id="reset-branding-confirm" type="button" class="btn btn-error btn-sm"
+              onclick="confirmResetBranding()">Reset to defaults</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button aria-label="Close">close</button></form>
+</dialog>
+
+<script>
+  async function saveBranding(event) {
+    event.preventDefault();
+    const hide = document.getElementById("branding-hide-tagline").checked;
+    const tagline = document.getElementById("branding-tagline").value.trim();
+    const data = await settingsRequest("/api/v1/settings/branding", {
+      method: "PUT",
+      json: {
+        revision: settingsRevision,
+        name: document.getElementById("branding-name").value,
+        // null keeps the built-in line; an empty string hides it.
+        tagline: hide ? "" : (tagline === "" ? null : tagline),
+      },
+    });
+    if (data) reloadAfter("Branding saved");
+  }
+
+  function resetBranding() {
+    document.getElementById("reset-branding-modal").showModal();
+  }
+
+  async function confirmResetBranding() {
+    const modal = document.getElementById("reset-branding-modal");
+    const button = document.getElementById("reset-branding-confirm");
+    button.disabled = true;
+    const data = await settingsRequest("/api/v1/settings/branding/reset", {
+      json: { revision: settingsRevision },
+    });
+    button.disabled = false;
+    modal.close();
+    if (data) reloadAfter("Branding reset");
+  }
+
+  async function uploadLogo(input) {
+    if (!input.files.length) return;
+    const form = new FormData();
+    form.append("file", input.files[0]);
+    const data = await settingsRequest("/api/v1/settings/branding/logo", { body: form });
+    input.value = "";
+    if (data) reloadAfter("Logo updated");
+  }
+
+  async function removeLogo() {
+    const data = await settingsRequest("/api/v1/settings/branding/logo", { method: "DELETE" });
+    if (data) reloadAfter("Logo removed");
+  }
+</script>

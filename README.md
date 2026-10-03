@@ -44,6 +44,16 @@ the VM boundary.
 
 ## How it works
 
+**Settings and branding.** Administrators open **Settings** to change the
+name and second line shown at the top of the sidebar (defaults: "papAIa
+manager" / "by Fidonis") and to upload their own logo (PNG, JPEG, WebP or SVG,
+up to 512 KB; it is scaled to fit the header). The values are stored in
+`$PAPAIA_CONFIG_DIR/manager/settings.yaml`, one section per topic, and the logo
+in `$PAPAIA_CONFIG_DIR/manager/branding/`, so both are part of a backup.
+Without a settings file nothing changes. A second card, **Host monitoring**, sets
+how often the Host page re-measures the machine (10 seconds to 60 minutes,
+default 60 seconds); it applies to every administrator.
+
 **Dashboard and access tiers.** Two Keycloak realm roles gate the UI.
 `MANAGER_ADMIN_ROLE` (default `manager-admin`) reaches every surface;
 `MANAGER_USER_ROLE` (default `user`) reaches the dashboard only. Accounts
@@ -120,13 +130,39 @@ The profile serving this panel is the one group that cannot be selected. Stoppin
 it would remove the container handling the request, which could then never report
 whether it worked.
 
-The same data drives two status pills in the header of every page, visible to
-every authenticated account regardless of role: one for the core stack, one for
-add-ons. Each carries the aggregate only — the worst state in its section — and
-links to the matching page for administrators. A user without the admin role
-therefore learns that something is unhealthy, but not which service. Core and
-add-ons stay separate so that a failing add-on out of a customer catalogue does
-not report the stack itself as broken.
+The same data drives a status row in the sidebar of every page, visible to every
+authenticated account regardless of role. Its popover keeps three rows apart: the
+core stack, the add-ons and the host. Each carries counts only, so a user without
+the admin role learns that something is unhealthy, but not which service, disk or
+certificate. Core and add-ons stay separate so that a failing add-on out of a
+customer catalogue does not report the stack itself as broken. Administrators get
+links to the matching pages.
+
+**Host.** An admin-only page at `/host` showing the state of the machine under the
+deployment: memory (with swap), CPU load per core, each GPU's VRAM, utilisation and
+temperature, whether the system clock is synchronised, free space on the config
+and backup directories, and the days left on every certificate (the bundled ones
+and Let's Encrypt). The manager measures nothing itself. It runs the core's
+`papaia-ctl doctor`, limited to its `memory`, `cpu`, `gpu`, `time_sync`,
+`disk_space` and `certs` checks, and shows the core's verdicts, so the page and a
+shell on the host cannot disagree about a threshold. That needs a core that has
+`doctor` (1.4.0 or newer); on an older one the page says so and the status row
+carries on without a Host row, and a 1.4.0 core that predates a resource check
+simply has no row for it. A resource check the core skips is listed as not
+measurable instead of being left out: with a core that cannot read them inside a
+container, that is the GPU and the clock. The free space of the Docker data root
+has no row while the manager cannot see it (the container mounts the config and
+backup directories, not `/var/lib/docker`); "Docker usage" says what Docker holds
+instead. A reading is
+cached for the refresh interval and shared between everyone who has a page open;
+the page shows the interval and links to Settings, where it is set, and its
+Re-check button asks for a fresh reading. What Docker's data takes (images,
+containers, volumes and build cache, with what the daemon calls reclaimable) is
+listed under "Docker usage" when the core has the `docker_usage` check. The
+daemon has to size every volume to answer, so it is measured on its own, every
+tenth interval and no sooner than every 5 minutes, and a slow or failing
+measurement leaves the rest of the page as it is. The Host entry in the sidebar carries a
+dot while a check warns or has failed.
 
 **Catalogs.** A catalog is a source of add-ons — a public or private Git
 repository, or a local directory — registered at runtime (not versioned in
@@ -157,6 +193,34 @@ active add-on's volumes and data directories; it runs hot (each container is
 paused only while its own volume is archived) and therefore runs as an ordinary
 job. Restore points are listed from the catalogue papaia-ctl writes next to the
 snapshots, with an optional retention period pruning older ones.
+
+**Backup schedule.** The Backup page can start backups by itself. The schedule is
+one file, `$PAPAIA_CONFIG_DIR/manager/schedule.yaml`, edited in a dialog on the
+page: every day, on chosen days, every few hours, or a cron expression, in a
+timezone (the container's `TZ` if it names one, otherwise UTC), with a preview of
+the next three runs. A scheduler inside the manager runs it, so it needs nothing
+from the host — no systemd, no cron — and behaves the same on any operating system
+that can run the stack. Expressions are standard cron (`1` is Monday), and runs
+closer together than an hour are refused.
+
+A scheduled run takes the same path as the *Create backup* button: the same job,
+log and audit entry, as the user `scheduler`. While a restore, an upgrade or
+another job is running, or the backup directory is not mounted, it is held back
+and tried again every ten minutes for up to an hour. A strip above the restore
+points shows the age of the newest successful backup and the next run, and turns to
+a warning once that backup is older than one and a half times the longest gap
+between two runs. The manager restarts on every upgrade, restore and host reboot
+and can miss a run that way, so after a start one run is made up if the newest
+successful backup is already older than that (the schedule can opt out).
+
+The retention period is configurable and must be at least twice the longest gap
+between runs. `papaia-ctl backup` prunes after every run, a failed one included,
+and does not keep a last usable restore point, so a scheduled run passes the
+retention only while the newest successful restore point is recent; otherwise it
+backs up without pruning and the job log says why. Two things to know: a restore
+replaces `$PAPAIA_CONFIG_DIR`, so the schedule returns to what it was in the
+restored snapshot, and the scheduler assumes one manager process (the image runs
+a single uvicorn worker; do not add `--workers`).
 
 Restore is the exception to "everything is a job". `papaia-ctl restore` tears the
 core stack down before unpacking archives, and the manager is a service of that
@@ -247,6 +311,9 @@ GET    /api/v1/maintenance/restore-points
 GET    /api/v1/maintenance/restore-points/{id}
 POST   /api/v1/maintenance/restore-points/delete  # {ids} → 202 {job_id}
 POST   /api/v1/maintenance/backup                 # {retention_days?} → 202 {job_id}
+GET    /api/v1/maintenance/schedule               # the schedule, next run, last backup, overdue
+PUT    /api/v1/maintenance/schedule               # {cron, timezone?, retention_days?, enabled?, run_on_startup?}
+DELETE /api/v1/maintenance/schedule               # remove it (also clears an unreadable file)
 POST   /api/v1/maintenance/restore                # {restore_point, restart_clean?} → 202
 GET    /api/v1/maintenance/restore/status
 DELETE /api/v1/maintenance/restore                # acknowledge a finished restore
@@ -269,6 +336,14 @@ GET    /api/v1/upgrade/runner                # its status and log
 POST   /api/v1/upgrade/runner/clear          # acknowledge a finished upgrade
 GET    /api/v1/upgrade/images                # outdated Docker images of the stack and add-ons
 POST   /api/v1/upgrade/images/prune          # {images?} remove them (all, or the named ids)
+
+GET    /api/v1/settings                      # revision, branding, host monitoring, effective branding
+PUT    /api/v1/settings/branding             # {revision, name?, tagline?}
+POST   /api/v1/settings/branding/logo        # multipart file: PNG, JPEG, WebP or SVG, up to 512 KB
+DELETE /api/v1/settings/branding/logo        # remove the logo
+POST   /api/v1/settings/branding/reset       # {revision} back to the defaults, logo removed
+PUT    /api/v1/settings/host                 # {revision, refresh_seconds} 10 to 3600
+GET    /brand/logo                           # the stored logo, for any signed-in user
 ```
 
 ## Layout
@@ -285,9 +360,13 @@ papaia-manager/
 │       ├── auth/           # OIDC + PKCE login, CSRF, admin-role dependency
 │       ├── core/           # catalogs, snapshots, status, env-forms, jobs, audit,
 │       │                   # services (container status), inventory (declared state),
-│       │                   # backups (restore-point catalogue), runner (detached restore)
+│       │                   # backups (restore-point catalogue), runner (detached restore),
+│       │                   # backup_run + schedule + scheduler (backup schedule),
+│       │                   # host_health + docker_usage (host readings from the core's doctor),
+│       │                   # settings_store (settings.yaml and the logo)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
-│       │                   # api_maintenance
+│       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
+│       │                   # api_tiles, api_settings
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)

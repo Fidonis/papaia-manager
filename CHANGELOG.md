@@ -12,6 +12,50 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [1.2.0] - 2026-10-03
+
+### Added
+- Settings page for administrators with configurable branding: the name and second line
+  at the top of the sidebar (the second line can be hidden) and a custom logo (PNG, JPEG,
+  WebP or SVG, up to 512 KB). Values are stored in
+  `$PAPAIA_CONFIG_DIR/manager/settings.yaml`, the logo in `manager/branding/`, so both are
+  part of a backup ([#104](https://github.com/Fidonis/papaia-manager/pull/104); closes
+  [#105](https://github.com/Fidonis/papaia-manager/issues/105)).
+- Host page at `/host` showing disk space and certificate expiry of the machine under the
+  deployment. The manager measures nothing itself: it shows the verdicts of the core's
+  `papaia-ctl doctor`. The status chip and a sidebar dot carry the host's counts to every
+  role ([#107](https://github.com/Fidonis/papaia-manager/pull/107); closes
+  [#106](https://github.com/Fidonis/papaia-manager/issues/106)).
+- The Host page also shows memory, CPU, GPU and clock synchronisation, a "Docker usage"
+  section (images, containers, volumes and build cache with their reclaimable part), and the
+  interval at which the host is measured is a setting (Settings, "Host monitoring"; 10 seconds
+  to 60 minutes, default 60 seconds)
+  ([#111](https://github.com/Fidonis/papaia-manager/pull/111); closes
+  [#110](https://github.com/Fidonis/papaia-manager/issues/110)).
+- Scheduled backups from the Backup page: every day, on chosen days, every N hours or as a
+  cron expression, in an IANA timezone, with a configurable retention, a live preview of the
+  next runs, a catch-up run after a start that missed a slot, and a status strip with the last
+  successful backup, the schedule and the next run. The schedule is held in
+  `$PAPAIA_CONFIG_DIR/manager/schedule.yaml` and run by a scheduler inside the manager, so it
+  needs nothing from the host; the new endpoints are `GET`/`PUT`/`DELETE
+  /api/v1/maintenance/schedule`
+  ([#113](https://github.com/Fidonis/papaia-manager/pull/113); closes
+  [#112](https://github.com/Fidonis/papaia-manager/issues/112)).
+
+### Changed
+- The sidebar navigation is grouped into Monitor, Extensions and System, and the stack status
+  moves from the page header into a row above the sidebar footer
+  ([#109](https://github.com/Fidonis/papaia-manager/pull/109); closes
+  [#108](https://github.com/Fidonis/papaia-manager/issues/108)).
+- The runtime image lists `openssl`, which the core's `doctor` uses to read certificate expiry
+  ([#107](https://github.com/Fidonis/papaia-manager/pull/107)).
+- New runtime dependencies: `apscheduler` (3.x) and `tzdata`
+  ([#113](https://github.com/Fidonis/papaia-manager/pull/113)).
+
+### Notes
+- The Host page needs a core that ships `papaia-ctl doctor` (papAIa 1.4.0 or newer). With an
+  older core the page says so and the status chip carries on without a Host row.
+
 ## [1.1.0] - 2026-09-28
 
 ### Added
@@ -360,6 +404,8 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[1.2.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.2.0
+
 [1.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.1.0
 
 [1.0.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.0.0
@@ -376,4 +422,4 @@ based on merged pull requests; this file mirrors the published releases.
 
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.2.0...HEAD
