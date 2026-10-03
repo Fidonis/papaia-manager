@@ -31,8 +31,13 @@ from app.core.services import (
 )
 from app.core.settings_store import (
     DEFAULT_NAME,
+    DEFAULT_REFRESH_SECONDS,
     DEFAULT_TAGLINE,
+    MAX_REFRESH_SECONDS,
+    MIN_REFRESH_SECONDS,
+    format_interval,
     load_settings,
+    refresh_interval,
     settings_revision,
 )
 from app.core.snapshots import load_installed, managed_snapshot_path
@@ -166,9 +171,19 @@ async def services_page(
 async def host_page(
     request: Request,
     user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
-    """Disk space and certificates of the machine the deployment runs on."""
-    return _templates.TemplateResponse(request, "host.html", _ctx(request, user))
+    """Resources, disk space and certificates of the machine the deployment runs on.
+
+    The poll interval is rendered into the shell's markup: the polling element is
+    never swapped, so an open page keeps the interval it was loaded with until it
+    is reloaded. That is acceptable for a value changed on another page.
+    """
+    return _templates.TemplateResponse(
+        request,
+        "host.html",
+        _ctx(request, user, refresh_seconds=refresh_interval(settings.papaia_config_dir)),
+    )
 
 
 @router.get("/catalogs", response_class=HTMLResponse)
@@ -237,6 +252,9 @@ async def settings_page(
             stored=load_settings(settings.papaia_config_dir),
             default_name=DEFAULT_NAME,
             default_tagline=DEFAULT_TAGLINE,
+            refresh_min=MIN_REFRESH_SECONDS,
+            refresh_max=MAX_REFRESH_SECONDS,
+            refresh_default=DEFAULT_REFRESH_SECONDS,
         ),
     )
 
@@ -456,7 +474,7 @@ async def partial_host(
     settings: Annotated[Settings, Depends(get_settings)],
     fresh: bool = False,
 ) -> HTMLResponse:
-    """The host page's body: disk space and certificates, or why there are none.
+    """The host page's body: resources, disk space and certificates, or why none.
 
     `fresh` is the "Re-check" button. It asks for a new run instead of the cached
     one, and `load_host_health` still folds it into a run that is under way or
@@ -470,7 +488,12 @@ async def partial_host(
     resp = _templates.TemplateResponse(
         request,
         "partials/host_list.html",
-        _ctx(request, user, host=health),
+        _ctx(
+            request,
+            user,
+            host=health,
+            refresh_text=format_interval(refresh_interval(settings.papaia_config_dir)),
+        ),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

@@ -1,0 +1,95 @@
+{# Host monitoring card. Expects: stored (ManagerSettings), refresh_min,
+   refresh_max, refresh_default (seconds). The interval is stored in seconds and
+   shown in whole minutes when it is one (above a minute), so 300 reads "5
+   minutes" and 90 stays "90 seconds". #}
+{% set seconds = stored.host.refresh_seconds %}
+{% set in_minutes = seconds > 60 and seconds % 60 == 0 %}
+<section id="host-monitoring" class="card bg-base-100 border border-base-300">
+  <div class="card-body gap-5">
+    <div>
+      <h2 class="font-brand text-lg font-bold">Host monitoring</h2>
+      <p class="text-sm opacity-60">
+        How often the Host page, the status row and the sidebar dot measure the machine
+        again. Applies to all administrators.
+      </p>
+    </div>
+
+    <form id="host-form" class="space-y-4" onsubmit="saveHost(event)" novalidate>
+      <div class="form-control w-full">
+        <label for="host-interval" class="label-text mb-1 text-sm font-medium">Refresh interval</label>
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="host-interval" type="number" min="1" step="1" inputmode="numeric"
+                 class="input input-bordered w-28" aria-describedby="host-interval-hint"
+                 value="{{ (seconds // 60) if in_minutes else seconds }}">
+          <select id="host-unit" class="select select-bordered" aria-label="Unit">
+            <option value="s" {% if not in_minutes %}selected{% endif %}>seconds</option>
+            <option value="min" {% if in_minutes %}selected{% endif %}>minutes</option>
+          </select>
+        </div>
+        <span id="host-interval-hint" class="label-text-alt mt-1 opacity-60">
+          Between {{ refresh_min }} seconds and {{ refresh_max // 60 }} minutes. The default is
+          {{ refresh_default }} seconds. The Host page also has a Re-check button for an
+          immediate reading.
+        </span>
+        <span id="host-interval-error" class="label-text-alt mt-1 hidden text-error" role="alert"></span>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="resetHost()">Reset to default</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<script>
+  const HOST_MIN_SECONDS = {{ refresh_min }};
+  const HOST_MAX_SECONDS = {{ refresh_max }};
+  const HOST_DEFAULT_SECONDS = {{ refresh_default }};
+
+  function hostIntervalError(message) {
+    const el = document.getElementById("host-interval-error");
+    el.textContent = message || "";
+    el.classList.toggle("hidden", !message);
+  }
+
+  // The server is the authority; this only saves a round trip for the obvious.
+  function hostIntervalSeconds() {
+    const value = Number(document.getElementById("host-interval").value);
+    const unit = document.getElementById("host-unit").value;
+    if (!Number.isInteger(value) || value <= 0) {
+      hostIntervalError("Enter a whole number.");
+      return null;
+    }
+    const seconds = unit === "min" ? value * 60 : value;
+    if (seconds < HOST_MIN_SECONDS || seconds > HOST_MAX_SECONDS) {
+      hostIntervalError("Choose between " + HOST_MIN_SECONDS + " seconds and " + (HOST_MAX_SECONDS / 60) + " minutes.");
+      return null;
+    }
+    hostIntervalError("");
+    return seconds;
+  }
+
+  async function submitHostInterval(seconds) {
+    const data = await settingsRequest("/api/v1/settings/host", {
+      method: "PUT",
+      json: { revision: settingsRevision, refresh_seconds: seconds },
+    });
+    if (data) reloadAfter("Host monitoring saved");
+  }
+
+  function saveHost(event) {
+    event.preventDefault();
+    const seconds = hostIntervalSeconds();
+    if (seconds !== null) submitHostInterval(seconds);
+  }
+
+  function resetHost() {
+    document.getElementById("host-interval").value = HOST_DEFAULT_SECONDS;
+    document.getElementById("host-unit").value = "s";
+    hostIntervalError("");
+    submitHostInterval(HOST_DEFAULT_SECONDS);
+  }
+
+  document.getElementById("host-interval").addEventListener("input", () => hostIntervalError(""));
+</script>

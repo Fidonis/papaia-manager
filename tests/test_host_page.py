@@ -57,7 +57,78 @@ _DOMAIN = "ai.internal-example.com"
 _LE = f"infra/nginx/nginx-letsencrypt/live/{_DOMAIN}/fullchain.pem"
 
 
-def _doc(*, backup_status: str = "warn", cert_status: str = "warn") -> str:
+_GPU_NAME = "NVIDIA GeForce RTX 4060"
+_CPU_SENTENCE = "8 core(s), load 9.00 (5 min: 1.12 per core; warn at 1.00)"
+_GPU_SKIP = "not measurable from inside a container: the driver tools of the host are not visible"
+
+
+def _resources(*, cpu_status: str = "warn", gpu: str = "skip") -> list[dict[str, Any]]:
+    """The four resource checks, as the core's `doctor` writes them."""
+    gpu_check: dict[str, Any] = {"name": "gpu", "status": gpu}
+    if gpu == "skip":
+        gpu_check.update(
+            summary=_GPU_SKIP, details={"variant": "nvidia-cuda-13", "override_present": True}
+        )
+    else:
+        gpu_check.update(
+            summary="",
+            details={
+                "variant": "nvidia-cuda-13",
+                "gpus": [
+                    {
+                        "index": 0,
+                        "name": _GPU_NAME,
+                        "driver": "560.35.03",
+                        "memory_total_mib": 8192,
+                        "memory_used_mib": 1024,
+                        "vram_percent": 12.5,
+                        "utilization_percent": 7,
+                        "temperature_c": 50,
+                    }
+                ],
+            },
+        )
+    return [
+        {
+            "name": "memory",
+            "status": "pass",
+            "summary": "16.0 GiB total, 5.0 GiB available (69 % used)",
+            "details": {
+                "total_bytes": 16 * _GIB,
+                "available_bytes": 5 * _GIB,
+                "used_percent": 68.8,
+                "swap_total_bytes": 4 * _GIB,
+                "swap_used_bytes": 1 * _GIB,
+            },
+        },
+        {
+            "name": "cpu",
+            "status": cpu_status,
+            "summary": _CPU_SENTENCE,
+            "details": {
+                "cores": 8,
+                "load1": 9.0,
+                "load5": 9.0,
+                "load15": 8.0,
+                "load_per_core": 1.12,
+            },
+        },
+        gpu_check,
+        {
+            "name": "time_sync",
+            "status": "pass",
+            "summary": "system clock is synchronized",
+            "details": {"ntp_synchronized": True},
+        },
+    ]
+
+
+def _doc(
+    *,
+    backup_status: str = "warn",
+    cert_status: str = "warn",
+    resources: list[dict[str, Any]] | None = None,
+) -> str:
     return json.dumps(
         {
             "schema_version": 1,
@@ -109,6 +180,7 @@ def _doc(*, backup_status: str = "warn", cert_status: str = "warn") -> str:
                         ]
                     },
                 },
+                *(resources or []),
             ],
             "summary": {"pass": 0, "warn": 0, "fail": 0, "skip": 0},
             "ok": True,
@@ -212,6 +284,93 @@ def test_the_page_shell_polls_its_partial_and_offers_a_recheck(client: TestClien
     assert "/partials/host?fresh=true" in body
 
 
+def _write_interval(tmp_path: Path, seconds: int) -> None:
+    manager = tmp_path / "config" / "manager"
+    manager.mkdir(parents=True, exist_ok=True)
+    (manager / "settings.yaml").write_text(
+        f"host:\n  refresh_seconds: {seconds}\n", encoding="utf-8"
+    )
+
+
+def test_the_page_polls_at_the_interval_from_settings(client: TestClient, tmp_path: Path) -> None:
+    _write_interval(tmp_path, 300)
+
+    body = _as(client, "admin").get("/host").text
+
+    assert "every 300s" in body
+    assert "every 60s" not in body
+
+
+def test_the_interval_is_shown_but_not_editable_on_the_page_and_links_to_settings(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _prime(monkeypatch, workspace, _doc())
+    admin = _as(client, "admin")
+
+    default = admin.get("/partials/host").text
+    assert "refreshes every 60 s" in default
+    assert 'href="/settings#host-monitoring"' in default
+    assert "<input" not in default
+
+    _write_interval(tmp_path, 300)
+    assert "refreshes every 5 min" in admin.get("/partials/host").text
+
+    _write_interval(tmp_path, 45)
+    assert "refreshes every 45 s" in admin.get("/partials/host").text
+
+
+def test_the_partial_lists_the_resources_with_the_cores_verdicts(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prime(monkeypatch, workspace, _doc(resources=_resources(gpu="pass")))
+
+    body = _as(client, "admin").get("/partials/host").text
+
+    assert "Resources" in body
+    assert "4 measured" in body
+    assert "Memory" in body
+    assert "5.0 GiB available of 16.0 GiB" in body
+    assert "69 % used" in body
+    assert "swap 1.0 GiB of 4.0 GiB used" in body
+    assert "CPU" in body
+    assert "8 cores · load 9.00 / 9.00 / 8.00" in body
+    assert "1.12 / core" in body
+    # The core warned about the CPU, and said why in its own words.
+    assert _CPU_SENTENCE in body
+    assert _GPU_NAME in body
+    assert "1.0 GiB of 8.0 GiB VRAM" in body
+    assert "driver 560.35.03 · util 7 % · 50 °C" in body
+    assert "System clock" in body
+    assert ">synchronized</p>" in body
+    assert "progress-warning" in body
+
+
+def test_a_resource_the_core_could_not_read_is_a_row_that_says_so(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prime(monkeypatch, workspace, _doc(resources=_resources()))
+
+    body = _as(client, "admin").get("/partials/host").text
+
+    assert "3 measured, 1 not measurable" in body
+    assert ">GPU</p>" in body
+    assert _GPU_SKIP in body
+    # The panel does not invent a bar for a reading there is none of.
+    assert 'aria-label="GPU used"' not in body
+    assert 'aria-label="Memory used"' in body
+
+
+def test_a_core_without_the_resource_checks_just_has_no_resources_section(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prime(monkeypatch, workspace, _doc())
+
+    body = _as(client, "admin").get("/partials/host").text
+
+    assert "Resources" not in body
+    assert "Disk space" in body
+
+
 def test_the_partial_lists_disks_and_certificates_with_the_cores_verdicts(
     client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -304,6 +463,49 @@ def test_the_chip_counts_the_host_in_for_every_role_and_shows_only_numbers(
         # What the page shows to administrators must not reach the chip.
         for secret in (_BACKUP_PATH, _DOMAIN, "/srv/papaia-config", "Backup disk", "keycloak.crt"):
             assert secret not in body
+
+
+def test_the_chip_counts_the_resources_in_and_leaves_what_it_could_not_read_out(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Two disks, two certificates, memory, CPU and the clock were judged; the GPU
+    # was skipped and has no verdict. Backup disk, certificate and CPU warn.
+    _prime(monkeypatch, workspace, _doc(resources=_resources(gpu="skip")))
+
+    for roles in (("user",), ("admin",)):
+        body = _as(client, *roles).get("/partials/service-status").text
+
+        assert "4 / 7 ok" in body
+        assert "3 issues" in body
+        # Neither a device name, a figure nor the core's sentence is for non-admins.
+        for secret in (_CPU_SENTENCE, _GPU_SKIP, "Memory", "swap", "System clock"):
+            assert secret not in body
+
+
+def test_a_warning_from_a_resource_alone_moves_the_dot_and_the_chip(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prime(
+        monkeypatch,
+        workspace,
+        _doc(backup_status="pass", cert_status="pass", resources=_resources(cpu_status="warn")),
+    )
+
+    assert "bg-warning" in _as(client, "admin").get("/partials/nav/host-indicator").text
+    assert "1 issue" in _as(client, "user").get("/partials/service-status").text
+
+
+def test_a_skipped_resource_alone_does_not_move_anything(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prime(
+        monkeypatch,
+        workspace,
+        _doc(backup_status="pass", cert_status="pass", resources=_resources(cpu_status="pass")),
+    )
+
+    assert "rounded-full" not in _as(client, "admin").get("/partials/nav/host-indicator").text
+    assert "All healthy" in _as(client, "user").get("/partials/service-status").text
 
 
 def test_only_an_administrator_is_pointed_at_the_host_page(

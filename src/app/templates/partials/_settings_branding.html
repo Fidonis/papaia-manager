@@ -93,11 +93,6 @@
 </dialog>
 
 <script>
-  function reloadAfter(message) {
-    showToast("success", message);
-    setTimeout(() => window.location.reload(), 600);
-  }
-
   async function saveBranding(event) {
     event.preventDefault();
     const hide = document.getElementById("branding-hide-tagline").checked;

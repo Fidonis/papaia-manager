@@ -50,7 +50,9 @@ manager" / "by Fidonis") and to upload their own logo (PNG, JPEG, WebP or SVG,
 up to 512 KB; it is scaled to fit the header). The values are stored in
 `$PAPAIA_CONFIG_DIR/manager/settings.yaml`, one section per topic, and the logo
 in `$PAPAIA_CONFIG_DIR/manager/branding/`, so both are part of a backup.
-Without a settings file nothing changes.
+Without a settings file nothing changes. A second card, **Host monitoring**, sets
+how often the Host page re-measures the machine (10 seconds to 60 minutes,
+default 60 seconds); it applies to every administrator.
 
 **Dashboard and access tiers.** Two Keycloak realm roles gate the UI.
 `MANAGER_ADMIN_ROLE` (default `manager-admin`) reaches every surface;
@@ -137,17 +139,23 @@ customer catalogue does not report the stack itself as broken. Administrators ge
 links to the matching pages.
 
 **Host.** An admin-only page at `/host` showing the state of the machine under the
-deployment: free space on the config and backup directories, and the days left on
-every certificate (the bundled ones and Let's Encrypt). The manager measures
-nothing itself. It runs the core's `papaia-ctl doctor`, limited to its
+deployment: memory (with swap), CPU load per core, each GPU's VRAM, utilisation and
+temperature, whether the system clock is synchronised, free space on the config
+and backup directories, and the days left on every certificate (the bundled ones
+and Let's Encrypt). The manager measures nothing itself. It runs the core's
+`papaia-ctl doctor`, limited to its `memory`, `cpu`, `gpu`, `time_sync`,
 `disk_space` and `certs` checks, and shows the core's verdicts, so the page and a
 shell on the host cannot disagree about a threshold. That needs a core that has
 `doctor` (1.4.0 or newer); on an older one the page says so and the status row
-carries on without a Host row. The Docker data root is listed as not measurable:
-the manager container sees the config and backup directories, not
-`/var/lib/docker`. A reading is cached for a minute and shared between everyone
-who has a page open; the page's Re-check button asks for a fresh one. The Host
-entry in the sidebar carries a dot while a check warns or has failed.
+carries on without a Host row, and a 1.4.0 core that predates a resource check
+simply has no row for it. A check the core skips is listed as not measurable
+instead of being left out: that is the Docker data root (the manager container
+sees the config and backup directories, not `/var/lib/docker`) and, for as long as
+the core does not run them inside a container, the GPU and the clock. A reading is
+cached for the refresh interval and shared between everyone who has a page open;
+the page shows the interval and links to Settings, where it is set, and its
+Re-check button asks for a fresh reading. The Host entry in the sidebar carries a
+dot while a check warns or has failed.
 
 **Catalogs.** A catalog is a source of add-ons — a public or private Git
 repository, or a local directory — registered at runtime (not versioned in
