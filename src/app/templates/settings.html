@@ -10,12 +10,20 @@
    in routers/api_settings.py -- nothing below depends on there being only one. #}
 <div class="space-y-6 max-w-3xl">
   {% include "partials/_settings_branding.html" %}
+  {% include "partials/_settings_host.html" %}
 </div>
 
 <script>
   // Shared by every settings section: send JSON/multipart with the CSRF
   // header, surface the server's message, and keep the revision current.
   let settingsRevision = {{ revision | tojson }};
+
+  // A saved section reloads the page so the sidebar, which reads the same file,
+  // shows it too.
+  function reloadAfter(message) {
+    showToast("success", message);
+    setTimeout(() => window.location.reload(), 600);
+  }
 
   async function settingsRequest(url, options) {
     const headers = Object.assign(

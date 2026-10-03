@@ -1,7 +1,7 @@
 """Manager settings, stored in `$PAPAIA_CONFIG_DIR/manager/settings.yaml`.
 
-One document with one top-level section per topic (`branding` today, further
-sections such as `smtp` later). Every section has defaults for all of its
+One document with one top-level section per topic (`branding` and `host` today,
+further sections such as `smtp` later). Every section has defaults for all of its
 fields, so a missing file, a missing section or a section written by a newer
 release never stops the manager from rendering: unknown keys are ignored on
 read and dropped on the next save.
@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,13 @@ DEFAULT_TAGLINE = "by Fidonis"
 MAX_NAME_LENGTH = 40
 MAX_TAGLINE_LENGTH = 60
 MAX_LOGO_BYTES = 512 * 1024
+
+# How often the host is measured again. The floor keeps a run of `doctor` (a
+# Python start-up and a handful of probes) from overlapping the next one, and the
+# ceiling keeps "every few hours" from reading as a hung page.
+MIN_REFRESH_SECONDS = 10
+MAX_REFRESH_SECONDS = 3600
+DEFAULT_REFRESH_SECONDS = 60
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -72,10 +79,36 @@ class BrandingSettings(BaseModel):
     logo: str | None = None
 
 
+class HostSettings(BaseModel):
+    """Host monitoring.
+
+    The value read from the file is clamped, not rejected. A pydantic error here
+    would send `load_settings` back to the defaults for the whole document and
+    take the branding with it, over a number somebody edited by hand. The API is
+    the strict side: `validate_refresh_seconds` refuses what the file only clamps.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    refresh_seconds: int = DEFAULT_REFRESH_SECONDS
+
+    @field_validator("refresh_seconds", mode="before")
+    @classmethod
+    def _clamp(cls, value: Any) -> int:
+        if isinstance(value, bool):
+            return DEFAULT_REFRESH_SECONDS
+        try:
+            seconds = int(value)
+        except (TypeError, ValueError, OverflowError):
+            return DEFAULT_REFRESH_SECONDS
+        return min(max(seconds, MIN_REFRESH_SECONDS), MAX_REFRESH_SECONDS)
+
+
 class ManagerSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     branding: BrandingSettings = Field(default_factory=BrandingSettings)
+    host: HostSettings = Field(default_factory=HostSettings)
 
 
 @dataclass(frozen=True)
@@ -145,6 +178,26 @@ def validate_branding(name: str | None, tagline: str | None) -> tuple[str | None
     if cleaned_tagline is not None and len(cleaned_tagline) > MAX_TAGLINE_LENGTH:
         raise SettingsError(f"Tagline must be at most {MAX_TAGLINE_LENGTH} characters.")
     return (cleaned_name or None), cleaned_tagline
+
+
+def validate_refresh_seconds(value: int) -> int:
+    """The interval as submitted, or `SettingsError` when it is out of range."""
+    if not MIN_REFRESH_SECONDS <= value <= MAX_REFRESH_SECONDS:
+        raise SettingsError(
+            f"The refresh interval must be between {MIN_REFRESH_SECONDS} seconds"
+            f" and {MAX_REFRESH_SECONDS // 60} minutes."
+        )
+    return value
+
+
+def refresh_interval(config_dir: str) -> int:
+    """Seconds between two measurements of the host. Never raises."""
+    return load_settings(config_dir).host.refresh_seconds
+
+
+def format_interval(seconds: int) -> str:
+    """`30 s`, `60 s`, `5 min`, `90 s`: whole minutes above one are spelled as minutes."""
+    return f"{seconds // 60} min" if seconds > 60 and seconds % 60 == 0 else f"{seconds} s"
 
 
 def logo_path(config_dir: str, settings: ManagerSettings | None = None) -> Path | None:

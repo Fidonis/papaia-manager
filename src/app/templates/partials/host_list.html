@@ -1,4 +1,4 @@
-{# The body of the Host page: disk space and certificates, worst first, or the
+{# The body of the Host page: resources, disk space and certificates, or the
    reason there is nothing to show.
 
    Rows follow the module rows on the Services page: state rides on a left edge
@@ -7,8 +7,18 @@
    colour-blind reader. The rows carry their own `border-t` rather than sitting in
    a `divide-y` container: `divide-*` sets the colour of every side of every row
    after the first, and wins on specificity over the stripe. Percentages are drawn for the eye; the colour is the
-   core's verdict (free bytes for a disk, days left for a certificate), never a
-   threshold of this page's own.
+   core's verdict (free bytes for a disk, days left for a certificate, the core's
+   own limits for memory, CPU and VRAM), never a threshold of this page's own.
+
+   A resource the core could not read (`skip`) is a row that says so and carries
+   no verdict. It is in the section, not in a note, so the gap is visible where
+   the reading would have been.
+
+   The free space of the Docker data root has no row of its own while the manager
+   cannot see it (it does not mount /var/lib/docker): a row that only said "not
+   measurable" read as a hole where the reading belonged, and what Docker holds is
+   listed under "Docker usage" instead. Where the data root can be measured, the
+   core reports it and it is an ordinary disk row.
 
    Classes are spelled out per branch rather than assembled from a variable:
    app.css is built by scanning these templates, and a computed class name would
@@ -42,7 +52,7 @@
   <p class="text-lg font-semibold">Host checks are not available</p>
   <p class="max-w-xl text-sm">{{ host.reason }}</p>
 </div>
-{% elif not host.disks and not host.certs %}
+{% elif not host.checks %}
 <div class="flex flex-col items-center py-24 gap-4 opacity-60 text-center">
   <p class="text-lg font-semibold">Nothing to report</p>
   {% for note in host.notes %}
@@ -79,15 +89,76 @@
   </div>
 </div>
 
+{# The interval is read-only here: it is a setting for everyone, and it is the
+   server's cache time as much as this page's poll. #}
 <div class="flex justify-end mb-2">
   <p class="text-xs opacity-40">
-    Checked <span data-checked-at="{{ host.checked_at.isoformat() }}"></span> · refreshes every 60 s
+    Checked <span data-checked-at="{{ host.checked_at.isoformat() }}"></span> · refreshes every {{ refresh_text }}
+    · <a href="/settings#host-monitoring" class="link link-hover">Change in Settings</a>
   </p>
 </div>
 
+{# ── Resources ───────────────────────────────────────────────────── #}
+{% if host.resources %}
+{{ section_header("Resources", host.resources_measured ~ " measured" ~ (", " ~ host.resources_not_measurable ~ " not measurable" if host.resources_not_measurable else "")) }}
+<div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  {% for row in host.resources %}
+  {% set st = row.state | string %}
+  {% if st == 'unknown' %}
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 border-base-300 border-l-4 border-l-base-300 bg-base-200/50
+              {% if not loop.first %}border-t{% endif %}">
+    {{ dot('unknown') }}
+    <p class="text-sm font-semibold md:w-52">{{ row.label }}</p>
+    <div class="min-w-0 grow basis-60">
+      <p class="text-xs opacity-60">Not measurable from this panel.</p>
+      {% if row.reason %}<p class="text-xs opacity-50">{{ row.reason }}</p>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 border-base-300 border-l-4
+              {% if not loop.first %}border-t{% endif %}
+              {% if st == 'critical' %}border-l-error
+              {% elif st == 'warn' %}border-l-warning
+              {% else %}border-l-base-300{% endif %}">
+    {{ dot(st) }}
+    <div class="min-w-0 basis-40 grow md:grow-0 md:basis-auto md:w-52">
+      <p class="text-sm font-semibold truncate">{{ row.label }}</p>
+      {% if row.detail %}<p class="text-xs opacity-50 truncate">{{ row.detail }}</p>{% endif %}
+    </div>
+    {% if row.used_percent is not none %}
+    <div class="order-last basis-full md:order-none md:basis-0 md:grow">
+      {% if st == 'critical' %}
+      <progress class="progress progress-error h-1.5 w-full" value="{{ row.used_percent }}" max="100" aria-label="{{ row.label }} used"></progress>
+      {% elif st == 'warn' %}
+      <progress class="progress progress-warning h-1.5 w-full" value="{{ row.used_percent }}" max="100" aria-label="{{ row.label }} used"></progress>
+      {% else %}
+      <progress class="progress h-1.5 w-full text-base-content/40" value="{{ row.used_percent }}" max="100" aria-label="{{ row.label }} used"></progress>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="hidden md:block md:grow"></div>
+    {% endif %}
+    <div class="ml-auto flex items-center gap-4 md:ml-0 md:contents">
+      <p class="text-xs text-right md:w-56 opacity-80">{{ row.measure }}</p>
+      <p class="text-xs text-right w-20 tabular-nums
+                {% if st == 'critical' %}text-error
+                {% elif st == 'warn' %}text-warning
+                {% else %}opacity-60{% endif %}">{{ row.figure }}</p>
+    </div>
+    {# The core's own sentence, for a row that is not OK: it is the only place
+       that says which limit was crossed. #}
+    {% if row.reason %}
+    <p class="basis-full text-xs {% if st == 'critical' %}text-error{% else %}text-warning{% endif %}">{{ row.reason }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
 {# ── Disk space ──────────────────────────────────────────────────── #}
 {% if host.disks %}
-{{ section_header("Disk space", host.disks | length ~ (" measured" if host.docker_root_measured else " measured, Docker data not visible")) }}
+{{ section_header("Disk space", host.disks | length ~ " measured") }}
 <div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   {% for disk in host.disks %}
   {% set st = disk.state | string %}
@@ -127,18 +198,44 @@
     </div>
   </div>
   {% endfor %}
-
-  {# The Docker data root is the usual absentee: the manager mounts the config and
-     backup directories, not /var/lib/docker, and the core says as much itself.
-     Saying so beats leaving a gap that looks like a forgotten row. #}
-  {% if not host.docker_root_measured %}
-  <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 border-base-300 border-t border-l-4 border-l-base-300 bg-base-200/50">
-    {{ dot('unknown') }}
-    <p class="text-sm font-semibold md:w-52">Docker data</p>
-    <p class="text-xs opacity-60">Not measurable from this panel; only the host can see it.</p>
-  </div>
-  {% endif %}
 </div>
+{% endif %}
+
+{# ── Docker usage ────────────────────────────────────────────────── #}
+{# What Docker's data takes, from the daemon: it works where the data root's free
+   space above cannot be measured. It is a report, not a verdict, so the rows have
+   no dot and no stripe and nothing here counts towards the chip. Measured apart
+   and less often than everything else (see app/core/docker_usage.py). #}
+{% if usage and usage.available %}
+{{ section_header("Docker usage", usage.total_text ~ " used, " ~ usage.reclaimable_text ~ " reclaimable") }}
+<div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  {% for row in usage.rows %}
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 border-base-300 border-l-4 border-l-base-300
+              {% if not loop.first %}border-t{% endif %}">
+    <span class="h-2.5 w-2.5 shrink-0"></span>
+    <div class="min-w-0 basis-40 grow md:grow-0 md:basis-auto md:w-52">
+      <p class="text-sm font-semibold truncate">{{ row.label }}</p>
+      {% if row.detail %}<p class="text-xs opacity-50 truncate">{{ row.detail }}</p>{% endif %}
+    </div>
+    <div class="order-last basis-full md:order-none md:basis-0 md:grow">
+      <progress class="progress h-1.5 w-full text-base-content/40" value="{{ row.percent }}" max="100" aria-label="{{ row.label }} share of Docker's data"></progress>
+    </div>
+    <div class="ml-auto flex items-center gap-4 md:ml-0 md:contents">
+      <p class="text-xs text-right md:w-56 opacity-80">{{ row.reclaimable_text }}</p>
+      <p class="text-xs text-right w-20 tabular-nums opacity-60">{{ row.size_text }}</p>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="px-5 py-2.5 border-base-300 border-t border-l-4 border-l-base-300 bg-base-200/50">
+    <p class="text-xs opacity-50">
+      Measured <span data-checked-at="{{ usage.checked_at.isoformat() }}"></span> by
+      <code>docker system df</code>, less often than the rest: the daemon sizes every volume
+      to answer. Reclaimable is what no container uses right now, not what is safe to delete.
+    </p>
+  </div>
+</div>
+{% elif usage and usage.reason %}
+<p class="text-xs opacity-50 mb-8">Docker usage is not available: {{ usage.reason }}</p>
 {% endif %}
 
 {# ── Certificates ────────────────────────────────────────────────── #}

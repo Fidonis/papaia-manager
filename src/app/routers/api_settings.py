@@ -35,6 +35,7 @@ from app.core.settings_store import (
     settings_revision,
     settings_to_json,
     validate_branding,
+    validate_refresh_seconds,
 )
 
 router = APIRouter()
@@ -44,6 +45,11 @@ class BrandingBody(BaseModel):
     revision: str
     name: str | None = None
     tagline: str | None = None
+
+
+class HostBody(BaseModel):
+    revision: str
+    refresh_seconds: int
 
 
 class RevisionBody(BaseModel):
@@ -155,6 +161,35 @@ async def reset_branding(
     save_settings(settings.papaia_config_dir, current)
     remove_logo_files(settings.papaia_config_dir)
     _audit(settings, user.preferred_username, "settings.branding.reset", {})
+    return _document(settings)
+
+
+@router.put("/api/v1/settings/host")
+async def put_host(
+    request: Request,
+    body: HostBody,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """Set how often the host is measured again, in seconds.
+
+    The page shows seconds or minutes; the API only knows seconds. Out of range is
+    refused here, where a hand-edited file is merely clamped on read.
+    """
+    verify_csrf(request)
+    _require_current(settings, body.revision)
+
+    try:
+        seconds = validate_refresh_seconds(body.refresh_seconds)
+    except SettingsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+    current = load_settings(settings.papaia_config_dir)
+    current.host.refresh_seconds = seconds
+    save_settings(settings.papaia_config_dir, current)
+    _audit(settings, user.preferred_username, "settings.host.update", {"refresh_seconds": seconds})
     return _document(settings)
 
 

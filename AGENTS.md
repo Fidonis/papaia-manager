@@ -16,7 +16,7 @@ A fifth surface, Upgrade (`/upgrade`), moves the deployment to a newer papAIa re
 
 A sixth surface, Audit (`/audit`), reads, exports and prunes the audit log the other surfaces already write to — filtered, paginated JSON/HTML, CSV/JSONL export, and a dry-run-gated prune, all admin-only and CSRF-checked like every other mutating route.
 
-A seventh surface, Host (`/host`), reports disk space and certificate expiry of the machine underneath the deployment. It measures nothing itself: it runs the core's `doctor` for the two checks it needs and shows the core's verdicts (see the Host health section below). Admin-only, like Services; the sidebar status row carries its counts to every role.
+A seventh surface, Host (`/host`), reports memory, CPU, GPU, clock synchronisation, disk space and certificate expiry of the machine underneath the deployment, and what Docker's data takes. It measures nothing itself: it runs the core's `doctor` for the six checks it needs, and in a run of its own for `docker_usage`, and shows the core's verdicts (see the Host health section below). How often it measures is a setting (Settings, "Host monitoring"). Admin-only, like Services; the sidebar status row carries its counts to every role.
 
 A fourth surface, Services, reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. The page also drives lifecycle: one Compose profile at a time via `papaia-ctl start`/`stop --profiles=`, several profiles at once, or the whole stack in a detached container (see the Service group control section below). The same snapshot drives the status row in the sidebar of every page, for every authenticated role; its popover keeps the core stack and the add-ons apart and adds a row for the host.
 
@@ -55,9 +55,13 @@ papaia-manager/
 │       │   │                   #   add-on gate, migration plan, runner-log phases
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
 │       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering, validation
-│       │   ├── settings_store.py # settings.yaml (one section per topic, e.g. branding) + logo files
-│       │   ├── host_health.py  # Disk space + certificate expiry via the core's `doctor`;
-│       │   │                   #   cached, single-flight, never raises
+│       │   ├── settings_store.py # settings.yaml (one section per topic: branding, host) + logo files
+│       │   ├── host_health.py  # Memory, CPU, GPU, clock, disk space + certificate expiry via the
+│       │   │                   #   core's `doctor`; cached for the configured interval,
+│       │   │                   #   single-flight, never raises
+│       │   ├── docker_usage.py # What Docker's data takes (`docker system df`) via the core's
+│       │   │                   #   `doctor`: its own slower run and cache, never part of the
+│       │   │                   #   host reading; stale-while-revalidate, never raises
 │       │   ├── services.py     # Container status from docker ps, by module label; declared
 │       │   │                   #   vs. live merge; shared snapshot for the addon surfaces
 │       │   ├── inventory.py    # Declared state: compose fragments × profiles, addon manifests
@@ -88,7 +92,7 @@ papaia-manager/
 │       │       ├── addon_detail_content.html # Addon detail tab content
 │       │       ├── addon_gallery.html        # Addon card grid
 │       │       ├── catalog_list.html         # Catalog table rows
-│       │       ├── host_list.html            # Host page body: disks, certificates, or why not
+│       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
 │       │       ├── job_status.html           # Polled job progress/log fragment
 │       │       ├── restore_point_list.html   # Restore point cards
 │       │       ├── restore_status.html       # Polled restore-runner state
@@ -220,21 +224,25 @@ Further points that are easy to get wrong:
 
 ### Host health
 
-The Host page and the chip's Host row read the machine, not the containers, and they read it from the core. `app/core/host_health.py` runs `doctor --json` through `run_py_cli` and keeps only `disk_space` and `certs`; the other five checks fork `docker`, resolve names and probe ports, which is not something to repeat on a poll, so they are skipped by name and the answer is filtered to the two that were asked for. A check the core adds later is ignored rather than shown unreviewed.
+The Host page and the chip's Host row read the machine, not the containers, and they read it from the core. `app/core/host_health.py` runs `doctor --json` through `run_py_cli` and keeps only `memory`, `cpu`, `gpu`, `time_sync`, `disk_space` and `certs`; the other five checks fork `docker`, resolve names and probe ports, which is not something to repeat on a poll, so they are skipped by name and the answer is filtered to the six that were asked for. A check the core adds later is ignored rather than shown unreviewed.
 
 Consequences worth remembering when touching this area:
 
-- **The verdict is the core's.** Its disk thresholds are free bytes (warn below 10 GiB, fail below 2 GiB) and its certificate thresholds are days (30 and 7). The percentage drawn next to a disk is for the eye and never picks a colour; a threshold of this panel's own would let it and a shell on the host disagree about the same disk. Changing a threshold is a change in the core.
-- **Not measured is not empty.** The manager mounts the config and backup directories, not `/var/lib/docker`, so the Docker data root is normally absent from `doctor`'s answer and the page says so. An unreadable certificate has no verdict and is left out of the counts.
+- **The verdict is the core's.** Its disk thresholds are free bytes (warn below 10 GiB, fail below 2 GiB) and its certificate thresholds are days (30 and 7); memory, CPU and VRAM have limits of their own in the core. The percentage drawn next to a row is for the eye and never picks a colour; a threshold of this panel's own would let it and a shell on the host disagree about the same disk. For memory, CPU and VRAM the core states the reason for a warning only in its summary sentence, so that sentence is shown as is on the row. Changing a threshold is a change in the core.
+- **The skip list may only name old checks.** `--skip` refuses a name the core does not know, so `_SKIPPED_CHECKS` holds only checks every core with `doctor` has, and a new check is requested by *not* skipping it. A 1.4.0 core that predates one simply has no row for it.
+- **Not measured is not empty.** The manager mounts the config and backup directories, not `/var/lib/docker`, so the Docker data root is normally absent from `doctor`'s answer. The page has no row for its free space, because a row that only said "not measurable" read as a hole where a reading belonged; what Docker holds is shown under "Docker usage" instead. A data root the core can measure is an ordinary disk row. An unreadable certificate has no verdict and is left out of the counts. A resource check the core reports as `skip` is a row that says "Not measurable from this panel" and carries the core's reason, and is left out of the counts the same way. The one exception is a `gpu` skip with no details at all: nothing is configured to measure (no LocalAI, or the CPU image), so it gets no row. A core that predates `Fidonis/papaia#210` skips `gpu` and `time_sync` whenever `doctor` runs inside a container, which is where the manager runs it, so against such a core those two rows read as not measurable; a core that can read them there fills them in from the same fields.
 - **Not knowing is not the same as bad.** A core without `doctor` (checked as the existence of `lib/doctor.py` in the workspace, not as a version comparison), a timeout, an unparseable answer and a refused argument all yield `available=False` with a reason. The chip leaves the host out of its headline in that case, the way it leaves out an empty add-on section.
 - **Exit 2 is a result.** `doctor` exits 2 when a check failed and still prints the whole document. Exit 2 with nothing on stdout is a refused argument (for instance a skipped check the core renamed), and its first stderr line becomes the reason.
-- **Reading is cheap, running is not.** `load_host_health` serves a reading for 60 s (15 s for a failure) and runs at most one `doctor` at a time; concurrent callers share the task. The run belongs to the process, not to the request that started it, and is shielded, so a visitor who closes the tab does not cancel it for the next one. "Re-check" bypasses the TTL but not a five-second minimum interval.
-- **The chip and the sidebar dot never wait.** They render on every page every 30 s, so they read `cached_host_health()` and ask `ensure_fresh()` for a background refresh. With no page open nothing runs, and a cold cache shows no Host row for one poll.
+- **Reading is cheap, running is not.** `load_host_health` serves a reading for the refresh interval (60 s by default; 15 s for a failure, or the interval if that is shorter) and runs at most one `doctor` at a time; concurrent callers share the task. The run belongs to the process, not to the request that started it, and is shielded, so a visitor who closes the tab does not cancel it for the next one. "Re-check" bypasses the interval but not a five-second minimum interval.
+- **One interval, set in Settings.** `host.refresh_seconds` in `settings.yaml` (10 s to 60 min) is the cache's time to live, the page's poll (rendered into `host.html`'s `hx-trigger`) and, times three with a floor of 180 s, the point where the cache-only consumers stop showing a reading. It is read at every call and judged against the age of the reading, so shortening it takes effect at the next poll. The Host page only displays it. An open page keeps the poll it was loaded with until it is reloaded. The API refuses a value out of range; a hand-edited file is clamped on read, because a validation error would reset every section of the document, the branding included.
+- **Docker usage is measured apart.** `app/core/docker_usage.py` runs `doctor` for the `docker_usage` check alone (every other check in the core's registry is skipped), behind a cache of its own. It is the one check that costs the daemon real work: `docker system df` sizes every volume, which took 1.5 s with 75 volumes and grows with the data. So it is measured every tenth refresh interval, never sooner than 5 minutes and never later than an hour (`usage_interval`); a failed reading is retried after 2 minutes; "Re-check" gets a fresh one at most every 30 s. A visitor waits for it only when there is no reading yet or after "Re-check"; otherwise the last reading is served as it stands and a new run starts behind the page. Its failure or slowness is a note under the disk space and cannot hold up, empty or fail the host reading. It is a report with no verdict, so it is never in the counts, the chip or the dot.
+- **The core is asked what it has before it is asked for it.** `doctor` cannot list its checks and `--skip` refuses a name it does not know, so `docker_usage.core_checks` reads the registry out of the core's `lib/doctor.py` (`("name", check_...)` entries) and `docker_usage` is skipped by the host run, and requested by its own, only for a core that has it. An older core gets neither: no run, no section, no refused argument.
+- **The chip and the sidebar dot never wait.** They render on every page every 30 s, so they read `cached_host_health()` and ask `ensure_fresh()` for a background refresh. With no page open nothing runs, a cold cache shows no Host row for one poll, and they refresh no faster than every 30 s whatever the interval.
 - **Counts only for non-admins.** The chip's Host row says `n / m ok`. Paths, host names and certificate names appear on `/host`, which is admin-only. A test asserts that none of them reaches the chip.
 - **`run_py_cli` takes a `limit`.** A child that outlives it is killed and reaped before `CtlError` (exit code 124) is raised. The default is no limit, which the upgrade check relies on.
 - **`doctor` is in `ALLOWED_PY_COMMANDS`.** It is read-only by the core's own contract; `tests/test_ctl.py` pins the set.
 
-Known limits: no history (that is what an observability stack is for), no GPU, CPU or memory figures (the core has no check for them), and the thresholds cannot be tuned from here.
+Known limits: no history (that is what an observability stack is for), no GPU figures and no clock state from inside the manager container from a core that cannot read them there, the free space of the Docker data root (it is not mounted; what Docker holds is shown instead), memory and CPU figures that are the host's own (`/proc/meminfo` and the load average are not namespaced) and not those of any container limit, and thresholds that cannot be tuned from here. Memory, CPU and the clock change faster than disk and certificates, but all of them share one run and one interval.
 
 ---
 
@@ -273,17 +281,21 @@ All PRs are **squash-merged**. The PR title becomes the single commit message on
 Run all checks locally before pushing:
 
 ```bash
-# YAML — from the repository root
+# From the repository root: the two checks CI runs from there
 yamllint .
+uv run --project src ruff check .
 
-# Python — from src/
+# From src/
 cd src
-uv run ruff check .
 uv run mypy .
 uv run pytest -q
 ```
 
-- **Python linting**: ruff with rule sets E, F, I, B, UP, N, RET, SIM, ASYNC
+- **Python linting**: ruff with rule sets E, F, I, B, UP, N, RET, SIM, ASYNC. Run it from the
+  **repository root**, as CI does (`ruff check .` with the root `ruff.toml`): `tests/` is a
+  sibling of `src/`, so `uv run ruff check .` from inside `src/` lints `src/` only and passes
+  over a line in a test that CI then rejects. The `--project src` above only borrows the
+  environment `uv sync` made there.
 - **Type checking**: mypy in strict mode; all public functions must carry explicit type annotations
 - **Import style**: absolute imports (`from app.config import get_settings`)
 - **YAML**: yamllint with the project `.yamllint` config
