@@ -336,7 +336,7 @@ def test_checks_that_were_not_asked_for_are_ignored() -> None:
                 {"name": name, "status": "fail", "summary": "x", "details": {"paths": [
                     _disk("other0", "/dev/x", 0, 1, "fail")
                 ]}}
-                for name in ("ports", "a_check_from_the_future")
+                for name in ("ports", "docker_usage", "a_check_from_the_future")
             ],
         )
     )
@@ -642,7 +642,12 @@ def test_malformed_resource_details_are_dropped_not_fatal() -> None:
         "memory",
         "pass",
         "something",
-        {"total_bytes": True, "available_bytes": "5", "used_percent": "high", "swap_total_bytes": []},
+        {
+            "total_bytes": True,
+            "available_bytes": "5",
+            "used_percent": "high",
+            "swap_total_bytes": [],
+        },
     )
     garbled_gpu = _check(
         "gpu", "pass", "ok", {"variant": "nvidia-cuda-13", "gpus": ["nope", 3, None]}
@@ -750,6 +755,33 @@ async def test_doctor_is_asked_for_the_six_host_checks_only_and_bounded(
         "ports",
     ]
     assert not {"memory", "cpu", "gpu", "time_sync", "disk_space", "certs"} & set(skipped)
+
+
+async def test_the_host_run_skips_docker_usage_once_the_core_has_it(
+    tmp_path: Path, doctor: _Doctor
+) -> None:
+    # It costs the daemon real work and has a run of its own. But `--skip` refuses a
+    # name the core does not know, so only a core seen to have it is told to skip it.
+    lib = tmp_path / "papaia" / "tools" / "lib"
+    lib.mkdir(parents=True)
+    (lib / "doctor.py").write_text(
+        'CHECKS = [\n    ("disk_space", check_disk_space),\n'
+        '    ("docker_usage", check_docker_usage),\n]\n',
+        encoding="utf-8",
+    )
+
+    await _load(str(tmp_path))
+
+    (call,) = doctor.calls
+    skipped = call["extra_flags"][1].removeprefix("--skip=").split(",")
+    assert skipped == [
+        "docker_version",
+        "ports",
+        "dns",
+        "addon_compat",
+        "container_health",
+        "docker_usage",
+    ]
 
 
 async def test_exit_two_with_a_document_is_a_result_not_a_failure(

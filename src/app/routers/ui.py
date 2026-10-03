@@ -14,7 +14,7 @@ from app.auth.deps import AdminUser, AnyUser
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
-from app.core import backups, host_health, images, restore_scope, runner, upgrade
+from app.core import backups, docker_usage, host_health, images, restore_scope, runner, upgrade
 from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
@@ -480,10 +480,20 @@ async def partial_host(
     one, and `load_host_health` still folds it into a run that is under way or
     finished a few seconds ago, so the button cannot be used to hammer `doctor`.
     """
-    health = await host_health.load_host_health(
-        config_dir=settings.papaia_config_dir,
-        workspace_dir=settings.papaia_workspace_dir,
-        force=fresh,
+    # Two readings, side by side. Docker's disk use is the slow one and has its own
+    # cache: it is served as it stands when it is stale, and neither its cost nor its
+    # failure can hold up or take rows from the host reading.
+    health, usage = await asyncio.gather(
+        host_health.load_host_health(
+            config_dir=settings.papaia_config_dir,
+            workspace_dir=settings.papaia_workspace_dir,
+            force=fresh,
+        ),
+        docker_usage.load_docker_usage(
+            config_dir=settings.papaia_config_dir,
+            workspace_dir=settings.papaia_workspace_dir,
+            force=fresh,
+        ),
     )
     resp = _templates.TemplateResponse(
         request,
@@ -492,6 +502,7 @@ async def partial_host(
             request,
             user,
             host=health,
+            usage=usage,
             refresh_text=format_interval(refresh_interval(settings.papaia_config_dir)),
         ),
     )

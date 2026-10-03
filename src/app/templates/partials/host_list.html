@@ -200,10 +200,47 @@
   <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 border-base-300 border-t border-l-4 border-l-base-300 bg-base-200/50">
     {{ dot('unknown') }}
     <p class="text-sm font-semibold md:w-52">Docker data</p>
-    <p class="text-xs opacity-60">Not measurable from this panel; only the host can see it.</p>
+    <p class="text-xs opacity-60">Not measurable from this panel; only the host can see how much room is left{% if usage and usage.available %}. What Docker holds is listed below{% endif %}.</p>
   </div>
   {% endif %}
 </div>
+{% endif %}
+
+{# ── Docker usage ────────────────────────────────────────────────── #}
+{# What Docker's data takes, from the daemon: it works where the data root's free
+   space above cannot be measured. It is a report, not a verdict, so the rows have
+   no dot and no stripe and nothing here counts towards the chip. Measured apart
+   and less often than everything else (see app/core/docker_usage.py). #}
+{% if usage and usage.available %}
+{{ section_header("Docker usage", usage.total_text ~ " used, " ~ usage.reclaimable_text ~ " reclaimable") }}
+<div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  {% for row in usage.rows %}
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 border-base-300 border-l-4 border-l-base-300
+              {% if not loop.first %}border-t{% endif %}">
+    <span class="h-2.5 w-2.5 shrink-0"></span>
+    <div class="min-w-0 basis-40 grow md:grow-0 md:basis-auto md:w-52">
+      <p class="text-sm font-semibold truncate">{{ row.label }}</p>
+      {% if row.detail %}<p class="text-xs opacity-50 truncate">{{ row.detail }}</p>{% endif %}
+    </div>
+    <div class="order-last basis-full md:order-none md:basis-0 md:grow">
+      <progress class="progress h-1.5 w-full text-base-content/40" value="{{ row.percent }}" max="100" aria-label="{{ row.label }} share of Docker's data"></progress>
+    </div>
+    <div class="ml-auto flex items-center gap-4 md:ml-0 md:contents">
+      <p class="text-xs text-right md:w-56 opacity-80">{{ row.reclaimable_text }}</p>
+      <p class="text-xs text-right w-20 tabular-nums opacity-60">{{ row.size_text }}</p>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="px-5 py-2.5 border-base-300 border-t border-l-4 border-l-base-300 bg-base-200/50">
+    <p class="text-xs opacity-50">
+      Measured <span data-checked-at="{{ usage.checked_at.isoformat() }}"></span> by
+      <code>docker system df</code>, less often than the rest: the daemon sizes every volume
+      to answer. Reclaimable is what no container uses right now, not what is safe to delete.
+    </p>
+  </div>
+</div>
+{% elif usage and usage.reason %}
+<p class="text-xs opacity-50 mb-8">Docker usage is not available: {{ usage.reason }}</p>
 {% endif %}
 
 {# ── Certificates ────────────────────────────────────────────────── #}

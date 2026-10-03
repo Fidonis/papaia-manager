@@ -15,7 +15,10 @@ Five decisions here are load-bearing:
   answer is filtered to the six that were asked for, so a check the core adds
   later is ignored rather than shown unreviewed. The skip list only ever lists
   names old cores already know: `--skip` refuses an unknown one, so asking for a
-  new check means *not* skipping it, and an older core simply leaves it out.
+  new check means *not* skipping it, and an older core simply leaves it out. The
+  one exception is `docker_usage`, which costs the daemon real work: it has a
+  `doctor` and a cache of its own in `app.core.docker_usage`, and is skipped here
+  only once the core is seen to have it.
 * The core's verdict is taken as is. Its disk thresholds are free bytes, not a
   percentage, and the percentage shown here is arithmetic for the eye only: it
   never decides a colour. The same goes for memory, CPU and VRAM, where the
@@ -51,6 +54,7 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from app.core import docker_usage
 from app.core.ctl import CtlError, run_py_cli
 from app.core.services import ServiceHealth
 from app.core.settings_store import refresh_interval
@@ -62,6 +66,8 @@ logger = logging.getLogger(__name__)
 # does not know, so the skipped list is also what fails loudly if a check is
 # renamed -- and why it names only checks every core with `doctor` has.
 _WANTED_CHECKS = ("memory", "cpu", "gpu", "time_sync", "disk_space", "certs")
+# `docker_usage` is skipped here as well, but only by a core that has it (see
+# `_run`): it is measured on its own, at its own pace, by `app.core.docker_usage`.
 _SKIPPED_CHECKS = ("docker_version", "ports", "dns", "addon_compat", "container_health")
 
 # Version of the JSON document `doctor --json` emits. A different one is
@@ -658,10 +664,11 @@ _refresh: asyncio.Task[HostHealth] | None = None
 
 
 def reset_cache() -> None:
-    """Forget the last reading and any run under way."""
+    """Forget the last reading and any run under way, Docker usage's included."""
     global _cache, _refresh  # noqa: PLW0603
     _cache = None
     _refresh = None
+    docker_usage.reset_cache()
 
 
 def is_supported(workspace_dir: str) -> bool:
@@ -680,6 +687,18 @@ def _first_line(text: str, limit: int = 200) -> str:
     return ""
 
 
+def _skipped(workspace_dir: str) -> tuple[str, ...]:
+    """What this run asks the core not to do.
+
+    The five old checks always. `docker_usage` too, once the core has it: it costs
+    the daemon real work and has a run of its own. Naming it for a core that does
+    not know it would get the whole run refused, which is why it is looked up
+    first and not added unconditionally."""
+    if docker_usage.core_has_usage(workspace_dir):
+        return (*_SKIPPED_CHECKS, docker_usage.CHECK_NAME)
+    return _SKIPPED_CHECKS
+
+
 async def _run(config_dir: str, workspace_dir: str) -> HostHealth:
     if not is_supported(workspace_dir):
         return unavailable(_TOO_OLD)
@@ -688,7 +707,7 @@ async def _run(config_dir: str, workspace_dir: str) -> HostHealth:
             command="doctor",
             workspace_dir=workspace_dir,
             config_dir=config_dir,
-            extra_flags=["--json", f"--skip={','.join(_SKIPPED_CHECKS)}"],
+            extra_flags=["--json", f"--skip={','.join(_skipped(workspace_dir))}"],
             limit=RUN_TIMEOUT_SECONDS,
         )
     except CtlError as exc:

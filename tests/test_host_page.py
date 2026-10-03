@@ -41,7 +41,8 @@ from fastapi.testclient import TestClient  # noqa: E402
 from itsdangerous import TimestampSigner  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
-from app.core import host_health  # noqa: E402
+from app.core import docker_usage, host_health  # noqa: E402
+from app.core.ctl import CtlError  # noqa: E402
 from app.core.services import (  # noqa: E402
     ServiceContainer,
     ServiceHealth,
@@ -358,6 +359,179 @@ def test_a_resource_the_core_could_not_read_is_a_row_that_says_so(
     # The panel does not invent a bar for a reading there is none of.
     assert 'aria-label="GPU used"' not in body
     assert 'aria-label="Memory used"' in body
+
+
+_USAGE_TYPES = {
+    "images": {
+        "count": 53,
+        "active": 31,
+        "size_bytes": 50_460_000_000,
+        "reclaimable_bytes": 14_080_000_000,
+    },
+    "containers": {
+        "count": 32,
+        "active": 31,
+        "size_bytes": 235_900_000,
+        "reclaimable_bytes": 16_380,
+    },
+    "volumes": {
+        "count": 75,
+        "active": 22,
+        "size_bytes": 26_080_000_000,
+        "reclaimable_bytes": 23_460_000_000,
+    },
+    "build_cache": {
+        "count": 897,
+        "active": 0,
+        "size_bytes": 25_530_000_000,
+        "reclaimable_bytes": 20_730_000_000,
+    },
+}
+
+
+def _usage_doc(status: str = "pass", summary: str = "Docker uses 102.3GB") -> str:
+    details = {"types": _USAGE_TYPES} if status == "pass" else {}
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "generated_at": "2026-10-03T12:00:00Z",
+            "platform_version": "1.4.0",
+            "checks": [
+                {"name": "docker_usage", "status": status, "summary": summary, "details": details}
+            ],
+            "summary": {"pass": 1, "warn": 0, "fail": 0, "skip": 0},
+            "ok": True,
+        }
+    )
+
+
+class _UsageDoctor:
+    """Stands in for the `doctor` that measures Docker's disk use, apart from the host's."""
+
+    def __init__(self, stdout: str, error: Exception | None = None) -> None:
+        self.stdout, self.error, self.calls = stdout, error, 0
+
+    async def __call__(self, **_: Any) -> tuple[int, str, str]:
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        return 0, self.stdout, ""
+
+
+def _core_with_docker_usage(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, stub: _UsageDoctor
+) -> None:
+    """A core that has the `docker_usage` check, whose own run is `stub`."""
+    (workspace / "papaia" / "tools" / "lib" / "doctor.py").write_text(
+        'CHECKS = [\n    ("disk_space", check_disk_space),\n'
+        '    ("docker_usage", check_docker_usage),\n]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(docker_usage, "run_py_cli", stub)
+
+
+def test_the_partial_lists_what_docker_holds_when_the_core_can_say(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub = _UsageDoctor(_usage_doc())
+    _core_with_docker_usage(workspace, monkeypatch, stub)
+    _prime(monkeypatch, workspace, _doc())
+
+    body = _as(client, "admin").get("/partials/host").text
+
+    assert "Docker usage" in body
+    assert "102.3 GB used, 58.27 GB reclaimable" in body
+    for label in ("Images", "Containers", "Volumes", "Build cache"):
+        assert f">{label}</p>" in body
+    assert "50.46 GB" in body
+    assert "14.08 GB reclaimable" in body
+    assert "53 total · 31 active" in body
+    assert "25.53 GB" in body
+    assert "<code>docker system df</code>" in body
+    # The free space of the data root is still not measurable, and the row says
+    # where what Docker holds can be read instead.
+    assert "Not measurable from this panel; only the host can see how much room is left" in body
+    assert "What Docker holds is listed below" in body
+    assert "aria-label=\"Volumes share of Docker's data\"" in body
+
+
+def test_a_core_without_the_docker_usage_check_has_no_such_section_and_no_run(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub = _UsageDoctor(_usage_doc())
+    monkeypatch.setattr(docker_usage, "run_py_cli", stub)
+    _prime(monkeypatch, workspace, _doc())
+
+    body = _as(client, "admin").get("/partials/host").text
+
+    assert "Docker usage" not in body
+    assert "What Docker holds is listed below" not in body
+    assert stub.calls == 0
+
+
+def test_docker_usage_that_could_not_be_read_is_a_note_and_the_rest_of_the_page_stays(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub = _UsageDoctor(_usage_doc(status="skip", summary="docker system df failed: no daemon"))
+    _core_with_docker_usage(workspace, monkeypatch, stub)
+    _prime(monkeypatch, workspace, _doc())
+
+    body = _as(client, "admin").get("/partials/host").text
+
+    assert "Docker usage is not available: docker system df failed: no daemon" in body
+    assert "What Docker holds is listed below" not in body
+    # What the host reading carries is all still there.
+    assert "Config disk" in body
+    assert "Backup disk" in body
+    assert _DOMAIN in body
+
+
+def test_a_crashing_docker_usage_run_cannot_take_the_host_page_down(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub = _UsageDoctor("", error=CtlError("doctor timed out after 30s", exit_code=124))
+    _core_with_docker_usage(workspace, monkeypatch, stub)
+    _prime(monkeypatch, workspace, _doc())
+
+    response = _as(client, "admin").get("/partials/host")
+
+    assert response.status_code == 200
+    assert "Docker usage is not available: doctor timed out after 30s" in response.text
+    assert "Config disk" in response.text
+
+
+def test_docker_usage_never_reaches_the_chip_or_the_dot(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # It is a report with no verdict: the counts are the same with or without it.
+    _prime(monkeypatch, workspace, _doc())
+    without = _as(client, "user").get("/partials/service-status").text
+
+    stub = _UsageDoctor(_usage_doc())
+    _core_with_docker_usage(workspace, monkeypatch, stub)
+    _as(client, "admin").get("/partials/host")
+    with_usage = _as(client, "user").get("/partials/service-status").text
+
+    assert "2 / 4 ok" in without
+    assert "2 / 4 ok" in with_usage
+    assert "Docker usage" not in with_usage
+    assert "102.3" not in with_usage
+
+
+def test_polling_the_page_does_not_measure_docker_again_and_recheck_waits_half_a_minute(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub = _UsageDoctor(_usage_doc())
+    _core_with_docker_usage(workspace, monkeypatch, stub)
+    _prime(monkeypatch, workspace, _doc())
+    admin = _as(client, "admin")
+
+    for _ in range(3):
+        admin.get("/partials/host")
+    admin.get("/partials/host?fresh=true")
+    admin.get("/partials/host?fresh=true")
+
+    assert stub.calls == 1
 
 
 def test_a_core_without_the_resource_checks_just_has_no_resources_section(

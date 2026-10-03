@@ -150,11 +150,16 @@ shell on the host cannot disagree about a threshold. That needs a core that has
 carries on without a Host row, and a 1.4.0 core that predates a resource check
 simply has no row for it. A check the core skips is listed as not measurable
 instead of being left out: that is the Docker data root (the manager container
-sees the config and backup directories, not `/var/lib/docker`) and, for as long as
-the core does not run them inside a container, the GPU and the clock. A reading is
+sees the config and backup directories, not `/var/lib/docker`) and, with a core that
+cannot read them inside a container, the GPU and the clock. A reading is
 cached for the refresh interval and shared between everyone who has a page open;
 the page shows the interval and links to Settings, where it is set, and its
-Re-check button asks for a fresh reading. The Host entry in the sidebar carries a
+Re-check button asks for a fresh reading. What Docker's data takes (images,
+containers, volumes and build cache, with what the daemon calls reclaimable) is
+listed under "Docker usage" when the core has the `docker_usage` check. The
+daemon has to size every volume to answer, so it is measured on its own, every
+tenth interval and no sooner than every 5 minutes, and a slow or failing
+measurement leaves the rest of the page as it is. The Host entry in the sidebar carries a
 dot while a check warns or has failed.
 
 **Catalogs.** A catalog is a source of add-ons — a public or private Git

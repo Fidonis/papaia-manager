@@ -10,7 +10,9 @@
       <h2 class="font-brand text-lg font-bold">Host monitoring</h2>
       <p class="text-sm opacity-60">
         How often the Host page, the status row and the sidebar dot measure the machine
-        again. Applies to all administrators.
+        again. Applies to all administrators. What Docker's data takes is measured less
+        often, every tenth interval but never sooner than 5 minutes and never later than an
+        hour, because the daemon has to size every volume to answer.
       </p>
     </div>
 
