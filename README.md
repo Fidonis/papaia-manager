@@ -336,6 +336,14 @@ GET    /api/v1/upgrade/runner                # its status and log
 POST   /api/v1/upgrade/runner/clear          # acknowledge a finished upgrade
 GET    /api/v1/upgrade/images                # outdated Docker images of the stack and add-ons
 POST   /api/v1/upgrade/images/prune          # {images?} remove them (all, or the named ids)
+
+GET    /api/v1/settings                      # revision, branding, host monitoring, effective branding
+PUT    /api/v1/settings/branding             # {revision, name?, tagline?}
+POST   /api/v1/settings/branding/logo        # multipart file: PNG, JPEG, WebP or SVG, up to 512 KB
+DELETE /api/v1/settings/branding/logo        # remove the logo
+POST   /api/v1/settings/branding/reset       # {revision} back to the defaults, logo removed
+PUT    /api/v1/settings/host                 # {revision, refresh_seconds} 10 to 3600
+GET    /brand/logo                           # the stored logo, for any signed-in user
 ```
 
 ## Layout
@@ -353,9 +361,12 @@ papaia-manager/
 │       ├── core/           # catalogs, snapshots, status, env-forms, jobs, audit,
 │       │                   # services (container status), inventory (declared state),
 │       │                   # backups (restore-point catalogue), runner (detached restore),
-│       │                   # backup_run + schedule + scheduler (backup schedule)
+│       │                   # backup_run + schedule + scheduler (backup schedule),
+│       │                   # host_health + docker_usage (host readings from the core's doctor),
+│       │                   # settings_store (settings.yaml and the logo)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
-│       │                   # api_maintenance
+│       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
+│       │                   # api_tiles, api_settings
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)
