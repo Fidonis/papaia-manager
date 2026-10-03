@@ -20,7 +20,7 @@
   </ul>
   <p class="mt-2 text-xs opacity-50">
     Cron <span class="font-mono">{{ preview.cron }}</span>. Longest gap between runs: {{ preview.longest_gap }}.
-    {% if preview.retention_days is none %}A retention of at least {{ preview.min_retention }} days is possible.{% endif %}
+    {% if preview.retention_days is none %}A retention would have to be at least {{ preview.min_retention }} day{{ "" if preview.min_retention == 1 else "s" }} for this schedule.{% endif %}
   </p>
   {% if preview.retention_days is not none %}
   <p class="mt-1 text-xs opacity-60">

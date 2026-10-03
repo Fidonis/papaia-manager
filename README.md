@@ -194,6 +194,34 @@ paused only while its own volume is archived) and therefore runs as an ordinary
 job. Restore points are listed from the catalogue papaia-ctl writes next to the
 snapshots, with an optional retention period pruning older ones.
 
+**Backup schedule.** The Backup page can start backups by itself. The schedule is
+one file, `$PAPAIA_CONFIG_DIR/manager/schedule.yaml`, edited in a dialog on the
+page: every day, on chosen days, every few hours, or a cron expression, in a
+timezone (the container's `TZ` if it names one, otherwise UTC), with a preview of
+the next three runs. A scheduler inside the manager runs it, so it needs nothing
+from the host — no systemd, no cron — and behaves the same on any operating system
+that can run the stack. Expressions are standard cron (`1` is Monday), and runs
+closer together than an hour are refused.
+
+A scheduled run takes the same path as the *Create backup* button: the same job,
+log and audit entry, as the user `scheduler`. While a restore, an upgrade or
+another job is running, or the backup directory is not mounted, it is held back
+and tried again every ten minutes for up to an hour. A strip above the restore
+points shows the age of the newest successful backup and the next run, and turns to
+a warning once that backup is older than one and a half times the longest gap
+between two runs. The manager restarts on every upgrade, restore and host reboot
+and can miss a run that way, so after a start one run is made up if the newest
+successful backup is already older than that (the schedule can opt out).
+
+The retention period is configurable and must be at least twice the longest gap
+between runs. `papaia-ctl backup` prunes after every run, a failed one included,
+and does not keep a last usable restore point, so a scheduled run passes the
+retention only while the newest successful restore point is recent; otherwise it
+backs up without pruning and the job log says why. Two things to know: a restore
+replaces `$PAPAIA_CONFIG_DIR`, so the schedule returns to what it was in the
+restored snapshot, and the scheduler assumes one manager process (the image runs
+a single uvicorn worker; do not add `--workers`).
+
 Restore is the exception to "everything is a job". `papaia-ctl restore` tears the
 core stack down before unpacking archives, and the manager is a service of that
 same stack — a restore run in-process would be killed by its own teardown step.
@@ -283,6 +311,9 @@ GET    /api/v1/maintenance/restore-points
 GET    /api/v1/maintenance/restore-points/{id}
 POST   /api/v1/maintenance/restore-points/delete  # {ids} → 202 {job_id}
 POST   /api/v1/maintenance/backup                 # {retention_days?} → 202 {job_id}
+GET    /api/v1/maintenance/schedule               # the schedule, next run, last backup, overdue
+PUT    /api/v1/maintenance/schedule               # {cron, timezone?, retention_days?, enabled?, run_on_startup?}
+DELETE /api/v1/maintenance/schedule               # remove it (also clears an unreadable file)
 POST   /api/v1/maintenance/restore                # {restore_point, restart_clean?} → 202
 GET    /api/v1/maintenance/restore/status
 DELETE /api/v1/maintenance/restore                # acknowledge a finished restore
@@ -321,7 +352,8 @@ papaia-manager/
 │       ├── auth/           # OIDC + PKCE login, CSRF, admin-role dependency
 │       ├── core/           # catalogs, snapshots, status, env-forms, jobs, audit,
 │       │                   # services (container status), inventory (declared state),
-│       │                   # backups (restore-point catalogue), runner (detached restore)
+│       │                   # backups (restore-point catalogue), runner (detached restore),
+│       │                   # backup_run + schedule + scheduler (backup schedule)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance
 │       ├── templates/      # Jinja2 pages + HTMX partials

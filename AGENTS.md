@@ -10,7 +10,7 @@ papaia-manager is a web-based control plane for the papAIa stack's addon lifecyc
 
 It also serves the stack dashboard: a tile overview of the deployed applications, held in `manager/tiles.yaml` in the papAIa config directory and editable in place by administrators.
 
-A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
+A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). The same page schedules backups from inside the manager (see Backup schedule below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
 A fifth surface, Upgrade (`/upgrade`), moves the deployment to a newer papAIa release. It is split in two: a read-only check that resolves the target tag, gates the active add-ons against it and lists the pending migrations, and the upgrade itself, which runs `papaia-ctl upgrade` in a detached container (see the Upgrade model section below). The page also lists the Docker images an upgrade leaves behind and removes them on request.
 
@@ -49,6 +49,11 @@ papaia-manager/
 │       │   │                   #   (separate allowlists for addon verbs, core verbs
 │       │   │                   #    and the core's read-only python sub-commands)
 │       │   ├── backups.py      # Read-only backup.yaml / manifest.yaml catalogue access
+│       │   ├── backup_run.py   # Starting a backup: the enqueue path the button and the schedule share
+│       │   ├── schedule.py     # schedule.yaml: model, standard-cron normalisation, presets,
+│       │   │                   #   cadence, retention and overdue arithmetic, page/API state
+│       │   ├── scheduler.py    # In-process APScheduler: when to start a backup, skip and
+│       │   │                   #   retry, catch-up after a start
 │       │   ├── runner.py       # Detached papaia-ctl container: restore, stack, upgrade
 │       │   ├── images.py       # Outdated Docker images: declared vs. used vs. local, removal
 │       │   ├── upgrade.py      # Core release check: git state, target resolution,
@@ -81,7 +86,7 @@ papaia-manager/
 │       │   ├── api_catalogs.py # /api/v1/catalogs — catalog CRUD + refresh
 │       │   ├── api_addons.py   # /api/v1/addons — addon lifecycle verbs
 │       │   ├── api_jobs.py     # /api/v1/jobs — job status + log streaming
-│       │   ├── api_maintenance.py # /api/v1/maintenance — backup + restore
+│       │   ├── api_maintenance.py # /api/v1/maintenance — backup, restore, backup schedule
 │       │   ├── api_upgrade.py  # /api/v1/upgrade — release check, core upgrade, image cleanup
 │       │   ├── api_audit.py    # /api/v1/audit — read, export, prune
 │       │   └── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
@@ -91,6 +96,8 @@ papaia-manager/
 │       │       ├── _env_fields.html          # Rendered env-form fields (typed, masked secrets)
 │       │       ├── addon_detail_content.html # Addon detail tab content
 │       │       ├── addon_gallery.html        # Addon card grid
+│       │       ├── backup_schedule.html      # Schedule and last-backup strip (backup page)
+│       │       ├── backup_schedule_preview.html # Schedule editor: live validation and next runs
 │       │       ├── catalog_list.html         # Catalog table rows
 │       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
 │       │       ├── job_status.html           # Polled job progress/log fragment
@@ -155,7 +162,7 @@ Browser → /auth/callback?code&state
 
 ### Job model
 
-All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. Only one mutating job runs at a time. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
+All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. A scheduled backup is enqueued onto the same queue. Only one mutating job runs at a time. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
 
 ### Restore model
 
@@ -205,6 +212,27 @@ Consequences worth remembering when touching this area:
 - The option is `prune_images` on `POST /api/v1/upgrade`, off by default at the API and preselected in the dialog. With it, `build_upgrade_run_args` wraps papaia-ctl in a small shell (`runner._UPGRADE_WITH_PRUNE`) that runs `python -m app.core.images prune` only after a zero exit and always exits with papaia-ctl's status: a failed cleanup must not turn a successful upgrade into "upgrade failed". The runner carries the label `de.fidonis.upgrade-prune-images`, which is how the phase list knows to show the step and how a later manager finds out what it was started for.
 - The runner container holds the *previous* papaia-manager image, so that one cannot go during the run. `POST /runner/clear` therefore repeats the cleanup after removing a successful, labelled runner. A failed run is never cleaned up.
 - Known limits: an image of a service a release drops entirely stays (its repository is no longer declared), and sizes are the images' own, so shared layers are counted twice.
+
+### Backup schedule
+
+The Backup page can start backups on a schedule. The schedule is one file, `$PAPAIA_CONFIG_DIR/manager/schedule.yaml` (`core/schedule.py`), and the only source of truth: `core/scheduler.py` runs APScheduler 3.x with a **memory** job store and is rebuilt from the file, so a removed schedule cannot come back from a second store after a restart. APScheduler 4.x is not an option while every 4.x release is an alpha.
+
+The scheduler decides *when*. The backup itself goes through `core/backup_run.enqueue_backup`, the path the button uses, so the job, its log and its audit entry (`user=scheduler`, `params.trigger=schedule`) are the same. What differs is the refusal: the button answers a busy queue, a running restore or upgrade, or an unmounted backup directory with a 409, while a scheduled run is skipped (audit `backup.schedule.skip`, result `skipped`) and retried every 10 minutes, up to six attempts. It cannot simply be queued behind the other work, because a restore or upgrade is not in the queue.
+
+Consequences worth remembering when touching this area:
+
+- **Standard cron, not APScheduler's dialect.** APScheduler 3.x counts weekdays from Monday (`0 3 * * 1` fires on *Tuesday*) and ANDs a restricted day-of-month with a restricted weekday, where cron ORs them. `parse_fields` rewrites weekdays to names and refuses the combination; a test pins the Monday case. Never hand an expression to `CronTrigger.from_crontab`.
+- **Cadence is neutral across clock changes.** Around one, the wall clock and elapsed time disagree: a daily 03:00 is 24, 23 or 25 hours apart, and an hourly schedule is 2 hours apart on the wall clock across the spring change and runs twice at 02:00 across the autumn one. `analyse_cadence` measures the shortest gap in elapsed time, so an hourly schedule is not refused in a zone with daylight saving time, and takes the longest as the larger of each gap's smaller reading, so "daily" stays 24 hours and the retention floor and the overdue limit do not move with the season. Its loops step through real instants (`_after`), never `run + 1 s`: a zoned datetime forgets which side of a clock change it is on when it is added to, and the walk would go back into the hour that repeats. A time that does not exist on the day the clocks spring forward is shown where it happens (02:30 becomes 03:30).
+- **Known limit: the hour that repeats.** APScheduler 3.x runs a fixed time inside the hour the clocks repeat twice on that day (02:30 CEST and 02:30 CET). With the single-flight queue that is a second backup an hour later, once a year, and it is not worked around. `test_a_fixed_time_inside_the_repeated_hour_runs_twice_on_that_day` pins the behaviour, so a fixed APScheduler fails it and the note can go.
+- **The timezone is part of the schedule**, defaulting to the container's `TZ` and then UTC, and `tzdata` is a dependency so `zoneinfo` works on any base image and in tests on Windows.
+- **One margin everywhere.** *Overdue* is 1.5 times the longest gap between two runs, and the status strip, the catch-up at start and the retention guard all read the same `overdue_after`.
+- **Catch-up reads the catalogue, not memory.** The manager restarts on every upgrade, restore and reboot, and a memory job store cannot know a slot was missed. At start, if the newest restore point with `result == ok` is older than the limit, one run is queued 120 seconds later. A `partial` restore point is usable but is not a success.
+- **Retention is held back while the newest success is overdue.** `papaia-ctl backup` prunes after every run, a failed one included, and `prune()` keeps no last usable restore point, so a long series of failed backups would delete every good one. `plan_retention` passes `--retention-period-days` only while a recent `ok` point exists, and the job log says when it did not. In the schedule the retention is at least 1 day and at least twice the longest gap; `0` is not allowed.
+- **A damaged `schedule.yaml` is reported, never read as "no schedule".** `load_schedule` returns the reason, the page shows it, and `DELETE` clears the file.
+- **PUT and DELETE are refused while a restore or upgrade runner runs** (they replace `$PAPAIA_CONFIG_DIR`, and a schedule written meanwhile would be overwritten with the state being restored), and PUT is refused without a reachable backup directory. A restore also returns `schedule.yaml` to the state of the restored snapshot.
+- **`AsyncIOScheduler` binds to the loop it is created in**, so it is built in the startup hook, after the job queue, and a failure to start costs the schedule and not the manager. Its `shutdown()` runs a turn later and keeps reporting `running`, so `BackupScheduler.shutdown` is idempotent on its own flag.
+- **The scheduler assumes one process.** The image runs a single uvicorn worker; with `--workers` every worker would fire.
+- **The editor's preview is its validation.** `GET /partials/backup/schedule/preview` runs the same checks as the PUT, compiles the presets (daily, weekly, every N hours) to cron on the server and carries the result in hidden fields, so the page script holds no copy of those rules and Save sends what was previewed.
 
 ### Service group control
 

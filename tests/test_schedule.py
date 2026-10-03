@@ -151,11 +151,71 @@ def test_times_are_formatted_in_the_schedules_own_zone() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_a_daily_schedule_is_24_hours_apart_even_across_a_clock_change() -> None:
+def test_a_daily_schedule_is_24_hours_apart_by_the_wall_clock_across_a_clock_change() -> None:
+    """`longest` is what the schedule is *meant* to go without a backup, so it is the
+    wall-clock 24 hours however the clocks move. `shortest` is elapsed time, and on
+    the day the clocks spring forward two runs at 03:00 are only 23 hours apart."""
     cadence = schedule.analyse_cadence(
         "0 3 * * *", "Europe/Berlin", now=datetime(2026, 3, 1, tzinfo=UTC)
     )
-    assert cadence.shortest == cadence.longest == timedelta(hours=24)
+    assert cadence.longest == timedelta(hours=24)
+    assert cadence.shortest == timedelta(hours=23)
+
+
+@pytest.mark.parametrize("zone_name", ["Europe/Berlin", "America/New_York", "Australia/Sydney"])
+def test_an_hourly_schedule_is_one_hour_apart_even_where_the_clock_repeats_an_hour(
+    zone_name: str,
+) -> None:
+    """When the clocks go back the wall clock reads the same hour twice, and an hourly
+    schedule runs at both. Read off the wall clock those two runs are 0 apart; in
+    elapsed time they are the hour they always were."""
+    cadence = schedule.analyse_cadence("0 * * * *", zone_name, now=datetime(2026, 3, 1, tzinfo=UTC))
+    assert cadence.shortest == timedelta(hours=1)
+    assert cadence.longest == timedelta(hours=1)
+
+
+def test_the_next_runs_walk_forward_through_the_hour_the_clocks_repeat() -> None:
+    """On 2026-10-25 the clocks in Berlin go back from 03:00 to 02:00. An hourly
+    schedule runs at every real hour across that, 02:00 twice included, and the
+    list of next runs must not go backwards or repeat itself."""
+    runs = schedule.next_runs(
+        "0 * * * *", "Europe/Berlin", count=6, now=datetime(2026, 10, 24, 22, 30, tzinfo=UTC)
+    )
+    assert [run.astimezone(UTC) for run in runs] == [
+        datetime(2026, 10, 24, 23, 0, tzinfo=UTC),
+        datetime(2026, 10, 25, 0, 0, tzinfo=UTC),
+        datetime(2026, 10, 25, 1, 0, tzinfo=UTC),
+        datetime(2026, 10, 25, 2, 0, tzinfo=UTC),
+        datetime(2026, 10, 25, 3, 0, tzinfo=UTC),
+        datetime(2026, 10, 25, 4, 0, tzinfo=UTC),
+    ]
+
+
+def test_a_fixed_time_inside_the_repeated_hour_runs_twice_on_that_day() -> None:
+    """Known behaviour of APScheduler 3.x, documented in AGENTS.md and not worked
+    around: 02:30 happens twice on the day the clocks go back, and a daily 02:30
+    schedule runs at both. With the single-flight queue that is a second backup an
+    hour later, once a year. If this starts failing, APScheduler has changed and the
+    note can go."""
+    runs = schedule.next_runs(
+        "30 2 * * *", "Europe/Berlin", count=3, now=datetime(2026, 10, 24, 22, 0, tzinfo=UTC)
+    )
+    instants = [run.astimezone(UTC) for run in runs]
+    assert instants[1] - instants[0] == timedelta(hours=1)
+    assert instants[2] - instants[1] == timedelta(hours=24)
+
+
+@pytest.mark.parametrize("zone_name", ["Europe/Berlin", "America/New_York", "Australia/Sydney"])
+@pytest.mark.parametrize("cron", ["0 * * * *", "30 */2 * * *", "0 */3 * * *"])
+def test_an_hourly_schedule_is_accepted_in_a_zone_with_daylight_saving(
+    zone_name: str, cron: str
+) -> None:
+    assert schedule.build_schedule(cron=cron, timezone=zone_name).cron == cron
+
+
+def test_runs_closer_than_an_hour_are_still_refused_in_a_zone_with_daylight_saving() -> None:
+    with pytest.raises(ScheduleError, match="more often than once an hour"):
+        schedule.build_schedule(cron="0,30 * * * *", timezone="Europe/Berlin")
 
 
 def test_an_uneven_schedule_has_a_shortest_and_a_longest_gap() -> None:

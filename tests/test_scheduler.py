@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -112,6 +112,14 @@ async def sched(env: _Env) -> AsyncIterator[scheduler.BackupScheduler]:
     created = scheduler.BackupScheduler(env.settings, env.queue)
     yield created
     created.shutdown()
+
+
+async def _until(condition: Callable[[], object], *, seconds: float = 5.0) -> None:
+    """Wait for something APScheduler does on its own, a poll at a time."""
+    deadline = asyncio.get_running_loop().time() + seconds
+    while not condition():
+        assert asyncio.get_running_loop().time() < deadline, "the scheduler never got there"
+        await asyncio.sleep(0.05)
 
 
 def _flags(env: _Env) -> list[str]:
@@ -519,3 +527,67 @@ async def test_a_weekly_schedule_is_not_called_overdue_after_a_day(
     env.save(cron="0 3 * * mon")  # overdue after 10.5 days
     sched.start()
     assert _catchup_job(sched) is None
+
+
+# ---------------------------------------------------------------------------
+# Through APScheduler itself
+#
+# Everything above calls `fire()`. These let the scheduler's own machinery run the
+# job -- a bound coroutine on the event loop, from a date trigger -- with the
+# delays shortened to a fraction of a second.
+# ---------------------------------------------------------------------------
+
+
+async def test_a_retry_is_really_run_by_the_scheduler_and_then_starts_the_backup(
+    env: _Env, sched: scheduler.BackupScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(scheduler, "RETRY_DELAY", timedelta(milliseconds=150))
+    env.save()
+    env.set_env("PAPAIA_HOST=https://papaia.test\n")  # no backup directory: the run is skipped
+    sched.start()
+    assert await sched.fire() == "retry"
+    assert env.queue.active_job() is None
+
+    env.set_env(f"PAPAIA_BACKUP_DIR={env.backup_dir}\n")  # the mount comes back
+    await _until(lambda: env.queue.active_job() is not None)
+
+    job = env.queue.active_job()
+    assert job is not None
+    assert (job.action, job.user) == ("backup", "scheduler")
+    assert _retry_job(sched) is None  # a one-shot job is gone once it has run
+
+
+async def test_a_missed_run_is_really_made_up_by_the_scheduler_after_the_start(
+    env: _Env, sched: scheduler.BackupScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(scheduler, "CATCHUP_DELAY", timedelta(milliseconds=150))
+    env.catalogue((timedelta(days=3), "ok"))
+    env.save()
+
+    sched.start()
+    assert env.queue.active_job() is None
+    await _until(lambda: env.queue.active_job() is not None)
+
+    job = env.queue.active_job()
+    assert job is not None
+    assert (job.action, job.user) == ("backup", "scheduler")
+    assert _catchup_job(sched) is None
+
+
+async def test_the_scheduled_job_runs_the_same_fire_the_tests_call(
+    env: _Env, sched: scheduler.BackupScheduler
+) -> None:
+    """The job APScheduler holds for the cron trigger is `_on_schedule`; running it
+    through the executor starts a backup, so the wiring between trigger and `fire`
+    is not just the test calling `fire` itself."""
+    env.catalogue((timedelta(hours=5), "ok"))
+    env.save()
+    sched.start()
+    job = sched._scheduler.get_job(scheduler.JOB_ID)  # noqa: SLF001
+    assert job is not None
+
+    await job.func()
+
+    active = env.queue.active_job()
+    assert active is not None
+    assert active.user == "scheduler"

@@ -249,6 +249,17 @@ def build_trigger(expression: str, timezone: str) -> CronTrigger:
     return _trigger(parse_fields(expression), zone(timezone))
 
 
+def _after(run: datetime) -> datetime:
+    """A moment just past `run`, as an instant in UTC.
+
+    The scheduler hands its triggers the real time, an instant that only moves
+    forward. Adding a second to `run` itself would not do that: a datetime in a zone
+    forgets which side of a clock change it is on when it is added to, so an hour
+    that occurs twice would be walked back into and the same runs listed again.
+    """
+    return run.astimezone(UTC) + timedelta(seconds=1)
+
+
 def next_runs(
     expression: str, timezone: str, *, count: int = 3, now: datetime | None = None
 ) -> list[datetime]:
@@ -260,7 +271,7 @@ def next_runs(
     """
     tz = zone(timezone)
     trigger = _trigger(parse_fields(expression), tz)
-    current = (now or datetime.now(UTC)).astimezone(tz)
+    current = (now or datetime.now(UTC)).astimezone(UTC)
     runs: list[datetime] = []
     previous: datetime | None = None
     while len(runs) < count:
@@ -269,13 +280,19 @@ def next_runs(
             break
         runs.append(upcoming.astimezone(UTC).astimezone(tz))
         previous = upcoming
-        current = upcoming + timedelta(seconds=1)
+        current = _after(upcoming)
     return runs
 
 
 @dataclass(frozen=True)
 class Cadence:
-    """The shortest and the longest gap between two consecutive runs."""
+    """The shortest and the longest gap between two consecutive runs.
+
+    The two are measured differently, on purpose. `shortest` is elapsed time and
+    answers "may backups run this close together". `longest` answers "how long is
+    this schedule meant to go without one" and is the same however the clocks move
+    (see `analyse_cadence`).
+    """
 
     shortest: timedelta
     longest: timedelta
@@ -284,13 +301,22 @@ class Cadence:
 def analyse_cadence(expression: str, timezone: str, *, now: datetime | None = None) -> Cadence:
     """Sample the expression and measure the gaps between its runs.
 
-    Gaps are wall-clock: two runs at 03:00 on either side of a clock change are
-    24 hours apart, as the person who wrote "daily" means it, not 23 or 25. The
-    subtraction of two datetimes that share a zone does exactly that.
+    Two readings of a gap disagree around a clock change. Two runs at 03:00 on
+    either side of it are 24 hours apart on the wall clock and 23 or 25 elapsed.
+    An hourly schedule runs at 01:00 and 03:00 across the spring change, 2 hours on
+    the wall clock and 1 elapsed, and twice at 02:00 across the autumn one, 0 on the
+    wall clock and 1 elapsed. Subtracting two datetimes that share a zone gives the
+    wall-clock reading; converting them to UTC first gives the elapsed one.
+
+    The shortest gap is the elapsed one, the hour an hourly schedule really has,
+    so that it is not refused in any zone with daylight saving time. The longest is
+    the larger of the gaps' smaller readings: "daily" stays 24 hours and "hourly"
+    stays 1 whatever the season, so the retention floor and the overdue limit built
+    on it do not move with it either.
     """
     tz = zone(timezone)
     trigger = _trigger(parse_fields(expression), tz)
-    moment = (now or datetime.now(UTC)).astimezone(tz)
+    moment = (now or datetime.now(UTC)).astimezone(UTC)
     horizon = moment + _CADENCE_HORIZON
     runs: list[datetime] = []
     previous: datetime | None = None
@@ -301,11 +327,16 @@ def analyse_cadence(expression: str, timezone: str, *, now: datetime | None = No
             break
         runs.append(upcoming)
         previous = upcoming
-        current = upcoming + timedelta(seconds=1)
+        current = _after(upcoming)
     if len(runs) < 2:
         raise ScheduleError("This expression runs less than twice in two years.")
-    gaps = [later - earlier for earlier, later in zip(runs, runs[1:], strict=False)]
-    return Cadence(shortest=min(gaps), longest=max(gaps))
+    pairs = list(zip(runs, runs[1:], strict=False))
+    elapsed = [later.astimezone(UTC) - earlier.astimezone(UTC) for earlier, later in pairs]
+    wall_clock = [later - earlier for earlier, later in pairs]
+    return Cadence(
+        shortest=min(elapsed),
+        longest=max(min(wall, real) for wall, real in zip(wall_clock, elapsed, strict=True)),
+    )
 
 
 @lru_cache(maxsize=64)
