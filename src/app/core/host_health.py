@@ -23,11 +23,14 @@ Five decisions here are load-bearing:
   percentage, and the percentage shown here is arithmetic for the eye only: it
   never decides a colour. The same goes for memory, CPU and VRAM, where the
   reason for a warning is only in the core's own sentence, which is shown as is.
-* A location the container cannot see is reported as not measured, never as
-  empty. The Docker data root is the usual one -- the manager mounts the config
-  and backup directories, not `/var/lib/docker`, and `doctor` says so itself. A
-  `skip` from the core (the GPU and the clock inside this container, today) is
-  the same thing: a row that says so, with no verdict.
+* What the container cannot see is reported as not measured, never as empty. A
+  `skip` from the core (the GPU and the clock inside this container, from a core
+  that cannot read them there) is a row that says so, with no verdict. The free
+  space of the Docker data root is the one thing that gets no row at all: the
+  manager does not mount `/var/lib/docker`, so a row could only say "not
+  measurable", which read as a hole. What Docker holds is shown by
+  `app.core.docker_usage` instead, and a data root `doctor` can measure is an
+  ordinary disk row.
 * Not knowing is not the same as knowing it is bad. A core without `doctor`, a
   run that timed out and an answer that does not parse all come back as
   `available=False` with a reason, and every consumer leaves them out of the
@@ -250,10 +253,6 @@ class HostHealth:
     @property
     def issue_count(self) -> int:
         return self.warn_count + self.critical_count
-
-    @property
-    def docker_root_measured(self) -> bool:
-        return any(c.key == "docker_root" for c in self.disks)
 
     @property
     def resources_measured(self) -> int:

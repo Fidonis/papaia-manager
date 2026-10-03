@@ -2,9 +2,10 @@
 
 `doctor`'s `docker_usage` check reads `docker system df` and says how much of the
 disk the images, containers, volumes and build cache hold, and how much of that
-the daemon calls reclaimable. It is the answer to what is in the "Docker data" the
-Host page cannot measure the free space of: the manager container does not mount
-`/var/lib/docker`, but the daemon reports the same over the socket it does mount.
+the daemon calls reclaimable. It stands in for the free space of the Docker data
+root, which the Host page cannot measure and so does not list: the manager
+container does not mount `/var/lib/docker`, but the daemon reports what is in it
+over the socket the container does mount.
 
 It is measured apart from the rest of the Host page, because it is the one check
 that costs real work. The daemon sizes every volume to answer, which took a second

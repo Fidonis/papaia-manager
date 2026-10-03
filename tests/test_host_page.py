@@ -129,6 +129,7 @@ def _doc(
     backup_status: str = "warn",
     cert_status: str = "warn",
     resources: list[dict[str, Any]] | None = None,
+    docker_root: bool = False,
 ) -> str:
     return json.dumps(
         {
@@ -156,6 +157,20 @@ def _doc(
                                 "total_bytes": 100 * _GIB,
                                 "status": backup_status,
                             },
+                            # Only where the core can see the data root itself.
+                            *(
+                                [
+                                    {
+                                        "label": "docker_root",
+                                        "path": "/var/lib/docker",
+                                        "free_bytes": 80 * _GIB,
+                                        "total_bytes": 200 * _GIB,
+                                        "status": "pass",
+                                    }
+                                ]
+                                if docker_root
+                                else []
+                            ),
                         ],
                         "notes": [],
                     },
@@ -448,10 +463,9 @@ def test_the_partial_lists_what_docker_holds_when_the_core_can_say(
     assert "53 total · 31 active" in body
     assert "25.53 GB" in body
     assert "<code>docker system df</code>" in body
-    # The free space of the data root is still not measurable, and the row says
-    # where what Docker holds can be read instead.
-    assert "Not measurable from this panel; only the host can see how much room is left" in body
-    assert "What Docker holds is listed below" in body
+    # The free space of the data root is not measurable from here, and there is no
+    # row that says so next to what Docker holds: it would read as a hole.
+    assert "Docker data" not in body
     assert "aria-label=\"Volumes share of Docker's data\"" in body
 
 
@@ -465,7 +479,6 @@ def test_a_core_without_the_docker_usage_check_has_no_such_section_and_no_run(
     body = _as(client, "admin").get("/partials/host").text
 
     assert "Docker usage" not in body
-    assert "What Docker holds is listed below" not in body
     assert stub.calls == 0
 
 
@@ -479,7 +492,6 @@ def test_docker_usage_that_could_not_be_read_is_a_note_and_the_rest_of_the_page_
     body = _as(client, "admin").get("/partials/host").text
 
     assert "Docker usage is not available: docker system df failed: no daemon" in body
-    assert "What Docker holds is listed below" not in body
     # What the host reading carries is all still there.
     assert "Config disk" in body
     assert "Backup disk" in body
@@ -568,15 +580,33 @@ def test_the_partial_lists_disks_and_certificates_with_the_cores_verdicts(
     assert "3412 days" in body
 
 
-def test_a_docker_root_the_panel_cannot_see_is_said_so_in_the_list(
+def test_a_docker_root_the_panel_cannot_see_gets_no_row_and_no_hint(
     client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # A row that only said "not measurable" read as a hole where the reading
+    # belonged. There is none, and the header does not point at the gap either.
     _prime(monkeypatch, workspace, _doc())
 
     body = _as(client, "admin").get("/partials/host").text
 
+    assert "Docker data" not in body
+    assert "only the host can see" not in body
+    assert "not visible" not in body
+    assert "Disk space" in body
+    assert "2 measured" in body
+
+
+def test_a_docker_root_the_core_can_measure_is_an_ordinary_disk_row(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prime(monkeypatch, workspace, _doc(docker_root=True))
+
+    body = _as(client, "admin").get("/partials/host").text
+
     assert "Docker data" in body
-    assert "Not measurable from this panel" in body
+    assert "/var/lib/docker" in body
+    assert "80.0 GiB free of 200 GiB" in body
+    assert "3 measured" in body
 
 
 def test_a_critical_check_is_drawn_as_critical(

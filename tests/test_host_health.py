@@ -239,14 +239,15 @@ def test_disk_rows_get_readable_labels_and_the_path_as_detail() -> None:
         ("Backup disk", "/srv/b"),
         ("Docker data", "/var/lib/docker"),
     ]
-    assert health.docker_root_measured
 
 
-def test_a_docker_root_the_container_cannot_see_is_not_measured_rather_than_empty() -> None:
+def test_a_docker_root_the_container_cannot_see_is_not_a_row_rather_than_an_empty_one() -> None:
+    # The core leaves it out of `paths` and says so in `notes`. The panel adds no
+    # row of its own for it: what Docker holds is shown by `docker_usage` instead.
     health = parse_doctor(_doctor(paths=[_disk("config_dir", "/c", 10, 20, "pass")]))
 
-    assert not health.docker_root_measured
     assert [d.key for d in health.disks] == ["config_dir"]
+    assert health.notes == ()
 
 
 def test_certificates_are_named_by_domain_or_file_and_sorted_worst_first() -> None:

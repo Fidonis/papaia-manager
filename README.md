@@ -148,10 +148,12 @@ and Let's Encrypt). The manager measures nothing itself. It runs the core's
 shell on the host cannot disagree about a threshold. That needs a core that has
 `doctor` (1.4.0 or newer); on an older one the page says so and the status row
 carries on without a Host row, and a 1.4.0 core that predates a resource check
-simply has no row for it. A check the core skips is listed as not measurable
-instead of being left out: that is the Docker data root (the manager container
-sees the config and backup directories, not `/var/lib/docker`) and, with a core that
-cannot read them inside a container, the GPU and the clock. A reading is
+simply has no row for it. A resource check the core skips is listed as not
+measurable instead of being left out: with a core that cannot read them inside a
+container, that is the GPU and the clock. The free space of the Docker data root
+has no row while the manager cannot see it (the container mounts the config and
+backup directories, not `/var/lib/docker`); "Docker usage" says what Docker holds
+instead. A reading is
 cached for the refresh interval and shared between everyone who has a page open;
 the page shows the interval and links to Settings, where it is set, and its
 Re-check button asks for a fresh reading. What Docker's data takes (images,

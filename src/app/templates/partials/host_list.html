@@ -11,8 +11,14 @@
    own limits for memory, CPU and VRAM), never a threshold of this page's own.
 
    A resource the core could not read (`skip`) is a row that says so and carries
-   no verdict, like the Docker data row below. It is in the section, not in a
-   note, so the gap is visible where the reading would have been.
+   no verdict. It is in the section, not in a note, so the gap is visible where
+   the reading would have been.
+
+   The free space of the Docker data root has no row of its own while the manager
+   cannot see it (it does not mount /var/lib/docker): a row that only said "not
+   measurable" read as a hole where the reading belonged, and what Docker holds is
+   listed under "Docker usage" instead. Where the data root can be measured, the
+   core reports it and it is an ordinary disk row.
 
    Classes are spelled out per branch rather than assembled from a variable:
    app.css is built by scanning these templates, and a computed class name would
@@ -152,7 +158,7 @@
 
 {# ── Disk space ──────────────────────────────────────────────────── #}
 {% if host.disks %}
-{{ section_header("Disk space", host.disks | length ~ (" measured" if host.docker_root_measured else " measured, Docker data not visible")) }}
+{{ section_header("Disk space", host.disks | length ~ " measured") }}
 <div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   {% for disk in host.disks %}
   {% set st = disk.state | string %}
@@ -192,17 +198,6 @@
     </div>
   </div>
   {% endfor %}
-
-  {# The Docker data root is the usual absentee: the manager mounts the config and
-     backup directories, not /var/lib/docker, and the core says as much itself.
-     Saying so beats leaving a gap that looks like a forgotten row. #}
-  {% if not host.docker_root_measured %}
-  <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 border-base-300 border-t border-l-4 border-l-base-300 bg-base-200/50">
-    {{ dot('unknown') }}
-    <p class="text-sm font-semibold md:w-52">Docker data</p>
-    <p class="text-xs opacity-60">Not measurable from this panel; only the host can see how much room is left{% if usage and usage.available %}. What Docker holds is listed below{% endif %}.</p>
-  </div>
-  {% endif %}
 </div>
 {% endif %}
 
