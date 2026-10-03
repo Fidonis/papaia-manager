@@ -18,6 +18,8 @@ A sixth surface, Audit (`/audit`), reads, exports and prunes the audit log the o
 
 A seventh surface, Host (`/host`), reports memory, CPU, GPU, clock synchronisation, disk space and certificate expiry of the machine underneath the deployment, and what Docker's data takes. It measures nothing itself: it runs the core's `doctor` for the six checks it needs, and in a run of its own for `docker_usage`, and shows the core's verdicts (see the Host health section below). How often it measures is a setting (Settings, "Host monitoring"). Admin-only, like Services; the sidebar status row carries its counts to every role.
 
+An eighth surface, Settings (`/settings`), holds the manager's own configuration in `$PAPAIA_CONFIG_DIR/manager/settings.yaml`, one section per topic: Branding (the name and second line at the top of the sidebar, and an uploaded logo) and Host monitoring (the interval of the Host page's measurements). Admin-only and CSRF-checked like every other mutating route, with every change audited; the logo is the one thing every role fetches, because the sidebar shows it (see the Settings and branding section below).
+
 A fourth surface, Services, reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. The page also drives lifecycle: one Compose profile at a time via `papaia-ctl start`/`stop --profiles=`, several profiles at once, or the whole stack in a detached container (see the Service group control section below). The same snapshot drives the status row in the sidebar of every page, for every authenticated role; its popover keeps the core stack and the add-ons apart and adds a row for the host.
 
 That snapshot is also the single Docker reading behind the add-on surfaces: `state.compute_status` takes its set of running Compose projects from `StackSnapshot.running_projects` rather than issuing a `docker ps` of its own, so `/addons` and `/services` cannot disagree about whether an add-on is up.
@@ -89,6 +91,8 @@ papaia-manager/
 │       │   ├── api_maintenance.py # /api/v1/maintenance — backup, restore, backup schedule
 │       │   ├── api_upgrade.py  # /api/v1/upgrade — release check, core upgrade, image cleanup
 │       │   ├── api_audit.py    # /api/v1/audit — read, export, prune
+│       │   ├── api_stack.py    # /api/v1/stack — service groups and whole-stack actions
+│       │   ├── api_settings.py # /api/v1/settings — branding, host monitoring; GET /brand/logo
 │       │   └── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
@@ -271,6 +275,20 @@ Consequences worth remembering when touching this area:
 - **`doctor` is in `ALLOWED_PY_COMMANDS`.** It is read-only by the core's own contract; `tests/test_ctl.py` pins the set.
 
 Known limits: no history (that is what an observability stack is for), no GPU figures and no clock state from inside the manager container from a core that cannot read them there, the free space of the Docker data root (it is not mounted; what Docker holds is shown instead), memory and CPU figures that are the host's own (`/proc/meminfo` and the load average are not namespaced) and not those of any container limit, and thresholds that cannot be tuned from here. Memory, CPU and the clock change faster than disk and certificates, but all of them share one run and one interval.
+
+### Settings and branding
+
+The manager's own configuration is one document, `$PAPAIA_CONFIG_DIR/manager/settings.yaml` (`core/settings_store.py`), with one top-level section per topic: `branding` and `host` today. The uploaded logo lives next to it in `manager/branding/`, so both travel with a backup and come back with a restore. Without the file nothing changes: every field has a default, and the sidebar looks as it always did.
+
+Consequences worth remembering when touching this area:
+
+- **A reading never fails.** A missing file, a missing section, an unreadable document or a section written by a newer release yields defaults, and unknown keys are ignored on read and dropped on the next save. `effective_branding` is what the sidebar renders and it never raises; a settings problem must not take the page down.
+- **`None` is not empty.** In `branding`, `None` means "use the built-in default" and an empty tagline is a deliberate "show no second line". `validate_branding` keeps the two apart: a blank name falls back to the default, a blank tagline hides the line.
+- **The API is strict, the file is clamped.** `host.refresh_seconds` read from the file is clamped to 10 s to 60 min (and a non-number becomes the default), because a pydantic error would send `load_settings` back to the defaults for the whole document and reset the branding over a number somebody edited by hand. `PUT /api/v1/settings/host` refuses an out-of-range value with a 422 instead.
+- **Stale writes are refused.** `revision` is the SHA-256 of the file's bytes (empty when there is none). Saving the branding text, resetting it and saving the host interval carry the revision the page was loaded with and answer 409 when it no longer matches. Uploading and deleting the logo do not. Writes go through a temporary file and a rename.
+- **The logo type is decided by its bytes.** `save_logo` looks at magic bytes (PNG, JPEG, WebP, SVG) and ignores the client's filename and `Content-Type`. At most 512 KB are read, one byte past the cap so an oversized body is refused without being buffered. An SVG that contains a script, `foreignObject`, an event handler, `javascript:`, an entity declaration or an `iframe` is refused at upload.
+- **The logo is served defensively.** `GET /brand/logo` is open to every signed-in role, since the sidebar shows it to all of them, and answers with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, so an SVG opened directly by URL cannot run anything. The URL carries the stored filename (`?v=`), which changes with the content, so the one-day private cache cannot show a stale logo.
+- **Every change is audited** as `settings.branding.update`, `settings.branding.logo.upload`, `settings.branding.logo.delete`, `settings.branding.reset` or `settings.host.update`, with target `settings`.
 
 ---
 
