@@ -10,7 +10,9 @@ papaia-manager is a web-based control plane for the papAIa stack's addon lifecyc
 
 It also serves the stack dashboard: a tile overview of the deployed applications, held in `manager/tiles.yaml` in the papAIa config directory and editable in place by administrators.
 
-When the core's optional RAG system is active (profile `rag` in the core `.env`'s `COMPOSE_PROFILES`), administrators also get a computed "RAG" tile group on the dashboard (Qdrant, Qdrant Ingest) and a "RAG" category in the sidebar (links to the same two web interfaces, opened in a new tab). `core/rag.py` owns this: it reads the profile and the two URLs `QDRANT_PUBLIC_URL` and `QDRANT_INGEST_PUBLIC_URL` and never tests whether the URL keys exist, because the core keeps them while the profile is off. The tiles are added in `_gather_tiles` at render time and are not persisted to `tiles.yaml`; the sidebar reads the `rag_nav` Jinja global (`templating.py`) and gates the whole category wrapper, so no empty caption remains.
+When the core's optional RAG system is active (profile `rag` in the core `.env`'s `COMPOSE_PROFILES`), administrators also get a computed "RAG" tile group on the dashboard (Qdrant, Qdrant Ingest) and a "RAG" category in the sidebar (a Collections page, and links to the same two web interfaces, opened in a new tab). `core/rag.py` owns this: it reads the profile and the two URLs `QDRANT_PUBLIC_URL` and `QDRANT_INGEST_PUBLIC_URL` and never tests whether the URL keys exist, because the core keeps them while the profile is off. The tiles are added in `_gather_tiles` at render time and are not persisted to `tiles.yaml`; the sidebar gates the whole category wrapper on the profile alone (`rag_enabled`, `templating.py`) and takes the two links from the `rag_nav` Jinja global, so no empty caption remains and a missing URL key does not hide the Collections page.
+
+Another surface, Collections (`/collections`), manages the Qdrant collections of the RAG system and the Keycloak roles that may use them: list, create and delete collections, and keep any number of role names with the access level `r` or `rw` per collection. It is admin-only and exists only while the `rag` profile is active (a 404 otherwise, after the role check). The roles are stored in the format `qdrant-mcp-rbac` defines, so the MCP server enforces them unchanged (see the RAG collections section below).
 
 A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). The same page schedules backups from inside the manager (see Backup schedule below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
@@ -64,7 +66,12 @@ papaia-manager/
 │       │   │                   #   add-on gate, migration plan, runner-log phases
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
 │       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering, validation
-│       │   ├── rag.py          # Optional RAG system (core profile `rag`): computed tiles, sidebar links
+│       │   ├── rag.py          # Optional RAG system (core profile `rag`): computed tiles, sidebar links,
+│       │   │                   #   the RAG module's settings (`rag_backend`)
+│       │   ├── qdrant.py       # Async REST client for Qdrant: api-key header, Qdrant's error shape,
+│       │   │                   #   "unavailable" told apart from "this request failed"
+│       │   ├── rag_collections.py # Collections and their roles in the format of qdrant-mcp-rbac:
+│       │   │                   #   point ids, ACL and meta payloads, create/delete/set_roles
 │       │   ├── settings_store.py # settings.yaml (one section per topic: branding, host) + logo files
 │       │   ├── host_health.py  # Memory, CPU, GPU, clock, disk space + certificate expiry via the
 │       │   │                   #   core's `doctor`; cached for the configured interval,
@@ -96,7 +103,9 @@ papaia-manager/
 │       │   ├── api_audit.py    # /api/v1/audit — read, export, prune
 │       │   ├── api_stack.py    # /api/v1/stack — service groups and whole-stack actions
 │       │   ├── api_settings.py # /api/v1/settings — branding, host monitoring; GET /brand/logo
-│       │   └── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
+│       │   ├── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
+│       │   ├── api_collections.py # /api/v1/rag/collections — Qdrant collections and their roles
+│       │   └── rag_deps.py     # RagAdmin (admin + `rag` profile) and the per-request CollectionStore
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
 │       │       ├── _addon_controls.html      # Per-addon action buttons (install/start/stop/...)
@@ -106,6 +115,7 @@ papaia-manager/
 │       │       ├── backup_schedule.html      # Schedule and last-backup strip (backup page)
 │       │       ├── backup_schedule_preview.html # Schedule editor: live validation and next runs
 │       │       ├── catalog_list.html         # Catalog table rows
+│       │       ├── collection_list.html      # Collections page body: collections, roles, dialogs, or why not
 │       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
 │       │       ├── job_status.html           # Polled job progress/log fragment
 │       │       ├── restore_point_list.html   # Restore point cards
@@ -293,6 +303,26 @@ Consequences worth remembering when touching this area:
 - **The logo is served defensively.** `GET /brand/logo` is open to every signed-in role, since the sidebar shows it to all of them, and answers with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, so an SVG opened directly by URL cannot run anything. The URL carries the stored filename (`?v=`), which changes with the content, so the one-day private cache cannot show a stale logo.
 - **Every change is audited** as `settings.branding.update`, `settings.branding.logo.upload`, `settings.branding.logo.delete`, `settings.branding.reset` or `settings.host.update`, with target `settings`.
 
+### RAG collections
+
+The page and its API (`/collections`, `/api/v1/rag/collections`) write to the RAG system's Qdrant as the global api-key holder, so the only authorization is `AdminUser` and the CSRF check. Qdrant is reached through `core/qdrant.py` (plain `httpx`, no `qdrant-client`), and `core/rag_collections.py` holds the storage contract of `qdrant-mcp-rbac`. Nothing on the MCP server's side pins that contract, so `tests/test_rag_collections.py` does, against literals computed with its code.
+
+Consequences worth remembering when touching this area:
+
+- **The roles are in the ACL collection, not in the meta collection.** `_rbac_acl` holds one point per (role, collection): id `uuid5(8c9f3b0e-4a5d-4d0a-9f1e-7d6c5b2a1f00, "<role>|<collection>")`, vector `[0.0]`, payload `{role, collection, access, doc_policy}` with `doc_policy` an explicit `null`. `_collection_meta` holds one point per collection, `{collection, embedding_model, vector_dimension}`, id `uuid5(9e3a5c2f-8b7d-4f1e-a6b3-2d8c9e4f1a02, "<collection>")`, and no roles. The MCP server skips a point it cannot parse without a word, so a payload that does not match exactly is a grant that silently does not exist. Its own `AGENTS.md` states the id formula differently; its code is authoritative.
+- **Access levels.** `r` and `rw` are per collection. `m` is global manage: the MCP server returns a manage token for any role that holds one, whatever the `collection` field says, and `*` is only the convention. The page lists those under "Access to every collection" and never edits them, and neither lists nor deletes an `m` grant that names a collection.
+- **Nothing cascades in Qdrant, and the ids are deterministic.** Deleting a collection leaves its meta point and its grants behind, and re-creating the name would revive the grants. `delete` removes all three and is idempotent, so a delete that stopped half-way is finished by repeating it. `create` removes what it wrote if a step after the collection exists fails.
+- **An access change keeps `doc_policy`.** The policy is not edited here, but another tool may have set it; a changed point keeps its id and its policy, and an unchanged role is not written again.
+- **The ingest operator role is never listed per collection.** It always has access to every collection, so it is shown locked, refused in a role list (422), and its `r`/`rw` points are hidden. A global `m` grant `(role, "*", "m")` makes the MCP server treat it as manage; it is written with every change and from the banner when it is missing. Changing `QI_OIDC_OPERATOR_ROLE` does not remove the grant of the old name, and the Keycloak realm still only knows `qdrant-ingest-operator`.
+- **Names come from two places that the core does not tie together.** The MCP server reads `EMBEDDING_META_COLLECTION` and `RBAC_ACL_COLLECTION`, the ingester `QI_EMBED_META_COLLECTION` and `QI_RBAC_ACL_COLLECTION`; the manager follows the MCP server's name first and warns when the two disagree. The core passes none of them on to the MCP server, so a changed name takes effect for the ingester only. Until it does, changing the names is not supported.
+- **A collection created without a model is open to any model.** The ingester writes the meta point at the end of its first run and refuses a later run whose model differs from a recorded one. Creating with a model makes it text-searchable through the MCP server straight away, and binds ingest jobs to that model.
+- **System collections are invisible.** The two configured names are never listed, created, deleted or given roles. A new collection cannot start with an underscore, which the services reserve for theirs. Collections the ingester created may have names this page would not accept, so deleting and editing roles accept any existing name.
+- **Role names are exact.** The MCP server matches them case-sensitively against the realm and client roles of the token. They are trimmed, but not otherwise changed, and `|` is refused because it separates role and collection in the point id.
+- **The profile is checked after the role.** `RagAdmin` resolves `AdminUser` first, so a signed-out browser still gets the login redirect and a non-admin the 403; only an administrator on a deployment without the profile gets the 404.
+- **Qdrant being unavailable is a state, not an error.** An unreachable Qdrant, a refused key and a missing key become a reason on the page (`CollectionsView.available`), and a write answers 503. The api-key is never part of a message, a log line or an audit entry. A collection that disappears between the listing and its detail call is still listed, without numbers.
+- **Every change is audited** as `rag.collection.create`, `rag.collection.delete`, `rag.collection.roles.update` or `rag.collection.operator-grant`, with the collection as target (`*` for the grant). The grant is audited only when it was actually written.
+- **Verified against the real code.** The grants and meta points the manager writes were read back with `qdrant-mcp-rbac`'s own loader and token builder (including the operator role resolving to global manage), and `qdrant-ingest`'s writer accepted the collections and enforced model and dimension, against a throwaway Qdrant. Repeat this when either contract changes.
+
 ---
 
 ## Engineering conventions
@@ -369,6 +399,14 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `MANAGER_SESSION_SECRET` | itsdangerous session signing secret |
 | `PAPAIA_CONFIG_DIR` | Path to papAIa config directory (must equal host path in container) |
 | `PAPAIA_WORKSPACE_DIR` | Path to papAIa workspace (must equal host path in container) |
+| `QDRANT_URL` | Address of the RAG system's Qdrant, used by the Collections page (default: `http://qdrant:6333`, which resolves on the network the manager shares with it) |
+
+The Collections page reads the rest of its settings from the RAG module's `.env`
+(`$PAPAIA_CONFIG_DIR/ai/rag/.env`) at request time, not from the manager's
+environment: `QDRANT_JWT_SECRET` (the api-key), `EMBEDDING_META_COLLECTION` or
+`QI_EMBED_META_COLLECTION`, `RBAC_ACL_COLLECTION` or `QI_RBAC_ACL_COLLECTION`, and
+`QI_OIDC_OPERATOR_ROLE`. A missing key means the services' own default
+(`_collection_meta`, `_rbac_acl`, `qdrant-ingest-operator`).
 
 `PAPAIA_BACKUP_DIR` is **not** a manager setting: the backup location belongs to
 the stack, so it is read from `$PAPAIA_CONFIG_DIR/.env` at request time and the

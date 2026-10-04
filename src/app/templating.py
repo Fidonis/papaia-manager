@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 
 from app.config import get_settings
-from app.core.rag import RagLink, rag_links
+from app.core.rag import RagLink, rag_active, rag_links
 from app.core.settings_store import EffectiveBranding, effective_branding
 
 templates = Jinja2Templates(directory="app/templates")
@@ -103,3 +103,20 @@ def rag_nav(context: dict[str, object]) -> list[RagLink]:
 
 
 templates.env.globals["rag_nav"] = rag_nav
+
+
+@pass_context
+def rag_enabled(context: dict[str, object]) -> bool:
+    """Whether the core runs the RAG system; what the sidebar category hangs off.
+
+    Separate from `rag_nav`: the category holds a page of the manager next to the two
+    links, and it must not disappear because a URL key behind a link is missing.
+    """
+    request = context.get("request")
+    resolver = get_settings
+    if isinstance(request, Request):
+        resolver = request.app.dependency_overrides.get(get_settings, get_settings)
+    return rag_active(resolver().papaia_config_dir)
+
+
+templates.env.globals["rag_enabled"] = rag_enabled

@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Collections — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Collections{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Qdrant collections of the RAG system and the Keycloak roles that may use them</p>{% endblock %}
+
+{# Tier 1: one filled primary, one outline secondary. The dialogs live in the
+   list partial, so the button finds none while Qdrant cannot be reached. #}
+{% block page_actions %}
+<button type="button"
+        class="btn btn-outline btn-sm"
+        hx-get="/partials/collections"
+        hx-target="#collection-list"
+        hx-swap="innerHTML"
+        hx-disabled-elt="this">
+  Refresh
+</button>
+<button type="button"
+        class="btn btn-primary btn-sm"
+        onclick="var d = document.getElementById('create-collection-modal'); if (d) d.showModal()">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+  </svg>
+  New collection
+</button>
+{% endblock %}
+
+{% block content %}
+<div
+  id="collection-list"
+  hx-get="/partials/collections"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+
+<script>
+// Collection and role names are free text, and showToast takes markup.
+function _collEscape(text) {
+  return String(text).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+async function _collError(r) {
+  try {
+    const e = await r.json();
+    if (typeof e.detail === 'string') return e.detail;
+    if (Array.isArray(e.detail)) return e.detail.map(function (d) { return d.msg || JSON.stringify(d); }).join('; ');
+    return JSON.stringify(e);
+  } catch (_) {
+    return String(r.status);
+  }
+}
+
+// {ok, data} on success, {ok: false, error} on a refusal, {ok: false, handled: true}
+// when the session expired and the page is already reloading.
+async function _collRequest(method, url, body) {
+  const r = await fetch(url, {
+    method: method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': document.querySelector('meta[name=csrf]').content,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (_authGuard(r)) return { ok: false, handled: true };
+  if (!r.ok) return { ok: false, error: await _collError(r) };
+  return { ok: true, data: r.status === 204 ? null : await r.json() };
+}
+
+function reloadCollections() {
+  htmx.ajax('GET', '/partials/collections', { target: '#collection-list', swap: 'innerHTML' });
+}
+
+// The role rows of a dialog: blank rows are dropped, names are trimmed.
+function _collRoles(rows) {
+  return rows
+    .map(function (row) { return { role: row.role.trim(), access: row.access }; })
+    .filter(function (row) { return row.role; });
+}
+
+function newCollection() {
+  return {
+    name: '', vectorSize: '', model: '', roles: [], busy: false, error: '',
+    addRole() { this.roles.push({ role: '', access: 'r' }); },
+    removeRole(i) { this.roles.splice(i, 1); },
+    reset() { this.name = ''; this.vectorSize = ''; this.model = ''; this.roles = []; this.error = ''; },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const name = this.name.trim();
+      const res = await _collRequest('POST', '/api/v1/rag/collections', {
+        name: name,
+        vector_size: Number(this.vectorSize),
+        embedding_model: this.model.trim() || null,
+        roles: _collRoles(this.roles),
+      });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      showToast('success', 'Collection <b>' + _collEscape(name) + '</b> created');
+      reloadCollections();
+    },
+  };
+}
+
+function editRoles() {
+  return {
+    name: '', roles: [], busy: false, error: '',
+    open(detail) {
+      this.name = detail.name;
+      this.roles = detail.roles.map(function (row) { return { role: row.role, access: row.access }; });
+      this.error = '';
+      this.$root.showModal();
+    },
+    addRole() { this.roles.push({ role: '', access: 'r' }); },
+    removeRole(i) { this.roles.splice(i, 1); },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const res = await _collRequest(
+        'PUT', '/api/v1/rag/collections/' + encodeURIComponent(this.name) + '/roles',
+        { roles: _collRoles(this.roles) });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      showToast('success', 'Roles of <b>' + _collEscape(this.name) + '</b> saved');
+      reloadCollections();
+    },
+  };
+}
+
+function deleteCollection() {
+  return {
+    name: '', points: null, typed: '', busy: false, error: '',
+    open(detail) {
+      this.name = detail.name;
+      this.points = detail.points;
+      this.typed = '';
+      this.error = '';
+      this.$root.showModal();
+    },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const res = await _collRequest(
+        'DELETE', '/api/v1/rag/collections/' + encodeURIComponent(this.name));
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      showToast('success', 'Collection <b>' + _collEscape(this.name) + '</b> deleted');
+      reloadCollections();
+    },
+  };
+}
+
+async function createOperatorGrant(button) {
+  button.disabled = true;
+  const res = await _collRequest('POST', '/api/v1/rag/collections/operator-grant');
+  if (res.handled) return;
+  if (!res.ok) {
+    button.disabled = false;
+    showToast('error', 'The grant was not created: ' + _collEscape(res.error));
+    return;
+  }
+  reloadCollections();
+}
+</script>
+{% endblock %}
