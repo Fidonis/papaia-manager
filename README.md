@@ -72,6 +72,23 @@ filtered server-side, so an admin-only tile is absent from a regular user's
 response rather than hidden by CSS. Authorization is enforced by the route
 dependencies, so the JSON API is restricted exactly like the pages.
 
+**RAG system.** When the core runs its optional RAG system (the `rag` profile
+in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
+The dashboard shows a **RAG** group with a *Qdrant* tile (the vector database's
+dashboard) and a *Qdrant Ingest* tile (the ingest web interface), and the
+sidebar gets a **RAG** category between *Extensions* and *System* with an
+*Ingest* and a *Qdrant* entry that open the same two interfaces in a new tab.
+Links are built from `QDRANT_PUBLIC_URL` and `QDRANT_INGEST_PUBLIC_URL` in the
+core `.env`. The profile decides, not those keys: the core keeps them while the
+system is switched off, so a core without the profile, such as 1.4.0, shows
+nothing new. The tiles are administrator-only, because the Qdrant dashboard
+bypasses the MCP server's role checks. They are computed when the dashboard is
+rendered and never written to `tiles.yaml`, so they appear on an existing
+deployment too, and the tile editor neither lists nor saves them; the price is
+that they cannot be reordered or removed there. A tile of your own with the same
+name or link wins, and a group you call *RAG* receives them. Native pages for
+ingest jobs and collections are planned to replace the two links.
+
 **Services.** An admin-only page at `/services` showing what this deployment is
 configured to run and how much of it is up. Containers are read from `docker ps`
 and grouped by the `de.fidonis.module` label the Compose files put on every

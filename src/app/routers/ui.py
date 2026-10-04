@@ -29,6 +29,7 @@ from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_add
 from app.core.envfile import load_env_file
 from app.core.inventory import SELF_PROFILE
 from app.core.jobs import Job, JobQueue
+from app.core.rag import with_rag_tiles
 from app.core.resolve import resolve_catalog_addons
 from app.core.services import (
     ServiceHealth,
@@ -1230,7 +1231,12 @@ def _gather_tiles(
     except TilesFileError as exc:
         return [], str(exc)
     core_env = load_env_file(Path(settings.papaia_config_dir) / ".env")
-    return visible_groups(config, is_admin=is_admin_user, env=core_env), None
+    groups = visible_groups(config, is_admin=is_admin_user, env=core_env)
+    if is_admin_user:
+        # Computed, not stored: see app.core.rag. Administrator-only, so the
+        # other roles never get them.
+        groups = with_rag_tiles(groups, core_env)
+    return groups, None
 
 
 def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
