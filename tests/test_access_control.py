@@ -56,6 +56,7 @@ ADMIN_PAGES = [
     "/backup",
     "/catalogs",
     "/collections",
+    "/connections",
     "/host",
     "/jobs",
     "/services",
@@ -69,6 +70,7 @@ ADMIN_PARTIALS = [
     "/partials/backup/restore-status",
     "/partials/catalogs",
     "/partials/collections",
+    "/partials/connections",
     "/partials/host",
     "/partials/jobs",
     "/partials/nav/host-indicator",
@@ -90,6 +92,7 @@ ADMIN_APIS = [
     "/api/v1/jobs",
     "/api/v1/maintenance/backup-dir",
     "/api/v1/maintenance/restore-points",
+    "/api/v1/rag/connections",
     "/api/v1/stack/groups",
     "/api/v1/stack/runner",
     "/api/v1/tiles",
@@ -116,6 +119,9 @@ ADMIN_WRITE_APIS = [
     "/api/v1/maintenance/restore-points/delete",
     "/api/v1/rag/collections",
     "/api/v1/rag/collections/operator-grant",
+    "/api/v1/rag/connections",
+    "/api/v1/rag/connections/test",
+    "/api/v1/rag/connections/default/reset",
     "/api/v1/upgrade",
     "/api/v1/upgrade/check",
     "/api/v1/upgrade/runner/clear",
@@ -252,6 +258,32 @@ def test_user_role_is_denied_stack_control(client: TestClient, path: str) -> Non
 def test_anonymous_is_denied_stack_control(client: TestClient, path: str) -> None:
     client.cookies.clear()
     assert client.post(path, json={}).status_code == 401
+
+
+# The write lists above only POST. The connections and collections also change state with
+# PUT and DELETE, and a lost dependency on either would hand a plain user the ingester's
+# connections (and with them an api-key that reaches the whole vector database).
+_OTHER_WRITES = [
+    ("put", "/api/v1/rag/connections/default", {"fields": {"url": "http://x"}, "etag": "x"}),
+    ("delete", "/api/v1/rag/connections/archive?etag=x", None),
+    ("put", "/api/v1/rag/collections/finance/roles", {"roles": []}),
+    ("delete", "/api/v1/rag/collections/finance", None),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "body"), _OTHER_WRITES)
+def test_user_role_is_denied_the_put_and_delete_routes_of_the_rag_pages(
+    client: TestClient, method: str, path: str, body: object
+) -> None:
+    assert _as(client, "user").request(method, path, json=body).status_code == 403
+
+
+@pytest.mark.parametrize(("method", "path", "body"), _OTHER_WRITES)
+def test_anonymous_is_denied_the_put_and_delete_routes_of_the_rag_pages(
+    client: TestClient, method: str, path: str, body: object
+) -> None:
+    client.cookies.clear()
+    assert client.request(method, path, json=body).status_code == 401
 
 
 @pytest.mark.parametrize("path", ADMIN_APIS_SELF_CONTAINED)

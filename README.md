@@ -77,8 +77,8 @@ in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
 The dashboard shows a **RAG** group with a *Qdrant* tile (the vector database's
 dashboard) and a *Qdrant Ingest* tile (the ingest web interface), and the
 sidebar gets a **RAG** category between *Extensions* and *System* with a
-*Collections* page (below) and an *Ingest* and a *Qdrant* entry that open the
-same two interfaces in a new tab.
+*Connections* and a *Collections* page (below) and an *Ingest* and a *Qdrant*
+entry that open the same two interfaces in a new tab.
 Links are built from `QDRANT_PUBLIC_URL` and `QDRANT_INGEST_PUBLIC_URL` in the
 core `.env`. The profile decides, not those keys: the core keeps them while the
 system is switched off, so a core without the profile, such as 1.4.0, shows
@@ -90,9 +90,43 @@ that they cannot be reordered or removed there. A tile of your own with the same
 name or link wins, and a group you call *RAG* receives them. A native page for
 ingest jobs is planned to replace the *Ingest* link.
 
-**Collections.** An admin-only page at `/collections`, first under *RAG* in the
+**Connections.** An admin-only page at `/connections`, first under *RAG* in the
+sidebar and only while the `rag` profile is active, for the vector databases the
+RAG system works with. A connection is a name, a type and the values that type
+needs; Qdrant, the only type so far, takes an address and an optional api-key.
+
+Connections are kept in the ingester's own store, so the ingest service uses
+them without any change and its web interface keeps editing the same file:
+`ai/rag/catalog/connections.yaml` in the config directory, `version: 1`, entries
+of `name`, `url` and an `api_key` stored as `enc:1:` plus a Fernet token derived
+from `QI_CONNECTIONS_SECRET` in `ai/rag/.env`. Nothing but those three keys is
+ever written, because the ingester rejects an entry with any other key. The
+connection named **default** is the integrated Qdrant (`http://qdrant:6333`, with
+the stack's api-key `QDRANT_JWT_SECRET`). It is created when the manager starts
+and on first use, never overwritten, and marked as the default. Its address and
+key can be edited and an action resets it to the integrated Qdrant, but it cannot
+be renamed or deleted. The other connections are created, edited, tested and
+deleted on the page.
+
+The api-key is never shown or returned, only whether one is stored; leaving it
+empty keeps the stored one. A stored key is only ever sent to the address it was
+stored with: testing a stored connection ignores an address that is sent along,
+and changing the address needs the key again, or its removal. A name cannot be
+changed once the connection exists, because ingest jobs refer to a connection by
+it. A connection that a job in `jobs.yaml` writes to cannot be deleted, and
+changing its address asks for a confirmation that names the jobs. The ingester
+picks a change up within about 30 seconds. `QDRANT_URL` is where the manager
+itself reaches the integrated Qdrant (default `http://qdrant:6333`); it replaces
+the stored address of a connection to the integrated Qdrant when connecting, and
+is never written to the file.
+
+**Collections.** An admin-only page at `/collections`, second under *RAG* in the
 sidebar and only while the `rag` profile is active, for the Qdrant collections of
-the RAG system and the Keycloak roles that may use them. It lists the collections
+the RAG system and the Keycloak roles that may use them. It works on one
+connection at a time, chosen above the list and defaulting to the default
+connection; roles can be edited on every connection, and on one that does not
+point at the integrated Qdrant a note says that the stack's MCP server does not
+enforce them there. It lists the collections
 with their points, vector size, the embedding model recorded in the meta
 collection and their roles. It creates a collection the way the ingester does
 (name, vector size, an optional embedding model, initial roles) and deletes one
@@ -105,15 +139,18 @@ change; a change reaches it within about a minute, the length of its access
 cache. The role `qdrant-ingest-operator` always has access to every collection:
 it is shown locked on each one, and a global *manage* grant for it is kept in the
 ACL collection (written with every change, and from a banner when it is missing).
-The manager reads the api-key (`QDRANT_JWT_SECRET`), the two collection names
-(`EMBEDDING_META_COLLECTION` or `QI_EMBED_META_COLLECTION`, and
-`RBAC_ACL_COLLECTION` or `QI_RBAC_ACL_COLLECTION`) and the operator role
-(`QI_OIDC_OPERATOR_ROLE`) from `ai/rag/.env` in the config directory, with the
-services' own defaults when a key is missing, and the Qdrant address from
-`QDRANT_URL` (default `http://qdrant:6333`). The core does not pass these names on
-to the MCP server yet, so a changed name takes effect for the ingester only;
-changing them is not supported before it does. When Qdrant cannot be reached or
-refuses the key, the page says why instead of showing a list.
+The address and the api-key come from the selected connection. The manager reads
+the two collection names (`EMBEDDING_META_COLLECTION` or
+`QI_EMBED_META_COLLECTION`, and `RBAC_ACL_COLLECTION` or
+`QI_RBAC_ACL_COLLECTION`) and the operator role (`QI_OIDC_OPERATOR_ROLE`) from
+`ai/rag/.env` in the config directory, with the services' own defaults when a key
+is missing; they are the same on every connection. While the connection store has
+no default connection, or cannot be read, the default connection is answered from
+`QDRANT_URL` and `QDRANT_JWT_SECRET`, so this page does not depend on the file.
+The core does not pass these names on to the MCP server yet, so a changed name
+takes effect for the ingester only; changing them is not supported before it
+does. When Qdrant cannot be reached or refuses the key, the page says why instead
+of showing a list.
 
 **Services.** An admin-only page at `/services` showing what this deployment is
 configured to run and how much of it is up. Containers are read from `docker ps`
@@ -328,6 +365,14 @@ PUT    /api/v1/catalogs/{name}
 DELETE /api/v1/catalogs/{name}
 POST   /api/v1/catalogs/{name}/refresh     # → 202 {job_id}
 
+GET    /api/v1/rag/connections             # connections, their types and fields; never a key
+POST   /api/v1/rag/connections             # {name, type?, fields: {url}, api_key?}
+POST   /api/v1/rag/connections/test        # {name?} or {fields, api_key?}; → {ok, detail, collections}
+PUT    /api/v1/rag/connections/{name}      # {fields, api_key?, clear_api_key?, etag, confirm_jobs?}
+DELETE /api/v1/rag/connections/{name}?etag=
+POST   /api/v1/rag/connections/default/reset  # the integrated Qdrant, with the stack's api-key
+
+# The collection routes take ?connection=<name> (default: "default")
 POST   /api/v1/rag/collections             # {name, vector_size, embedding_model?, roles?: [{role, access}]}
 PUT    /api/v1/rag/collections/{name}/roles   # {roles: [{role, access: "r"|"rw"}]}
 DELETE /api/v1/rag/collections/{name}      # also removes its meta record and roles
@@ -413,10 +458,11 @@ papaia-manager/
 │       │                   # host_health + docker_usage (host readings from the core's doctor),
 │       │                   # rag (optional RAG system: tiles, links, settings) +
 │       │                   # qdrant (REST client) + rag_collections (collections and roles),
+│       │                   # vectordb/ (connection types and the ingester's connection store),
 │       │                   # settings_store (settings.yaml and the logo)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
-│       │                   # api_tiles, api_settings, api_collections
+│       │                   # api_tiles, api_settings, api_collections, api_connections
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)

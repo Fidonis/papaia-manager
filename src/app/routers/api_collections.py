@@ -1,4 +1,8 @@
-"""REST API — Qdrant collections of the RAG system and their access roles."""
+"""REST API — Qdrant collections of the RAG system and their access roles.
+
+Every route works on the connection named by the `connection` query parameter (the
+default connection when it is absent), through `get_store`.
+"""
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -94,6 +98,7 @@ async def create_collection(
         target=body.name,
         params=redact_params(
             {
+                "connection": store.connection,
                 "vector_size": body.vector_size,
                 "embedding_model": (body.embedding_model or "").strip() or None,
                 "roles": _roles_param(body.roles),
@@ -120,7 +125,9 @@ async def set_roles(
         user=_user_id(user),
         action="rag.collection.roles.update",
         target=name,
-        params=redact_params({"roles": _roles_param(body.roles)}),
+        params=redact_params(
+            {"connection": store.connection, "roles": _roles_param(body.roles)}
+        ),
     )
     return {"name": name, "roles": _roles_param(body.roles)}
 
@@ -141,6 +148,7 @@ async def delete_collection(
         user=_user_id(user),
         action="rag.collection.delete",
         target=name,
+        params={"connection": store.connection},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -162,5 +170,6 @@ async def sync_operator_grant(
             user=_user_id(user),
             action="rag.collection.operator-grant",
             target="*",
+            params={"connection": store.connection},
         )
     return {"written": written}

@@ -11,6 +11,9 @@
    It always has access to every collection, through a global grant the page keeps
    in the ACL collection, so it is never part of a per-collection list.
 
+   The marker element names the connection this list was rendered for. Every change
+   the dialogs make is sent to that connection, whatever the selector shows by then.
+
    Classes are spelled out per branch rather than assembled from a variable:
    app.css is built by scanning these templates. #}
 {% from "partials/_actions.html" import row_actions, overflow_menu %}
@@ -54,6 +57,8 @@
 </div>
 {% endmacro %}
 
+<div data-connection="{{ view.connection }}" hidden></div>
+
 {% if not view.available %}
 <div class="flex flex-col items-center py-24 gap-4 opacity-60 text-center">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -72,6 +77,16 @@
   {% for warning in view.warnings %}
   <div class="alert alert-warning text-sm" role="alert"><span>{{ warning }}</span></div>
   {% endfor %}
+
+  {% if not view.roles_enforced %}
+  <div class="alert alert-info text-sm" role="status">
+    <span>
+      The stack's MCP server reads roles from the integrated Qdrant only. Roles set on
+      <span class="font-mono">{{ view.connection }}</span> are stored in the same format,
+      but nothing in the stack enforces them there.
+    </span>
+  </div>
+  {% endif %}
 
   {% if not view.operator_granted %}
   <div class="alert alert-warning text-sm" role="alert">

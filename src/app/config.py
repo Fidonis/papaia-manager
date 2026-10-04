@@ -31,9 +31,12 @@ class Settings(BaseSettings):
     papaia_config_dir: str
     papaia_workspace_dir: str
 
-    # Qdrant of the core's `rag` profile. The service name resolves on the network the
-    # manager shares with it. The api-key is not a setting: it is read from the RAG
-    # module's `.env` at request time, next to the collection and role names (see
+    # Where this process reaches the Qdrant of the core's `rag` profile. The service name
+    # resolves on the network the manager shares with it. It is the manager's own view:
+    # the connection store, which the ingester reads, always holds the address the
+    # ingester uses, and this replaces it only when the manager connects (see
+    # app/core/vectordb/service.py). The api-key is not a setting: it is read from the
+    # RAG module's `.env` at request time, next to the collection and role names (see
     # app/core/rag.py), so a shell on the host and the manager agree on it.
     qdrant_url: str = "http://qdrant:6333"
 

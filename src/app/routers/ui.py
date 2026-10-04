@@ -67,7 +67,9 @@ from app.core.tiles import (
     tiles_revision,
     visible_groups,
 )
-from app.routers.rag_deps import RagAdmin, get_store
+from app.core.vectordb.service import DEFAULT_NAME as DEFAULT_CONNECTION
+from app.routers.api_connections import state_payload
+from app.routers.rag_deps import ConnectionServiceDep, RagAdmin, get_store
 from app.templating import templates as _templates
 
 router = APIRouter()
@@ -213,13 +215,45 @@ async def catalogs_page(
     return _templates.TemplateResponse(request, "catalogs.html", _ctx(request, user))
 
 
+@router.get("/connections", response_class=HTMLResponse)
+async def connections_page(
+    request: Request,
+    user: RagAdmin,
+) -> HTMLResponse:
+    """The vector database connections of the RAG system."""
+    return _templates.TemplateResponse(request, "connections.html", _ctx(request, user))
+
+
 @router.get("/collections", response_class=HTMLResponse)
 async def collections_page(
     request: Request,
     user: RagAdmin,
+    service: ConnectionServiceDep,
+    connection: Annotated[str, Query(max_length=64)] = DEFAULT_CONNECTION,
 ) -> HTMLResponse:
-    """Qdrant collections of the RAG system and the roles that may use them."""
-    return _templates.TemplateResponse(request, "collections.html", _ctx(request, user))
+    """Qdrant collections of the RAG system and the roles that may use them.
+
+    The page works on one connection at a time, the default one unless the address names
+    another that exists and can hold collections.
+    """
+    service.ensure_default()
+    state = service.state()
+    options = [view.name for view in state.connections if view.collections]
+    if DEFAULT_CONNECTION not in options:
+        # Not stored yet (or the file cannot be read): the stack's own settings answer.
+        options.insert(0, DEFAULT_CONNECTION)
+    selected = connection if connection in options else DEFAULT_CONNECTION
+    return _templates.TemplateResponse(
+        request,
+        "collections.html",
+        _ctx(
+            request,
+            user,
+            connection_options=options,
+            selected_connection=selected,
+            default_connection=DEFAULT_CONNECTION,
+        ),
+    )
 
 
 @router.get("/backup", response_class=HTMLResponse)
@@ -557,6 +591,34 @@ async def partial_collections(
         request,
         "partials/collection_list.html",
         _ctx(request, user, view=view),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/connections", response_class=HTMLResponse)
+async def partial_connections(
+    request: Request,
+    user: RagAdmin,
+    service: ConnectionServiceDep,
+) -> HTMLResponse:
+    """The Connections page's body: the connections of the store and what is wrong with it.
+
+    Read on every load and never cached: the ingester's own interface writes the same
+    file, so what is on disk is the only truth.
+    """
+    service.ensure_default()
+    state = service.state()
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/connection_list.html",
+        _ctx(
+            request,
+            user,
+            state=state,
+            types=state_payload(state)["types"],
+            default_connection=DEFAULT_CONNECTION,
+        ),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

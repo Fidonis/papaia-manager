@@ -16,9 +16,7 @@ import time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
 
-import httpx
 import pytest
 
 _CONFIG_DIR = tempfile.mkdtemp(prefix="papaia-collections-config-")
@@ -45,7 +43,13 @@ from app.config import get_settings  # noqa: E402
 from app.core import rag_collections  # noqa: E402
 from app.core.audit import audit_path  # noqa: E402
 from app.core.qdrant import QdrantClient, QdrantError, QdrantUnavailable  # noqa: E402
-from app.core.rag import RagBackend, rag_active, rag_backend  # noqa: E402
+from app.core.rag import (  # noqa: E402
+    RagBackend,
+    RagSecrets,
+    rag_active,
+    rag_backend,
+    rag_secrets,
+)
 from app.core.rag_collections import (  # noqa: E402
     CollectionExists,
     CollectionNotFound,
@@ -56,10 +60,11 @@ from app.core.rag_collections import (  # noqa: E402
     meta_point_id,
 )
 from app.main import create_app  # noqa: E402
-from app.routers.rag_deps import get_store  # noqa: E402
+from app.routers.rag_deps import get_http_transport  # noqa: E402
+from tests.fake_qdrant import API_KEY, FakeQdrant  # noqa: E402
 
 _CSRF = "test-csrf-token-value"
-_KEY = "test-api-key"
+_KEY = API_KEY
 _URL = "http://qdrant.test:6333"
 _OPERATOR = "qdrant-ingest-operator"
 _META = "_collection_meta"
@@ -74,168 +79,6 @@ _RAG_ENV = (
 _OFF_ENV = "PAPAIA_HOST=https://papaia.test\nCOMPOSE_PROFILES=keycloak,librechat\n"
 
 
-# ---------------------------------------------------------------------------
-# A Qdrant that speaks just enough REST
-# ---------------------------------------------------------------------------
-
-
-def _ok(result: Any) -> httpx.Response:
-    return httpx.Response(200, json={"result": result, "status": "ok", "time": 0.0})
-
-
-def _err(status: int, message: str) -> httpx.Response:
-    return httpx.Response(status, json={"status": {"error": message}, "time": 0.0})
-
-
-def _missing(name: str) -> httpx.Response:
-    return _err(404, f"Not found: Collection `{name}` doesn't exist!")
-
-
-class FakeQdrant:
-    def __init__(self, api_key: str = _KEY) -> None:
-        self.api_key = api_key
-        self.collections: dict[str, dict[str, Any]] = {}
-        self.calls: list[tuple[str, str]] = []
-        self.down = False
-        # (method, path) pairs that answer 500, to make a step in the middle fail.
-        self.fail: set[tuple[str, str]] = set()
-
-    def transport(self) -> httpx.MockTransport:
-        return httpx.MockTransport(self._handle)
-
-    # -- seeding and inspection ------------------------------------------------
-
-    def add(self, name: str, size: int = 4, extra_points: int = 0) -> None:
-        self.collections[name] = {
-            "vectors": {"size": size, "distance": "Cosine"},
-            "points": {},
-            "indexes": [],
-            "extra": extra_points,
-        }
-
-    def put(self, collection: str, point_id: str, payload: dict[str, Any]) -> None:
-        self.collections[collection]["points"][point_id] = {"vector": [0.0], "payload": payload}
-
-    def grant(
-        self,
-        role: str,
-        collection: str,
-        access: str,
-        doc_policy: Any = None,
-        pid: str | None = None,
-    ) -> str:
-        if _ACL not in self.collections:
-            self.add(_ACL, size=1)
-        point_id = pid or acl_point_id(role, collection)
-        self.put(
-            _ACL,
-            point_id,
-            {"role": role, "collection": collection, "access": access, "doc_policy": doc_policy},
-        )
-        return point_id
-
-    def payloads(self, collection: str) -> dict[str, dict[str, Any]]:
-        return {
-            pid: point["payload"]
-            for pid, point in self.collections.get(collection, {"points": {}})["points"].items()
-        }
-
-    def grants(self) -> set[tuple[str, str, str]]:
-        return {
-            (p["role"], p["collection"], p["access"]) for p in self.payloads(_ACL).values()
-        }
-
-    def wrote(self) -> list[tuple[str, str]]:
-        """The calls that changed something; a scroll or a retrieve is a POST that reads."""
-        return [
-            call
-            for call in self.calls
-            if call[0] in ("PUT", "DELETE") or call[1].endswith("/points/delete")
-        ]
-
-    # -- the wire ---------------------------------------------------------------
-
-    def _handle(self, request: httpx.Request) -> httpx.Response:
-        if self.down:
-            raise httpx.ConnectError("connection refused", request=request)
-        path = request.url.path
-        self.calls.append((request.method, unquote(path)))
-        if request.headers.get("api-key") != self.api_key:
-            return _err(403, "Invalid api-key")
-        if (request.method, unquote(path)) in self.fail:
-            return _err(500, "Service internal error: injected failure")
-
-        parts = [unquote(part) for part in path.split("/")[1:]]
-        body = json.loads(request.content) if request.content else {}
-        method = request.method
-
-        if parts == ["collections"] and method == "GET":
-            return _ok({"collections": [{"name": name} for name in self.collections]})
-        if parts[0] != "collections" or len(parts) < 2:
-            return _err(404, "Not found")
-
-        name, rest = parts[1], parts[2:]
-        col = self.collections.get(name)
-
-        if not rest:
-            if method == "GET":
-                if col is None:
-                    return _missing(name)
-                return _ok(
-                    {
-                        "status": "green",
-                        "points_count": len(col["points"]) + col["extra"],
-                        "config": {"params": {"vectors": col["vectors"]}},
-                    }
-                )
-            if method == "PUT":
-                if col is not None:
-                    return _err(409, f"Wrong input: Collection `{name}` already exists!")
-                self.add(name, size=body["vectors"]["size"])
-                self.collections[name]["vectors"] = body["vectors"]
-                return _ok(True)
-            if method == "DELETE":
-                if col is None:
-                    return _missing(name)
-                del self.collections[name]
-                return _ok(True)
-
-        if col is None:
-            return _missing(name)
-
-        if rest == ["index"] and method == "PUT":
-            col["indexes"].append((body["field_name"], body["field_schema"]))
-            return _ok({"status": "completed"})
-        if rest == ["points"] and method == "PUT":
-            for point in body["points"]:
-                col["points"][point["id"]] = {
-                    "vector": point["vector"],
-                    "payload": point["payload"],
-                }
-            return _ok({"status": "completed"})
-        if rest == ["points"] and method == "POST":
-            return _ok(
-                [
-                    {"id": pid, "payload": col["points"][pid]["payload"]}
-                    for pid in body["ids"]
-                    if pid in col["points"]
-                ]
-            )
-        if rest == ["points", "scroll"] and method == "POST":
-            ids = list(col["points"])
-            start = ids.index(body["offset"]) if body.get("offset") in ids else 0
-            limit = body.get("limit", 10)
-            page = ids[start : start + limit]
-            following = ids[start + limit] if start + limit < len(ids) else None
-            points = [{"id": pid, "payload": col["points"][pid]["payload"]} for pid in page]
-            return _ok({"points": points, "next_page_offset": following})
-        if rest == ["points", "delete"] and method == "POST":
-            for pid in body["points"]:
-                col["points"].pop(pid, None)
-            return _ok({"status": "completed"})
-        return _err(404, "Not found")
-
-
 @pytest.fixture
 def qdrant() -> FakeQdrant:
     return FakeQdrant()
@@ -243,7 +86,6 @@ def qdrant() -> FakeQdrant:
 
 def _backend(**changes: Any) -> RagBackend:
     values: dict[str, Any] = {
-        "api_key": _KEY,
         "meta_collection": _META,
         "acl_collection": _ACL,
         "operator_role": _OPERATOR,
@@ -715,7 +557,7 @@ async def test_qdrant_being_down_is_a_reason_not_an_error(
 async def test_a_refused_key_is_reported_without_the_key(qdrant: FakeQdrant) -> None:
     client = QdrantClient(_URL, "wrong-key", transport=qdrant.transport())
     try:
-        view = await CollectionStore(client, _backend(api_key="wrong-key")).snapshot()
+        view = await CollectionStore(client, _backend()).snapshot()
     finally:
         await client.aclose()
 
@@ -724,19 +566,50 @@ async def test_a_refused_key_is_reported_without_the_key(qdrant: FakeQdrant) -> 
     assert "wrong-key" not in view.reason
 
 
-async def test_a_missing_key_never_reaches_qdrant(qdrant: FakeQdrant) -> None:
+async def test_what_to_check_after_a_refused_key_is_the_callers_to_say(
+    qdrant: FakeQdrant,
+) -> None:
+    client = QdrantClient(
+        _URL, "wrong-key", transport=qdrant.transport(), refused_hint="Check the key of 'archive'."
+    )
+    try:
+        view = await CollectionStore(client, _backend()).snapshot()
+    finally:
+        await client.aclose()
+
+    assert "Check the key of 'archive'." in view.reason
+    assert "QDRANT_JWT_SECRET" not in view.reason
+
+
+async def test_a_blocked_store_never_reaches_qdrant(qdrant: FakeQdrant) -> None:
     client = QdrantClient(_URL, "", transport=qdrant.transport())
-    store = CollectionStore(client, _backend(api_key=""))
+    store = CollectionStore(client, _backend(), blocked="The key is unusable.")
     try:
         view = await store.snapshot()
         with pytest.raises(QdrantUnavailable):
             await store.create("finance", 4, None, [])
+        with pytest.raises(QdrantUnavailable):
+            await store.delete("finance")
     finally:
         await client.aclose()
 
     assert not view.available
-    assert "QDRANT_JWT_SECRET" in view.reason
+    assert view.reason == "The key is unusable."
     assert qdrant.calls == []
+
+
+async def test_a_connection_without_a_key_works_against_a_qdrant_that_asks_for_none() -> None:
+    keyless = FakeQdrant(api_key="")
+    keyless.add("finance")
+    client = QdrantClient(_URL, "", transport=keyless.transport())
+    try:
+        view = await CollectionStore(client, _backend(), connection="open").snapshot()
+    finally:
+        await client.aclose()
+
+    assert view.available
+    assert [c.name for c in view.collections] == ["finance"]
+    assert view.connection == "open"
 
 
 async def test_an_error_from_qdrant_becomes_the_reason(
@@ -764,7 +637,6 @@ def _module_env(config_dir: Path, text: str) -> None:
 def test_the_services_own_defaults_apply_without_any_setting(tmp_path: Path) -> None:
     backend = rag_backend(str(tmp_path))
 
-    assert backend.api_key == ""
     assert backend.meta_collection == "_collection_meta"
     assert backend.acl_collection == "_rbac_acl"
     assert backend.operator_role == "qdrant-ingest-operator"
@@ -783,7 +655,6 @@ def test_the_settings_are_read_from_the_rag_module_env_file(tmp_path: Path) -> N
 
     backend = rag_backend(str(tmp_path))
 
-    assert backend.api_key == "s3cret"
     assert backend.meta_collection == "meta_v2"
     assert backend.acl_collection == "acl_v2"
     assert backend.operator_role == "rag-operators"
@@ -829,6 +700,17 @@ def test_a_configured_system_collection_name_is_the_one_that_is_hidden(
     assert "meta_v2" in rag_backend(str(tmp_path)).system_collections
 
 
+def test_the_secrets_are_read_from_the_rag_module_env_file(tmp_path: Path) -> None:
+    assert rag_secrets(str(tmp_path)) == RagSecrets("", "")
+
+    _module_env(tmp_path, "QDRANT_JWT_SECRET= s3cret \nQI_CONNECTIONS_SECRET=other\n")
+
+    secrets = rag_secrets(str(tmp_path))
+    assert secrets.api_key == "s3cret"
+    assert secrets.connections_secret == "other"
+    assert "s3cret" not in repr(secrets) and "other" not in repr(secrets)
+
+
 def test_the_profile_alone_decides_whether_rag_is_active(tmp_path: Path) -> None:
     (tmp_path / ".env").write_text("COMPOSE_PROFILES=keycloak,rag\n", encoding="utf-8")
     assert rag_active(str(tmp_path))
@@ -857,20 +739,14 @@ def config_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def client(config_dir: Path, qdrant: FakeQdrant) -> Iterator[TestClient]:
     get_settings.cache_clear()
-    settings = get_settings().model_copy(update={"papaia_config_dir": str(config_dir)})
+    settings = get_settings().model_copy(
+        update={"papaia_config_dir": str(config_dir), "qdrant_url": _URL}
+    )
     app = create_app()
     app.dependency_overrides[get_settings] = lambda: settings
-
-    async def fake_store() -> AsyncIterator[CollectionStore]:
-        # The real settings reader, so the file on disk is what is exercised.
-        backend = rag_backend(str(config_dir))
-        http = QdrantClient(_URL, backend.api_key, transport=qdrant.transport())
-        try:
-            yield CollectionStore(http, backend)
-        finally:
-            await http.aclose()
-
-    app.dependency_overrides[get_store] = fake_store
+    # The real dependencies run: the connection is resolved from the files on disk, and
+    # only the network is replaced.
+    app.dependency_overrides[get_http_transport] = lambda: qdrant.transport()
     yield TestClient(app, follow_redirects=False)
     get_settings.cache_clear()
 
@@ -1121,7 +997,10 @@ def test_roles_are_replaced_and_audited(
     assert qdrant.grants() == {("new", "finance", "rw"), (_OPERATOR, "*", "m")}
     entry = _audit(config_dir)[-1]
     assert (entry["action"], entry["target"]) == ("rag.collection.roles.update", "finance")
-    assert entry["params"] == {"roles": [{"role": "new", "access": "rw"}]}
+    assert entry["params"] == {
+        "connection": "default",
+        "roles": [{"role": "new", "access": "rw"}],
+    }
 
 
 def test_roles_of_an_unknown_collection_are_a_404(client: TestClient, qdrant: FakeQdrant) -> None:

@@ -12,7 +12,7 @@ It also serves the stack dashboard: a tile overview of the deployed applications
 
 When the core's optional RAG system is active (profile `rag` in the core `.env`'s `COMPOSE_PROFILES`), administrators also get a computed "RAG" tile group on the dashboard (Qdrant, Qdrant Ingest) and a "RAG" category in the sidebar (a Collections page, and links to the same two web interfaces, opened in a new tab). `core/rag.py` owns this: it reads the profile and the two URLs `QDRANT_PUBLIC_URL` and `QDRANT_INGEST_PUBLIC_URL` and never tests whether the URL keys exist, because the core keeps them while the profile is off. The tiles are added in `_gather_tiles` at render time and are not persisted to `tiles.yaml`; the sidebar gates the whole category wrapper on the profile alone (`rag_enabled`, `templating.py`) and takes the two links from the `rag_nav` Jinja global, so no empty caption remains and a missing URL key does not hide the Collections page.
 
-Another surface, Collections (`/collections`), manages the Qdrant collections of the RAG system and the Keycloak roles that may use them: list, create and delete collections, and keep any number of role names with the access level `r` or `rw` per collection. It is admin-only and exists only while the `rag` profile is active (a 404 otherwise, after the role check). The roles are stored in the format `qdrant-mcp-rbac` defines, so the MCP server enforces them unchanged (see the RAG collections section below).
+Another surface, Connections (`/connections`), is listed before Collections and manages the vector database connections of the RAG system: create, edit, test and delete them, with the connection `default` (the integrated Qdrant) created automatically, editable and marked as the default. They are stored in the ingester's own store, `ai/rag/catalog/connections.yaml`, so the ingest service uses them unchanged (see the RAG connections section below). Collections (`/collections`), the next surface, manages the Qdrant collections of the selected connection (the default one unless another is chosen) of the RAG system and the Keycloak roles that may use them: list, create and delete collections, and keep any number of role names with the access level `r` or `rw` per collection. It is admin-only and exists only while the `rag` profile is active (a 404 otherwise, after the role check). The roles are stored in the format `qdrant-mcp-rbac` defines, so the MCP server enforces them unchanged (see the RAG collections section below).
 
 A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). The same page schedules backups from inside the manager (see Backup schedule below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
@@ -72,6 +72,10 @@ papaia-manager/
 │       │   │                   #   "unavailable" told apart from "this request failed"
 │       │   ├── rag_collections.py # Collections and their roles in the format of qdrant-mcp-rbac:
 │       │   │                   #   point ids, ACL and meta payloads, create/delete/set_roles
+│       │   ├── vectordb/       # Connection types (a registry) and the ingester's connection store:
+│       │   │                   #   base (types, ProbeEnv), qdrant_type, ingest_file (connections.yaml,
+│       │   │                   #   compare-and-swap writer), crypto (enc:1: tokens), jobs_usage,
+│       │   │                   #   service (default connection, key rules), errors
 │       │   ├── settings_store.py # settings.yaml (one section per topic: branding, host) + logo files
 │       │   ├── host_health.py  # Memory, CPU, GPU, clock, disk space + certificate expiry via the
 │       │   │                   #   core's `doctor`; cached for the configured interval,
@@ -105,17 +109,21 @@ papaia-manager/
 │       │   ├── api_settings.py # /api/v1/settings — branding, host monitoring; GET /brand/logo
 │       │   ├── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
 │       │   ├── api_collections.py # /api/v1/rag/collections — Qdrant collections and their roles
-│       │   └── rag_deps.py     # RagAdmin (admin + `rag` profile) and the per-request CollectionStore
+│       │   ├── api_connections.py # /api/v1/rag/connections — connections of the ingester's store
+│       │   └── rag_deps.py     # RagAdmin (admin + `rag` profile), the connection service and the
+│       │                       #   per-request CollectionStore on the selected connection
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
 │       │       ├── _addon_controls.html      # Per-addon action buttons (install/start/stop/...)
 │       │       ├── _env_fields.html          # Rendered env-form fields (typed, masked secrets)
+│       │       ├── _rag_js.html              # Escaping and JSON requests shared by the Connections and Collections pages
 │       │       ├── addon_detail_content.html # Addon detail tab content
 │       │       ├── addon_gallery.html        # Addon card grid
 │       │       ├── backup_schedule.html      # Schedule and last-backup strip (backup page)
 │       │       ├── backup_schedule_preview.html # Schedule editor: live validation and next runs
 │       │       ├── catalog_list.html         # Catalog table rows
 │       │       ├── collection_list.html      # Collections page body: collections, roles, dialogs, or why not
+│       │       ├── connection_list.html      # Connections page body: connections, file problems, dialogs
 │       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
 │       │       ├── job_status.html           # Polled job progress/log fragment
 │       │       ├── restore_point_list.html   # Restore point cards
@@ -303,12 +311,40 @@ Consequences worth remembering when touching this area:
 - **The logo is served defensively.** `GET /brand/logo` is open to every signed-in role, since the sidebar shows it to all of them, and answers with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, so an SVG opened directly by URL cannot run anything. The URL carries the stored filename (`?v=`), which changes with the content, so the one-day private cache cannot show a stale logo.
 - **Every change is audited** as `settings.branding.update`, `settings.branding.logo.upload`, `settings.branding.logo.delete`, `settings.branding.reset` or `settings.host.update`, with target `settings`.
 
-### RAG collections
+### RAG connections
 
-The page and its API (`/collections`, `/api/v1/rag/collections`) write to the RAG system's Qdrant as the global api-key holder, so the only authorization is `AdminUser` and the CSRF check. Qdrant is reached through `core/qdrant.py` (plain `httpx`, no `qdrant-client`), and `core/rag_collections.py` holds the storage contract of `qdrant-mcp-rbac`. Nothing on the MCP server's side pins that contract, so `tests/test_rag_collections.py` does, against literals computed with its code.
+The page and its API (`/connections`, `/api/v1/rag/connections`) manage the ingester's connection store, `$PAPAIA_CONFIG_DIR/ai/rag/catalog/connections.yaml`. The ingester reads it as `/config/catalog/connections.yaml`, and its own web interface still edits it, so the manager is a second writer of a file it does not own. `core/vectordb/` holds all of it; `tests/test_vectordb_*.py` and `tests/test_api_connections.py` pin it.
 
 Consequences worth remembering when touching this area:
 
+- **The format is the ingester's, exactly.** `{version: 1, connections: [{name, url, api_key?}]}`, with `api_key` as `enc:1:` plus a Fernet token whose key is the URL-safe base64 of the SHA-256 of `QI_CONNECTIONS_SECRET` (`core/vectordb/crypto.py`; the reference token in `tests/test_vectordb_crypto.py` was produced by the ingester's own code). Its entry schema forbids any other key, and a rejected entry makes it refuse the whole file at runtime: it keeps its previous set and reports `degraded`. So `type`, `default` or a timestamp are never written. `ConnectionEntry` mirrors the schema, and every candidate is validated against it before it reaches the file.
+- **The default connection is the entry named `default`.** There is no second place that could drift from the file. `ensure_default()` creates it (the integrated Qdrant at `http://qdrant:6333`, the address the ingester uses, with `QDRANT_JWT_SECRET` encrypted) at start and on first use of a RAG page. It never overwrites an existing entry and never raises. It does nothing without the profile or without both secrets, and not again for a minute after a failed attempt. Its address and key are editable, it cannot be renamed or deleted, and "Reset" writes both again. While the store has no `default`, `resolve("default")` answers from `QDRANT_URL` and `QDRANT_JWT_SECRET`, so the Collections page never depends on the file.
+- **`QDRANT_URL` is the manager's reach, not the ingester's.** It replaces the stored address of an entry that points at the integrated Qdrant when the manager connects (`ConnectionService._reach`), and is never written. The page shows both when they differ.
+- **A stored key goes only to the address it was stored with.** Otherwise an administrator could send `QDRANT_JWT_SECRET`, which also derives the MCP tokens, to a host of their choosing. Testing a stored connection ignores an address that comes with the request, and a changed address on a connection with a key needs the key again or its removal (422). A key that is not touched keeps its stored token byte for byte, because a Fernet token is randomised and re-encrypting would rewrite the file. An address with credentials in it is refused.
+- **A write is compare-and-swap.** `IngestFileRepository.update` reads the bytes, applies a mutator to the parsed document, validates, stages the result in `.connections.yaml.manager.tmp` (the ingester stages in `.connections.yaml.tmp`, which would collide), re-reads the file and swaps only if it still has the bytes the change was computed from; otherwise it computes the change again, up to three times. The mode of the file is kept, the previous content goes to `connections.yaml.bak` on a best-effort basis, the catalog directory is never created, and an `OSError` while writing is the "read-only" state. A change to an entry carries the etag of that entry rather than a fingerprint of the file, so another administrator's or the ingester's write elsewhere in the file is no conflict.
+- **Problems that were already there do not lock the file.** The ingester refuses any write while the file has an error. The manager refuses only a write that introduces a new one, so the repair after a rotation of the secret (every key unreadable) stays possible. Structural damage (not YAML, not a mapping, a version other than 1, `connections` not a list) refuses everything, and the page shows it. A change is a surgery on the parsed document, so top-level keys and entries the manager does not understand stay.
+- **Known limit: the ingester does not compare before it replaces.** Its interface reads the file, edits it and replaces it. A save of its own that began before a manager save and ends after it replaces the manager's change, and the manager cannot close that window from its side. It is milliseconds wide for people saving by hand; two processes writing in a tight loop lost about half of the changes. A fix belongs in the ingester. The view of a change is taken from the file as it was right after the write, so such a loss does not turn a successful change into an error.
+- **Names are fixed, jobs are checked.** Ingest jobs refer to a connection by name and nothing tells them about a rename, so a name cannot change. A delete is refused while a job in `jobs.yaml` (`jobs[*].target.connection`) uses the connection, and also when `jobs.yaml` cannot be read. Changing the address of a used connection needs `confirm_jobs`.
+- **The key is never an output.** Views carry `has_key` and a state (`ok`, `none`, `unreadable`), `Connection.api_key` is out of `repr`, and the audit log records `key_action` (`set`, `none`, `kept`, `replaced`, `removed`), never a value or a token. Tests search the responses, the audit file and the log for the keys and the stored token. `unreadable` means the token does not decrypt with the current `QI_CONNECTIONS_SECRET`: it was rotated, or it is quoted (the manager's `.env` parser keeps quotes that Compose strips, and the core writes the secret unquoted). `key_drift` flags a default whose stored key is no longer `QDRANT_JWT_SECRET`.
+- **TLS.** Connections are verified against the public CAs and, with `SSL_CERT_FILE`, the stack's own as well (`tls_verify`). The ingester's schema has no per-connection TLS option, so a self-signed Qdrant outside the stack is not supported.
+- **Every change is audited** as `rag.connection.create`, `.update`, `.delete`, `.reset`, `.test` or `.seed` (user `manager`).
+- **Verified against the real code.** A file written by the manager loads with the ingester's own `load_connections` and its keys decrypt there, and a file edited with the ingester's own writer reads back in the manager, in throwaway directories with the ingester's unmodified modules. Repeat this when the ingester's schema or cipher changes.
+
+#### Adding a type of vector database
+
+A type is a class that satisfies `ConnectionType` (`core/vectordb/base.py`) and is registered with `register_type`, as `QdrantType` is in `core/vectordb/__init__.py`. It declares its fields (`FieldSpec`; the dialog renders them, so the page needs no change), validates its values, turns them into the stored entry, says where the database is (`address_of`, the address a stored key is bound to) and probes it. Its `capabilities` decide where it appears: only a type with `collections` is offered on the Collections page. Two things are not generic yet, on purpose, and belong to the first second type:
+
+- **Where its connections are stored.** The ingester reads only Qdrant entries. An entry without a type is a Qdrant, and a type the ingester cannot use should get a store of the manager's own (`manager/connections.yaml`, the same envelope plus a `type` key), so the ingester's file is never broken. `ConnectionService` talks to `IngestFileRepository` only; it is where a repository per type goes. Until the ingester's schema accepts a `type` key, the validation of every candidate refuses to write one into its file.
+- **How the Collections page gets a store.** `get_store` in `routers/rag_deps.py` builds a `CollectionStore` on a `QdrantClient`. Another type brings its own store behind the same interface, or stays off the `collections` capability.
+
+### RAG collections
+
+The page and its API (`/collections`, `/api/v1/rag/collections`) write to the Qdrant of the selected connection as the holder of its api-key, so the only authorization is `AdminUser` and the CSRF check. Qdrant is reached through `core/qdrant.py` (plain `httpx`, no `qdrant-client`), and `core/rag_collections.py` holds the storage contract of `qdrant-mcp-rbac`. Nothing on the MCP server's side pins that contract, so `tests/test_rag_collections.py` does, against literals computed with its code.
+
+Consequences worth remembering when touching this area:
+
+- **One connection at a time, named in every request.** The `connection` query parameter (the default connection when absent) goes through `get_store`: an unknown name is a 404, a type without the `collections` capability a 422, and a key that cannot be read a store that explains why (a state, not an error). The partial wraps its body in an element that carries the connection it was rendered for (`data-connection`), and every change is sent to that connection, not to whatever the selector shows by then. The meta and ACL collection names and the operator role are the same on every connection.
+- **Roles are editable on every connection, but enforced on one.** The stack's MCP server reads the ACL collection of the integrated Qdrant only. On a connection that does not point at it (`roles_enforced` is false) the roles are stored in the same format and the page says nothing in the stack enforces them there.
 - **The roles are in the ACL collection, not in the meta collection.** `_rbac_acl` holds one point per (role, collection): id `uuid5(8c9f3b0e-4a5d-4d0a-9f1e-7d6c5b2a1f00, "<role>|<collection>")`, vector `[0.0]`, payload `{role, collection, access, doc_policy}` with `doc_policy` an explicit `null`. `_collection_meta` holds one point per collection, `{collection, embedding_model, vector_dimension}`, id `uuid5(9e3a5c2f-8b7d-4f1e-a6b3-2d8c9e4f1a02, "<collection>")`, and no roles. The MCP server skips a point it cannot parse without a word, so a payload that does not match exactly is a grant that silently does not exist. Its own `AGENTS.md` states the id formula differently; its code is authoritative.
 - **Access levels.** `r` and `rw` are per collection. `m` is global manage: the MCP server returns a manage token for any role that holds one, whatever the `collection` field says, and `*` is only the convention. The page lists those under "Access to every collection" and never edits them, and neither lists nor deletes an `m` grant that names a collection.
 - **Nothing cascades in Qdrant, and the ids are deterministic.** Deleting a collection leaves its meta point and its grants behind, and re-creating the name would revive the grants. `delete` removes all three and is idempotent, so a delete that stopped half-way is finished by repeating it. `create` removes what it wrote if a step after the collection exists fails.
@@ -399,14 +435,17 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `MANAGER_SESSION_SECRET` | itsdangerous session signing secret |
 | `PAPAIA_CONFIG_DIR` | Path to papAIa config directory (must equal host path in container) |
 | `PAPAIA_WORKSPACE_DIR` | Path to papAIa workspace (must equal host path in container) |
-| `QDRANT_URL` | Address of the RAG system's Qdrant, used by the Collections page (default: `http://qdrant:6333`, which resolves on the network the manager shares with it) |
+| `QDRANT_URL` | Where the manager itself reaches the integrated Qdrant (default: `http://qdrant:6333`, which resolves on the network the manager shares with it). It replaces the stored address of a connection to the integrated Qdrant when connecting and is never written to the connection store |
 
-The Collections page reads the rest of its settings from the RAG module's `.env`
-(`$PAPAIA_CONFIG_DIR/ai/rag/.env`) at request time, not from the manager's
-environment: `QDRANT_JWT_SECRET` (the api-key), `EMBEDDING_META_COLLECTION` or
+The Connections and Collections pages read the rest of their settings from the RAG
+module's `.env` (`$PAPAIA_CONFIG_DIR/ai/rag/.env`) at request time, not from the
+manager's environment: `QDRANT_JWT_SECRET` (the stack's api-key, which the default
+connection stores) and `QI_CONNECTIONS_SECRET` (it derives the key that encrypts the
+api-keys in the connection store), `EMBEDDING_META_COLLECTION` or
 `QI_EMBED_META_COLLECTION`, `RBAC_ACL_COLLECTION` or `QI_RBAC_ACL_COLLECTION`, and
 `QI_OIDC_OPERATOR_ROLE`. A missing key means the services' own default
-(`_collection_meta`, `_rbac_acl`, `qdrant-ingest-operator`).
+(`_collection_meta`, `_rbac_acl`, `qdrant-ingest-operator`); a missing secret means
+no default connection is created and no api-key can be stored.
 
 `PAPAIA_BACKUP_DIR` is **not** a manager setting: the backup location belongs to
 the stack, so it is read from `$PAPAIA_CONFIG_DIR/.env` at request time and the
