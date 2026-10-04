@@ -30,6 +30,7 @@ from app.core.envfile import load_env_file
 from app.core.inventory import SELF_PROFILE
 from app.core.jobs import Job, JobQueue
 from app.core.rag import with_rag_tiles
+from app.core.rag_collections import CollectionStore
 from app.core.resolve import resolve_catalog_addons
 from app.core.services import (
     ServiceHealth,
@@ -66,6 +67,7 @@ from app.core.tiles import (
     tiles_revision,
     visible_groups,
 )
+from app.routers.rag_deps import RagAdmin, get_store
 from app.templating import templates as _templates
 
 router = APIRouter()
@@ -209,6 +211,15 @@ async def catalogs_page(
     user: AdminUser,
 ) -> HTMLResponse:
     return _templates.TemplateResponse(request, "catalogs.html", _ctx(request, user))
+
+
+@router.get("/collections", response_class=HTMLResponse)
+async def collections_page(
+    request: Request,
+    user: RagAdmin,
+) -> HTMLResponse:
+    """Qdrant collections of the RAG system and the roles that may use them."""
+    return _templates.TemplateResponse(request, "collections.html", _ctx(request, user))
 
 
 @router.get("/backup", response_class=HTMLResponse)
@@ -525,6 +536,27 @@ async def partial_host(
             usage=usage,
             refresh_text=format_interval(refresh_interval(settings.papaia_config_dir)),
         ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/collections", response_class=HTMLResponse)
+async def partial_collections(
+    request: Request,
+    user: RagAdmin,
+    store: Annotated[CollectionStore, Depends(get_store)],
+) -> HTMLResponse:
+    """The Collections page's body: the collections with their roles, or why none.
+
+    Read on every load and never cached: the list is what an administrator just
+    changed, and the grants it shows are what the MCP server will enforce.
+    """
+    view = await store.snapshot()
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/collection_list.html",
+        _ctx(request, user, view=view),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

@@ -76,8 +76,9 @@ dependencies, so the JSON API is restricted exactly like the pages.
 in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
 The dashboard shows a **RAG** group with a *Qdrant* tile (the vector database's
 dashboard) and a *Qdrant Ingest* tile (the ingest web interface), and the
-sidebar gets a **RAG** category between *Extensions* and *System* with an
-*Ingest* and a *Qdrant* entry that open the same two interfaces in a new tab.
+sidebar gets a **RAG** category between *Extensions* and *System* with a
+*Collections* page (below) and an *Ingest* and a *Qdrant* entry that open the
+same two interfaces in a new tab.
 Links are built from `QDRANT_PUBLIC_URL` and `QDRANT_INGEST_PUBLIC_URL` in the
 core `.env`. The profile decides, not those keys: the core keeps them while the
 system is switched off, so a core without the profile, such as 1.4.0, shows
@@ -86,8 +87,33 @@ bypasses the MCP server's role checks. They are computed when the dashboard is
 rendered and never written to `tiles.yaml`, so they appear on an existing
 deployment too, and the tile editor neither lists nor saves them; the price is
 that they cannot be reordered or removed there. A tile of your own with the same
-name or link wins, and a group you call *RAG* receives them. Native pages for
-ingest jobs and collections are planned to replace the two links.
+name or link wins, and a group you call *RAG* receives them. A native page for
+ingest jobs is planned to replace the *Ingest* link.
+
+**Collections.** An admin-only page at `/collections`, first under *RAG* in the
+sidebar and only while the `rag` profile is active, for the Qdrant collections of
+the RAG system and the Keycloak roles that may use them. It lists the collections
+with their points, vector size, the embedding model recorded in the meta
+collection and their roles. It creates a collection the way the ingester does
+(name, vector size, an optional embedding model, initial roles) and deletes one
+after its name is typed, together with its meta record and its roles. Each
+collection takes any number of role names with the access level *read* or
+*read + write*; the names are not checked against Keycloak. The roles are stored
+exactly as `qdrant-mcp-rbac` stores them, one point per role and collection in
+its ACL collection (`_rbac_acl`), so the MCP server enforces them without any
+change; a change reaches it within about a minute, the length of its access
+cache. The role `qdrant-ingest-operator` always has access to every collection:
+it is shown locked on each one, and a global *manage* grant for it is kept in the
+ACL collection (written with every change, and from a banner when it is missing).
+The manager reads the api-key (`QDRANT_JWT_SECRET`), the two collection names
+(`EMBEDDING_META_COLLECTION` or `QI_EMBED_META_COLLECTION`, and
+`RBAC_ACL_COLLECTION` or `QI_RBAC_ACL_COLLECTION`) and the operator role
+(`QI_OIDC_OPERATOR_ROLE`) from `ai/rag/.env` in the config directory, with the
+services' own defaults when a key is missing, and the Qdrant address from
+`QDRANT_URL` (default `http://qdrant:6333`). The core does not pass these names on
+to the MCP server yet, so a changed name takes effect for the ingester only;
+changing them is not supported before it does. When Qdrant cannot be reached or
+refuses the key, the page says why instead of showing a list.
 
 **Services.** An admin-only page at `/services` showing what this deployment is
 configured to run and how much of it is up. Containers are read from `docker ps`
@@ -302,6 +328,11 @@ PUT    /api/v1/catalogs/{name}
 DELETE /api/v1/catalogs/{name}
 POST   /api/v1/catalogs/{name}/refresh     # → 202 {job_id}
 
+POST   /api/v1/rag/collections             # {name, vector_size, embedding_model?, roles?: [{role, access}]}
+PUT    /api/v1/rag/collections/{name}/roles   # {roles: [{role, access: "r"|"rw"}]}
+DELETE /api/v1/rag/collections/{name}      # also removes its meta record and roles
+POST   /api/v1/rag/collections/operator-grant  # → {written}
+
 GET  /api/v1/addons
 GET  /api/v1/addons/{name}
 GET  /api/v1/addons/{name}/env-form
@@ -380,10 +411,12 @@ papaia-manager/
 │       │                   # backups (restore-point catalogue), runner (detached restore),
 │       │                   # backup_run + schedule + scheduler (backup schedule),
 │       │                   # host_health + docker_usage (host readings from the core's doctor),
+│       │                   # rag (optional RAG system: tiles, links, settings) +
+│       │                   # qdrant (REST client) + rag_collections (collections and roles),
 │       │                   # settings_store (settings.yaml and the logo)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
-│       │                   # api_tiles, api_settings
+│       │                   # api_tiles, api_settings, api_collections
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)
