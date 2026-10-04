@@ -17,13 +17,42 @@ log line or exception text.
 """
 from __future__ import annotations
 
+import contextlib
+import ssl
+from functools import lru_cache
 from types import TracebackType
 from typing import Any
 from urllib.parse import quote
 
+import certifi
 import httpx
 
 DEFAULT_TIMEOUT = 10.0
+
+# What a refused api-key tells the operator to check. The caller knows which connection
+# the key belongs to; this client only knows that it was refused.
+DEFAULT_REFUSED_HINT = "Check the api-key of this connection."
+
+
+@lru_cache(maxsize=8)
+def _context(cafile: str) -> ssl.SSLContext:
+    context = ssl.create_default_context(cafile=certifi.where())
+    # A bundle that cannot be read costs the local CA, not the public ones. A host
+    # signed by the local CA then fails verification with a message that names it.
+    with contextlib.suppress(OSError):
+        context.load_verify_locations(cafile)
+    return context
+
+
+def tls_verify(cafile: str | None) -> ssl.SSLContext | bool:
+    """What to verify a Qdrant's certificate against.
+
+    Without a bundle: the public CAs. With one (`SSL_CERT_FILE`, the stack's own CA for
+    its internal hosts): the public CAs *and* that one. A bare `verify=<path>` would
+    trust the stack's CA alone, and a connection to a Qdrant outside the stack, signed
+    by a public CA, would then fail.
+    """
+    return _context(cafile) if cafile else True
 
 
 class QdrantError(Exception):
@@ -64,11 +93,13 @@ class QdrantClient:
         url: str,
         api_key: str,
         *,
-        verify: bool | str = True,
+        verify: ssl.SSLContext | bool = True,
         timeout: float = DEFAULT_TIMEOUT,
         transport: httpx.AsyncBaseTransport | None = None,
+        refused_hint: str = DEFAULT_REFUSED_HINT,
     ) -> None:
         self._base = url.rstrip("/")
+        self._refused_hint = refused_hint
         headers = {"api-key": api_key} if api_key else {}
         self._client = httpx.AsyncClient(
             base_url=self._base,
@@ -118,7 +149,7 @@ class QdrantClient:
         if response.status_code in (401, 403):
             raise QdrantUnavailable(
                 response.status_code,
-                "Qdrant refused the api-key. Check QDRANT_JWT_SECRET in ai/rag/.env.",
+                f"Qdrant refused the api-key. {self._refused_hint}",
             )
         if response.status_code >= 400:
             raise QdrantError(response.status_code, _error_detail(response))

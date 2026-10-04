@@ -17,11 +17,13 @@ from app.config import get_settings
 from app.core.jobs import JobQueue
 from app.core.papaia_lib import bootstrap
 from app.core.scheduler import BackupScheduler
+from app.core.vectordb.service import ConnectionService
 from app.routers import (
     api_addons,
     api_audit,
     api_catalogs,
     api_collections,
+    api_connections,
     api_jobs,
     api_maintenance,
     api_settings,
@@ -65,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(api_audit.router)
     app.include_router(api_catalogs.router)
     app.include_router(api_collections.router)
+    app.include_router(api_connections.router)
     app.include_router(api_addons.router)
     app.include_router(api_jobs.router)
     app.include_router(api_maintenance.router)
@@ -145,6 +148,14 @@ def create_app() -> FastAPI:
             if scheduler is not None:
                 scheduler.shutdown()
             _backup_scheduler = None
+
+        # The ingester needs a connection before anybody opens a page of the manager.
+        # `ensure_default` never raises and does nothing without the RAG profile.
+        try:
+            if ConnectionService(settings).ensure_default() == "seeded":
+                logger.info("created the default connection to the integrated Qdrant")
+        except Exception:
+            logger.exception("the default connection could not be checked; continuing")
         logger.info("papaia-manager started (host=%s)", settings.manager_host)
 
     @app.on_event("shutdown")

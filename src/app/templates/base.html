@@ -378,6 +378,7 @@
 {% set nav_services  = path.startswith("/services") %}
 {% set nav_host      = path.startswith("/host") %}
 {% set nav_catalogs  = path.startswith("/catalogs") %}
+{% set nav_connections = path.startswith("/connections") %}
 {% set nav_collections = path.startswith("/collections") %}
 {% set nav_backup    = path.startswith("/backup") %}
 {# /jobs used to be folded into Add-Ons, back when a job log was only ever
@@ -534,17 +535,27 @@
 
       {# RAG system (core profile `rag`). The whole wrapper is conditional, not just
          its rows: an empty category would leave its divider and caption behind.
-         It hangs off the profile alone (`rag_enabled`), so the Collections page stays
-         reachable when a URL key behind one of the links is missing.
-         Collections is a page of the manager. The other entries are links out to the
-         system's own web interfaces; each will be replaced by a page of the manager
-         without changing the category. Those carry no active state, because
-         following one leaves the manager. #}
+         It hangs off the profile alone (`rag_enabled`), so the Connections and Collections
+         pages stay reachable when a URL key behind one of the links is missing.
+         Connections and Collections are pages of the manager, in the order the work
+         goes: a connection first, then the collections on it. The other entries are
+         links out to the system's own web interfaces; each will be replaced by a page
+         of the manager without changing the category. Those carry no active state,
+         because following one leaves the manager. #}
       {% set rag_links = rag_nav() %}
       {% if rag_enabled() %}
       <div class="mt-3 flex flex-col gap-0.5 border-t border-base-300 pt-3">
 
         <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">RAG</p>
+
+        <a href="/connections" aria-label="Connections"
+           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_connections else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+          </svg>
+          <span class="sidebar-label">Connections</span>
+        </a>
 
         <a href="/collections" aria-label="Collections"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors

@@ -33,6 +33,10 @@ Things worth knowing when touching this:
   a change reaches it within about a minute.
 * The role of the ingest operator always has access to everything: it is not listed
   per collection and cannot be removed, and a global `m` grant is kept for it.
+* The store works against one Qdrant, whichever connection that is. The names of the two
+  system collections and the operator role are the same on every connection, and the
+  MCP server of the stack enforces the roles on the integrated Qdrant only; on another
+  connection they are stored all the same, and the page says so (`roles_enforced`).
 """
 from __future__ import annotations
 
@@ -220,6 +224,11 @@ class CollectionsView:
     operator_role: str = ""
     operator_granted: bool = False
     warnings: tuple[str, ...] = ()
+    # The connection this is the view of.
+    connection: str = ""
+    # False on a Qdrant the stack's MCP server does not read: the roles are written
+    # there, but nothing in the stack enforces them.
+    roles_enforced: bool = True
 
 
 @dataclass(frozen=True)
@@ -279,11 +288,28 @@ def _parse_acl(points: Iterable[Any]) -> list[_AclPoint]:
 
 
 class CollectionStore:
-    """The Collections page's reads and writes against one Qdrant."""
+    """The Collections page's reads and writes against one Qdrant.
 
-    def __init__(self, client: QdrantClient, backend: RagBackend) -> None:
+    `blocked` is the reason the store cannot be used at all, known before any request
+    (the stack's api-key is missing, a stored key cannot be decrypted). A connection
+    without an api-key is not blocked: Qdrant may not ask for one, and if it does, it
+    answers with a refusal that the page reports.
+    """
+
+    def __init__(
+        self,
+        client: QdrantClient,
+        backend: RagBackend,
+        *,
+        connection: str = "default",
+        roles_enforced: bool = True,
+        blocked: str | None = None,
+    ) -> None:
         self._client = client
         self._backend = backend
+        self.connection = connection
+        self._roles_enforced = roles_enforced
+        self._blocked = blocked
 
     # ── reading ─────────────────────────────────────────────────────────────
 
@@ -294,9 +320,11 @@ class CollectionStore:
             available=False,
             operator_role=backend.operator_role,
             warnings=backend.warnings,
+            connection=self.connection,
+            roles_enforced=self._roles_enforced,
         )
-        if not backend.api_key:
-            return _with_reason(unavailable, _NO_KEY)
+        if self._blocked:
+            return _with_reason(unavailable, self._blocked)
         try:
             return await self._snapshot()
         except QdrantUnavailable as exc:
@@ -359,6 +387,8 @@ class CollectionStore:
             operator_role=backend.operator_role,
             operator_granted=operator_granted,
             warnings=backend.warnings,
+            connection=self.connection,
+            roles_enforced=self._roles_enforced,
         )
 
     async def _read_details(self, names: list[str]) -> dict[str, _Details]:
@@ -445,7 +475,7 @@ class CollectionStore:
         A failure after the collection exists removes it again, with what was written
         for it, so a retry starts clean. Raises `CollectionExists` for a taken name.
         """
-        self._require_key()
+        self._require_usable()
         backend = self._backend
         name = validate_collection_name(name, backend.system_collections)
         size = validate_vector_size(vector_size)
@@ -491,7 +521,7 @@ class CollectionStore:
         Idempotent: a collection that is already gone still has its leftovers removed,
         which is how a delete that stopped half-way is finished.
         """
-        self._require_key()
+        self._require_usable()
         name = _existing_name(name, self._backend.system_collections)
         try:
             await self._client.request("DELETE", collection_path(name))
@@ -504,7 +534,7 @@ class CollectionStore:
 
     async def set_roles(self, name: str, grants: Iterable[RoleGrant]) -> None:
         """Make `grants` the complete list of roles of a collection."""
-        self._require_key()
+        self._require_usable()
         backend = self._backend
         name = _existing_name(name, backend.system_collections)
         roles = normalise_grants(grants, backend.operator_role)
@@ -517,15 +547,15 @@ class CollectionStore:
 
     async def ensure_operator_grant(self) -> bool:
         """Write the operator's global grant if it is missing; True if it was written."""
-        self._require_key()
+        self._require_usable()
         await self._ensure_acl_collection()
         return await self._ensure_operator(await self._read_acl())
 
     # ── internals ───────────────────────────────────────────────────────────
 
-    def _require_key(self) -> None:
-        if not self._backend.api_key:
-            raise QdrantUnavailable(0, _NO_KEY)
+    def _require_usable(self) -> None:
+        if self._blocked:
+            raise QdrantUnavailable(0, self._blocked)
 
     async def _exists(self, name: str) -> bool:
         try:
@@ -693,13 +723,12 @@ class CollectionStore:
             return
 
 
-_NO_KEY = "QDRANT_JWT_SECRET is not set in ai/rag/.env, so the manager has no api-key for Qdrant."
-
-
 def _with_reason(view: CollectionsView, reason: str) -> CollectionsView:
     return CollectionsView(
         available=False,
         reason=reason,
         operator_role=view.operator_role,
         warnings=view.warnings,
+        connection=view.connection,
+        roles_enforced=view.roles_enforced,
     )

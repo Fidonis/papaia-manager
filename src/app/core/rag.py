@@ -19,13 +19,14 @@ Three surfaces use this module:
   reordered or removed in the editor.
 * the sidebar, through `rag_links` and `rag_active`, behind the `rag_nav` and
   `rag_enabled` template globals.
-* the Collections page, through `rag_backend`: the api-key, the two system
-  collections and the operator role, read from the RAG module's own `.env`.
+* the Collections and Connections pages, through `rag_backend` (the two system
+  collections and the operator role) and `rag_secrets` (the stack's Qdrant api-key and
+  the secret of the ingester's connection store), read from the RAG module's own `.env`.
 """
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.core.envfile import load_env_file
@@ -33,6 +34,12 @@ from app.core.inventory import profiles_in
 from app.core.tiles import Tile, TileGroup, check_value
 
 RAG_PROFILE = "rag"
+
+# Where the integrated Qdrant is, seen from the other services of the stack. This is the
+# address the ingester has to use, so it is what the default connection stores. The
+# manager may reach the same Qdrant elsewhere (`Settings.qdrant_url`); that never goes
+# into the connection store, which the ingester reads.
+INTEGRATED_URL = "http://qdrant:6333"
 
 # Heading of the dashboard group, and of the sidebar category, which the template
 # spells out itself.
@@ -138,13 +145,18 @@ _META_KEYS = ("EMBEDDING_META_COLLECTION", "QI_EMBED_META_COLLECTION")
 _ACL_KEYS = ("RBAC_ACL_COLLECTION", "QI_RBAC_ACL_COLLECTION")
 _OPERATOR_KEY = "QI_OIDC_OPERATOR_ROLE"
 _API_KEY = "QDRANT_JWT_SECRET"
+_CONNECTIONS_SECRET_KEY = "QI_CONNECTIONS_SECRET"
 
 
 @dataclass(frozen=True)
 class RagBackend:
-    """What the Collections page needs to know about the RAG system's Qdrant."""
+    """The names the RAG system's services agree on, whichever Qdrant they are applied to.
 
-    api_key: str
+    The meta and ACL collections and the operator role are the same on every connection:
+    the ingester writes its meta collection into each Qdrant it targets, and it names
+    them from one setting.
+    """
+
     meta_collection: str
     acl_collection: str
     operator_role: str
@@ -176,21 +188,41 @@ def _first_set(
 
 
 def rag_backend(config_dir: str) -> RagBackend:
-    """The RAG module's Qdrant settings, read from its `.env` at request time.
+    """The RAG module's shared names, read from its `.env` at request time.
 
-    A missing file or key is a normal state: every name has the services' own default,
-    and a missing api-key is reported by the page rather than raised here.
+    A missing file or key is a normal state: every name has the services' own default.
     """
     env = load_env_file(Path(config_dir) / _MODULE_ENV)
     meta, meta_warning = _first_set(env, _META_KEYS, DEFAULT_META_COLLECTION)
     acl, acl_warning = _first_set(env, _ACL_KEYS, DEFAULT_ACL_COLLECTION)
     operator, _ = _first_set(env, (_OPERATOR_KEY,), DEFAULT_OPERATOR_ROLE)
     return RagBackend(
-        api_key=env.get(_API_KEY, "").strip(),
         meta_collection=meta,
         acl_collection=acl,
         operator_role=operator,
         warnings=tuple(w for w in (meta_warning, acl_warning) if w),
+    )
+
+
+@dataclass(frozen=True)
+class RagSecrets:
+    """The two secrets of the RAG module that the connections depend on.
+
+    `api_key` is the integrated Qdrant's api-key; `connections_secret` derives the key
+    that encrypts the api-keys in the ingester's connection store. Either may be empty,
+    which the callers report instead of failing: a stack set up before the module
+    existed has neither.
+    """
+
+    api_key: str = field(default="", repr=False)
+    connections_secret: str = field(default="", repr=False)
+
+
+def rag_secrets(config_dir: str) -> RagSecrets:
+    env = load_env_file(Path(config_dir) / _MODULE_ENV)
+    return RagSecrets(
+        api_key=env.get(_API_KEY, "").strip(),
+        connections_secret=env.get(_CONNECTIONS_SECRET_KEY, "").strip(),
     )
 
 

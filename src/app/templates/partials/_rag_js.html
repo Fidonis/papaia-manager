@@ -1,0 +1,43 @@
+{# Helpers of the Collections and Connections pages: escaping, the JSON request and the
+   error text of a refusal. One copy, because a second would drift. The page includes it
+   once, inside its own content block. #}
+<script>
+// Names and messages are free text, and showToast takes markup.
+function _ragEscape(text) {
+  return String(text).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function _ragDetail(body, status) {
+  if (body && typeof body.detail === 'string') return body.detail;
+  if (body && Array.isArray(body.detail)) {
+    return body.detail.map(function (d) { return d.msg || JSON.stringify(d); }).join('; ');
+  }
+  return body ? JSON.stringify(body) : String(status);
+}
+
+async function _ragError(r) {
+  try {
+    return _ragDetail(await r.json(), r.status);
+  } catch (_) {
+    return String(r.status);
+  }
+}
+
+// {ok, data} on success, {ok: false, error} on a refusal, {ok: false, handled: true}
+// when the session expired and the page is already reloading.
+async function _ragRequest(method, url, body) {
+  const r = await fetch(url, {
+    method: method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': document.querySelector('meta[name=csrf]').content,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (_authGuard(r)) return { ok: false, handled: true };
+  if (!r.ok) return { ok: false, error: await _ragError(r) };
+  return { ok: true, data: r.status === 204 ? null : await r.json() };
+}
+</script>

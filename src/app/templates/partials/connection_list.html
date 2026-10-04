@@ -1,0 +1,312 @@
+{# The body of the Connections page: the connections in the ingester's store, what is
+   wrong with the file, and the dialogs to change them.
+
+   The dialogs are part of this partial and only rendered while the file can be changed.
+   The page does not poll, and every change reloads the partial, so a dialog is never
+   torn down while somebody is typing in it. They talk to the rows through window
+   events (`connection-edit`, `connection-delete`, `connection-reset`): a row cannot
+   reach the scope of a dialog that is not its parent.
+
+   No api-key is ever rendered, not even masked: a row says whether one is stored and
+   whether it can still be read.
+
+   Classes are spelled out per branch rather than assembled from a variable:
+   app.css is built by scanning these templates. #}
+{% from "partials/_actions.html" import row_actions, overflow_menu %}
+
+{% set can_write = state.writable and not state.structural_error %}
+
+<div class="flex flex-col gap-3">
+
+  {% if state.structural_error %}
+  <div class="alert alert-error text-sm" role="alert">
+    <span>
+      <span class="font-mono">connections.yaml</span> cannot be changed: {{ state.structural_error }}.
+      The ingester cannot read it either. Fix the file, then reload.
+    </span>
+  </div>
+  {% elif not state.writable %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span>
+      The ingester's catalog directory does not accept writes from the manager, so the
+      connections are shown read-only.
+    </span>
+  </div>
+  {% endif %}
+
+  {% if not state.secret_configured %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span>
+      <span class="font-mono">QI_CONNECTIONS_SECRET</span> is not set in
+      <span class="font-mono">ai/rag/.env</span>, so no api-key can be stored or read.
+      Connections without a key still work.
+    </span>
+  </div>
+  {% endif %}
+
+  {% if state.issues %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <div>
+      <p class="font-semibold">The ingester reports problems in connections.yaml</p>
+      <ul class="mt-1 list-disc pl-5">
+        {% for issue in state.issues %}
+        <li>{{ issue }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if state.jobs_error %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span>{{ state.jobs_error }} Deleting a connection and changing the address of one stay
+    refused until the jobs can be checked.</span>
+  </div>
+  {% endif %}
+
+  {% if not state.default_stored and not state.structural_error %}
+  <div class="alert alert-info text-sm" role="status">
+    <span>
+      The default connection to the integrated Qdrant is not stored yet. It is created as soon
+      as <span class="font-mono">QDRANT_JWT_SECRET</span> and
+      <span class="font-mono">QI_CONNECTIONS_SECRET</span> are set in
+      <span class="font-mono">ai/rag/.env</span>. Collections use the stack's own settings meanwhile.
+    </span>
+  </div>
+  {% endif %}
+
+  {% for c in state.connections %}
+  {% if c.key_drift %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span>
+      The api-key stored for <span class="font-mono">{{ c.name }}</span> is not the stack's
+      current Qdrant api-key any more, for example after the secret was rotated.
+    </span>
+    {% if can_write %}
+    <button type="button" class="btn btn-sm"
+            @click='$dispatch("connection-reset", {{ {"name": c.name}|tojson }})'>Reset</button>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  {% if not state.connections %}
+  <div class="flex flex-col items-center py-16 gap-3 opacity-60">
+    <p class="text-lg font-medium">No connections yet</p>
+    <p class="text-sm">Add one, or let the default connection be created.</p>
+  </div>
+  {% endif %}
+
+  {% for c in state.connections %}
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-semibold font-mono">{{ c.name }}</span>
+          {% if c.is_default %}
+          <span class="badge badge-secondary badge-sm gap-1"
+                title="The connection to the integrated Qdrant. Collections start on it. It can be edited, but not renamed or deleted.">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+            Default
+          </span>
+          {% endif %}
+          <span class="badge badge-outline badge-sm">{{ c.type_label }}</span>
+          {% if c.key_state == 'unreadable' %}
+          <span class="badge badge-error badge-sm"
+                title="The stored api-key cannot be decrypted with the current QI_CONNECTIONS_SECRET. Enter it again.">key unreadable</span>
+          {% elif c.key_state == 'ok' %}
+          <span class="badge badge-ghost badge-sm" title="An api-key is stored (encrypted)">key set</span>
+          {% else %}
+          <span class="badge badge-ghost badge-sm" title="No api-key is stored">no key</span>
+          {% endif %}
+          {% if c.key_drift %}
+          <span class="badge badge-warning badge-sm" title="Not the stack's current Qdrant api-key">key differs</span>
+          {% endif %}
+          {% if c.used_by %}
+          <span class="badge badge-ghost badge-sm"
+                title="Ingest jobs that write here: {{ c.used_by|join(', ') }}">used by {{ c.used_by|length }} job{{ '' if c.used_by|length == 1 else 's' }}</span>
+          {% endif %}
+        </div>
+
+        {# Tier 2: Edit and Test stay in the open. Resetting and deleting replace or
+           remove something, so they sit behind the kebab and confirm in a dialog.
+           The default connection has no Delete at all. #}
+        {% call row_actions("{ testing: false }") %}
+          {% if can_write %}
+          <button type="button" class="btn btn-outline btn-xs"
+                  @click='$dispatch("connection-edit", {{ {"name": c.name, "type": c.type, "fields": c.fields, "hasKey": c.has_key, "etag": c.etag, "usedBy": c.used_by}|tojson }})'>Edit</button>
+          {% endif %}
+          <button type="button" class="btn btn-outline btn-xs" :disabled="testing"
+                  @click="testing = true; testConnection('{{ c.name }}').then(() => testing = false)">
+            <span x-show="testing" style="display:none" class="loading loading-spinner loading-xs"></span>
+            <span>Test</span>
+          </button>
+          {% if can_write %}
+          {% call overflow_menu(size='xs', label='More actions for connection ' ~ c.name) %}
+            {% if c.is_default %}
+            <li><a @click='$dispatch("connection-reset", {{ {"name": c.name}|tojson }})'>Reset to integrated Qdrant</a></li>
+            {% else %}
+            <li><a class="text-error"
+                   @click='$dispatch("connection-delete", {{ {"name": c.name, "etag": c.etag}|tojson }})'>Delete</a></li>
+            {% endif %}
+          {% endcall %}
+          {% endif %}
+        {% endcall %}
+      </div>
+
+      <div class="mt-1 text-sm opacity-60">
+        <span class="font-mono">{{ c.address }}</span>
+        {% if c.reach_address %}
+        <span class="ml-2 text-xs opacity-80">The manager connects to <span class="font-mono">{{ c.reach_address }}</span></span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <p class="text-xs opacity-50">
+    The ingester picks up a change within about 30 seconds. A test runs from the manager,
+    which may reach an address differently than the ingester does.
+  </p>
+</div>
+
+{% if can_write %}
+
+<!-- New and edit -->
+<dialog id="connection-modal" class="modal" x-data='connectionDialog({{ types|tojson }})'
+        @connection-new.window="openNew()"
+        @connection-edit.window="openEdit($event.detail)"
+        @close="reset()">
+  <div class="modal-box max-w-xl">
+    <h3 class="mb-4 text-lg font-bold" x-text="mode === 'create' ? 'New connection' : 'Edit connection'"></h3>
+    <form @submit.prevent="submit()" autocomplete="off">
+
+      <div class="form-control mb-3">
+        <label class="label"><span class="label-text">Name</span></label>
+        <input type="text" class="input input-bordered font-mono" x-model="name" required
+               :disabled="mode === 'edit'" maxlength="64"
+               pattern="[a-z0-9][a-z0-9_\-]{0,63}" placeholder="archive">
+        <p class="mt-1 text-xs opacity-60">
+          Lowercase letters, digits, '-' and '_'. Ingest jobs refer to a connection by its name,
+          so it cannot be changed later.
+        </p>
+      </div>
+
+      <div class="form-control mb-3" style="display:none" x-show="types.length > 1 && mode === 'create'">
+        <label class="label"><span class="label-text">Type</span></label>
+        <select class="select select-bordered" x-model="type">
+          <template x-for="t in types" :key="t.id">
+            <option :value="t.id" x-text="t.label"></option>
+          </template>
+        </select>
+      </div>
+
+      <template x-for="spec in plain()" :key="spec.name">
+        <div class="form-control mb-3">
+          <label class="label">
+            <span class="label-text" x-text="spec.label + (spec.required ? '' : ' (optional)')"></span>
+          </label>
+          <input type="text" class="input input-bordered font-mono" inputmode="url"
+                 x-model="fields[spec.name]" :required="spec.required"
+                 :placeholder="spec.placeholder" maxlength="2048" spellcheck="false">
+          <p class="mt-1 text-xs opacity-60" x-text="spec.help"></p>
+        </div>
+      </template>
+
+      <template x-if="secret()">
+        <div class="form-control mb-3">
+          <label class="label"><span class="label-text" x-text="secret().label + ' (optional)'"></span></label>
+          <input type="password" class="input input-bordered font-mono" x-model="apiKey"
+                 autocomplete="new-password" spellcheck="false"
+                 :disabled="clearKey"
+                 :placeholder="mode === 'edit' && hasKey ? 'unchanged' : ''">
+          <p class="mt-1 text-xs opacity-60">
+            <span x-text="secret().help"></span>
+            It is stored encrypted and never shown again.
+          </p>
+          <label class="label cursor-pointer justify-start gap-2" style="display:none"
+                 x-show="mode === 'edit' && hasKey">
+            <input type="checkbox" class="checkbox checkbox-sm" x-model="clearKey" @change="if (clearKey) apiKey = ''">
+            <span class="label-text">Remove the stored key</span>
+          </label>
+          <p class="mt-1 text-xs text-warning" style="display:none"
+             x-show="moved() && hasKey && !apiKey && !clearKey">
+            The stored key is never sent to a different address. Enter the key for the new
+            address, or remove the stored one.
+          </p>
+        </div>
+      </template>
+
+      <div class="form-control mb-3" style="display:none" x-show="moved() && usedBy.length > 0">
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" class="checkbox checkbox-sm" x-model="confirmJobs">
+          <span class="label-text">
+            The jobs <span class="font-mono" x-text="usedBy.join(', ')"></span> write to this
+            connection and will write to the new address.
+          </span>
+        </label>
+      </div>
+
+      <p style="display:none" x-show="result" class="mb-2 text-sm"
+         :class="result && result.ok ? 'text-success' : 'text-error'" x-text="result && result.detail"></p>
+      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="button" class="btn btn-outline" :disabled="testing || busy" @click="test()">
+          <span x-show="testing" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Test
+        </button>
+        <button type="submit" class="btn btn-primary" :disabled="busy">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Save
+        </button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Delete a connection -->
+<dialog id="delete-connection-modal" class="modal" x-data="deleteConnection()"
+        @connection-delete.window="open($event.detail)">
+  <div class="modal-box">
+    <h3 class="mb-2 text-lg font-bold">Delete <span class="font-mono" x-text="name"></span>?</h3>
+    <p class="mb-3 text-sm">
+      The connection is removed from the ingester's store. The database itself and its
+      collections are not touched. A connection that ingest jobs write to cannot be deleted.
+    </p>
+    <form @submit.prevent="submit()">
+      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-error" :disabled="busy">Delete</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Reset the default connection -->
+<dialog id="reset-connection-modal" class="modal" x-data="resetConnection()"
+        @connection-reset.window="open($event.detail)">
+  <div class="modal-box">
+    <h3 class="mb-2 text-lg font-bold">Reset <span class="font-mono" x-text="name"></span>?</h3>
+    <p class="mb-3 text-sm">
+      The connection points at the integrated Qdrant again, with the stack's current api-key.
+      Changes made to its address or key are replaced.
+    </p>
+    <form @submit.prevent="submit()">
+      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-primary" :disabled="busy">Reset</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+{% endif %}

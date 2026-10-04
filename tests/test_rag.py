@@ -368,17 +368,29 @@ def test_the_admin_sidebar_has_a_rag_category_between_extensions_and_system(
     groups = _nav_groups(_admin(client).get("/").text)
 
     assert list(groups) == ["", "Monitor", "Extensions", "RAG", "System"]
-    assert groups["RAG"] == ["Collections", "Ingest", "Qdrant"]
+    assert groups["RAG"] == ["Connections", "Collections", "Ingest", "Qdrant"]
     assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
 
 
-def test_collections_is_a_page_of_the_manager_not_a_link_out(client: TestClient) -> None:
+@pytest.mark.parametrize("page", ["/connections", "/collections"])
+def test_the_manager_pages_are_not_links_out(client: TestClient, page: str) -> None:
     nav = _admin(client).get("/").text
     nav = nav[nav.index("<nav") : nav.index("</nav>")]
 
-    anchor = re.search(r'<a href="/collections"[^>]*>', nav)
+    anchor = re.search(rf'<a href="{page}"[^>]*>', nav)
     assert anchor
     assert "target=" not in anchor.group(0)
+    assert "aria-label=" in anchor.group(0), "the collapsed rail has no other label"
+
+
+def test_connections_is_marked_active_on_its_own_page_only(client: TestClient) -> None:
+    def active(body: str) -> bool:
+        nav = body[body.index("<nav") : body.index("</nav>")]
+        row = nav[nav.index('<a href="/connections"') :]
+        return "bg-secondary/15" in row[: row.index("</a>")]
+
+    assert not active(_admin(client).get("/collections").text)
+    assert active(_admin(client).get("/connections").text)
 
 
 def test_collections_is_marked_active_on_its_own_page_only(client: TestClient) -> None:
@@ -399,7 +411,7 @@ def test_the_category_survives_a_profile_that_is_on_without_its_url_keys(
 
     groups = _nav_groups(_admin(client).get("/").text)
 
-    assert groups["RAG"] == ["Collections"]
+    assert groups["RAG"] == ["Connections", "Collections"]
 
 
 def test_the_entries_open_the_web_interfaces_in_a_new_tab(client: TestClient) -> None:
