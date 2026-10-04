@@ -10,6 +10,8 @@ papaia-manager is a web-based control plane for the papAIa stack's addon lifecyc
 
 It also serves the stack dashboard: a tile overview of the deployed applications, held in `manager/tiles.yaml` in the papAIa config directory and editable in place by administrators.
 
+When the core's optional RAG system is active (profile `rag` in the core `.env`'s `COMPOSE_PROFILES`), administrators also get a computed "RAG" tile group on the dashboard (Qdrant, Qdrant Ingest) and a "RAG" category in the sidebar (links to the same two web interfaces, opened in a new tab). `core/rag.py` owns this: it reads the profile and the two URLs `QDRANT_PUBLIC_URL` and `QDRANT_INGEST_PUBLIC_URL` and never tests whether the URL keys exist, because the core keeps them while the profile is off. The tiles are added in `_gather_tiles` at render time and are not persisted to `tiles.yaml`; the sidebar reads the `rag_nav` Jinja global (`templating.py`) and gates the whole category wrapper, so no empty caption remains.
+
 A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). The same page schedules backups from inside the manager (see Backup schedule below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
 A fifth surface, Upgrade (`/upgrade`), moves the deployment to a newer papAIa release. It is split in two: a read-only check that resolves the target tag, gates the active add-ons against it and lists the pending migrations, and the upgrade itself, which runs `papaia-ctl upgrade` in a detached container (see the Upgrade model section below). The page also lists the Docker images an upgrade leaves behind and removes them on request.
@@ -62,6 +64,7 @@ papaia-manager/
 │       │   │                   #   add-on gate, migration plan, runner-log phases
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
 │       │   ├── tiles.py        # tiles.yaml: dashboard tiles, visibility filtering, validation
+│       │   ├── rag.py          # Optional RAG system (core profile `rag`): computed tiles, sidebar links
 │       │   ├── settings_store.py # settings.yaml (one section per topic: branding, host) + logo files
 │       │   ├── host_health.py  # Memory, CPU, GPU, clock, disk space + certificate expiry via the
 │       │   │                   #   core's `doctor`; cached for the configured interval,

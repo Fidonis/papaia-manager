@@ -18,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 
 from app.config import get_settings
+from app.core.rag import RagLink, rag_links
 from app.core.settings_store import EffectiveBranding, effective_branding
 
 templates = Jinja2Templates(directory="app/templates")
@@ -84,3 +85,21 @@ def branding(context: dict[str, object]) -> EffectiveBranding:
 
 
 templates.env.globals["branding"] = branding
+
+
+@pass_context
+def rag_nav(context: dict[str, object]) -> list[RagLink]:
+    """The sidebar entries of the RAG system; empty unless the core runs it.
+
+    A global for the same reason as `branding`: the sidebar is part of every admin
+    page, including the ones rendered by an error handler, which never go through
+    the UI router's context builder. The lookup is one small `.env` read.
+    """
+    request = context.get("request")
+    resolver = get_settings
+    if isinstance(request, Request):
+        resolver = request.app.dependency_overrides.get(get_settings, get_settings)
+    return rag_links(resolver().papaia_config_dir)
+
+
+templates.env.globals["rag_nav"] = rag_nav
