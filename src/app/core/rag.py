@@ -25,6 +25,7 @@ Three surfaces use this module:
 """
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -146,6 +147,8 @@ _ACL_KEYS = ("RBAC_ACL_COLLECTION", "QI_RBAC_ACL_COLLECTION")
 _OPERATOR_KEY = "QI_OIDC_OPERATOR_ROLE"
 _API_KEY = "QDRANT_JWT_SECRET"
 _CONNECTIONS_SECRET_KEY = "QI_CONNECTIONS_SECRET"
+_INGEST_TOKEN_KEY = "QI_API_TOKEN"
+_LOCAL_MOUNT_KEY = "QI_LOCAL_MOUNT"
 
 
 @dataclass(frozen=True)
@@ -216,6 +219,9 @@ class RagSecrets:
 
     api_key: str = field(default="", repr=False)
     connections_secret: str = field(default="", repr=False)
+    # The static bearer token of the ingester's REST control plane. The Embedding page
+    # starts and watches runs with it.
+    ingest_api_token: str = field(default="", repr=False)
 
 
 def rag_secrets(config_dir: str) -> RagSecrets:
@@ -223,7 +229,66 @@ def rag_secrets(config_dir: str) -> RagSecrets:
     return RagSecrets(
         api_key=env.get(_API_KEY, "").strip(),
         connections_secret=env.get(_CONNECTIONS_SECRET_KEY, "").strip(),
+        ingest_api_token=env.get(_INGEST_TOKEN_KEY, "").strip(),
     )
+
+
+@dataclass(frozen=True)
+class DocumentsDir:
+    """The folder the ingester reads its `local` sources from, as the manager can use it.
+
+    `path` is None when the manager cannot use it, and `reason` says why. A folder the
+    manager can see but not write still lets files be picked (`writable` is False): only
+    the upload area needs to write.
+    """
+
+    path: Path | None
+    reason: str = ""
+    writable: bool = False
+
+
+def _inside(path: Path, base: Path) -> bool:
+    try:
+        return path.resolve().is_relative_to(base.resolve())
+    except OSError:
+        return False
+
+
+def documents_dir(config_dir: str, workspace_dir: str = "") -> DocumentsDir:
+    """The ingester's documents folder (`/data/local` in its container), seen from here.
+
+    The core mounts `${QI_LOCAL_MOUNT:-$PAPAIA_CONFIG_DIR/ai/rag/documents}` into the
+    ingester, and `QI_LOCAL_MOUNT` is a host path. The manager sees the host only through
+    the config and workspace directories it mounts at their own paths, so a value outside
+    them is a folder it has no way to reach: that is reported, not guessed at.
+    """
+    env = load_env_file(Path(config_dir) / _MODULE_ENV)
+    default = Path(config_dir) / "ai" / "rag" / "documents"
+    mount = env.get(_LOCAL_MOUNT_KEY, "").strip()
+    chosen = default
+    if mount:
+        if "$" in mount:
+            return DocumentsDir(
+                None,
+                f"{_LOCAL_MOUNT_KEY} in ai/rag/.env contains a variable, which the manager does "
+                "not expand. Write the folder out in full.",
+            )
+        chosen = Path(mount)
+        visible = [Path(config_dir), *([Path(workspace_dir)] if workspace_dir else [])]
+        if not any(_inside(chosen, base) for base in visible):
+            return DocumentsDir(
+                None,
+                f"{_LOCAL_MOUNT_KEY} points to {mount}, which the manager cannot see: it "
+                "mounts only its configuration and workspace directories. Embedding from the "
+                "manager needs the documents folder inside one of them.",
+            )
+    if not chosen.is_dir():
+        return DocumentsDir(
+            None,
+            f"The documents folder {chosen} does not exist. Create it (the stack's setup does "
+            "when the RAG system is chosen) and start the RAG services again.",
+        )
+    return DocumentsDir(chosen, writable=os.access(chosen, os.W_OK))
 
 
 def _same_target(a: str, b: str) -> bool:

@@ -14,6 +14,8 @@ When the core's optional RAG system is active (profile `rag` in the core `.env`'
 
 Another surface, Connections (`/connections`), is listed before Collections and manages the vector database connections of the RAG system: create, edit, test and delete them, with the connection `default` (the integrated Qdrant) created automatically, editable and marked as the default. They are stored in the ingester's own store, `ai/rag/catalog/connections.yaml`, so the ingest service uses them unchanged (see the RAG connections section below). Collections (`/collections`), the next surface, manages the Qdrant collections of the selected connection (the default one unless another is chosen) of the RAG system and the Keycloak roles that may use them: list, create and delete collections, and keep any number of role names with the access level `r` or `rw` per collection. It is admin-only and exists only while the `rag` profile is active (a 404 otherwise, after the role check). The roles are stored in the format `qdrant-mcp-rbac` defines, so the MCP server enforces them unchanged (see the RAG collections section below).
 
+A page after those two, Embedding (`/embedding`), puts files into a collection through the ingester: files are uploaded into a staging folder that is deleted after a successful run, or picked in the documents folder, and embedded either as "add and update" (nothing is deleted) or as "replace the collection". The run is the ingester's, and its status is read from it (see the RAG embedding section below).
+
 A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). The same page schedules backups from inside the manager (see Backup schedule below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
 A fifth surface, Upgrade (`/upgrade`), moves the deployment to a newer papAIa release. It is split in two: a read-only check that resolves the target tag, gates the active add-ons against it and lists the pending migrations, and the upgrade itself, which runs `papaia-ctl upgrade` in a detached container (see the Upgrade model section below). The page also lists the Docker images an upgrade leaves behind and removes them on request.
@@ -74,8 +76,14 @@ papaia-manager/
 │       │   │                   #   point ids, ACL and meta payloads, create/delete/set_roles
 │       │   ├── vectordb/       # Connection types (a registry) and the ingester's connection store:
 │       │   │                   #   base (types, ProbeEnv), qdrant_type, ingest_file (connections.yaml,
-│       │   │                   #   compare-and-swap writer), crypto (enc:1: tokens), jobs_usage,
+│       │   │                   #   compare-and-swap writer), catalog_io (the swap both catalog files
+│       │   │                   #   share), crypto (enc:1: tokens), jobs_usage,
 │       │   │                   #   service (default connection, key rules), errors
+│       │   ├── ingest/         # Embedding files through the ingester: catalog (the managed jobs in
+│       │   │                   #   jobs.yaml and their writer), documents (jailed browsing and
+│       │   │                   #   selection), uploads (staging folders, removed after a run), client
+│       │   │                   #   (the ingester's REST), runs (start, follow, clean up), watcher
+│       │   │                   #   (the background clean-up), errors
 │       │   ├── settings_store.py # settings.yaml (one section per topic: branding, host) + logo files
 │       │   ├── host_health.py  # Memory, CPU, GPU, clock, disk space + certificate expiry via the
 │       │   │                   #   core's `doctor`; cached for the configured interval,
@@ -110,6 +118,7 @@ papaia-manager/
 │       │   ├── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
 │       │   ├── api_collections.py # /api/v1/rag/collections — Qdrant collections and their roles
 │       │   ├── api_connections.py # /api/v1/rag/connections — connections of the ingester's store
+│       │   ├── api_ingest.py   # /api/v1/rag/ingest — uploads, the tree, embedding runs
 │       │   └── rag_deps.py     # RagAdmin (admin + `rag` profile), the connection service and the
 │       │                       #   per-request CollectionStore on the selected connection
 │       ├── templates/          # Jinja2 HTML templates
@@ -124,6 +133,10 @@ papaia-manager/
 │       │       ├── catalog_list.html         # Catalog table rows
 │       │       ├── collection_list.html      # Collections page body: collections, roles, dialogs, or why not
 │       │       ├── connection_list.html      # Connections page body: connections, file problems, dialogs
+│       │       ├── embedding_body.html       # Embedding page body: collection, sources, mode, run
+│       │       ├── embedding_status.html     # Polled run strip and the latest runs
+│       │       ├── embedding_tree.html       # One level of a file tree, a checkbox per entry
+│       │       ├── embedding_uploads.html    # The staged uploads
 │       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
 │       │       ├── job_status.html           # Polled job progress/log fragment
 │       │       ├── restore_point_list.html   # Restore point cards
@@ -187,7 +200,7 @@ Browser → /auth/callback?code&state
 
 ### Job model
 
-All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. A scheduled backup is enqueued onto the same queue. Only one mutating job runs at a time. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
+All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. A scheduled backup is enqueued onto the same queue. Only one mutating job runs at a time. An embedding run is deliberately not a job: it lives in the ingester, and a run of hours must not hold up a backup or an add-on action. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
 
 ### Restore model
 
@@ -359,6 +372,26 @@ Consequences worth remembering when touching this area:
 - **Every change is audited** as `rag.collection.create`, `rag.collection.delete`, `rag.collection.roles.update` or `rag.collection.operator-grant`, with the collection as target (`*` for the grant). The grant is audited only when it was actually written.
 - **Verified against the real code.** The grants and meta points the manager writes were read back with `qdrant-mcp-rbac`'s own loader and token builder (including the operator role resolving to global manage), and `qdrant-ingest`'s writer accepted the collections and enforced model and dimension, against a throwaway Qdrant. Repeat this when either contract changes.
 
+### RAG embedding
+
+The page and its API (`/embedding`, `/api/v1/rag/ingest`) put files into a collection through the ingester. `core/ingest/` holds all of it; `tests/test_ingest_*.py` and `tests/test_api_ingest.py` pin it, against `tests/fake_ingest.py`, a fake that reads the real `jobs.yaml` on a reload.
+
+Consequences worth remembering when touching this area:
+
+- **The ingester can only run what `jobs.yaml` declares and cannot be handed a file.** So the manager keeps two jobs per (connection, collection) in `ai/rag/catalog/jobs.yaml`, one per kind of source, with the id prefix `mgr-` (`catalog.managed_job_id`). Only entries with that prefix are ever written; everything else in the file stays as the operator or the ingester's own interface left it. The job is manual-only and its stored mode is `append`, which cannot delete or update, so a run started from the ingester's own interface can do no harm; the manager chooses the real mode in each run request. The upload job's path is changed for every run, and a path that no longer exists scans as empty.
+- **A document's identity is the job, the source label and the path inside the source.** The ingester derives every point id from them, which is why the job ids and the labels (`manager-upload`, `manager-folder`) are stable and why uploading the same relative path again replaces a document instead of adding a copy. The state rows outlive the files, so this holds after the staged files are gone.
+- **Add and update needs `delete_vanished: false` (`Fidonis/qdrant-ingest#41`).** Without it `upsert` removes every source that is missing from the scan, and the staged files are gone after each run. An ingester without the option answers a run request carrying it with 422 `extra_forbidden`; `IngestClient.supports_update_without_delete` finds that out with a request for a job id no job can have (`_probe`, answered 404 by a new ingester and 422 by an old one), so nothing is started to ask. Replace works with any ingester that has `full_scope: collection`.
+- **The ingester refuses a catalog with one invalid job as a whole and keeps serving the previous one.** So a job that exists after a reload proves nothing: `_loaded_as_written` compares the served definition with what was written, and a mismatch rolls the write back (`JobsFileRepository.restore`, which refuses to overwrite somebody else's later change). The cross-job rules (one connection and one model per collection, distinct labels, the connection exists) are checked before the write (`catalog_problems`); They were compared with the ingester's own loader when this was written (see the last item).
+- **The file is rewritten, not edited.** Comments and blank lines in `jobs.yaml` are lost on a write, as when the ingester's form saves a job; the previous content is kept as `jobs.yaml.bak` and nothing is written when the entry is already right. The writer shares its compare-and-swap with the connection store (`vectordb/catalog_io.py`).
+- **Paths are jailed by construction** (`documents.py`): plain segments only, every segment `lstat`-ed on the way down from a root resolved once, a symbolic link anywhere refuses the path, the staging area is hidden from the folder tree and from every selection of it, and a name with `*` or `?` is refused because the ingester's glob dialect has no escape. The folder job always carries `exclude: uploads/**`, so a selection of the whole folder cannot read another administrator's upload. Tests that need a link are skipped where the platform cannot create one; run them on Linux.
+- **An upload is a loan, not storage** (`uploads.py`): one staging folder per owner and upload (`uploads/<owner>/<id>/`, `0700`/`0600`), a manifest outside the documents folder (the ingester would embed it), names checked rather than repaired, limits enforced while the bytes arrive, removal folder first and record second. It is removed after a run with status `success` and no failed document, kept for a retry otherwise, and removed by the time limit whatever its state, except while its run is verifiably still working. The multipart body is read inside the handler after the role and CSRF checks, because FastAPI parses a declared body before it looks at who sent it.
+- **Cleaning up does not depend on a browser.** `reconcile` applies the rules and is called by the status strip when it sees a run end and by `IngestWatcher`, a task built in the startup hook (every few seconds while an upload is being embedded, once a minute otherwise). It writes nothing but what a manifest records, so a restart or two passes at once lose nothing. It assumes one process.
+- **The status is the ingester's** (`GET /v1/runs`), so it survives a restart of the manager. The ingester writes its counters when a run ends, so while one works the page shows the points written so far, counted in Qdrant by `ingest_run` (`CollectionStore.count_run_points`); that is a hint and may be absent. An abort is cooperative and takes effect between documents, which the page says.
+- **One run per collection, over both kinds of source**, because the upload job's path is the run's source. None starts while a restore, an upgrade or a stack action runs.
+- **The token is never an output.** `QI_API_TOKEN` is read from `ai/rag/.env` at request time (`RagSecrets.ingest_api_token`) and goes into one header. Audit entries (`rag.ingest.upload.*`, `rag.ingest.run.*`) carry counts and ids, never file names.
+- **A custom `QI_LOCAL_MOUNT` is invisible to the manager** unless it lies inside the configuration or workspace directory; `documents_dir` says so and the page disables what depends on it. A backup of the configuration directory contains an upload that is still staged; excluding `ai/rag/documents/uploads` there is a change in the core.
+- **Verified against the real code.** The jobs the manager writes load with the ingester's `load_catalog`, its include globs select exactly the intended files under the ingester's `scan_tree`, and a run through the real ingester and Qdrant (add, update by path, unchanged file, folder source, replace, failure with retry, a refused catalog, abort) behaved as described. Repeat this when the ingester's job schema, glob dialect or run options change.
+
 ---
 
 ## Engineering conventions
@@ -436,6 +469,9 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `PAPAIA_CONFIG_DIR` | Path to papAIa config directory (must equal host path in container) |
 | `PAPAIA_WORKSPACE_DIR` | Path to papAIa workspace (must equal host path in container) |
 | `QDRANT_URL` | Where the manager itself reaches the integrated Qdrant (default: `http://qdrant:6333`, which resolves on the network the manager shares with it). It replaces the stored address of a connection to the integrated Qdrant when connecting and is never written to the connection store |
+| `QDRANT_INGEST_URL` | Where the manager reaches the ingester's REST API (default: `http://qdrant-ingest:8300`, on the same network). Not the public URL of its web interface |
+| `INGEST_UPLOAD_TTL_HOURS` | How long an upload that was not embedded successfully stays before it is deleted (default: 24) |
+| `INGEST_MAX_UPLOAD_MB` / `INGEST_MAX_BATCH_MB` | Size limits of one uploaded file (default: 200) and of one upload (default: 2048) |
 
 The Connections and Collections pages read the rest of their settings from the RAG
 module's `.env` (`$PAPAIA_CONFIG_DIR/ai/rag/.env`) at request time, not from the
@@ -443,7 +479,7 @@ manager's environment: `QDRANT_JWT_SECRET` (the stack's api-key, which the defau
 connection stores) and `QI_CONNECTIONS_SECRET` (it derives the key that encrypts the
 api-keys in the connection store), `EMBEDDING_META_COLLECTION` or
 `QI_EMBED_META_COLLECTION`, `RBAC_ACL_COLLECTION` or `QI_RBAC_ACL_COLLECTION`, and
-`QI_OIDC_OPERATOR_ROLE`. A missing key means the services' own default
+`QI_OIDC_OPERATOR_ROLE`, `QI_API_TOKEN` (the ingester's REST token, for the Embedding page) and `QI_LOCAL_MOUNT` (to find the documents folder). A missing key means the services' own default
 (`_collection_meta`, `_rbac_acl`, `qdrant-ingest-operator`); a missing secret means
 no default connection is created and no api-key can be stored.
 

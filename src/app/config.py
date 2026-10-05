@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -39,6 +39,20 @@ class Settings(BaseSettings):
     # RAG module's `.env` at request time, next to the collection and role names (see
     # app/core/rag.py), so a shell on the host and the manager agree on it.
     qdrant_url: str = "http://qdrant:6333"
+
+    # Where this process reaches the ingester's REST control plane, on the same network.
+    # The static bearer token (`QI_API_TOKEN`) is read from the RAG module's `.env` at
+    # request time like the other secrets (see app/core/rag.py). Not the public URL of the
+    # ingester's web interface, which is the browser's address for the sign-in.
+    qdrant_ingest_url: str = "http://qdrant-ingest:8300"
+
+    # The Embedding page's upload area. An upload lives in a staging folder of its own that
+    # is removed after a successful run; one that is left (a failed run, a forgotten upload)
+    # is removed after this many hours. The sizes are per file and per upload, in MiB; the
+    # ingester skips a file larger than its own `QI_MAX_FILE_BYTES` (200 MiB by default).
+    ingest_upload_ttl_hours: int = Field(default=24, ge=1, le=720)
+    ingest_max_upload_mb: int = Field(default=200, ge=1, le=10_240)
+    ingest_max_batch_mb: int = Field(default=2_048, ge=1, le=102_400)
 
     # TLS (optional — path to custom CA bundle)
     ssl_cert_file: str | None = None

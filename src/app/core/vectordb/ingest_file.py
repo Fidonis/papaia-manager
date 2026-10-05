@@ -27,13 +27,11 @@ That decides almost everything here:
 """
 from __future__ import annotations
 
-import contextlib
 import copy
 import hashlib
 import json
 import os
 import re
-import stat
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -43,6 +41,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from app.core.vectordb import catalog_io
+from app.core.vectordb.catalog_io import dump_document, revision
 from app.core.vectordb.crypto import ENC_PREFIX
 from app.core.vectordb.errors import (
     ConnectionFileError,
@@ -59,7 +59,6 @@ _NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 _TMP_NAME = ".connections.yaml.manager.tmp"
 _BACKUP_TMP_NAME = ".connections.yaml.bak.manager.tmp"
 _MAX_ATTEMPTS = 3
-_DEFAULT_MODE = 0o644
 
 # Process-wide, for the manager's own writers. It says nothing about the ingester.
 _LOCK = threading.Lock()
@@ -140,13 +139,6 @@ def entry_etag(entry: Mapping[str, Any]) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
-def dump_document(document: Mapping[str, Any]) -> str:
-    """The ingester's own dump options, so a diff of the file shows only the change."""
-    return yaml.safe_dump(
-        dict(document), default_flow_style=False, sort_keys=False, allow_unicode=True
-    )
-
-
 def find_entry(document: Mapping[str, Any], name: str) -> dict[str, Any] | None:
     for entry in document.get("connections") or []:
         if isinstance(entry, dict) and entry.get("name") == name:
@@ -216,10 +208,6 @@ def _parse(raw: bytes) -> tuple[dict[str, Any], str | None]:
     return document, None
 
 
-def _revision(raw: bytes) -> str:
-    return hashlib.sha256(raw).hexdigest() if raw else ""
-
-
 class IngestFileRepository:
     """`connections.yaml` of the RAG module, read and changed on behalf of the manager."""
 
@@ -266,7 +254,7 @@ class IngestFileRepository:
             exists=True,
             writable=writable,
             raw=raw,
-            revision=_revision(raw),
+            revision=revision(raw),
             document=document,
             issues=issues,
             structural_error=problem,
@@ -316,58 +304,19 @@ class IngestFileRepository:
             raise ConnectionsReadOnlyError(
                 f"{directory} does not exist; the manager does not create it"
             )
-        tmp = directory / _TMP_NAME
         try:
-            mode = (
-                stat.S_IMODE(self._path.stat().st_mode) if snapshot.exists else _DEFAULT_MODE
+            swapped = catalog_io.swap(
+                self._path,
+                tmp_name=_TMP_NAME,
+                backup_tmp_name=_BACKUP_TMP_NAME,
+                expected_revision=snapshot.revision,
+                existed=snapshot.exists,
+                previous=snapshot.raw,
+                data=data,
             )
-            self._stage(tmp, data, mode)
-            try:
-                current = _revision(self._path.read_bytes())
-            except FileNotFoundError:
-                current = ""
-            if current != snapshot.revision:
-                return None
-            if snapshot.exists:
-                self._backup(directory, snapshot.raw)
-            os.replace(tmp, self._path)
         except OSError as exc:
             raise ConnectionsReadOnlyError(
                 f"{directory} does not accept the change ({exc.strerror or type(exc).__name__}); "
                 "connections are read-only here"
             ) from exc
-        finally:
-            with contextlib.suppress(OSError):
-                tmp.unlink(missing_ok=True)
-        return self.snapshot()
-
-    @staticmethod
-    def _stage(tmp: Path, data: bytes, mode: int) -> None:
-        # O_BINARY: on Windows a descriptor is otherwise opened in text mode and
-        # would rewrite every newline.
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
-        tmp.unlink(missing_ok=True)
-        fd = os.open(tmp, flags, mode)
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-        # The umask may have narrowed the mode; the file must stay as readable to the
-        # host operator as the one it replaces. Some mounts reject chmod.
-        with contextlib.suppress(OSError):
-            os.chmod(tmp, mode)
-
-    @staticmethod
-    def _backup(directory: Path, previous: bytes) -> None:
-        """Keep the previous content as `connections.yaml.bak`, as the ingester does.
-
-        Best effort, and by rename: the ingester copies over the old backup and fails
-        when that file belongs to somebody else, which must not stop this change.
-        """
-        staged = directory / _BACKUP_TMP_NAME
-        try:
-            staged.write_bytes(previous)
-            os.replace(staged, directory / "connections.yaml.bak")
-        except OSError:
-            with contextlib.suppress(OSError):
-                staged.unlink(missing_ok=True)
+        return self.snapshot() if swapped else None

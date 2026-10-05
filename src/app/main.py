@@ -14,6 +14,7 @@ from app.auth import roles
 from app.auth.csrf import get_csrf_token
 from app.auth.oidc import OIDCClaims
 from app.config import get_settings
+from app.core.ingest.watcher import IngestWatcher
 from app.core.jobs import JobQueue
 from app.core.papaia_lib import bootstrap
 from app.core.scheduler import BackupScheduler
@@ -24,6 +25,7 @@ from app.routers import (
     api_catalogs,
     api_collections,
     api_connections,
+    api_ingest,
     api_jobs,
     api_maintenance,
     api_settings,
@@ -38,6 +40,7 @@ from app.templating import templates
 
 _job_queue: JobQueue | None = None
 _backup_scheduler: BackupScheduler | None = None
+_ingest_watcher: IngestWatcher | None = None
 
 
 def create_app() -> FastAPI:
@@ -68,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(api_catalogs.router)
     app.include_router(api_collections.router)
     app.include_router(api_connections.router)
+    app.include_router(api_ingest.router)
     app.include_router(api_addons.router)
     app.include_router(api_jobs.router)
     app.include_router(api_maintenance.router)
@@ -122,7 +126,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _startup() -> None:
-        global _job_queue, _backup_scheduler  # noqa: PLW0603
+        global _job_queue, _backup_scheduler, _ingest_watcher  # noqa: PLW0603
 
         logger = logging.getLogger(__name__)
 
@@ -149,6 +153,17 @@ def create_app() -> FastAPI:
                 scheduler.shutdown()
             _backup_scheduler = None
 
+        # Cleans up after embedding runs when nobody has the Embedding page open. Built here
+        # for the same reason as the scheduler: it needs the running event loop. It does
+        # nothing without the RAG profile, and a failure costs the clean-up, not the manager.
+        try:
+            watcher = IngestWatcher(settings)
+            watcher.start()
+            _ingest_watcher = watcher
+        except Exception:
+            logger.exception("the embedding clean-up failed to start; continuing without it")
+            _ingest_watcher = None
+
         # The ingester needs a connection before anybody opens a page of the manager.
         # `ensure_default` never raises and does nothing without the RAG profile.
         try:
@@ -160,6 +175,8 @@ def create_app() -> FastAPI:
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
+        if _ingest_watcher is not None:
+            _ingest_watcher.shutdown()
         if _backup_scheduler is not None:
             _backup_scheduler.shutdown()
         if _job_queue is not None:

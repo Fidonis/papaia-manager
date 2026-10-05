@@ -1,4 +1,4 @@
-"""Dependencies shared by the Collections and Connections pages and their APIs."""
+"""Dependencies shared by the RAG pages (Connections, Collections, Embedding) and their APIs."""
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -10,8 +10,10 @@ from fastapi import Depends, HTTPException, Query, status
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
+from app.core.ingest.client import IngestClient
+from app.core.ingest.runs import EmbeddingService
 from app.core.qdrant import QdrantClient, tls_verify
-from app.core.rag import rag_active, rag_backend
+from app.core.rag import rag_active, rag_backend, rag_secrets
 from app.core.rag_collections import CollectionStore
 from app.core.vectordb import (
     CAPABILITY_COLLECTIONS,
@@ -130,3 +132,32 @@ async def get_store(
         )
     finally:
         await client.aclose()
+
+
+async def get_ingest_client(
+    settings: Annotated[Settings, Depends(get_settings)],
+    transport: HttpTransport,
+) -> AsyncIterator[IngestClient]:
+    """A client for the ingester's REST control plane, for the length of one request.
+
+    The token is read from the RAG module's `.env` now rather than at start, so a shell on
+    the host and the manager agree on it. A missing token is a state the page explains, not
+    an error here: the client refuses to send without one.
+    """
+    token = rag_secrets(settings.papaia_config_dir).ingest_api_token
+    client = IngestClient(settings.qdrant_ingest_url, token, transport=transport)
+    try:
+        yield client
+    finally:
+        await client.aclose()
+
+
+def get_embedding_service(
+    settings: Annotated[Settings, Depends(get_settings)],
+    store: Annotated[CollectionStore, Depends(get_store)],
+    client: Annotated[IngestClient, Depends(get_ingest_client)],
+) -> EmbeddingService:
+    return EmbeddingService(settings, store=store, client=client)
+
+
+EmbeddingServiceDep = Annotated[EmbeddingService, Depends(get_embedding_service)]

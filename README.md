@@ -152,6 +152,51 @@ takes effect for the ingester only; changing them is not supported before it
 does. When Qdrant cannot be reached or refuses the key, the page says why instead
 of showing a list.
 
+**Embedding.** An admin-only page at `/embedding`, third under *RAG* and only
+while the `rag` profile is active, that puts files into a collection through the
+ingester, as a run in the background with its status on the page. A collection
+has an *Embed files* link on the Collections page. Files come from two places.
+An **upload** (files or a whole folder, from the browser) is kept in a staging
+folder of its own, `ai/rag/documents/uploads/<owner>/<upload>/` (`/data/local/…`
+in the ingester), so the uploads of different administrators and of different
+occasions stay apart, and it is **deleted after a run that succeeded without a
+failed document**, because it may be confidential. An upload that is left (a
+failed or stopped run, a forgotten upload) is kept for a retry and deleted after
+`INGEST_UPLOAD_TTL_HOURS` (24 by default); it can also be discarded by hand. The
+**folder** tab picks files and whole folders that are already in the ingester's
+documents folder; those belong to whoever put them there and are never deleted.
+There are two modes. *Add and update* adds new files, replaces the chunks of a
+file whose path is already in the collection and whose content changed, skips an
+unchanged file and never deletes anything: a document is identified by its path
+inside the upload (or the folder), so uploading `handbook/a.pdf` again updates
+it. It needs an ingester with the `delete_vanished` run option and says so when
+the ingester is older. *Replace the collection* drops everything in it and fills
+it from the selection (its roles and its model record stay; it is also how the
+embedding model is changed) and asks for the collection name to be typed. The
+model is taken from the collection's meta record, or named when there is none.
+One run works on a collection at a time, and none starts while a restore, an
+upgrade or a stack action runs. The status is the ingester's own, so it survives
+a restart of the manager; while a run works the page shows the chunks written so
+far (counted in Qdrant), and its counts and messages when it ends.
+
+The ingester can only run what `jobs.yaml` declares and has no API to create a
+job or to take a file. The manager therefore keeps two jobs per connection and
+collection in `ai/rag/catalog/jobs.yaml`, one for uploads and one for the folder,
+with the id prefix `mgr-` (every other job is left exactly as it is), written
+compare-and-swap like the connection store. It checks the rules the ingester
+checks across jobs first, because the ingester refuses a catalog with one invalid
+job as a whole, makes the ingester reload, checks that it serves what was
+written, and takes its write back otherwise. Comments in `jobs.yaml` are lost on a
+write (as when the ingester's own form saves a job); the previous file is kept as
+`jobs.yaml.bak`. The ingester is reached on the stack's network at
+`QDRANT_INGEST_URL` (default `http://qdrant-ingest:8300`) with the static
+`QI_API_TOKEN` from `ai/rag/.env`. The documents folder must be where the core
+puts it (`ai/rag/documents`) or inside the configuration or workspace directory:
+a `QI_LOCAL_MOUNT` anywhere else is a folder the manager cannot see, and the page
+says so. The limits are `INGEST_MAX_UPLOAD_MB` per file (200) and
+`INGEST_MAX_BATCH_MB` per upload (2048). A backup of the configuration directory
+contains an upload that is still staged while it runs.
+
 **Services.** An admin-only page at `/services` showing what this deployment is
 configured to run and how much of it is up. Containers are read from `docker ps`
 and grouped by the `de.fidonis.module` label the Compose files put on every
@@ -378,6 +423,18 @@ PUT    /api/v1/rag/collections/{name}/roles   # {roles: [{role, access: "r"|"rw"
 DELETE /api/v1/rag/collections/{name}      # also removes its meta record and roles
 POST   /api/v1/rag/collections/operator-grant  # → {written}
 
+GET    /api/v1/rag/ingest/status           # ingester usable?, supports add?, documents folder
+GET    /api/v1/rag/ingest/uploads          # the staged uploads
+POST   /api/v1/rag/ingest/uploads          # {name?} a new, empty upload → 201
+POST   /api/v1/rag/ingest/uploads/{id}/files  # multipart: file, path? (relative) → 201 {path, bytes, replaced}
+DELETE /api/v1/rag/ingest/uploads/{id}     # discard it and delete its files
+GET    /api/v1/rag/ingest/tree             # ?source=folder|upload, upload?, path? one level of a tree
+# The run routes take ?connection=<name> (default: "default")
+POST   /api/v1/rag/ingest/runs             # {collection, mode: "add"|"replace", source: {kind, batch?, paths}, model?, confirm_replace?, confirm_other_jobs?} → 202 {run_id, job_id, files, bytes}
+GET    /api/v1/rag/ingest/runs             # ?collection= the latest runs of a collection
+GET    /api/v1/rag/ingest/runs/{id}        # ?collection= state, counts, messages, chunks so far
+DELETE /api/v1/rag/ingest/runs/{id}        # abort (the ingester stops between documents)
+
 GET  /api/v1/addons
 GET  /api/v1/addons/{name}
 GET  /api/v1/addons/{name}/env-form
@@ -459,10 +516,12 @@ papaia-manager/
 │       │                   # rag (optional RAG system: tiles, links, settings) +
 │       │                   # qdrant (REST client) + rag_collections (collections and roles),
 │       │                   # vectordb/ (connection types and the ingester's connection store),
+│       │                   # ingest/ (embedding files through the ingester: managed jobs,
+│       │                   # jailed browsing, staged uploads, runs, background clean-up),
 │       │                   # settings_store (settings.yaml and the logo)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
-│       │                   # api_tiles, api_settings, api_collections, api_connections
+│       │                   # api_tiles, api_settings, api_collections, api_connections, api_ingest
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)

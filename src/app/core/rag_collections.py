@@ -391,6 +391,53 @@ class CollectionStore:
             roles_enforced=self._roles_enforced,
         )
 
+    async def describe(self, name: str) -> CollectionInfo | None:
+        """One collection as the list shows it, without its roles; None if it does not exist.
+
+        Raises `QdrantUnavailable` if the store cannot be used and `InvalidInput` for a
+        system collection, like the other calls that name a collection.
+        """
+        self._require_usable()
+        name = _existing_name(name, self._backend.system_collections)
+        if not await self._exists(name):
+            return None
+        details, meta = await asyncio.gather(self._read_details([name]), self._read_meta([name]))
+        recorded = meta.get(meta_point_id(name))
+        model = recorded.get("embedding_model") if recorded else None
+        detail = details[name]
+        return CollectionInfo(
+            name=name,
+            points=detail.points,
+            vector_size=detail.vector_size,
+            distance=detail.distance,
+            status=detail.status,
+            embedding_model=model if isinstance(model, str) and model else None,
+            has_meta=recorded is not None,
+            grants=(),
+        )
+
+    async def count_run_points(self, collection: str, run_id: str) -> int | None:
+        """How many points the ingester run `run_id` has written to a collection so far.
+
+        Every point carries the id of the run that last wrote it in `ingest_run`, which
+        the ingester indexes, so this is a cheap way to show progress while the ingester
+        itself reports its counters only when a run ends. None when it cannot be told: this
+        is a hint for the page, never a reason to fail.
+        """
+        try:
+            result = await self._client.request(
+                "POST",
+                f"{collection_path(collection)}/points/count",
+                json={
+                    "filter": {"must": [{"key": "ingest_run", "match": {"value": run_id}}]},
+                    "exact": True,
+                },
+            )
+        except QdrantError:
+            return None
+        count = result.get("count") if isinstance(result, dict) else None
+        return count if isinstance(count, int) else None
+
     async def _read_details(self, names: list[str]) -> dict[str, _Details]:
         limit = asyncio.Semaphore(DETAIL_CONCURRENCY)
 
