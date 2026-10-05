@@ -27,9 +27,13 @@ from app.core import (
 from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.envfile import load_env_file
+from app.core.ingest import catalog as ingest_catalog
+from app.core.ingest import runs as ingest_runs
+from app.core.ingest.errors import IngestError, InvalidRequest, NotFound
+from app.core.ingest.uploads import new_store as new_upload_store
 from app.core.inventory import SELF_PROFILE
 from app.core.jobs import Job, JobQueue
-from app.core.rag import with_rag_tiles
+from app.core.rag import documents_dir, with_rag_tiles
 from app.core.rag_collections import CollectionStore
 from app.core.resolve import resolve_catalog_addons
 from app.core.services import (
@@ -69,7 +73,13 @@ from app.core.tiles import (
 )
 from app.core.vectordb.service import DEFAULT_NAME as DEFAULT_CONNECTION
 from app.routers.api_connections import state_payload
-from app.routers.rag_deps import ConnectionServiceDep, RagAdmin, get_store
+from app.routers.rag_deps import (
+    ConnectionServiceDep,
+    EmbeddingServiceDep,
+    HttpTransport,
+    RagAdmin,
+    get_store,
+)
 from app.templating import templates as _templates
 
 router = APIRouter()
@@ -252,6 +262,39 @@ async def collections_page(
             connection_options=options,
             selected_connection=selected,
             default_connection=DEFAULT_CONNECTION,
+        ),
+    )
+
+
+@router.get("/embedding", response_class=HTMLResponse)
+async def embedding_page(
+    request: Request,
+    user: RagAdmin,
+    service: ConnectionServiceDep,
+    connection: Annotated[str, Query(max_length=64)] = DEFAULT_CONNECTION,
+    collection: Annotated[str, Query(max_length=255)] = "",
+) -> HTMLResponse:
+    """Put files into a collection: upload them or pick them in the documents folder.
+
+    Like the Collections page it works on one connection at a time, the default one unless
+    the address names another that exists and can hold collections.
+    """
+    service.ensure_default()
+    state = service.state()
+    options = [view.name for view in state.connections if view.collections]
+    if DEFAULT_CONNECTION not in options:
+        options.insert(0, DEFAULT_CONNECTION)
+    selected = connection if connection in options else DEFAULT_CONNECTION
+    return _templates.TemplateResponse(
+        request,
+        "embedding.html",
+        _ctx(
+            request,
+            user,
+            connection_options=options,
+            selected_connection=selected,
+            default_connection=DEFAULT_CONNECTION,
+            selected_collection=collection,
         ),
     )
 
@@ -622,6 +665,171 @@ async def partial_connections(
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+def _no_store(response: HTMLResponse) -> HTMLResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.get("/partials/embedding", response_class=HTMLResponse)
+async def partial_embedding(
+    request: Request,
+    user: RagAdmin,
+    service: EmbeddingServiceDep,
+    settings: Annotated[Settings, Depends(get_settings)],
+    collection: Annotated[str, Query(max_length=255)] = "",
+) -> HTMLResponse:
+    """The Embedding page's body: the chooser, the sources, the options and the run.
+
+    Read on every load and never cached. The Alpine scope that holds the selection lives
+    outside this element, so reloading it (a new collection) starts a fresh selection.
+    """
+    view = await service.collections()
+    chosen = next((c for c in view.collections if c.name == collection), None)
+    if chosen is None and view.collections:
+        chosen = view.collections[0]
+    state = await service.status()
+    batches: list[Any] = []
+    if state.documents.path is not None:
+        batches = service.upload_store().batches()
+    history: list[Any] = []
+    if chosen is not None and state.ready:
+        try:
+            history = await service.history(chosen.name)
+        except IngestError:
+            history = []
+    active = next((run for run in history if run.active), None)
+    return _no_store(
+        _templates.TemplateResponse(
+            request,
+            "partials/embedding_body.html",
+            _ctx(
+                request,
+                user,
+                view=view,
+                chosen=chosen,
+                usable=bool(chosen and ingest_catalog.COLLECTION_PATTERN.fullmatch(chosen.name)),
+                state=state,
+                batches=batches,
+                history=history,
+                active=active,
+                other_jobs=service.other_jobs(chosen.name) if chosen else [],
+                connection=service.connection,
+                ttl_hours=settings.ingest_upload_ttl_hours,
+                max_upload_mb=settings.ingest_max_upload_mb,
+                max_batch_mb=settings.ingest_max_batch_mb,
+            ),
+        )
+    )
+
+
+@router.get("/partials/embedding/tree", response_class=HTMLResponse)
+async def partial_embedding_tree(
+    request: Request,
+    user: RagAdmin,
+    settings: Annotated[Settings, Depends(get_settings)],
+    source: Annotated[str, Query(pattern="^(folder|upload)$")] = "folder",
+    upload: Annotated[str, Query(max_length=64)] = "",
+    path: Annotated[str, Query(max_length=1024)] = "",
+) -> HTMLResponse:
+    """One level of a tree, a row with a checkbox each, loaded as the page opens folders."""
+    reason = ""
+    listing = None
+    try:
+        listing = ingest_runs.browse_root(settings, source, upload or None).list_dir(path)
+    except InvalidRequest as exc:
+        reason = str(exc)
+    except NotFound:
+        reason = "That folder is gone."
+    except IngestError as exc:
+        reason = str(exc)
+    return _no_store(
+        _templates.TemplateResponse(
+            request,
+            "partials/embedding_tree.html",
+            _ctx(request, user, listing=listing, reason=reason, source=source, upload=upload),
+        )
+    )
+
+
+@router.get("/partials/embedding/uploads", response_class=HTMLResponse)
+async def partial_embedding_uploads(
+    request: Request,
+    user: RagAdmin,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The uploads, with their owner and what is left of their time."""
+    folder = documents_dir(settings.papaia_config_dir, settings.papaia_workspace_dir)
+    batches = (
+        new_upload_store(settings, folder.path).batches()
+        if folder.path is not None
+        else []
+    )
+    return _no_store(
+        _templates.TemplateResponse(
+            request,
+            "partials/embedding_uploads.html",
+            _ctx(
+                request,
+                user,
+                batches=batches,
+                ttl_hours=settings.ingest_upload_ttl_hours,
+                reason=folder.reason,
+            ),
+        )
+    )
+
+
+@router.get("/partials/embedding/status", response_class=HTMLResponse)
+async def partial_embedding_status(
+    request: Request,
+    user: RagAdmin,
+    service: EmbeddingServiceDep,
+    settings: Annotated[Settings, Depends(get_settings)],
+    transport: HttpTransport,
+    collection: Annotated[str, Query(max_length=255)] = "",
+    run: Annotated[str, Query(max_length=64)] = "",
+) -> HTMLResponse:
+    """The run strip: what is happening, then what happened, and the latest runs.
+
+    Polled every two seconds while the run works; a finished run is rendered without a
+    trigger, so the polling stops by itself. The pass that sees the end also applies the
+    clean-up, so the upload is gone by the time the page reloads its list.
+    """
+    view = None
+    problem = ""
+    try:
+        if run:
+            view = await service.run_view(run, collection=collection or None)
+            if not view.active:
+                await ingest_runs.reconcile(settings, transport=transport)
+    except NotFound:
+        problem = "The ingester no longer has this run."
+    except IngestError as exc:
+        problem = str(exc)
+    history: list[Any] = []
+    if collection and not problem:
+        try:
+            latest = await service.history(collection)
+            history = [r for r in latest if view is None or r.run_id != view.run_id]
+        except IngestError:
+            history = []
+    return _no_store(
+        _templates.TemplateResponse(
+            request,
+            "partials/embedding_status.html",
+            _ctx(
+                request,
+                user,
+                view=view,
+                problem=problem,
+                history=history,
+                collection=collection,
+                connection=service.connection,
+            ),
+        )
+    )
 
 
 @router.get("/partials/nav/host-indicator", response_class=HTMLResponse)

@@ -1,0 +1,51 @@
+{# The uploads of the Embedding page: who made each, when, how much, what state it is in
+   and how long it has left.
+
+   Included by the body and also served alone (`/partials/embedding/uploads`), and swapped
+   as a whole (the root keeps its id). It carries no state of its own: which upload is
+   chosen is `batch` in the page's Alpine scope, so a reload of this list never loses the
+   choice.
+
+   `left` is what remains of the time limit; an upload past it is removed by the next pass
+   of the clean-up, so it is not shown as available for long. #}
+<div id="embed-uploads" class="flex flex-col gap-2">
+  {% if reason %}
+  <p class="text-sm opacity-60">{{ reason }}</p>
+  {% elif not batches %}
+  <p class="text-sm opacity-60">No uploads yet. Add files or a folder above.</p>
+  {% endif %}
+
+  {% for b in batches %}
+  {% set left = ttl_hours - (b.age.total_seconds() / 3600) %}
+  <div class="flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2"
+       :class='batch === {{ b.id | tojson }} ? "border-primary bg-primary/5" : "border-base-300"'>
+    <input type="radio" name="embed-batch" class="radio radio-sm" aria-label="Use this upload"
+           :checked='batch === {{ b.id | tojson }}'
+           @change='pickBatch({{ b.id | tojson }})'
+           {% if b.state == 'embedding' %}disabled{% endif %}>
+    <div class="min-w-0 flex-1">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-sm font-medium">{{ b.name or 'Upload' }}</span>
+        <span class="badge badge-ghost badge-sm" title="Who made this upload">{{ b.owner_name }}</span>
+        {% if b.state == 'embedding' %}
+        <span class="badge badge-info badge-sm">being embedded{% if b.collection %}: {{ b.collection }}{% endif %}</span>
+        {% elif b.state == 'kept' %}
+        <span class="badge badge-warning badge-sm">kept for a retry</span>
+        {% else %}
+        <span class="badge badge-outline badge-sm">ready</span>
+        {% endif %}
+      </div>
+      <p class="text-xs opacity-60">
+        {{ b.created[:16] | replace('T', ' ') }} UTC ·
+        {{ b.files }} file{{ '' if b.files == 1 else 's' }} · {{ b.bytes | filesizeformat }} ·
+        {% if left >= 1 %}deleted automatically in about {{ left | round(0, 'floor') | int }} h{% else %}deleted automatically within the hour{% endif %}
+      </p>
+      {% if b.note %}
+      <p class="text-xs text-warning">{{ b.note }}</p>
+      {% endif %}
+    </div>
+    <button type="button" class="btn btn-ghost btn-xs" @click='discard({{ b.id | tojson }})'
+            {% if b.state == 'embedding' %}disabled{% endif %}>Discard</button>
+  </div>
+  {% endfor %}
+</div>

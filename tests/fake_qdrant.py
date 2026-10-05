@@ -170,6 +170,15 @@ class FakeQdrant:
             following = ids[start + limit] if start + limit < len(ids) else None
             points = [{"id": pid, "payload": col["points"][pid]["payload"]} for pid in page]
             return _ok({"points": points, "next_page_offset": following})
+        if rest == ["points", "count"] and method == "POST":
+            must = (body.get("filter") or {}).get("must") or []
+            wanted = {m["key"]: m["match"]["value"] for m in must}
+            hits = [
+                point
+                for point in col["points"].values()
+                if all(point["payload"].get(key) == value for key, value in wanted.items())
+            ]
+            return _ok({"count": len(hits)})
         if rest == ["points", "delete"] and method == "POST":
             for pid in body["points"]:
                 col["points"].pop(pid, None)

@@ -368,11 +368,11 @@ def test_the_admin_sidebar_has_a_rag_category_between_extensions_and_system(
     groups = _nav_groups(_admin(client).get("/").text)
 
     assert list(groups) == ["", "Monitor", "Extensions", "RAG", "System"]
-    assert groups["RAG"] == ["Connections", "Collections", "Ingest", "Qdrant"]
+    assert groups["RAG"] == ["Connections", "Collections", "Embedding", "Ingest", "Qdrant"]
     assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
 
 
-@pytest.mark.parametrize("page", ["/connections", "/collections"])
+@pytest.mark.parametrize("page", ["/connections", "/collections", "/embedding"])
 def test_the_manager_pages_are_not_links_out(client: TestClient, page: str) -> None:
     nav = _admin(client).get("/").text
     nav = nav[nav.index("<nav") : nav.index("</nav>")]
@@ -404,6 +404,17 @@ def test_collections_is_marked_active_on_its_own_page_only(client: TestClient) -
     assert active(_admin(client).get("/collections").text)
 
 
+def test_embedding_is_marked_active_on_its_own_page_only(client: TestClient) -> None:
+    # The page is a shell; the body is fetched afterwards, so no Qdrant is involved.
+    def active(body: str) -> bool:
+        nav = body[body.index("<nav") : body.index("</nav>")]
+        row = nav[nav.index('<a href="/embedding"') :]
+        return "bg-secondary/15" in row[: row.index("</a>")]
+
+    assert not active(_admin(client).get("/collections").text)
+    assert active(_admin(client).get("/embedding").text)
+
+
 def test_the_category_survives_a_profile_that_is_on_without_its_url_keys(
     client: TestClient, config_dir: Path
 ) -> None:
@@ -411,7 +422,7 @@ def test_the_category_survives_a_profile_that_is_on_without_its_url_keys(
 
     groups = _nav_groups(_admin(client).get("/").text)
 
-    assert groups["RAG"] == ["Connections", "Collections"]
+    assert groups["RAG"] == ["Connections", "Collections", "Embedding"]
 
 
 def test_the_entries_open_the_web_interfaces_in_a_new_tab(client: TestClient) -> None:

@@ -1,0 +1,52 @@
+{# One level of a tree: a row per entry with a checkbox, and for a folder a button that loads
+   its own level when it is first opened.
+
+   The selection is `selected` in the page's Alpine scope, as paths relative to the root of
+   the tree on screen. A folder that is selected selects everything below it, so the rows
+   below show as selected and cannot be changed on their own (`covered`).
+
+   Paths are put into attributes as JSON in single quotes, which is what keeps a name with
+   a quote in it from ending the attribute. #}
+{% if reason %}
+<p class="text-sm text-warning">{{ reason }}</p>
+{% elif listing is not none %}
+{% if not listing.entries %}
+<p class="text-sm opacity-60">Nothing here.</p>
+{% endif %}
+<ul class="flex flex-col">
+  {% for e in listing.entries %}
+  <li x-data="{ open: false }">
+    <div class="flex items-center gap-1.5 py-0.5">
+      {% if e.is_dir %}
+      <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Show what is in {{ e.name }}"
+              hx-get="/partials/embedding/tree?source={{ source | urlencode }}&upload={{ upload | urlencode }}&path={{ e.rel | urlencode }}"
+              hx-target="next .embed-children"
+              hx-swap="innerHTML"
+              hx-trigger="click once"
+              @click="open = !open">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform" :class="open ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+        </svg>
+      </button>
+      {% else %}
+      <span class="inline-block w-6"></span>
+      {% endif %}
+      <label class="flex min-w-0 cursor-pointer items-center gap-2">
+        <input type="checkbox" class="checkbox checkbox-sm"
+               :checked='isOn({{ e.rel | tojson }}) || covered({{ e.rel | tojson }})'
+               :disabled='covered({{ e.rel | tojson }})'
+               @change='toggle({{ e.rel | tojson }}, $event.target.checked)'>
+        <span class="truncate font-mono text-sm">{{ e.name }}{% if e.is_dir %}/{% endif %}</span>
+        {% if not e.is_dir %}<span class="shrink-0 text-xs opacity-50">{{ e.size | filesizeformat }}</span>{% endif %}
+      </label>
+    </div>
+    {% if e.is_dir %}
+    <ul class="embed-children ml-3 border-l border-base-300 pl-2" style="display:none" x-show="open"></ul>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% if listing.truncated %}
+<p class="mt-1 text-xs opacity-60">Only the first entries are shown. Select the folder to take all of it.</p>
+{% endif %}
+{% endif %}

@@ -1,0 +1,236 @@
+{# The body of the Embedding page: which collection, where the files come from, how to put
+   them in, and the run.
+
+   It is rendered inside the page's Alpine scope, which holds the selection, so every
+   control here talks to that scope (`selected`, `batch`, `mode`, `model`, ...). The scope is
+   told about this render by `loaded()`, called from the first element: a new collection
+   starts from a clean selection.
+
+   What cannot be done is a state, not an error: an ingester without a token, a documents
+   folder the manager cannot reach, a Qdrant that is down each say so and disable what
+   depends on them.
+
+   Classes are spelled out per branch rather than assembled from a variable: app.css is
+   built by scanning these templates. #}
+{% set supports_add = state.supports_add is not sameas false %}
+{% set docs_ok = state.documents.path is not none %}
+{% set can_upload = docs_ok and state.documents.writable %}
+{% set init = {
+    "collection": chosen.name if chosen else "",
+    "points": chosen.points if chosen else none,
+    "model": (chosen.embedding_model or "") if chosen else "",
+    "supportsAdd": supports_add,
+    "ready": state.ready and docs_ok and usable,
+    "otherJobs": other_jobs,
+    "activeRun": active.run_id if active else "",
+} %}
+<div hidden x-init='loaded({{ init | tojson }})'></div>
+
+{% if not view.available %}
+<div class="flex flex-col items-center py-24 gap-4 opacity-60 text-center">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+  </svg>
+  <p class="text-lg font-semibold">Embedding is not available</p>
+  <p class="max-w-xl text-sm">{{ view.reason }}</p>
+</div>
+{% elif not view.collections %}
+<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">
+  <p class="text-lg font-semibold">There is no collection to embed into yet</p>
+  <p class="max-w-xl text-sm">Create one first, then come back to put files into it.</p>
+  <a class="btn btn-primary btn-sm" href="/collections?connection={{ connection | urlencode }}">Go to Collections</a>
+</div>
+{% else %}
+
+<div class="flex flex-col gap-4">
+
+  {% if not state.ready %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span><b>The ingester cannot be used.</b> {{ state.reason }}</span>
+  </div>
+  {% endif %}
+  {% if not docs_ok %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span><b>The documents folder cannot be used.</b> {{ state.documents.reason }}</span>
+  </div>
+  {% elif not state.documents.writable %}
+  <div class="alert alert-info text-sm" role="status">
+    <span>The documents folder is read-only for the manager, so files cannot be uploaded. Files that are already in it can still be picked.</span>
+  </div>
+  {% endif %}
+  {% if chosen and not usable %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span>The ingester accepts collection names of up to 128 characters, so <span class="font-mono">{{ chosen.name }}</span> cannot be embedded into.</span>
+  </div>
+  {% endif %}
+
+  <!-- 1. The collection -->
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Collection</p>
+      <div class="flex flex-wrap items-center gap-3">
+        <select class="select select-bordered select-sm font-mono" aria-label="Collection"
+                onchange="reloadEmbedding(this.value)">
+          {% for c in view.collections %}
+          <option value="{{ c.name }}"{% if chosen and c.name == chosen.name %} selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+        {% if chosen.points is not none %}
+        <span class="badge badge-ghost badge-sm">{{ '{:,}'.format(chosen.points) }} point{{ '' if chosen.points == 1 else 's' }}</span>
+        {% endif %}
+        {% if chosen.embedding_model %}
+        <span class="badge badge-outline badge-sm" title="Embedding model recorded in the meta collection">{{ chosen.embedding_model }}</span>
+        {% else %}
+        <span class="badge badge-warning badge-outline badge-sm" title="No model is recorded yet: name the model below, and the ingester records it">no embedding model yet</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. The files -->
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Files</p>
+
+      <div role="tablist" class="tabs tabs-boxed w-fit">
+        <button type="button" role="tab" class="tab" :class="tab === 'upload' ? 'tab-active' : ''"
+                @click="switchTab('upload')">Upload</button>
+        <button type="button" role="tab" class="tab" :class="tab === 'folder' ? 'tab-active' : ''"
+                @click="switchTab('folder')">Folder</button>
+      </div>
+
+      <!-- Upload -->
+      <div x-show="tab === 'upload'" style="display:none" class="flex flex-col gap-3">
+        <p class="text-sm opacity-70">
+          Uploaded files are kept in a private folder of their own and <b>deleted after a successful run</b>.
+          One that is left over (a failed run, a forgotten upload) is deleted after {{ ttl_hours }} hours.
+          A file with the same path as one embedded earlier replaces it in the collection.
+          Up to {{ max_upload_mb }} MiB per file and {{ max_batch_mb }} MiB per upload.
+        </p>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <input type="file" multiple class="hidden" x-ref="files"
+                 @change="uploadFiles($event.target.files); $event.target.value = ''">
+          <input type="file" webkitdirectory class="hidden" x-ref="folder"
+                 @change="uploadFiles($event.target.files); $event.target.value = ''">
+          <button type="button" class="btn btn-outline btn-sm" @click="$refs.files.click()"
+                  :disabled="{{ 'true' if not can_upload else 'false' }} || uploading || runActive">Add files</button>
+          <button type="button" class="btn btn-outline btn-sm" @click="$refs.folder.click()"
+                  :disabled="{{ 'true' if not can_upload else 'false' }} || uploading || runActive">Add folder</button>
+          <button type="button" class="btn btn-ghost btn-sm" style="display:none" x-show="batch"
+                  @click="newUpload()">Start a new upload</button>
+          <span style="display:none" x-show="uploading" class="flex items-center gap-2 text-sm">
+            <span class="loading loading-spinner loading-xs"></span><span x-text="progress"></span>
+          </span>
+        </div>
+        <p class="text-xs opacity-60" style="display:none" x-show="batch">
+          New files are added to the upload that is selected. Start a new upload to keep them apart.
+        </p>
+        <div style="display:none" x-show="uploadErrors.length" class="alert alert-error text-sm" role="alert">
+          <ul class="list-disc pl-4">
+            <template x-for="message in uploadErrors" :key="message"><li x-text="message"></li></template>
+          </ul>
+        </div>
+
+        {% include "partials/embedding_uploads.html" %}
+
+        <div style="display:none" x-show="batch" class="rounded-lg border border-base-300 p-3">
+          <label class="flex items-center gap-2 text-sm font-semibold">
+            <input type="checkbox" class="checkbox checkbox-sm"
+                   :checked="isOn('')" @change="toggle('', $event.target.checked)">
+            The whole upload
+          </label>
+          <p class="mb-2 text-xs opacity-60">Files that are not selected are deleted with the upload.</p>
+          <div id="embed-batch-tree"></div>
+        </div>
+      </div>
+
+      <!-- Documents folder -->
+      <div x-show="tab === 'folder'" style="display:none" class="flex flex-col gap-3">
+        <p class="text-sm opacity-70">
+          Files that are already in the documents folder of the ingester. They belong to whoever
+          put them there and are never deleted.
+        </p>
+        {% if docs_ok %}
+        <div class="rounded-lg border border-base-300 p-3">
+          <label class="flex items-center gap-2 text-sm font-semibold">
+            <input type="checkbox" class="checkbox checkbox-sm"
+                   :checked="isOn('')" @change="toggle('', $event.target.checked)">
+            The whole folder
+          </label>
+          <div id="embed-folder-tree" class="mt-2"
+               hx-get="/partials/embedding/tree?source=folder"
+               hx-trigger="intersect once"
+               hx-swap="innerHTML">
+            <span class="loading loading-spinner loading-sm"></span>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. How -->
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">What to do with them</p>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+               :class="mode === 'add' ? 'border-primary bg-primary/5' : 'border-base-300'">
+          <input type="radio" class="radio radio-sm mt-1" value="add" x-model="mode"
+                 {% if not supports_add %}disabled{% endif %}>
+          <span>
+            <span class="block text-sm font-semibold">Add and update</span>
+            <span class="block text-xs opacity-70">
+              New files are added. A file whose path is already in the collection and whose content
+              changed replaces its old chunks. Nothing is deleted.
+            </span>
+            {% if not supports_add %}
+            <span class="mt-1 block text-xs text-warning">This ingester is too old for it. It needs a release with the <span class="font-mono">delete_vanished</span> run option.</span>
+            {% endif %}
+          </span>
+        </label>
+        <label class="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+               :class="mode === 'replace' ? 'border-error bg-error/5' : 'border-base-300'">
+          <input type="radio" class="radio radio-sm mt-1" value="replace" x-model="mode">
+          <span>
+            <span class="block text-sm font-semibold">Replace the collection</span>
+            <span class="block text-xs opacity-70">
+              Everything in the collection is deleted first, then it is filled from this selection.
+              This is also how the embedding model is changed.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div class="form-control mt-2 max-w-md">
+        <label class="label"><span class="label-text">Embedding model</span></label>
+        <input type="text" class="input input-bordered input-sm font-mono" x-model="model" maxlength="255"
+               :readonly="mode === 'add' && recorded !== ''" placeholder="nomic-embed-text">
+        <p class="mt-1 text-xs opacity-60">
+          <span x-show="mode === 'add' && recorded !== ''" style="display:none">The collection records this model. Use Replace to change it.</span>
+          <span x-show="!(mode === 'add' && recorded !== '')" style="display:none">The model the ingester embeds with, as LiteLLM names it. It is recorded for the collection.</span>
+        </p>
+      </div>
+
+      <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
+      <div class="flex items-center gap-3">
+        <button type="button" class="btn btn-primary btn-sm" :disabled="!canStart()" @click="start()">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Start embedding
+        </button>
+        <span style="display:none" x-show="runActive" class="text-xs opacity-60">A run is working on this collection.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. The run -->
+  <div id="embed-status"
+       hx-get="/partials/embedding/status?connection={{ connection | urlencode }}&collection={{ (chosen.name if chosen else '') | urlencode }}{% if active %}&run={{ active.run_id | urlencode }}{% endif %}"
+       hx-trigger="load"
+       hx-swap="outerHTML">
+  </div>
+
+</div>
+{% endif %}

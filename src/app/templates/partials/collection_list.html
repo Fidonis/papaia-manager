@@ -140,9 +140,12 @@
           {% endif %}
         </div>
 
-        {# Tier 2: roles are what this row is for. Delete is destructive, so it
-           sits behind the kebab and confirms in a dialog. #}
+        {# Tier 2: roles are what this row is for, and Embed files leads to the page that puts
+           documents into it. Delete is destructive, so it sits behind the kebab and confirms
+           in a dialog. #}
         {% call row_actions() %}
+          <a class="btn btn-outline btn-xs"
+             href="/embedding?connection={{ view.connection | urlencode }}&collection={{ c.name | urlencode }}">Embed files</a>
           <button type="button" class="btn btn-outline btn-xs"
                   @click='$dispatch("collection-roles", {{ {"name": c.name, "roles": c.roles_payload}|tojson }})'>Roles</button>
           {% call overflow_menu(size='xs', label='More actions for collection ' ~ c.name) %}
