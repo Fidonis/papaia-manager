@@ -86,6 +86,33 @@
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>
   </dialog>
+
+  {# Discarding an upload deletes files that were never embedded, so it confirms in a dialog
+     too, not in the browser's own. It names what goes, from what the list handed over. #}
+  <dialog id="embed-discard" class="modal" x-ref="discardDialog">
+    <div class="modal-box">
+      <h3 class="mb-2 text-lg font-bold">Discard this upload?</h3>
+      <p class="mb-1 text-sm" x-show="discardItem" style="display:none">
+        <span class="font-semibold" x-text="discardItem && discardItem.name"></span>
+        from <span x-text="discardItem && discardItem.owner"></span>:
+        <span x-text="discardItem && discardItem.files"></span>
+        file<span x-show="discardItem && discardItem.files !== 1" style="display:none">s</span>,
+        <span x-text="discardItem && discardItem.size"></span>.
+      </p>
+      <p class="mb-3 text-sm">
+        Its files are deleted without being embedded. This cannot be undone.
+      </p>
+      <p style="display:none" x-show="discardError" class="mb-2 text-sm text-error" x-text="discardError"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$refs.discardDialog.close()">Cancel</button>
+        <button type="button" class="btn btn-error" :disabled="discardBusy" @click="confirmDiscard()">
+          <span x-show="discardBusy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Discard
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
 </div>
 
 {% include "partials/_rag_js.html" %}
@@ -130,6 +157,7 @@ function embedPage() {
     uploading: false, progress: '', uploadErrors: [],
     error: '', busy: false, typed: '', confirmOthers: false,
     runId: '', runActive: false, aborting: false,
+    discardItem: null, discardBusy: false, discardError: '',
 
     // The body was (re)loaded: what it says about the collection replaces what was here.
     loaded(d) {
@@ -259,11 +287,24 @@ function embedPage() {
         this.loadBatchTree();
       }
     },
-    async discard(id) {
-      if (!window.confirm('Discard this upload and delete its files?')) return;
+    // Discarding asks first, in a dialog of the page. `item` is what the list knows about the
+    // upload: id, name, owner, files and size.
+    askDiscard(item) {
+      this.discardItem = item;
+      this.discardError = '';
+      this.$refs.discardDialog.showModal();
+    },
+    async confirmDiscard() {
+      if (!this.discardItem || this.discardBusy) return;
+      const id = this.discardItem.id;
+      this.discardBusy = true;
+      this.discardError = '';
       const res = await _ragRequest('DELETE', '/api/v1/rag/ingest/uploads/' + encodeURIComponent(id));
+      this.discardBusy = false;
       if (res.handled) return;
-      if (!res.ok) { showToast('error', 'The upload was not discarded: ' + _ragEscape(res.error)); return; }
+      if (!res.ok) { this.discardError = res.error; return; }
+      this.$refs.discardDialog.close();
+      showToast('success', 'Upload discarded');
       if (this.batch === id) this.newUpload();
       this.refreshUploads();
     },

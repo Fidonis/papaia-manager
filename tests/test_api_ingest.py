@@ -382,6 +382,33 @@ def test_discarding_removes_the_upload_and_is_audited(
     assert "plan.pdf" not in json.dumps(entry)
 
 
+def test_discarding_asks_in_a_dialog_of_the_page_and_not_in_the_browser(
+    client: TestClient,
+) -> None:
+    batch = _new_upload(client, "Quarterly reports")
+    _put_file(client, batch["id"], "a.md", b"# a")
+
+    page = _admin(client).get("/embedding").text
+    uploads = _admin(client).get("/partials/embedding/uploads").text
+
+    script = page[page.index("function embedPage()") :]
+    assert "confirm(" not in script and "alert(" not in script
+    assert 'id="embed-discard"' in page and "confirmDiscard()" in page
+    assert "Cancel" in page[page.index('id="embed-discard"') :]
+    # The row hands the dialog what it names; nothing is deleted by clicking it.
+    match = re.search(r"askDiscard\((\{.*?\})\)'", uploads)
+    assert match, uploads
+    assert json.loads(match.group(1)) == {
+        "id": batch["id"],
+        "name": "Quarterly reports",
+        "owner": "Tester",
+        "files": 1,
+        "size": "3 Bytes",
+    }
+    assert " discard(" not in uploads
+    assert (_admin(client).get(f"{_BASE}/uploads").json()["uploads"][0]["id"]) == batch["id"]
+
+
 def test_an_upload_that_is_being_embedded_cannot_be_discarded(client: TestClient) -> None:
     batch = _new_upload(client)
     _put_file(client, batch["id"], "a.md")

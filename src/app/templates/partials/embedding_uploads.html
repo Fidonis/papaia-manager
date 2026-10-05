@@ -44,7 +44,8 @@
       <p class="text-xs text-warning">{{ b.note }}</p>
       {% endif %}
     </div>
-    <button type="button" class="btn btn-ghost btn-xs" @click='discard({{ b.id | tojson }})'
+    <button type="button" class="btn btn-ghost btn-xs"
+            @click='askDiscard({{ {"id": b.id, "name": b.name or "Upload", "owner": b.owner_name, "files": b.files, "size": b.bytes | filesizeformat} | tojson }})'
             {% if b.state == 'embedding' %}disabled{% endif %}>Discard</button>
   </div>
   {% endfor %}
