@@ -549,6 +549,24 @@ def test_a_select_with_generated_options_is_set_again_once_they_exist(client: Te
         assert 'x-effect="sync($el,' in select.split("<template", 1)[0], select[:200]
 
 
+def test_leaving_the_editor_with_unsaved_changes_asks_in_an_app_dialog(
+    client: TestClient, deployment: Deployment
+) -> None:
+    """A link out of a dirty editor opens the app's own dialog, not only the browser's prompt."""
+    deployment.write_catalog(_job())
+
+    for path in ("/ingest/new", "/ingest/jobs/handbook/edit"):
+        body = _body(client, path)
+
+        dialog = re.search(r'<dialog id="leave-editor".*?</dialog>', body, re.S)
+        assert dialog, path
+        assert "Discard your changes?" in dialog.group(0)
+        assert "Keep editing" in dialog.group(0) and "Discard changes" in dialog.group(0)
+        assert "guardLink(event)" in body and "$refs.leave.showModal()" in body
+        # The browser's prompt stays as the last resort: a reload, a closed tab, the back button.
+        assert "addEventListener('beforeunload'" in body
+
+
 def test_an_existing_job_opens_with_its_values_and_its_etag(
     client: TestClient, deployment: Deployment
 ) -> None:
