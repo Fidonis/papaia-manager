@@ -115,6 +115,7 @@
             <template x-if="f.kind === 'secret'">
               <div class="flex items-center gap-2">
                 <select class="select select-bordered select-sm grow font-mono" x-model="job.source[f.key]"
+                        x-effect="sync($el, job.source[f.key], credentials.length)"
                         :class="err('source.' + f.key) ? 'select-error' : ''">
                   <option value="">None</option>
                   <template x-for="c in credentialOptions(f.key)" :key="c.name">
@@ -132,7 +133,8 @@
               </div>
             </template>
             <template x-if="f.kind === 'select'">
-              <select class="select select-bordered select-sm" x-model="job.source[f.key]">
+              <select class="select select-bordered select-sm" x-model="job.source[f.key]"
+                      x-effect="sync($el, job.source[f.key])">
                 <template x-for="o in f.options" :key="o"><option :value="o" x-text="o"></option></template>
               </select>
             </template>
@@ -182,6 +184,7 @@
       <div class="grid gap-4 sm:grid-cols-2">
         {% call field('Vector database', 'target.connection', 'A connection of the RAG system. A collection lives in exactly one of them.', True) %}
         <select class="select select-bordered select-sm font-mono" x-model="job.target.connection" @change="loadCollections()"
+                x-effect="sync($el, job.target.connection, connections.length)"
                 :class="err('target.connection') ? 'select-error' : ''">
           <template x-for="c in connections" :key="c"><option :value="c" x-text="c"></option></template>
           <option x-show="connections.indexOf(job.target.connection) === -1" style="display:none" :value="job.target.connection" x-text="job.target.connection + ' (not found)'"></option>
@@ -366,7 +369,8 @@
           <datalist id="editor-timezones"><template x-for="z in timezones" :key="z"><option :value="z"></option></template></datalist>
           {% endcall %}
           {% call field('If a run was missed', 'schedule.run_on_startup', 'What the ingester does at its start for a run it slept through.') %}
-          <select class="select select-bordered select-sm" x-model="job.schedule.run_on_startup">
+          <select class="select select-bordered select-sm" x-model="job.schedule.run_on_startup"
+                  x-effect="sync($el, job.schedule.run_on_startup)">
             <template x-for="(text, value) in startups" :key="value"><option :value="value" x-text="text"></option></template>
           </select>
           {% endcall %}
@@ -387,7 +391,8 @@
     <div class="flex flex-col gap-4 px-5 pb-5">
       <div class="grid gap-4 sm:grid-cols-3">
         {% call field('How text is split', 'chunking.strategy') %}
-        <select class="select select-bordered select-sm" x-model="job.chunking.strategy">
+        <select class="select select-bordered select-sm" x-model="job.chunking.strategy"
+                x-effect="sync($el, job.chunking.strategy)">
           <template x-for="(text, value) in strategies" :key="value"><option :value="value" x-text="text"></option></template>
         </select>
         {% endcall %}
@@ -490,6 +495,8 @@ function jobEditor(boot) {
       this.loadCollections();
       this.refreshPreview();
       this.syncModel();
+      // A job that is already saved may have a problem the ingester refused it for; say so at once.
+      if (!this.isNew) this.validate();
       this.$watch('job', () => { this.dirty = true; this.later('validate', 700, () => this.validate()); this.later('preview', 400, () => this.refreshPreview()); });
       this.$watch('text', () => { this.dirty = true; this.later('validate', 700, () => this.validate()); });
       this.$watch('maxMb', () => { this.dirty = true; this.later('validate', 700, () => this.validate()); });
@@ -509,6 +516,9 @@ function jobEditor(boot) {
       form.fields.forEach((f) => { next[f.key] = f.default === undefined || f.default === null ? '' : f.default; });
       this.job.source = next;
     },
+    // x-model fills a select before its x-for options exist, so the first option would show
+    // whatever the model holds; this puts the shown option right once they are there.
+    sync(el, value) { this.$nextTick(() => { el.value = value === undefined || value === null ? '' : value; }); },
     labelFromId() { if (this.isNew && !this.job.source.label && this.job.id) this.job.source.label = this.job.id; },
     credentialOptions(key) {
       const out = this.credentials.map((c) => ({ name: c.name, label: c.name + (c.origin === 'store' ? '  (stored)' : '  (environment)') }));

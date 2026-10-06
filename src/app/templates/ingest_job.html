@@ -103,12 +103,13 @@ document.body.addEventListener('htmx:responseError', function (event) {
     '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p></div>';
 });
 
-(function () {
+// htmx is a deferred script, so it is not there yet while this one runs.
+document.addEventListener('DOMContentLoaded', function () {
   const params = new URLSearchParams(window.location.search);
   const run = params.get('run');
   const hash = window.location.hash.replace('#', '');
   jobTab(hash || 'overview', hash === 'files' && run ? '?run=' + encodeURIComponent(run) : '');
-})();
+});
 </script>
 {% endif %}
 {% endblock %}

@@ -367,6 +367,20 @@ def test_the_job_page_has_its_tabs_and_loads_the_first(
     assert "const _JOB = &#34;handbook&#34;" in body or 'const _JOB = "handbook"' in body
 
 
+def test_the_first_tab_starts_after_the_deferred_htmx_script_has_run(
+    client: TestClient, deployment: Deployment
+) -> None:
+    """htmx is a deferred script; a call made while the page is parsed finds no `htmx`."""
+    deployment.write_catalog(_job())
+
+    body = _body(client, "/ingest/jobs/handbook")
+
+    assert re.search(r'<script src="[^"]*htmx[^"]*" defer>', body)
+    start = body.index("document.addEventListener('DOMContentLoaded'")
+    assert body.index("jobTab(hash || 'overview'") > start
+    assert "\njobTab(" not in body, "a bare call would run before htmx exists"
+
+
 def test_an_unknown_job_is_a_page_that_says_so(client: TestClient) -> None:
     body = _body(client, "/ingest/jobs/nope")
 
@@ -521,6 +535,18 @@ def test_a_new_job_opens_a_blank_editor_with_everything_it_needs(client: TestCli
     assert [m["value"] for m in boot["modes"]] == ["append", "upsert", "full"]
     assert boot["timezone"] == "Europe/Berlin"
     assert "Where do the files come from?" in body and "When?" in body
+
+
+def test_a_select_with_generated_options_is_set_again_once_they_exist(client: TestClient) -> None:
+    """x-model fills a select before x-for has made its options, so it would show the first one."""
+    body = _body(client, "/ingest/new")
+
+    selects = re.findall(r"<select\b(.*?)</select>", body, re.S)
+    generated = [s for s in selects if "x-for" in s]
+
+    assert len(generated) >= 5
+    for select in generated:
+        assert 'x-effect="sync($el,' in select.split("<template", 1)[0], select[:200]
 
 
 def test_an_existing_job_opens_with_its_values_and_its_etag(
