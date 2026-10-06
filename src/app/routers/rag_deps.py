@@ -1,7 +1,8 @@
 """Dependencies shared by the RAG pages (Connections, Collections, Embedding) and their APIs."""
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import contextmanager
 from typing import Annotated
 
 import httpx
@@ -11,10 +12,24 @@ from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core.ingest.client import IngestClient
+from app.core.ingest.errors import (
+    CatalogConflict,
+    CatalogRejected,
+    Conflict,
+    IngestRejected,
+    IngestTooOld,
+    IngestUnavailable,
+    InvalidJob,
+    InvalidRequest,
+    NotFound,
+    TooLarge,
+)
+from app.core.ingest.jobs_service import JobsService
 from app.core.ingest.runs import EmbeddingService
-from app.core.qdrant import QdrantClient, tls_verify
+from app.core.ingest.secrets import SecretProblem
+from app.core.qdrant import QdrantClient, QdrantError, QdrantUnavailable, tls_verify
 from app.core.rag import rag_active, rag_backend, rag_secrets
-from app.core.rag_collections import CollectionStore
+from app.core.rag_collections import CollectionStore, InvalidInput
 from app.core.vectordb import (
     CAPABILITY_COLLECTIONS,
     ProbeEnv,
@@ -26,6 +41,38 @@ from app.core.vectordb.service import DEFAULT_NAME, ConnectionService
 _NO_API_KEY = (
     "QDRANT_JWT_SECRET is not set in ai/rag/.env, so the manager has no api-key for Qdrant."
 )
+
+
+@contextmanager
+def translated(what: str = "") -> Iterator[None]:
+    """Answer a failure of the ingester pages with the status code the other admin routes use.
+
+    Shared by the Embedding API and the job management API, so a refusal means the same on
+    both. A refused job carries its problems field by field in `detail.issues`.
+    """
+    try:
+        yield
+    except TooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except InvalidJob as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": str(exc), "issues": [issue.as_dict() for issue in exc.issues]},
+        ) from exc
+    except (InvalidRequest, InvalidInput, SecretProblem) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except NotFound as exc:
+        raise HTTPException(status_code=404, detail=f"{what or exc} was not found") from exc
+    except (Conflict, CatalogConflict, IngestTooOld) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IngestUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (IngestRejected, CatalogRejected) as exc:
+        raise HTTPException(status_code=502, detail=f"Ingester: {exc}") from exc
+    except QdrantUnavailable as exc:
+        raise HTTPException(status_code=503, detail=exc.detail) from exc
+    except QdrantError as exc:
+        raise HTTPException(status_code=502, detail=f"Qdrant: {exc.detail}") from exc
 
 
 def require_rag_admin(
@@ -161,3 +208,13 @@ def get_embedding_service(
 
 
 EmbeddingServiceDep = Annotated[EmbeddingService, Depends(get_embedding_service)]
+
+
+def get_jobs_service(
+    settings: Annotated[Settings, Depends(get_settings)],
+    client: Annotated[IngestClient, Depends(get_ingest_client)],
+) -> JobsService:
+    return JobsService(settings, client=client)
+
+
+JobsServiceDep = Annotated[JobsService, Depends(get_jobs_service)]

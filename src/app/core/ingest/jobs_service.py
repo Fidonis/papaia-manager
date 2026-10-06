@@ -67,6 +67,7 @@ from app.core.rag import (
     rag_backend,
     rag_secrets,
 )
+from app.core.schedule import ScheduleError
 from app.core.vectordb import catalog_io
 from app.core.vectordb.ingest_file import IngestFileRepository, entry_etag
 
@@ -913,6 +914,21 @@ class JobsService:
         await self._client.reload()
         state, _ = await self.ingester()
         return state
+
+    def schedule_preview(self, raw_plan: Mapping[str, Any]) -> schedules.Preview:
+        """What a schedule from the builder compiles to, and when it would run next."""
+        try:
+            plan = job_forms.plan_from(raw_plan)
+        except (ScheduleError, ValueError, TypeError) as exc:
+            return schedules.Preview(ok=False, error=str(exc))
+        sched_defaults = self.defaults().get("schedule")
+        defaults_zone = (
+            sched_defaults.get("timezone") if isinstance(sched_defaults, Mapping) else None
+        )
+        return schedules.preview(
+            plan,
+            default_timezone=schedules.effective_timezone(None, defaults_zone, self.timezone()),
+        )
 
     # ── runs and files ──────────────────────────────────────────────────────
 

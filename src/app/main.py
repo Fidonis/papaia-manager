@@ -26,6 +26,7 @@ from app.routers import (
     api_collections,
     api_connections,
     api_ingest,
+    api_ingest_jobs,
     api_jobs,
     api_maintenance,
     api_settings,
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(api_collections.router)
     app.include_router(api_connections.router)
     app.include_router(api_ingest.router)
+    app.include_router(api_ingest_jobs.router)
     app.include_router(api_addons.router)
     app.include_router(api_jobs.router)
     app.include_router(api_maintenance.router)
