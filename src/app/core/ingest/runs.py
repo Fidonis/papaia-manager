@@ -96,6 +96,24 @@ _MODE_TEXT = {
     "full": "Rebuild",
     "append": "Append",
 }
+# The same modes in the words of the job pages, which are about a job's standing purpose
+# ("keep in sync") and not about one upload.
+JOB_MODE_TEXT = {
+    "append": "Add new files only",
+    "upsert": "Keep in sync",
+    "full": "Rebuild",
+    "full/job": "Rebuild the job's content",
+    "full/collection": "Replace the collection",
+}
+
+# Where a running run is, as the ingester names it, in the words of the page.
+PHASE_TEXT = {
+    "syncing": "Fetching the files from the source",
+    "scanning": "Looking at the files",
+    "embedding": "Reading and embedding the files",
+    "cleaning up": "Removing what is no longer in the source",
+}
+
 _COUNTERS = (
     "files_seen",
     "docs_indexed",
@@ -165,6 +183,32 @@ class RunView:
     events_truncated: bool = False
     # Points the run has written so far, counted in Qdrant while it works.
     live_chunks: int | None = None
+    # Reported by an ingester with the `run_progress` feature; None for an older one.
+    trigger: str = ""
+    sync_status: str | None = None
+    sync_stderr_tail: str | None = None
+    files_done: int | None = None
+    phase: str | None = None
+    current: str | None = None
+    dry_run: bool | None = None
+
+    @property
+    def progress(self) -> float | None:
+        """How far the scan is, 0 to 1, or None when it cannot be said."""
+        seen = self.counters.get("files_seen", 0)
+        if self.files_done is None or seen <= 0:
+            return None
+        if not self.active:
+            return 1.0 if self.status == "success" else min(1.0, self.files_done / seen)
+        return min(1.0, self.files_done / seen)
+
+    @property
+    def phase_label(self) -> str | None:
+        return PHASE_TEXT.get(self.phase or "", self.phase) if self.phase else None
+
+    @property
+    def job_mode_label(self) -> str:
+        return JOB_MODE_TEXT.get(self.mode, self.mode_label)
 
     @property
     def source_kind(self) -> str | None:
@@ -201,6 +245,14 @@ class RunView:
             "error": self.error,
             "counters": self.counters,
             "live_chunks": self.live_chunks,
+            "trigger": self.trigger,
+            "sync_status": self.sync_status,
+            "files_done": self.files_done,
+            "phase": self.phase,
+            "phase_label": self.phase_label,
+            "current": self.current,
+            "dry_run": self.dry_run,
+            "progress": self.progress,
             "events": [
                 {"ts": e.ts, "level": e.level, "source": e.source, "message": e.message}
                 for e in self.events
@@ -241,6 +293,9 @@ def run_view_from(payload: dict[str, Any]) -> RunView:
     label = _STATUS_TEXT.get(status, status or "Unknown")
     if status == "success" and counters["docs_failed"]:
         label = "Finished with errors"
+    tail = run.get("sync_stderr_tail")
+    phase = run.get("phase")
+    current = run.get("current")
     return RunView(
         run_id=str(run.get("run_id") or ""),
         job_id=str(run.get("job_id") or ""),
@@ -254,6 +309,13 @@ def run_view_from(payload: dict[str, Any]) -> RunView:
         counters=counters,
         events=events[:MAX_EVENTS],
         events_truncated=len(events) > MAX_EVENTS,
+        trigger=str(run.get("trigger") or ""),
+        sync_status=str(run["sync_status"]) if run.get("sync_status") else None,
+        sync_stderr_tail=str(tail) if tail else None,
+        files_done=_int(run.get("files_done")) if "files_done" in run else None,
+        phase=str(phase) if phase else None,
+        current=str(current) if current else None,
+        dry_run=bool(run["dry_run"]) if "dry_run" in run else None,
     )
 
 
@@ -297,6 +359,21 @@ def _served_as_written(detail: dict[str, Any], job: dict[str, Any]) -> bool:
         and list(filters.get("exclude") or [])[: len(wanted.get("exclude") or [])]
         == list(wanted.get("exclude") or [])
     )
+
+
+async def refuse_while_blocked(what: str) -> None:
+    """A restore, an upgrade or a stack action takes the ingester down or rewrites its files."""
+    for kind, label in (
+        (runner.RESTORE_KIND, "restore"),
+        (runner.UPGRADE_KIND, "upgrade"),
+        (runner.STACK_KIND, "stack action"),
+    ):
+        try:
+            active = await runner.find_runner(kind)
+        except runner.RunnerError:
+            return
+        if active is not None and active.is_running:
+            raise Conflict(f"A {label} is running; {what} has to wait until it is done.")
 
 
 def browse_root(settings: Settings, source: str, upload: str | None) -> Documents:
@@ -567,18 +644,7 @@ class EmbeddingService:
 
     @staticmethod
     async def _refuse_while_blocked() -> None:
-        """A restore, an upgrade or a stack action takes the ingester down or rewrites its files."""
-        for kind, label in (
-            (runner.RESTORE_KIND, "restore"),
-            (runner.UPGRADE_KIND, "upgrade"),
-            (runner.STACK_KIND, "stack action"),
-        ):
-            try:
-                active = await runner.find_runner(kind)
-            except runner.RunnerError:
-                return
-            if active is not None and active.is_running:
-                raise Conflict(f"A {label} is running; embedding has to wait until it is done.")
+        await refuse_while_blocked("embedding")
 
     async def _refuse_while_running(self, job_ids: list[str]) -> None:
         for job_id in job_ids:

@@ -233,6 +233,31 @@ def rag_secrets(config_dir: str) -> RagSecrets:
     )
 
 
+def ingest_timezone(config_dir: str) -> str:
+    """The zone the ingester schedules in when a job and the catalog name none: `QI_TIMEZONE`.
+
+    It is the ingester's setting and not the manager container's `TZ`: a schedule without a
+    zone of its own fires by the ingester's clock, whatever this machine's is.
+    """
+    env = load_env_file(Path(config_dir) / _MODULE_ENV)
+    return env.get("QI_TIMEZONE", "").strip() or "UTC"
+
+
+CREDENTIAL_PREFIX = "QI_SECRET_"
+
+
+def environment_credentials(config_dir: str) -> frozenset[str]:
+    """The credentials defined in the RAG module's `.env`: `QI_SECRET_*` with a value.
+
+    The ingester gets that file as its environment (`env_file`), so these names resolve for
+    its jobs. They are read-only from here: the manager lists them and never writes them.
+    """
+    env = load_env_file(Path(config_dir) / _MODULE_ENV)
+    return frozenset(
+        name for name, value in env.items() if name.startswith(CREDENTIAL_PREFIX) and value.strip()
+    )
+
+
 @dataclass(frozen=True)
 class DocumentsDir:
     """The folder the ingester reads its `local` sources from, as the manager can use it.
