@@ -77,7 +77,7 @@ in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
 The dashboard shows a **RAG** group with a *Qdrant* tile (the vector database's
 dashboard), and the sidebar gets a **RAG** category between *Extensions* and
 *System* with the pages described below: *Connections*, *Collections*,
-*Embedding*, *Ingest jobs* and *Ingest runs*. The ingest service's own web
+*Embedding*, *Ingest Jobs* and *Ingest Runs*. The ingest service's own web
 interface has no tile and no menu entry: what it offered is on those pages.
 The link of the tile is built from `QDRANT_PUBLIC_URL` in the core `.env`. The
 profile decides, not that key: the core keeps it while the system is switched
@@ -197,7 +197,7 @@ says so. The limits are `INGEST_MAX_UPLOAD_MB` per file (200) and
 contains an upload that is still staged while it runs.
 
 **Ingest jobs.** Admin-only pages under `/ingest/`, fourth and fifth under *RAG*
-(*Ingest jobs* and *Ingest runs*) and only while the `rag` profile is active, that
+(*Ingest Jobs* and *Ingest Runs*) and only while the `rag` profile is active, that
 take over from the ingester's own web interface. A **job** says what the ingester
 reads (a folder in the documents folder, S3, WebDAV, SFTP, SMB, FTP, Google Drive,
 Azure Blob Storage or a web directory), which collection on which connection the

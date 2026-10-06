@@ -217,13 +217,13 @@ def test_the_sidebar_lights_the_right_entry(client: TestClient) -> None:
         body = _body(client, path)
         return re.findall(r'aria-label="([^"]+)"\s+class="[^"]*bg-secondary/15', body)
 
-    assert active("/ingest/jobs") == ["Ingest jobs"]
-    assert active("/ingest/secrets") == ["Ingest jobs"]
-    assert active("/ingest/new") == ["Ingest jobs"]
-    assert active("/ingest/runs") == ["Ingest runs"]
-    assert active("/ingest/runs/abc") == ["Ingest runs"]
+    assert active("/ingest/jobs") == ["Ingest Jobs"]
+    assert active("/ingest/secrets") == ["Ingest Jobs"]
+    assert active("/ingest/new") == ["Ingest Jobs"]
+    assert active("/ingest/runs") == ["Ingest Runs"]
+    assert active("/ingest/runs/abc") == ["Ingest Runs"]
     # The manager's own queue is another page and does not light these.
-    assert "Ingest jobs" not in active("/jobs")
+    assert "Ingest Jobs" not in active("/jobs")
 
 
 # ---------------------------------------------------------------------------
