@@ -76,11 +76,14 @@ def swap(
     existed: bool,
     previous: bytes,
     data: bytes,
+    backup: bool = True,
 ) -> bool:
     """Replace `path` with `data` if it still has the content `expected_revision` names.
 
     Returns False, writing nothing, when the file changed in the meantime. An `OSError`
     from the write is authoritative and propagates: the caller decides what it means.
+    `backup=False` skips the `.bak` copy, for a file whose previous content must not
+    linger next to it (the encrypted secrets).
     """
     directory = path.parent
     tmp = directory / tmp_name
@@ -93,7 +96,7 @@ def swap(
             current = ""
         if current != expected_revision:
             return False
-        if existed:
+        if existed and backup:
             _keep_backup(directory, path.name, backup_tmp_name, previous)
         os.replace(tmp, path)
         return True

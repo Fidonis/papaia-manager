@@ -45,8 +45,9 @@ from typing import Any
 
 import yaml
 
-from app.core.ingest.errors import CatalogRejected
+from app.core.ingest.errors import CatalogConflict, CatalogRejected
 from app.core.vectordb import catalog_io
+from app.core.vectordb.ingest_file import entry_etag
 from app.core.vectordb.jobs_usage import JOBS_RELPATH
 
 MANAGED_PREFIX = "mgr-"
@@ -317,19 +318,21 @@ class JobsFileRepository:
             self._path, True, writable, raw, catalog_io.revision(raw), document, problem
         )
 
-    def upsert(
+    def update(
         self,
-        job: dict[str, Any],
+        mutate: Callable[[dict[str, Any]], None],
         rules: Callable[[dict[str, Any]], list[str]] | None = None,
     ) -> Written:
-        """Make `job` the entry with its id, leaving every other entry as it is.
+        """Change the parsed document with `mutate` and write the result, compare-and-swap.
 
+        `mutate` changes a copy of the document in place. It runs again, on the then-current
+        content, if the file changed while the write was prepared, so it has to be a function
+        of the document alone, and it is where a change that no longer applies says so (it
+        raises `CatalogConflict` for a stale entry, `CatalogRejected` for anything else).
         `rules` receives the document that would be written and returns what the ingester
-        would refuse about it. The change can run more than once, each time on the
-        then-current content. Raises `CatalogRejected` for a file that cannot be changed,
-        a change the rules refuse and a write that fails or keeps losing the race.
+        would refuse about it. Raises `CatalogRejected` for a file that cannot be changed, a
+        change the rules refuse and a write that fails or keeps losing the race.
         """
-        job_id = str(job["id"])
         with _LOCK:
             for _ in range(_MAX_ATTEMPTS):
                 snapshot = self.snapshot()
@@ -338,13 +341,7 @@ class JobsFileRepository:
                         f"jobs.yaml cannot be changed: {snapshot.structural_error}"
                     )
                 document = copy.deepcopy(snapshot.document)
-                jobs = document["jobs"]
-                for index, existing in enumerate(jobs):
-                    if isinstance(existing, dict) and existing.get("id") == job_id:
-                        jobs[index] = copy.deepcopy(job)
-                        break
-                else:
-                    jobs.append(copy.deepcopy(job))
+                mutate(document)
 
                 if snapshot.exists and document == snapshot.document:
                     return Written(snapshot.raw, True, snapshot, changed=False)
@@ -362,6 +359,130 @@ class JobsFileRepository:
             raise CatalogRejected(
                 "jobs.yaml keeps changing while the manager writes it; try again"
             )
+
+    def upsert(
+        self,
+        job: dict[str, Any],
+        rules: Callable[[dict[str, Any]], list[str]] | None = None,
+    ) -> Written:
+        """Make `job` the entry with its id, leaving every other entry as it is."""
+        job_id = str(job["id"])
+
+        def mutate(document: dict[str, Any]) -> None:
+            jobs = document["jobs"]
+            for index, existing in enumerate(jobs):
+                if isinstance(existing, dict) and existing.get("id") == job_id:
+                    jobs[index] = copy.deepcopy(job)
+                    return
+            jobs.append(copy.deepcopy(job))
+
+        return self.update(mutate, rules)
+
+    def put_job(
+        self,
+        job: dict[str, Any],
+        *,
+        create: bool,
+        etag: str | None = None,
+        rules: Callable[[dict[str, Any]], list[str]] | None = None,
+    ) -> Written:
+        """Create a job, or replace one in place (its position in the file is kept).
+
+        A create refuses an id that exists, so nobody overwrites a job by choosing its name.
+        A replace refuses when the entry is no longer what the caller edited (`etag`), so an
+        edit made meanwhile by another administrator, or by the ingester's own interface, is
+        not silently overwritten.
+        """
+        job_id = str(job["id"])
+
+        def mutate(document: dict[str, Any]) -> None:
+            jobs = document["jobs"]
+            index = _index_of(jobs, job_id)
+            if create:
+                if index is not None:
+                    raise CatalogConflict(f"A job with the id {job_id!r} already exists.")
+                jobs.append(copy.deepcopy(job))
+                return
+            if index is None:
+                raise CatalogConflict(f"The job {job_id!r} is no longer in jobs.yaml.")
+            _check_etag(jobs[index], etag, job_id)
+            jobs[index] = copy.deepcopy(job)
+
+        return self.update(mutate, rules)
+
+    def remove_job(self, job_id: str, *, etag: str | None = None) -> Written:
+        def mutate(document: dict[str, Any]) -> None:
+            jobs = document["jobs"]
+            index = _index_of(jobs, job_id)
+            if index is None:
+                raise CatalogConflict(f"The job {job_id!r} is no longer in jobs.yaml.")
+            _check_etag(jobs[index], etag, job_id)
+            del jobs[index]
+
+        return self.update(mutate)
+
+    def set_enabled(
+        self,
+        job_id: str,
+        enabled: bool,
+        *,
+        rules: Callable[[dict[str, Any]], list[str]] | None = None,
+    ) -> Written:
+        """`enabled: false` for a disabled job; the key is dropped again when it is enabled.
+
+        The ingester's default is enabled, so a job the operator never touched stays as short
+        as it was.
+        """
+
+        def mutate(document: dict[str, Any]) -> None:
+            jobs = document["jobs"]
+            index = _index_of(jobs, job_id)
+            if index is None:
+                raise CatalogConflict(f"The job {job_id!r} is no longer in jobs.yaml.")
+            job = jobs[index]
+            if enabled:
+                job.pop("enabled", None)
+            else:
+                job["enabled"] = False
+
+        return self.update(mutate, rules)
+
+    def set_defaults(
+        self,
+        defaults: dict[str, Any],
+        rules: Callable[[dict[str, Any]], list[str]] | None = None,
+    ) -> Written:
+        """Replace the `defaults:` section (an empty mapping removes it)."""
+
+        def mutate(document: dict[str, Any]) -> None:
+            if defaults:
+                document["defaults"] = copy.deepcopy(defaults)
+            else:
+                document.pop("defaults", None)
+
+        return self.update(mutate, rules)
+
+    def replace_raw(self, raw: bytes, *, expected_revision: str) -> Written:
+        """Replace the whole file with `raw`, byte for byte, if it is still the one that was edited.
+
+        This is the raw editor: comments and blank lines stay as typed. The caller has
+        validated the text. A file that changed since `expected_revision` is a conflict, not
+        an overwrite, so the administrator sees what changed before deciding again.
+        """
+        with _LOCK:
+            snapshot = self.snapshot()
+            if snapshot.revision != expected_revision:
+                raise CatalogConflict(
+                    "jobs.yaml changed since it was opened. Reload the page to see the "
+                    "current content."
+                )
+            if snapshot.exists and snapshot.raw == raw:
+                return Written(snapshot.raw, True, snapshot, changed=False)
+            if not self._swap(snapshot, raw):
+                raise CatalogConflict(
+                    "jobs.yaml changed while it was being saved. Reload the page and try again."
+                )
+            return Written(snapshot.raw, snapshot.exists, self.snapshot(), changed=True)
 
     def restore(self, written: Written) -> bool:
         """Put the previous content back, if the file is still the one `written` produced.
@@ -410,3 +531,23 @@ class JobsFileRepository:
                 f"{directory} does not accept the change ({exc.strerror or type(exc).__name__}); "
                 "the job catalog is read-only here"
             ) from exc
+
+
+def _index_of(jobs: list[Any], job_id: str) -> int | None:
+    for index, job in enumerate(jobs):
+        if isinstance(job, dict) and job.get("id") == job_id:
+            return index
+    return None
+
+
+def entry_etag_of(job: dict[str, Any]) -> str:
+    """The fingerprint a caller sends back to say which version of a job it edited."""
+    return entry_etag(job)
+
+
+def _check_etag(existing: dict[str, Any], etag: str | None, job_id: str) -> None:
+    if etag is not None and entry_etag(existing) != etag:
+        raise CatalogConflict(
+            f"The job {job_id!r} was changed by somebody else since it was opened. "
+            "Reload it to see the current version."
+        )

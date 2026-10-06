@@ -45,10 +45,10 @@ from app.config import Settings
 from app.core import runner
 from app.core.audit import redact_params, write_audit_entry
 from app.core.ingest import catalog, uploads
+from app.core.ingest.catalog_load import reload_and_verify
 from app.core.ingest.client import IngestClient
 from app.core.ingest.documents import Counts, Documents
 from app.core.ingest.errors import (
-    CatalogRejected,
     Conflict,
     IngestError,
     IngestRejected,
@@ -273,8 +273,8 @@ class IngestStatus:
 # ---------------------------------------------------------------------------
 
 
-def _loaded_as_written(detail: dict[str, Any], job: dict[str, Any]) -> bool:
-    """Whether the ingester serves the definition that was just written.
+def _served_as_written(detail: dict[str, Any], job: dict[str, Any]) -> bool:
+    """Whether the ingester serves the managed definition that was just written.
 
     The ingester keeps its previous catalog when it refuses a new one, so a job that exists
     may still be the one of an earlier run, with another path.
@@ -592,22 +592,8 @@ class EmbeddingService:
 
     async def _load(self, job_id: str, job: dict[str, Any]) -> None:
         """Make the ingester read the catalog now, and check that it serves what was written."""
-        info = await self._client.reload()
-        errors = [item for item in info.get("errors") or [] if isinstance(item, dict)]
-
-        def text(item: dict[str, Any]) -> str:
-            who = item.get("job_id") or "jobs.yaml"
-            return f"{who}: {item.get('field')}: {item.get('message')}"
-
-        mine = [text(item) for item in errors if item.get("job_id") == job_id]
-        detail = await self._client.job(job_id)
-        if not mine and detail is not None and _loaded_as_written(detail, job):
-            return
-        problems = mine or [text(item) for item in errors] or [
-            "the ingester kept its previous job catalog"
-        ]
-        raise CatalogRejected(
-            "The ingester did not take the job: " + "; ".join(problems), tuple(problems)
+        await reload_and_verify(
+            self._client, job_id, lambda detail: _served_as_written(detail, job)
         )
 
     # ── following ───────────────────────────────────────────────────────────

@@ -39,6 +39,10 @@ class CatalogRejected(IngestError):  # noqa: N818
         self.problems = problems
 
 
+class CatalogConflict(CatalogRejected):  # noqa: N818
+    """The change no longer applies: the job exists already, is gone, or was edited meanwhile."""
+
+
 class InvalidRequest(ValueError):  # noqa: N818 - reads as the answer it becomes: a 422
     """The request names something that cannot be embedded."""
 
