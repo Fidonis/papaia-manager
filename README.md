@@ -75,20 +75,19 @@ dependencies, so the JSON API is restricted exactly like the pages.
 **RAG system.** When the core runs its optional RAG system (the `rag` profile
 in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
 The dashboard shows a **RAG** group with a *Qdrant* tile (the vector database's
-dashboard) and a *Qdrant Ingest* tile (the ingest web interface), and the
-sidebar gets a **RAG** category between *Extensions* and *System* with a
-*Connections* and a *Collections* page (below) and an *Ingest* and a *Qdrant*
-entry that open the same two interfaces in a new tab.
-Links are built from `QDRANT_PUBLIC_URL` and `QDRANT_INGEST_PUBLIC_URL` in the
-core `.env`. The profile decides, not those keys: the core keeps them while the
-system is switched off, so a core without the profile, such as 1.4.0, shows
-nothing new. The tiles are administrator-only, because the Qdrant dashboard
-bypasses the MCP server's role checks. They are computed when the dashboard is
-rendered and never written to `tiles.yaml`, so they appear on an existing
-deployment too, and the tile editor neither lists nor saves them; the price is
-that they cannot be reordered or removed there. A tile of your own with the same
-name or link wins, and a group you call *RAG* receives them. A native page for
-ingest jobs is planned to replace the *Ingest* link.
+dashboard), and the sidebar gets a **RAG** category between *Extensions* and
+*System* with the pages described below: *Connections*, *Collections*,
+*Embedding*, *Ingest Jobs* and *Ingest Runs*. The ingest service's own web
+interface has no tile and no menu entry: what it offered is on those pages.
+The link of the tile is built from `QDRANT_PUBLIC_URL` in the core `.env`. The
+profile decides, not that key: the core keeps it while the system is switched
+off, so a core without the profile, such as 1.4.0, shows nothing new. The tile
+is administrator-only, because the Qdrant dashboard bypasses the MCP server's
+role checks. It is computed when the dashboard is rendered and never written to
+`tiles.yaml`, so it appears on an existing deployment too, and the tile editor
+neither lists nor saves it; the price is that it cannot be reordered or removed
+there. A tile of your own with the same name or link wins, and a group you call
+*RAG* receives it.
 
 **Connections.** An admin-only page at `/connections`, first under *RAG* in the
 sidebar and only while the `rag` profile is active, for the vector databases the
@@ -196,6 +195,93 @@ a `QI_LOCAL_MOUNT` anywhere else is a folder the manager cannot see, and the pag
 says so. The limits are `INGEST_MAX_UPLOAD_MB` per file (200) and
 `INGEST_MAX_BATCH_MB` per upload (2048). A backup of the configuration directory
 contains an upload that is still staged while it runs.
+
+**Ingest jobs.** Admin-only pages under `/ingest/`, fourth and fifth under *RAG*
+(*Ingest Jobs* and *Ingest Runs*) and only while the `rag` profile is active, that
+take over from the ingester's own web interface. A **job** says what the ingester
+reads (a folder in the documents folder, S3, WebDAV, SFTP, SMB, FTP, Google Drive,
+Azure Blob Storage or a web directory), which collection on which connection the
+result goes to, what a run does with files that are new, changed or gone, and when
+it runs. Jobs are kept in `ai/rag/catalog/jobs.yaml`, the file the ingester reads,
+and the page is one more editor of it. Five tabs run across the top: *Jobs*,
+*Runs*, *Credentials*, *Leftovers* and *Catalog file*.
+
+The **job list** shows each job with its state (active, disabled, not loaded with
+the ingester's reason, or running its previous version while the ingester keeps an
+older catalog because another job is invalid), its source, collection and number of
+files, the schedule in words with the next run, and the last run. It filters by
+state, searches by name, source or collection, and polls only while a run works.
+A job has an overview (what it does, in sentences, and how the last run went), its
+runs, its **files** (what happened to each one: embedded, no text found, too large,
+not a supported type, could not be read or embedded, with a search and a filter by
+run) and its configuration (the job as written, with credentials as references and
+the values it inherits from the catalog defaults). The **editor** has seven
+sections (name, source, target, which files, what a run does, when, processing),
+checks the job with the ingester's own rules while you type, shows the next runs of
+a schedule, browses the documents folder, and has *Save and dry run*. A schedule is
+chosen in plain terms (only when started, every N minutes, hours or days, hourly,
+daily, weekly, monthly, or a cron expression); the manager writes weekdays as names
+because the ingester counts them from Monday, and only what differs from the
+catalog defaults ends up in the file. A job's id cannot change, since every point it
+writes derives from it; *Duplicate* starts a new one from it. *Pause* is
+`enabled: false`. The two jobs per collection that the Embedding page keeps (id
+prefix `mgr-`) are listed and say where they come from, but are not edited here.
+
+**Runs.** *Run* opens a dialog: a dry run (fetch, read and plan, write nothing; it is
+preselected for a job that never ran), and the mode, either as the job is set up or
+add only, keep in sync, rebuild the job's content (asks for confirmation) or replace
+the whole collection (asks for the collection name), with a few more options such as
+not fetching again. A run shows its phase (fetching the files, looking at them,
+embedding them, removing what is gone), how many files are done, the file in hand, and *Abort*, which takes effect
+between two files. When it ends it shows its counts, the ingester's messages
+(problems first), the output of a failed fetch and a way forward for each way a run
+can stop. The *Ingest runs* page lists the runs of all jobs, filtered by job and
+state. Both poll only while a run works.
+
+**Credentials.** A source refers to a credential by name, `${env:QI_SECRET_<NAME>}`
+in `jobs.yaml`. The ingester answers it from its environment (`QI_SECRET_*` in
+`ai/rag/.env`, which needs a restart) or from `ai/rag/catalog/secrets.yaml`, which
+this page writes and the ingester reads when it needs a value, so a credential
+stored here works at once. The file holds `version: 1` and entries of `name` and
+`value`, each value `enc:1:` plus a Fernet token derived from `QI_CONNECTIONS_SECRET`
+exactly as the connection store does it, and is written compare-and-swap like the
+other two files. A value is never shown or returned: it can be replaced, not read.
+A name from the environment is never shadowed by a stored one, and a credential that
+a job still refers to cannot be deleted. This keeps a credential out of casual sight
+(a copy of the file, a screenshot, a log); it does not protect it from someone who
+can read the file and the `.env` next to it, and a backup contains both. The page
+says so, and says when the ingester is too old to read the file.
+
+**Leftovers and the catalog file.** What a deleted or renamed job embedded stays in
+its collection with the ingester's records of it; *Leftovers* lists those and
+removes them on request (the id of the job is typed to confirm). Deleting a job
+offers to remove its content in the same step. *Catalog file* has the defaults every
+job inherits (the embedding model, chunking, filters, the time zone of schedules, the
+removal limit) as a form that checks every job against the new values before it
+writes, and `jobs.yaml` as text, edited as typed with comments kept, checked before
+it is saved.
+
+Every write goes through the ingester's own checks and a compare-and-swap writer,
+and nothing is trusted because it was written: the manager makes the ingester reload
+and compares what it serves with what was written. A job is saved with the version
+of its entry that the editor opened (the `etag`), so an edit made meanwhile by
+someone else is refused instead of overwritten, while a change to another job is no
+conflict. If the ingester refuses the manager's own job, the write is taken back; if
+it refuses only other jobs, the write stays and a warning says that the ingester
+keeps its previous catalog until those are fixed. With the ingester not reachable a
+job is checked by the manager's own rules and saved, and the page says it could not
+be confirmed. The previous file is kept as `jobs.yaml.bak`. Comments in `jobs.yaml`
+are lost when the editor or the defaults form saves; editing the file as text keeps them.
+Every change is audited (`rag.ingest.job.*`, `rag.ingest.run.abort`,
+`rag.ingest.orphan.delete`, `rag.ingest.secret.*`, `rag.ingest.defaults.update`,
+`rag.ingest.catalog.raw`); a credential's value is never part of an entry.
+
+These pages use what the ingester reports it can do (`features` in its `/health`):
+`run_progress` (phase and progress of a run, dry runs), `documents` (the files of a
+job), `validate` (its rules for a job that is not saved yet) and `secret_store` (the
+credentials file). An older ingester keeps working with each part missing and an
+explanation where it would be: no progress, a files tab that says so, the manager's
+own checks, and no stored credentials. 0.3.0 of the ingester has none of them.
 
 **Services.** An admin-only page at `/services` showing what this deployment is
 configured to run and how much of it is up. Containers are read from `docker ps`
@@ -435,6 +521,37 @@ GET    /api/v1/rag/ingest/runs             # ?collection= the latest runs of a c
 GET    /api/v1/rag/ingest/runs/{id}        # ?collection= state, counts, messages, chunks so far
 DELETE /api/v1/rag/ingest/runs/{id}        # abort (the ingester stops between documents)
 
+# Ingest jobs (jobs.yaml); an editor's write carries the etag of the entry it opened
+GET    /api/v1/rag/ingest/ingester         # reachable?, version, features, dependencies, the catalog's state
+GET    /api/v1/rag/ingest/form-spec        # what the editor needs: source types, fields, presets
+GET    /api/v1/rag/ingest/collections      # ?connection= the collections a job can write to
+GET    /api/v1/rag/ingest/jobs             # every job with its state, schedule and last run
+POST   /api/v1/rag/ingest/jobs/validate    # {job, create?, original_id?} → {issues}; writes nothing
+POST   /api/v1/rag/ingest/jobs             # {job} → 201
+GET    /api/v1/rag/ingest/jobs/{id}/editor # the job as the editor holds it, with its etag
+PUT    /api/v1/rag/ingest/jobs/{id}        # {job, etag?, original_id}
+DELETE /api/v1/rag/ingest/jobs/{id}        # ?etag=&purge= also remove what it embedded
+POST   /api/v1/rag/ingest/jobs/{id}/enable   # and /disable (enabled: false) and /resume (scheduling)
+POST   /api/v1/rag/ingest/jobs/{id}/run    # {mode?, full_scope?, dry_run?, skip_sync?, delete_vanished?, confirm_*} → 202 {run_id}
+GET    /api/v1/rag/ingest/jobs/{id}/files  # ?status=&q=&run_id=&order=&limit=&offset= what happened to each file
+GET    /api/v1/rag/ingest/jobs/{id}/preview  # the files the saved filters match
+GET    /api/v1/rag/ingest/jobs/{id}/runs   # the runs of one job
+GET    /api/v1/rag/ingest/job-runs         # ?job_id=&status=&since=&limit= the runs of all jobs
+GET    /api/v1/rag/ingest/job-runs/{id}    # one run: counts, phase, current file, messages
+DELETE /api/v1/rag/ingest/job-runs/{id}    # abort
+POST   /api/v1/rag/ingest/schedule/preview # {schedule} → description, cron and the next runs
+POST   /api/v1/rag/ingest/reload           # make the ingester read jobs.yaml now
+GET    /api/v1/rag/ingest/orphans          # what deleted jobs left behind
+DELETE /api/v1/rag/ingest/orphans/{id}     # remove it (points and records)
+GET    /api/v1/rag/ingest/secrets          # credential names, where each is kept and used; never a value
+PUT    /api/v1/rag/ingest/secrets/{name}   # {value} store it encrypted
+DELETE /api/v1/rag/ingest/secrets/{name}   # refused while a job uses it
+GET    /api/v1/rag/ingest/catalog/raw      # jobs.yaml as text with its revision
+POST   /api/v1/rag/ingest/catalog/validate # {text} → {issues}
+PUT    /api/v1/rag/ingest/catalog/raw      # {text, revision}
+GET    /api/v1/rag/ingest/catalog/defaults # the defaults every job inherits
+PUT    /api/v1/rag/ingest/catalog/defaults # {defaults}
+
 GET  /api/v1/addons
 GET  /api/v1/addons/{name}
 GET  /api/v1/addons/{name}/env-form
@@ -516,12 +633,14 @@ papaia-manager/
 │       │                   # rag (optional RAG system: tiles, links, settings) +
 │       │                   # qdrant (REST client) + rag_collections (collections and roles),
 │       │                   # vectordb/ (connection types and the ingester's connection store),
-│       │                   # ingest/ (embedding files through the ingester: managed jobs,
-│       │                   # jailed browsing, staged uploads, runs, background clean-up),
+│       │                   # ingest/ (the ingester's jobs.yaml and secrets.yaml, its REST API,
+│       │                   # job editor and schedules, runs, the Embedding page's managed
+│       │                   # jobs, jailed browsing, staged uploads, background clean-up),
 │       │                   # settings_store (settings.yaml and the logo)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
-│       │                   # api_tiles, api_settings, api_collections, api_connections, api_ingest
+│       │                   # api_tiles, api_settings, api_collections, api_connections, api_ingest,
+│       │                   # api_ingest_jobs, ui_ingest
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)

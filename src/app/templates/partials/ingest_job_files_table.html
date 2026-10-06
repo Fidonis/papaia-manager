@@ -1,0 +1,40 @@
+{# The rows of the Files tab, with their pager. Included by the tab and returned alone when a
+   filter changes. `status_text`, `result`, `offset`, `page` and the filter values come from the
+   route. #}
+{% from "partials/_ingest_macros.html" import file_badge %}
+
+{% if not result["items"] %}
+<p class="py-6 text-center text-sm opacity-60">
+  {% if selected_status or query or selected_run %}No file matches.{% else %}Nothing is tracked yet. A run records every file it reads.{% endif %}
+</p>
+{% else %}
+<div class="overflow-x-auto rounded-lg border border-base-300">
+  <table class="table table-sm">
+    <thead><tr class="text-xs uppercase opacity-60"><th>File</th><th>Result</th><th>Chunks</th><th>Last change</th></tr></thead>
+    <tbody>
+      {% for item in result["items"] %}
+      <tr>
+        <td class="max-w-md align-top"><span class="break-all font-mono text-xs" title="{{ item.source }}">{{ item.rel_path }}</span></td>
+        <td class="align-top">
+          {{ file_badge(item.status, status_text) }}
+          {% if item.last_error %}<p class="mt-1 max-w-sm break-words text-xs text-error">{{ item.last_error }}</p>
+          {% elif status_help.get(item.status) %}<p class="mt-1 max-w-sm text-xs opacity-60">{{ status_help[item.status] }}</p>{% endif %}
+        </td>
+        <td class="align-top text-sm">{{ item.chunk_count }}</td>
+        <td class="align-top text-xs opacity-70" title="{{ item.indexed_at }}">{{ item.indexed_at | ingest_ago }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="flex items-center justify-between text-xs opacity-70">
+  <span>{{ offset + 1 }}–{{ offset + (result["items"] | length) }} of {{ '{:,}'.format(result.total) }}</span>
+  <span class="flex gap-1">
+    {% set base = '/partials/ingest/jobs/' ~ row.id ~ '/files?rows=1&status=' ~ (selected_status | urlencode) ~ '&q=' ~ (query | urlencode) ~ '&run=' ~ (selected_run | urlencode) %}
+    <button type="button" class="btn btn-ghost btn-xs" {% if offset <= 0 %}disabled{% endif %}
+            hx-get="{{ base }}&offset={{ [offset - page, 0] | max }}" hx-target="#files-table" hx-swap="innerHTML">Previous</button>
+    <button type="button" class="btn btn-ghost btn-xs" {% if offset + page >= result.total %}disabled{% endif %}
+            hx-get="{{ base }}&offset={{ offset + page }}" hx-target="#files-table" hx-swap="innerHTML">Next</button>
+  </span>
+</div>
+{% endif %}

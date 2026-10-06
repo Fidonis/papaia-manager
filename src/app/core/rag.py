@@ -2,11 +2,12 @@
 
 The core's `rag` Compose profile starts Qdrant, an MCP server in front of it and
 the ingest service. The manager learns about it from the core `.env`: whether `rag`
-is in `COMPOSE_PROFILES`, and the two browser URLs the core stores next to it. The
-Collections page additionally reads the RAG module's own `.env` (see `rag_backend`).
+is in `COMPOSE_PROFILES`, and the browser URL the core stores next to it for the Qdrant
+dashboard. The pages of the RAG category additionally read the RAG module's own `.env`
+(see `rag_backend`).
 
-It deliberately does not test whether the URL keys exist. The core derives and keeps
-them while the profile is off, so their presence says nothing about whether the
+It deliberately does not test whether the URL key exists. The core derives and keeps
+it while the profile is off, so its presence says nothing about whether the
 system is installed. A core without the profile (1.4.0 and older) yields nothing,
 which keeps the manager independent of the core release.
 
@@ -15,13 +16,15 @@ Three surfaces use this module:
 * the dashboard, through `with_rag_tiles`, which adds a computed tile group at
   render time. Nothing is written to `tiles.yaml`: seeding would never reach an
   existing deployment, and a placeholder that cannot be resolved makes every save
-  in the tile editor fail validation. The trade-off is that these tiles cannot be
-  reordered or removed in the editor.
-* the sidebar, through `rag_links` and `rag_active`, behind the `rag_nav` and
-  `rag_enabled` template globals.
-* the Collections and Connections pages, through `rag_backend` (the two system
-  collections and the operator role) and `rag_secrets` (the stack's Qdrant api-key and
-  the secret of the ingester's connection store), read from the RAG module's own `.env`.
+  in the tile editor fail validation. The trade-off is that this tile cannot be
+  reordered or removed in the editor. Only the Qdrant dashboard has a tile: the
+  ingester's own interface is replaced by the manager's pages, so it has none.
+* the sidebar, through `rag_active`, behind the `rag_enabled` template global: the
+  RAG category holds pages of the manager and no link out.
+* the pages of the category, through `rag_backend` (the two system collections and
+  the operator role), `rag_secrets` (the stack's Qdrant api-key, the secret of the
+  ingester's connection store and its REST token) and the helpers for the ingester's
+  settings, read from the RAG module's own `.env`.
 """
 from __future__ import annotations
 
@@ -48,56 +51,39 @@ GROUP_NAME = "RAG"
 
 
 @dataclass(frozen=True)
-class RagLink:
-    """One web interface of the RAG system, shown as a tile and as a menu entry."""
+class RagTile:
+    """A web interface of the RAG system that has a tile on the dashboard."""
 
-    label: str  # sidebar entry
-    tile_name: str  # dashboard tile
+    tile_name: str
     href: str
     description: str
-    icon: str  # "upload" or "database"; the template draws it
 
 
 @dataclass(frozen=True)
 class _Spec:
-    label: str
     tile_name: str
     env_key: str
     path: str
     description: str
-    icon: str
 
 
-# In tile order. The Qdrant dashboard bypasses the MCP server's role checks, which is
-# why the tiles are administrator-only.
+# The Qdrant dashboard bypasses the MCP server's role checks, which is why its tile is
+# administrator-only. The ingester has no entry: its jobs, runs and credentials are
+# pages of the manager, so there is no second interface to point at.
 _SPECS: tuple[_Spec, ...] = (
     _Spec(
-        "Qdrant",
         "Qdrant",
         "QDRANT_PUBLIC_URL",
         "/dashboard",
         "Vector database: REST API and dashboard (needs the api-key)",
-        "database",
-    ),
-    _Spec(
-        "Ingest",
-        "Qdrant Ingest",
-        "QDRANT_INGEST_PUBLIC_URL",
-        "/ui",
-        "Ingestion jobs and database connections: web interface",
-        "upload",
     ),
 )
 
-# The sidebar leads with ingestion, which is the day-to-day work; the vector
-# database dashboard is the rarer visit.
-_MENU_ORDER = ("Ingest", "Qdrant")
 
-
-def _links(env: Mapping[str, str]) -> list[RagLink]:
+def _tiles(env: Mapping[str, str]) -> list[RagTile]:
     if RAG_PROFILE not in profiles_in(env):
         return []
-    links: list[RagLink] = []
+    tiles: list[RagTile] = []
     for spec in _SPECS:
         base = env.get(spec.env_key, "").strip().rstrip("/")
         if not base:
@@ -107,22 +93,16 @@ def _links(env: Mapping[str, str]) -> list[RagLink]:
             # Same rule as every other tile link: http(s) or site-relative. A value
             # the core could not have derived is dropped rather than rendered.
             continue
-        links.append(RagLink(spec.label, spec.tile_name, href, spec.description, spec.icon))
-    return links
-
-
-def rag_links(config_dir: str) -> list[RagLink]:
-    """The sidebar entries, in menu order; empty unless the `rag` profile is active."""
-    links = _links(load_env_file(Path(config_dir) / ".env"))
-    return sorted(links, key=lambda link: _MENU_ORDER.index(link.label))
+        tiles.append(RagTile(spec.tile_name, href, spec.description))
+    return tiles
 
 
 def rag_active(config_dir: str) -> bool:
     """Whether the core runs the RAG system, by its profile and nothing else.
 
-    The sidebar category and the Collections page hang off this rather than off
-    `rag_links`: that one drops an entry whose URL key is missing, and a profile that
-    is on with a URL key missing must not hide the page that needs neither.
+    The sidebar category and the pages in it hang off this rather than off the URL key
+    of a tile: a profile that is on with that key missing must not hide the pages, which
+    need no URL.
     """
     return RAG_PROFILE in profiles_in(load_env_file(Path(config_dir) / ".env"))
 
@@ -233,6 +213,31 @@ def rag_secrets(config_dir: str) -> RagSecrets:
     )
 
 
+def ingest_timezone(config_dir: str) -> str:
+    """The zone the ingester schedules in when a job and the catalog name none: `QI_TIMEZONE`.
+
+    It is the ingester's setting and not the manager container's `TZ`: a schedule without a
+    zone of its own fires by the ingester's clock, whatever this machine's is.
+    """
+    env = load_env_file(Path(config_dir) / _MODULE_ENV)
+    return env.get("QI_TIMEZONE", "").strip() or "UTC"
+
+
+CREDENTIAL_PREFIX = "QI_SECRET_"
+
+
+def environment_credentials(config_dir: str) -> frozenset[str]:
+    """The credentials defined in the RAG module's `.env`: `QI_SECRET_*` with a value.
+
+    The ingester gets that file as its environment (`env_file`), so these names resolve for
+    its jobs. They are read-only from here: the manager lists them and never writes them.
+    """
+    env = load_env_file(Path(config_dir) / _MODULE_ENV)
+    return frozenset(
+        name for name, value in env.items() if name.startswith(CREDENTIAL_PREFIX) and value.strip()
+    )
+
+
 @dataclass(frozen=True)
 class DocumentsDir:
     """The folder the ingester reads its `local` sources from, as the manager can use it.
@@ -303,17 +308,17 @@ def with_rag_tiles(groups: list[TileGroup], env: Mapping[str, str]) -> list[Tile
     "RAG" if there is one, otherwise into a group of their own at the end. The input
     is not modified.
     """
-    links = _links(env)
-    if not links:
+    offered = _tiles(env)
+    if not offered:
         return groups
 
     shown = [tile for group in groups for tile in group.tiles]
     names = {tile.name.casefold() for tile in shown}
     tiles = [
-        Tile(name=link.tile_name, href=link.href, description=link.description, visibility="admin")
-        for link in links
-        if link.tile_name.casefold() not in names
-        and not any(_same_target(link.href, tile.href) for tile in shown)
+        Tile(name=item.tile_name, href=item.href, description=item.description, visibility="admin")
+        for item in offered
+        if item.tile_name.casefold() not in names
+        and not any(_same_target(item.href, tile.href) for tile in shown)
     ]
     if not tiles:
         return groups

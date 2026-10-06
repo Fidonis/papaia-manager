@@ -1,0 +1,84 @@
+{# The Files tab: what happened to each file the job tracks, and what a run would pick up now.
+
+   Two parts. The filter and the table: typing in the search or changing the status asks for the
+   table only (`rows`), so the field being typed in is never replaced. And the preview, which
+   asks the ingester what the filters match without running anything. #}
+
+{% if rows_only %}
+  {% include "partials/ingest_job_files_table.html" %}
+{% elif not supported %}
+<div class="flex flex-col gap-4">
+  <div class="alert alert-info text-sm" role="status">
+    <span>
+      This ingester does not report what happened to each file. A release with the
+      <span class="font-mono">documents</span> feature does; until then the runs and their
+      messages are the place to look.
+    </span>
+  </div>
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">Files a run would pick up now</p>
+      <div id="ingest-preview">
+        <button type="button" class="btn btn-outline btn-sm"
+                hx-get="/partials/ingest/preview/{{ row.id }}" hx-target="#ingest-preview" hx-swap="innerHTML">Show</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="flex flex-col gap-4">
+
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-3 p-4">
+      <div class="flex flex-wrap items-center gap-2">
+        <p class="text-sm font-semibold uppercase tracking-wide opacity-60">Files this job tracks</p>
+        {% for key, text in status_text.items() %}
+          {% if result.counts.get(key) %}
+          <button type="button" class="badge badge-sm {{ 'badge-neutral' if selected_status == key else 'badge-outline' }}"
+                  hx-get="/partials/ingest/jobs/{{ row.id }}/files?rows=1&status={{ key }}"
+                  hx-target="#files-table" hx-swap="innerHTML"
+                  onclick="document.getElementById('files-status').value = '{{ key }}'">{{ text }} {{ result.counts[key] }}</button>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <form class="flex flex-wrap items-center gap-2" onsubmit="return false"
+            hx-get="/partials/ingest/jobs/{{ row.id }}/files?rows=1" hx-target="#files-table" hx-swap="innerHTML"
+            hx-trigger="input changed delay:400ms from:#files-q, change from:#files-status">
+        <input id="files-q" name="q" type="search" value="{{ query }}" placeholder="Search by path"
+               class="input input-bordered input-sm w-64" autocomplete="off">
+        <select id="files-status" name="status" class="select select-bordered select-sm">
+          <option value="">Any status</option>
+          {% for key, text in status_text.items() %}
+          <option value="{{ key }}"{% if selected_status == key %} selected{% endif %}>{{ text }}</option>
+          {% endfor %}
+        </select>
+        {% if selected_run %}
+        <input type="hidden" name="run" value="{{ selected_run }}">
+        <span class="badge badge-sm gap-1">Touched by run {{ selected_run | short_id }}
+          <a href="#files" onclick="jobTab('files')" aria-label="Show all files">✕</a></span>
+        {% endif %}
+      </form>
+
+      <div id="files-table">
+        {% include "partials/ingest_job_files_table.html" %}
+      </div>
+      <p class="text-xs opacity-50">
+        A file the last run found unchanged keeps its earlier result. Failed files are tried again on the
+        next run.
+      </p>
+    </div>
+  </div>
+
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">Files a run would pick up now</p>
+      <p class="text-xs opacity-60">What the filters match, without running anything. For a remote source it is what was fetched last time.</p>
+      <div id="ingest-preview">
+        <button type="button" class="btn btn-outline btn-sm"
+                hx-get="/partials/ingest/preview/{{ row.id }}" hx-target="#ingest-preview" hx-swap="innerHTML">Show</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}

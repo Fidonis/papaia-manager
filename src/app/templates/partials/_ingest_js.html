@@ -1,0 +1,157 @@
+{# Helpers shared by the ingest pages: the verbs on a job (enable, disable, resume, reload,
+   abort) and the two dialogs that guard the destructive ones (run, delete). The page includes
+   `_rag_js.html` first and this once, inside its own content block.
+
+   Every verb answers with a toast that says what happened *and* what did not: a change that is
+   saved but not active, or saved without the ingester having been asked, is told apart from one
+   that is live, because they look the same in the file and not in the world.
+
+   Careful with doubled braces in this file: it is a Jinja template, and two opening braces in a
+   row start an expression. #}
+<script>
+const _ING = '/api/v1/rag/ingest';
+
+function _ingJob(id) { return _ING + '/jobs/' + encodeURIComponent(id); }
+
+// What a save or a toggle did, in a sentence for a toast.
+function ingestOutcome(result, what) {
+  let text = what;
+  let level = 'success';
+  if (!result.verified) {
+    level = 'warning';
+    text += ' (the ingester could not be asked' + (result.note ? ': ' + _ragEscape(result.note) : '') + ')';
+  } else if (!result.applied) {
+    level = 'warning';
+    text += '. It is saved but not active yet: ' +
+      (result.elsewhere.length ? _ragEscape(result.elsewhere.join('; ')) : 'the ingester did not apply the catalog');
+  }
+  return { level: level, text: text };
+}
+
+async function ingestToggle(id, enable, after) {
+  const res = await _ragRequest('POST', _ingJob(id) + (enable ? '/enable' : '/disable'));
+  if (res.handled) return;
+  const label = '<b>' + _ragEscape(id) + '</b>';
+  if (!res.ok) { showToast('error', label + ': ' + _ragEscape(res.error)); return; }
+  const out = ingestOutcome(res.data, 'Job ' + label + (enable ? ' enabled' : ' disabled'));
+  showToast(out.level, out.text);
+  if (after) after();
+}
+
+async function ingestResume(id, after) {
+  const res = await _ragRequest('POST', _ingJob(id) + '/resume');
+  if (res.handled) return;
+  if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
+  showToast('success', 'Scheduling of <b>' + _ragEscape(id) + '</b> resumed');
+  if (after) after();
+}
+
+async function ingestReloadCatalog(after) {
+  const res = await _ragRequest('POST', _ING + '/reload');
+  if (res.handled) return;
+  if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
+  showToast(res.data.refused ? 'warning' : 'success',
+            res.data.refused ? 'The ingester read jobs.yaml and found problems' : 'The ingester read jobs.yaml');
+  if (after) after();
+}
+
+async function ingestAbort(runId, after) {
+  const res = await _ragRequest('DELETE', _ING + '/job-runs/' + encodeURIComponent(runId));
+  if (res.handled) return;
+  if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
+  showToast('info', 'Abort requested. The run stops after the file it is working on.');
+  if (after) after();
+}
+
+// The dropdown menus of a row stay open while the pointer rests on them; close on a choice.
+function ingestCloseMenu() {
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+
+// The run dialog. The row that opens it hands over what the dialog has to know about the job,
+// so it needs no request of its own to open.
+function runDialog() {
+  return {
+    job: { id: '', collection: '', mode: '', mode_label: '', full_scope: 'job', remote: false, first_run: false, siblings: [] },
+    mode: '', dry: false, skipSync: false, keep: false, confirmRebuild: false, typed: '',
+    busy: false, error: '', advanced: false,
+    open(detail) {
+      this.job = detail;
+      this.mode = '';
+      // The first run of a job is the one worth looking at before it writes anything.
+      this.dry = !!detail.first_run;
+      this.skipSync = false; this.keep = false; this.confirmRebuild = false; this.typed = '';
+      this.error = ''; this.advanced = false; this.busy = false;
+      this.$root.showModal();
+    },
+    effectiveMode() { return this.mode ? this.mode.split('/')[0] : this.job.mode; },
+    effectiveScope() {
+      if (this.mode === 'full/collection') return 'collection';
+      if (this.mode === 'full/job') return 'job';
+      return this.job.full_scope;
+    },
+    rebuild() { return this.effectiveMode() === 'full'; },
+    wholeCollection() { return this.rebuild() && this.effectiveScope() === 'collection'; },
+    canSubmit() {
+      if (this.busy) return false;
+      if (this.dry) return true;
+      if (this.rebuild() && !this.confirmRebuild) return false;
+      if (this.wholeCollection() && this.typed !== this.job.collection) return false;
+      return true;
+    },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const body = {
+        dry_run: this.dry,
+        skip_sync: this.skipSync && this.job.remote,
+        delete_vanished: !(this.keep && this.effectiveMode() === 'upsert'),
+      };
+      if (this.mode) {
+        const parts = this.mode.split('/');
+        body.mode = parts[0];
+        if (parts[1]) body.full_scope = parts[1];
+      }
+      if (!this.dry) {
+        body.confirm_rebuild = this.confirmRebuild;
+        body.confirm_collection = this.typed === this.job.collection;
+        if (this.wholeCollection() && this.job.siblings.length) body.force = true;
+      }
+      const res = await _ragRequest('POST', _ingJob(this.job.id) + '/run', body);
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      window.location.href = '/ingest/runs/' + encodeURIComponent(res.data.run_id);
+    },
+  };
+}
+
+// The delete dialog: the job's entry always goes; what it embedded goes only on request.
+function deleteJobDialog() {
+  return {
+    job: { id: '', etag: '', collection: '' },
+    purge: false, typed: '', busy: false, error: '',
+    open(detail) {
+      this.job = detail; this.purge = false; this.typed = ''; this.error = ''; this.busy = false;
+      this.$root.showModal();
+    },
+    canSubmit() { return !this.busy && (!this.purge || this.typed === this.job.id); },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('DELETE', _ingJob(this.job.id) +
+        '?purge=' + (this.purge ? 'true' : 'false') + '&etag=' + encodeURIComponent(this.job.etag || ''));
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      let text = 'Job <b>' + _ragEscape(this.job.id) + '</b> deleted';
+      if (res.data.purged) text += '; ' + res.data.deleted_points + ' points removed from the collection';
+      if (res.data.note) text += '. ' + _ragEscape(res.data.note);
+      showToast(res.data.note ? 'warning' : 'success', text);
+      window.location.href = '/ingest/jobs';
+    },
+  };
+}
+</script>

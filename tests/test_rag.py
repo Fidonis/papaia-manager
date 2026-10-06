@@ -143,7 +143,7 @@ def test_nothing_is_offered_without_the_profile_even_when_the_urls_are_stored(
 ) -> None:
     _write_env(config_dir, _OFF_ENV)
 
-    assert rag.rag_links(str(config_dir)) == []
+    assert not rag.rag_active(str(config_dir))
     off = {"COMPOSE_PROFILES": "keycloak", "QDRANT_PUBLIC_URL": _QDRANT}
     assert rag.with_rag_tiles([], off) == []
 
@@ -151,50 +151,44 @@ def test_nothing_is_offered_without_the_profile_even_when_the_urls_are_stored(
 def test_a_core_that_does_not_know_the_profile_yields_nothing(config_dir: Path) -> None:
     _write_env(config_dir, _OLD_CORE_ENV)
 
-    assert rag.rag_links(str(config_dir)) == []
+    assert not rag.rag_active(str(config_dir))
+    assert rag.with_rag_tiles([], {"COMPOSE_PROFILES": "keycloak,librechat"}) == []
 
 
 def test_a_missing_env_file_yields_nothing(tmp_path: Path) -> None:
-    assert rag.rag_links(str(tmp_path / "does-not-exist")) == []
+    assert not rag.rag_active(str(tmp_path / "does-not-exist"))
 
 
 # ---------------------------------------------------------------------------
-# Links
+# The Qdrant tile
 # ---------------------------------------------------------------------------
 
 
-def test_the_links_point_at_the_web_interfaces_in_menu_order(config_dir: Path) -> None:
-    links = rag.rag_links(str(config_dir))
+def test_the_tile_points_at_the_qdrant_dashboard(config_dir: Path) -> None:
+    tiles = rag._tiles({"COMPOSE_PROFILES": "rag", "QDRANT_PUBLIC_URL": _QDRANT})
 
-    assert [link.label for link in links] == ["Ingest", "Qdrant"]
-    assert [link.href for link in links] == [f"{_INGEST}/ui", f"{_QDRANT}/dashboard"]
-    assert [link.icon for link in links] == ["upload", "database"]
+    assert [(t.tile_name, t.href) for t in tiles] == [("Qdrant", f"{_QDRANT}/dashboard")]
 
 
-def test_a_trailing_slash_in_the_stored_url_does_not_double(config_dir: Path) -> None:
-    _write_env(
-        config_dir,
-        "COMPOSE_PROFILES=rag\n"
-        f"QDRANT_PUBLIC_URL={_QDRANT}/\n"
-        f"QDRANT_INGEST_PUBLIC_URL={_INGEST}///\n",
-    )
+def test_a_trailing_slash_in_the_stored_url_does_not_double() -> None:
+    tiles = rag._tiles({"COMPOSE_PROFILES": "rag", "QDRANT_PUBLIC_URL": f"{_QDRANT}///"})
 
-    assert [link.href for link in rag.rag_links(str(config_dir))] == [
-        f"{_INGEST}/ui",
-        f"{_QDRANT}/dashboard",
-    ]
+    assert [t.href for t in tiles] == [f"{_QDRANT}/dashboard"]
 
 
-def test_a_url_that_is_missing_or_unsafe_is_left_out(config_dir: Path) -> None:
-    _write_env(
-        config_dir,
-        "COMPOSE_PROFILES=rag\nQDRANT_PUBLIC_URL=javascript:alert(1)//\n"
-        f"QDRANT_INGEST_PUBLIC_URL={_INGEST}\n",
-    )
-    assert [link.label for link in rag.rag_links(str(config_dir))] == ["Ingest"]
+def test_a_url_that_is_missing_or_unsafe_is_left_out() -> None:
+    unsafe = {"COMPOSE_PROFILES": "rag", "QDRANT_PUBLIC_URL": "javascript:alert(1)//"}
 
-    _write_env(config_dir, "COMPOSE_PROFILES=rag\n")
-    assert rag.rag_links(str(config_dir)) == []
+    assert rag._tiles(unsafe) == []
+    assert rag._tiles({"COMPOSE_PROFILES": "rag"}) == []
+
+
+def test_the_ingester_has_no_tile_whatever_the_core_stores_for_it() -> None:
+    """Its jobs, runs and credentials are pages of the manager; its own interface has no tile."""
+    tiles = rag._tiles(_ENV)
+
+    assert [t.tile_name for t in tiles] == ["Qdrant"]
+    assert all(_INGEST not in t.href for t in tiles)
 
 
 # ---------------------------------------------------------------------------
@@ -215,8 +209,8 @@ def test_the_tiles_form_a_group_of_their_own_for_administrators() -> None:
 
     assert [g.name for g in result] == ["Tools", "RAG"]
     tiles = result[1].tiles
-    assert [t.name for t in tiles] == ["Qdrant", "Qdrant Ingest"]
-    assert [t.href for t in tiles] == [f"{_QDRANT}/dashboard", f"{_INGEST}/ui"]
+    assert [t.name for t in tiles] == ["Qdrant"]
+    assert [t.href for t in tiles] == [f"{_QDRANT}/dashboard"]
     # The Qdrant dashboard bypasses the MCP server's role checks.
     assert {t.visibility for t in tiles} == {"admin"}
 
@@ -241,7 +235,7 @@ def test_a_tile_the_operator_made_for_the_same_service_wins_by_name() -> None:
 
     result = rag.with_rag_tiles(groups, _ENV)
 
-    assert [t.name for g in result for t in g.tiles] == ["qdrant", "Qdrant Ingest"]
+    assert [t.name for g in result for t in g.tiles] == ["qdrant"]
 
 
 def test_a_tile_the_operator_made_for_the_same_link_wins_by_link() -> None:
@@ -249,16 +243,11 @@ def test_a_tile_the_operator_made_for_the_same_link_wins_by_link() -> None:
 
     result = rag.with_rag_tiles(groups, _ENV)
 
-    assert [t.name for g in result for t in g.tiles] == ["Vectors", "Qdrant Ingest"]
+    assert [t.name for g in result for t in g.tiles] == ["Vectors"]
 
 
-def test_nothing_is_added_when_the_operator_already_has_both() -> None:
-    groups = [
-        TileGroup(
-            "Mine",
-            [_tile("Qdrant", "https://a.test"), _tile("Qdrant Ingest", "https://b.test")],
-        )
-    ]
+def test_nothing_is_added_when_the_operator_already_has_it() -> None:
+    groups = [TileGroup("Mine", [_tile("Qdrant", "https://a.test")])]
 
     assert rag.with_rag_tiles(groups, _ENV) is groups
 
@@ -272,7 +261,7 @@ def test_the_tiles_join_a_group_the_operator_already_called_rag() -> None:
     result = rag.with_rag_tiles(groups, _ENV)
 
     assert [g.name for g in result] == ["Tools", "rag"]
-    assert [t.name for t in result[1].tiles] == ["Notes", "Qdrant", "Qdrant Ingest"]
+    assert [t.name for t in result[1].tiles] == ["Notes", "Qdrant"]
 
 
 # ---------------------------------------------------------------------------
@@ -280,13 +269,13 @@ def test_the_tiles_join_a_group_the_operator_already_called_rag() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_an_administrator_sees_both_tiles_with_their_links(client: TestClient) -> None:
+def test_an_administrator_sees_the_qdrant_tile_and_no_ingest_tile(client: TestClient) -> None:
     body = _admin(client).get("/partials/tiles").text
 
-    assert "Qdrant Ingest" in body
-    assert f"{_INGEST}/ui" in body
     assert f"{_QDRANT}/dashboard" in body
-    assert re.search(r"RAG\s*&nbsp;·&nbsp;\s*2\s+applications", body), "the group heading"
+    assert "Qdrant Ingest" not in body
+    assert f"{_INGEST}/ui" not in body
+    assert re.search(r"RAG\s*&nbsp;·&nbsp;\s*1\s+application\b", body), "the group heading"
 
 
 def test_a_user_without_the_admin_role_does_not_see_them(client: TestClient) -> None:
@@ -368,7 +357,13 @@ def test_the_admin_sidebar_has_a_rag_category_between_extensions_and_system(
     groups = _nav_groups(_admin(client).get("/").text)
 
     assert list(groups) == ["", "Monitor", "Extensions", "RAG", "System"]
-    assert groups["RAG"] == ["Connections", "Collections", "Embedding", "Ingest", "Qdrant"]
+    assert groups["RAG"] == [
+        "Connections",
+        "Collections",
+        "Embedding",
+        "Ingest Jobs",
+        "Ingest Runs",
+    ]
     assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
 
 
@@ -422,19 +417,24 @@ def test_the_category_survives_a_profile_that_is_on_without_its_url_keys(
 
     groups = _nav_groups(_admin(client).get("/").text)
 
-    assert groups["RAG"] == ["Connections", "Collections", "Embedding"]
+    assert groups["RAG"] == [
+        "Connections",
+        "Collections",
+        "Embedding",
+        "Ingest Jobs",
+        "Ingest Runs",
+    ]
 
 
-def test_the_entries_open_the_web_interfaces_in_a_new_tab(client: TestClient) -> None:
-    nav = _admin(client).get("/").text
-    nav = nav[nav.index("<nav") : nav.index("</nav>")]
+def test_no_entry_of_the_category_leaves_the_manager(client: TestClient) -> None:
+    """The ingester's interface is replaced by pages, and Qdrant has its tile on the dashboard."""
+    body = _admin(client).get("/").text
+    nav = body[body.index("<nav") : body.index("</nav>")]
 
-    for href in (f"{_INGEST}/ui", f"{_QDRANT}/dashboard"):
-        anchor = re.search(rf'<a href="{re.escape(href)}"[^>]*>', nav)
-        assert anchor, href
-        assert 'target="_blank"' in anchor.group(0)
-        assert 'rel="noopener noreferrer"' in anchor.group(0)
-        assert "aria-label=" in anchor.group(0), "the collapsed rail has no other label"
+    assert 'target="_blank"' not in nav
+    assert f"{_INGEST}/ui" not in nav
+    assert f"{_QDRANT}/dashboard" not in nav
+    assert "aria-label=\"Ingest\"" not in nav and "aria-label=\"Qdrant\"" not in nav
 
 
 @pytest.mark.parametrize("env", [_OFF_ENV, _OLD_CORE_ENV])

@@ -1,0 +1,71 @@
+{# A table of runs, for the Runs page and for the Runs tab of a job.
+
+   It polls itself while any of its runs works, by rendering its own trigger only then. The
+   whole root is swapped, so the filters of the page live outside it. #}
+{% from "partials/_ingest_macros.html" import run_badge, progress %}
+
+<div id="ingest-run-rows" class="flex flex-col gap-3"
+     {% if active %}
+     hx-get="{{ poll_url }}"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+  {% if problem %}
+  <div class="alert alert-warning text-sm" role="status"><span>{{ problem }}</span></div>
+  {% endif %}
+
+  {% if not runs and not problem %}
+  <div class="flex flex-col items-center py-16 gap-2 opacity-70 text-center">
+    <p class="text-lg font-medium">No runs</p>
+    <p class="max-w-md text-sm">The ingester keeps the latest 200 runs of every job. A run appears here when it starts.</p>
+  </div>
+  {% elif runs %}
+  <div class="overflow-x-auto rounded-xl border border-base-300 bg-base-100">
+    <table class="table table-sm">
+      <thead>
+        <tr class="text-xs uppercase opacity-60">
+          <th>Status</th>
+          {% if show_job %}<th>Job</th>{% endif %}
+          <th>What it did</th><th>Started</th><th>Took</th><th>Files</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr class="hover">
+          <td class="align-top">
+            <a href="/ingest/runs/{{ run.run_id }}" class="inline-flex flex-wrap items-center gap-1" title="Run {{ run.run_id | short_id }}">{{ run_badge(run) }}</a>
+            {% if run.active %}
+            <div class="mt-1 w-36">{{ progress(run) }}</div>
+            {% if run.phase_label %}<p class="text-xs opacity-60">{{ run.phase_label }}</p>{% endif %}
+            {% endif %}
+          </td>
+          {% if show_job %}
+          <td class="align-top">
+            {% if run.job_id %}<a href="/ingest/jobs/{{ run.job_id }}" class="link link-hover font-mono text-sm">{{ run.job_id }}</a>{% endif %}
+          </td>
+          {% endif %}
+          <td class="align-top text-sm">
+            {{ run.job_mode_label }}
+            <span class="block text-xs opacity-60">{{ {'cron': 'On schedule', 'manual_rest': 'Started by hand', 'manual_ui': 'Started by hand', 'manual_mcp': 'Started by an assistant', 'startup': 'At start of the ingester'}.get(run.trigger, run.trigger) }}</span>
+          </td>
+          <td class="align-top text-sm" title="{{ run.started_at }}">
+            {{ run.started_at | ingest_when(tz) }}
+            <span class="block text-xs opacity-60">{{ run.started_at | ingest_ago }}</span>
+          </td>
+          <td class="align-top text-sm">{{ run.started_at | ingest_duration(run.finished_at) }}</td>
+          <td class="align-top text-sm">
+            {% if run.active %}
+              {% if run.files_done is not none and run.counters.files_seen %}{{ run.files_done }} / {{ run.counters.files_seen }}{% else %}<span class="opacity-50">…</span>{% endif %}
+            {% else %}
+              <span title="Files seen">{{ run.counters.files_seen }}</span>
+              <span class="block text-xs opacity-60">{{ run.counters.docs_indexed }} embedded{% if run.counters.docs_failed %} · <span class="text-error">{{ run.counters.docs_failed }} failed</span>{% endif %}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>

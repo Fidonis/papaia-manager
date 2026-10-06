@@ -10,11 +10,13 @@ papaia-manager is a web-based control plane for the papAIa stack's addon lifecyc
 
 It also serves the stack dashboard: a tile overview of the deployed applications, held in `manager/tiles.yaml` in the papAIa config directory and editable in place by administrators.
 
-When the core's optional RAG system is active (profile `rag` in the core `.env`'s `COMPOSE_PROFILES`), administrators also get a computed "RAG" tile group on the dashboard (Qdrant, Qdrant Ingest) and a "RAG" category in the sidebar (a Collections page, and links to the same two web interfaces, opened in a new tab). `core/rag.py` owns this: it reads the profile and the two URLs `QDRANT_PUBLIC_URL` and `QDRANT_INGEST_PUBLIC_URL` and never tests whether the URL keys exist, because the core keeps them while the profile is off. The tiles are added in `_gather_tiles` at render time and are not persisted to `tiles.yaml`; the sidebar gates the whole category wrapper on the profile alone (`rag_enabled`, `templating.py`) and takes the two links from the `rag_nav` Jinja global, so no empty caption remains and a missing URL key does not hide the Collections page.
+When the core's optional RAG system is active (profile `rag` in the core `.env`'s `COMPOSE_PROFILES`), administrators also get a computed "RAG" tile group on the dashboard (Qdrant) and a "RAG" category in the sidebar (pages of the manager only, no link out). `core/rag.py` owns this: it reads the profile and `QDRANT_PUBLIC_URL` and never tests whether the URL key exists, because the core keeps it while the profile is off. The tile is added in `_gather_tiles` at render time and is not persisted to `tiles.yaml`; the sidebar gates the whole category wrapper on the profile alone (`rag_enabled`, `templating.py`), so no empty caption remains and a missing URL key does not hide a page. The ingester's own web interface has no tile and no entry: its jobs, runs and credentials are the Ingest jobs pages.
 
 Another surface, Connections (`/connections`), is listed before Collections and manages the vector database connections of the RAG system: create, edit, test and delete them, with the connection `default` (the integrated Qdrant) created automatically, editable and marked as the default. They are stored in the ingester's own store, `ai/rag/catalog/connections.yaml`, so the ingest service uses them unchanged (see the RAG connections section below). Collections (`/collections`), the next surface, manages the Qdrant collections of the selected connection (the default one unless another is chosen) of the RAG system and the Keycloak roles that may use them: list, create and delete collections, and keep any number of role names with the access level `r` or `rw` per collection. It is admin-only and exists only while the `rag` profile is active (a 404 otherwise, after the role check). The roles are stored in the format `qdrant-mcp-rbac` defines, so the MCP server enforces them unchanged (see the RAG collections section below).
 
 A page after those two, Embedding (`/embedding`), puts files into a collection through the ingester: files are uploaded into a staging folder that is deleted after a successful run, or picked in the documents folder, and embedded either as "add and update" (nothing is deleted) or as "replace the collection". The run is the ingester's, and its status is read from it (see the RAG embedding section below).
+
+Two pages after it, Ingest Jobs (`/ingest/jobs`) and Ingest Runs (`/ingest/runs`), manage everything else the ingester does: its jobs (create, edit, pause, run, delete), their runs with live progress and the file-by-file result, the credentials of remote sources (stored encrypted), the leftovers of deleted jobs, and the catalog file with its defaults. They are another editor of `jobs.yaml`, next to the ingester's own interface and the Embedding page (see the RAG ingest jobs section below).
 
 A third surface, Backup / Restore (`/backup`), drives the stack-level `papaia-ctl` commands: `backup` as an ordinary job, `restore` in a detached container that outlives the manager (see the Restore model section below). The same page schedules backups from inside the manager (see Backup schedule below). It was called Maintenance up to 0.2.0; the old paths redirect, and the REST prefix is still `/api/v1/maintenance/`.
 
@@ -76,14 +78,18 @@ papaia-manager/
 │       │   │                   #   point ids, ACL and meta payloads, create/delete/set_roles
 │       │   ├── vectordb/       # Connection types (a registry) and the ingester's connection store:
 │       │   │                   #   base (types, ProbeEnv), qdrant_type, ingest_file (connections.yaml,
-│       │   │                   #   compare-and-swap writer), catalog_io (the swap both catalog files
+│       │   │                   #   compare-and-swap writer), catalog_io (the swap the catalog files
 │       │   │                   #   share), crypto (enc:1: tokens), jobs_usage,
 │       │   │                   #   service (default connection, key rules), errors
-│       │   ├── ingest/         # Embedding files through the ingester: catalog (the managed jobs in
-│       │   │                   #   jobs.yaml and their writer), documents (jailed browsing and
-│       │   │                   #   selection), uploads (staging folders, removed after a run), client
-│       │   │                   #   (the ingester's REST), runs (start, follow, clean up), watcher
-│       │   │                   #   (the background clean-up), errors
+│       │   ├── ingest/         # The ingester's catalog and what runs on it: catalog (jobs.yaml and its
+│       │   │                   #   compare-and-swap writer), catalog_load (reload and check what it
+│       │   │                   #   serves), jobspec (mirror of the job schema and its cross-job rules),
+│       │   │                   #   schedules (plain-language schedules <-> the ingester's cron), job_forms
+│       │   │                   #   (the editor's state <-> a job), jobs_service (everything the pages do),
+│       │   │                   #   secrets (secrets.yaml, encrypted), display (times and sizes), documents
+│       │   │                   #   (jailed browsing and selection), uploads (staging folders, removed after
+│       │   │                   #   a run), client (the ingester's REST), runs (start, follow, clean up),
+│       │   │                   #   watcher (the background clean-up), errors
 │       │   ├── settings_store.py # settings.yaml (one section per topic: branding, host) + logo files
 │       │   ├── host_health.py  # Memory, CPU, GPU, clock, disk space + certificate expiry via the
 │       │   │                   #   core's `doctor`; cached for the configured interval,
@@ -119,6 +125,8 @@ papaia-manager/
 │       │   ├── api_collections.py # /api/v1/rag/collections — Qdrant collections and their roles
 │       │   ├── api_connections.py # /api/v1/rag/connections — connections of the ingester's store
 │       │   ├── api_ingest.py   # /api/v1/rag/ingest — uploads, the tree, embedding runs
+│       │   ├── api_ingest_jobs.py # /api/v1/rag/ingest — jobs, their runs, credentials, the catalog file
+│       │   ├── ui_ingest.py    # /ingest/... pages and their partials
 │       │   └── rag_deps.py     # RagAdmin (admin + `rag` profile), the connection service and the
 │       │                       #   per-request CollectionStore on the selected connection
 │       ├── templates/          # Jinja2 HTML templates
@@ -137,6 +145,8 @@ papaia-manager/
 │       │       ├── embedding_status.html     # Polled run strip and the latest runs
 │       │       ├── embedding_tree.html       # One level of a file tree, a checkbox per entry
 │       │       ├── embedding_uploads.html    # The staged uploads
+│       │       ├── ingest_*.html, _ingest_*.html # Ingest jobs: list, job tabs, runs, credentials, leftovers,
+│       │       │                                 #   the editor's dialogs and the scripts the pages share
 │       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
 │       │       ├── job_status.html           # Polled job progress/log fragment
 │       │       ├── restore_point_list.html   # Restore point cards
@@ -392,6 +402,27 @@ Consequences worth remembering when touching this area:
 - **A custom `QI_LOCAL_MOUNT` is invisible to the manager** unless it lies inside the configuration or workspace directory; `documents_dir` says so and the page disables what depends on it. A backup of the configuration directory contains an upload that is still staged; excluding `ai/rag/documents/uploads` there is a change in the core.
 - **Verified against the real code.** The jobs the manager writes load with the ingester's `load_catalog`, its include globs select exactly the intended files under the ingester's `scan_tree`, and a run through the real ingester and Qdrant (add, update by path, unchanged file, folder source, replace, failure with retry, a refused catalog, abort) behaved as described. Repeat this when the ingester's job schema, glob dialect or run options change.
 
+### RAG ingest jobs
+
+The pages (`/ingest/jobs`, `/ingest/jobs/{id}`, `/ingest/new`, `/ingest/jobs/{id}/edit`, `/ingest/runs`, `/ingest/runs/{id}`, `/ingest/secrets`, `/ingest/orphans`, `/ingest/catalog`) and their API (`/api/v1/rag/ingest/...`, `routers/api_ingest_jobs.py`) manage the ingester's catalog. `core/ingest/jobs_service.py` does what the routes ask and is the only thing they call; `tests/test_ingest_*.py`, `tests/test_api_ingest_jobs.py` and `tests/test_ingester_contract.py` pin it, against `tests/fake_ingest.py`.
+
+Consequences worth remembering when touching this area:
+
+- **`jobs.yaml` has several writers and none of them owns it.** The ingester's own interface, this editor, the Embedding page (`mgr-` jobs) and a person with a text editor all write it. Every manager write goes through `JobsFileRepository` (`update(mutate, rules)`, `put_job`, `remove_job`, `set_enabled`, `set_defaults`, `replace_raw`, `restore`) and the compare-and-swap of `vectordb/catalog_io.py`; the change is computed again from the bytes that are there when the swap fails. An editor's save carries the `entry_etag` of the entry it opened, so a change to another job is no conflict and one to this job is a 409.
+- **The mirror is not the ingester.** `jobspec.JobSpec` copies the ingester's job schema, defaults and cross-job rules so the editor can check a job without the ingester and the manager can say what a job inherits. Where the two differ, the ingester wins at runtime, which is why a write is never trusted: `catalog_load.reload_and_verify` makes the ingester reload and compares what it serves with what was written (`loaded_as_written`, `subset_matches`). `tests/test_ingester_contract.py` compares field sets, defaults, the rules that refuse a job and the secret store's format against the ingester's own modules; it needs `QDRANT_INGEST_SRC` (the ingester's `src` directory) and is skipped without it. Run it when either schema changes.
+- **All or nothing, and what that means for a save.** The ingester keeps its previous catalog when any job is invalid (`applied: false`), and at its start loads the valid subset. So after a write the manager distinguishes "the ingester refuses my job" (the write is taken back) from "it refuses other jobs" (the write stays, and the result says the previous catalog is still served, with `elsewhere` naming the jobs). With the ingester unreachable a job is checked by the manager's rules, saved, and the result says it could not be confirmed. A job that is in `jobs.yaml` is never an orphan, however it is served; a leftover is a state row whose id is in no file.
+- **The editor works on the effective job.** `jobspec.effective` merges the catalog defaults over a job and `minimise` writes back only what differs from them, except `source`, `target`, `mode` and `embedding.model`, which are always written: a collection is bound to its model, and a changed default must never move a job to another one. A key the editor does not know stays as it was.
+- **Ids are for life.** Every point derives from the job id, the source label and the path, so an id cannot change in an edit (duplicate instead), `mgr-` (the Embedding page's) and `new` are reserved, and re-creating a deleted job with the same id, label and path adopts what is left of it. Pausing is `enabled: false`; the ingester also has a pause of its own (`paused` in its job list), which the list shows and *Resume scheduling* clears.
+- **Schedules are in the ingester's dialect, not the backup schedule's.** `schedules.py` is separate from `schedule.py` on purpose: the ingester feeds a cron expression to APScheduler's `CronTrigger.from_crontab`, which counts weekdays from Monday (0) and ANDs day-of-month with weekday. The manager always writes weekday names and reads numbers the way the ingester does, so what the editor shows and what runs agree; the "next runs" come from the ingester. An interval schedule keeps its timer across a catalog reload (an ingester change).
+- **Credentials.** A value goes in `ai/rag/catalog/secrets.yaml` (`version: 1`, `secrets: [{name, value}]`, `value` = `enc:1:` + Fernet token keyed from `QI_CONNECTIONS_SECRET`, the same cipher as the connection store) and is write-only: no view, log line, audit entry or response carries it. The writer is compare-and-swap, keeps no `.bak` (a backup copy of a secret would be one more place for it), and the ingester reads the file when a value is needed, so a new credential works without a restart. The ingester answers `${env:QI_SECRET_X}` from its process environment first and the file second, and the manager follows that: a name defined in `ai/rag/.env` is never shadowed, and the manager knows the names from that file only, not from an environment it cannot see. A credential a job refers to cannot be deleted. This is the same level of protection as `connections.yaml`: the key is in the `.env` next to it.
+- **What the ingester can do decides what the page offers.** `/health.features` lists `run_progress`, `documents`, `validate` and `secret_store`. An ingester without one keeps working: no progress, a files tab that explains, the manager's own checks, no stored credentials. 0.3.0 has none of them.
+- **A run is the ingester's, a page is a view of it.** The list polls only while a run works (the partial renders its own `hx-trigger` conditionally), the runs and the files come from the ingester's REST API, and the ingester's records survive a restart of the manager. An abort is cooperative and takes effect between two files.
+- **Page scripts.** `htmx` and `alpine` are deferred scripts, so an inline script must not call `htmx` while the page is parsed (the job page starts its first tab after `DOMContentLoaded`; a test pins it). A `<select>` whose options an Alpine `x-for` makes shows its first option whatever the model holds, because `x-model` is applied before the options exist; such selects carry `x-effect="sync($el, ...)"`, and a test checks that they all do. Unit tests with a `TestClient` cannot see either, so look at a page in a browser when you change one. The editor asks before a link leaves it with unsaved changes in its own dialog (`guardLink`, `#leave-editor`); a page cannot replace the browser's prompt for a reload, a closed tab or the back button, so `beforeunload` stays as the fallback.
+- **Every change is audited** as `rag.ingest.job.create|update|delete|enable|disable|resume|run`, `rag.ingest.run.abort`, `rag.ingest.orphan.delete`, `rag.ingest.secret.set|delete`, `rag.ingest.defaults.update` or `rag.ingest.catalog.raw`, with counts and ids and never a value.
+- **Verified against the real code.** What the editor produces loads with the ingester's `load_catalog` and what the ingester refuses is refused here (the contract test), and the pages were driven in a browser against the real ingester and a throwaway Qdrant: runs with progress and an abort, a dry run, a rebuild, a failed fetch, a stored credential making a job valid without a restart, an invalid job kept out by the ingester and repaired, a leftover adopted by a job of the same id, an edit that raced another, an ingester that is down and one without the new features. Repeat this when the ingester's REST API or the page scripts change.
+
+Known limits: the ingester does not compare before it replaces a file, so a save of its own interface that began before a manager save and ends after it replaces the manager's change; the editor offers what the ingester's job schema has (the nine source types and their fields; any other rclone option goes into the free-text flags field); a run's history is the ingester's last 200 per job.
+
 ---
 
 ## Engineering conventions
@@ -479,7 +510,7 @@ manager's environment: `QDRANT_JWT_SECRET` (the stack's api-key, which the defau
 connection stores) and `QI_CONNECTIONS_SECRET` (it derives the key that encrypts the
 api-keys in the connection store), `EMBEDDING_META_COLLECTION` or
 `QI_EMBED_META_COLLECTION`, `RBAC_ACL_COLLECTION` or `QI_RBAC_ACL_COLLECTION`, and
-`QI_OIDC_OPERATOR_ROLE`, `QI_API_TOKEN` (the ingester's REST token, for the Embedding page) and `QI_LOCAL_MOUNT` (to find the documents folder). A missing key means the services' own default
+`QI_OIDC_OPERATOR_ROLE`, `QI_API_TOKEN` (the ingester's REST token, for the Embedding and Ingest pages), `QI_LOCAL_MOUNT` (to find the documents folder), `QI_TIMEZONE` (the zone schedules are read in when neither a job nor the catalog names one) and the names of `QI_SECRET_*` (the credentials a job can refer to). A missing key means the services' own default
 (`_collection_meta`, `_rbac_acl`, `qdrant-ingest-operator`); a missing secret means
 no default connection is created and no api-key can be stored.
 

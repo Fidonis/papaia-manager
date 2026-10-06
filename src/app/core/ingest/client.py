@@ -136,6 +136,28 @@ class IngestClient:
 
     # ── the calls the manager makes ─────────────────────────────────────────
 
+    async def health(self) -> dict[str, Any]:
+        """`GET /health`: free of the token, so it answers even when the token is wrong.
+
+        That is the point of asking it first: the page can say "the ingester is up, but it
+        refuses the token" instead of "the ingester is unavailable".
+        """
+        try:
+            response = await self._client.get("/health")
+        except httpx.HTTPError as exc:
+            target = httpx.URL(self._base)
+            where = f"{target.host}:{target.port}" if target.port else str(target.host)
+            raise IngestUnavailable(
+                f"The ingester is not reachable at {where} ({type(exc).__name__})."
+            ) from exc
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        if response.status_code >= 400 or not isinstance(body, dict):
+            raise IngestRejected(response.status_code, "The ingester's health check failed")
+        return body
+
     async def config(self) -> dict[str, Any]:
         """The catalog state: `valid`, `applied` and the errors per job."""
         result = await self.request("GET", "/v1/config")
@@ -154,6 +176,55 @@ class IngestClient:
                 return None
             raise
         return result if isinstance(result, dict) else None
+
+    async def list_jobs(self) -> list[dict[str, Any]]:
+        """`GET /v1/jobs`: the jobs the ingester has loaded, with their last run and totals."""
+        result = await self.request("GET", "/v1/jobs")
+        return [row for row in result if isinstance(row, dict)] if isinstance(result, list) else []
+
+    async def documents(self, job_id: str, **params: Any) -> dict[str, Any] | None:
+        """`GET /v1/jobs/{id}/documents`, or None for an ingester that does not have it."""
+        try:
+            result = await self.request(
+                "GET",
+                f"/v1/jobs/{job_id}/documents",
+                params={key: value for key, value in params.items() if value is not None},
+            )
+        except IngestRejected as exc:
+            if exc.status == 404:
+                return None
+            raise
+        return result if isinstance(result, dict) else None
+
+    async def validate(self, raw: str) -> dict[str, Any] | None:
+        """`POST /v1/config/validate`: would this catalog text load? None if not supported."""
+        try:
+            result = await self.request("POST", "/v1/config/validate", json={"raw": raw})
+        except IngestRejected as exc:
+            if exc.status in (404, 405):
+                return None
+            raise
+        return result if isinstance(result, dict) else None
+
+    async def preview(self, job_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        """`GET /v1/jobs/{id}/preview`: what a run would pick up, without running."""
+        result = await self.request("GET", f"/v1/jobs/{job_id}/preview", params={"limit": limit})
+        files = result.get("files") if isinstance(result, dict) else None
+        return [row for row in files if isinstance(row, dict)] if isinstance(files, list) else []
+
+    async def orphans(self) -> list[dict[str, Any]]:
+        result = await self.request("GET", "/v1/orphans")
+        return [row for row in result if isinstance(row, dict)] if isinstance(result, list) else []
+
+    async def delete_orphan(self, job_id: str) -> dict[str, Any]:
+        result = await self.request(
+            "DELETE", f"/v1/orphans/{job_id}", params={"confirm": "true"}
+        )
+        return result if isinstance(result, dict) else {}
+
+    async def resume(self, job_id: str) -> None:
+        """Lift the ingester's own in-memory pause of a job (the manager pauses with `enabled`)."""
+        await self.request("POST", f"/v1/jobs/{job_id}/resume")
 
     async def run(self, job_id: str, body: dict[str, Any]) -> str:
         """Start a run and return its id. `IngestRejected` carries a 409 for a busy job."""

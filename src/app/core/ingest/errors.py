@@ -6,6 +6,7 @@ every one of them is shown to the administrator, so none may carry a token.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 
@@ -39,8 +40,22 @@ class CatalogRejected(IngestError):  # noqa: N818
         self.problems = problems
 
 
+class CatalogConflict(CatalogRejected):  # noqa: N818
+    """The change no longer applies: the job exists already, is gone, or was edited meanwhile."""
+
+
 class InvalidRequest(ValueError):  # noqa: N818 - reads as the answer it becomes: a 422
     """The request names something that cannot be embedded."""
+
+
+class InvalidJob(InvalidRequest):  # noqa: N818
+    """A job or catalog that would not be valid, with every problem found and the field of each."""
+
+    def __init__(self, issues: Sequence[Any]) -> None:
+        self.issues = tuple(issues)
+        first = str(self.issues[0]) if self.issues else "The job is not valid."
+        extra = f" (+{len(self.issues) - 1} more)" if len(self.issues) > 1 else ""
+        super().__init__(first + extra)
 
 
 class TooLarge(InvalidRequest):  # noqa: N818 - answered with a 413

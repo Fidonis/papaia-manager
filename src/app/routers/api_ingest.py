@@ -11,8 +11,6 @@ API, and the staging area does not need a connection at all.
 """
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -23,22 +21,11 @@ from app.auth.csrf import verify_csrf
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core.audit import redact_params, write_audit_entry
-from app.core.ingest.errors import (
-    CatalogRejected,
-    Conflict,
-    IngestRejected,
-    IngestTooOld,
-    IngestUnavailable,
-    InvalidRequest,
-    NotFound,
-    TooLarge,
-)
 from app.core.ingest.runs import SourceSpec, StartRequest, browse_root
 from app.core.ingest.uploads import Batch, UploadStore, new_store
-from app.core.qdrant import QdrantError, QdrantUnavailable
 from app.core.rag import documents_dir
-from app.core.rag_collections import InvalidInput
 from app.routers.rag_deps import EmbeddingServiceDep, RagAdmin
+from app.routers.rag_deps import translated as _translated
 
 router = APIRouter(prefix="/api/v1/rag/ingest")
 
@@ -68,29 +55,6 @@ class UploadBody(BaseModel):
 
 def _user_id(user: OIDCClaims) -> str:
     return user.preferred_username or user.sub
-
-
-@contextmanager
-def _translated(what: str = "") -> Iterator[None]:
-    """Answer a failure with the status code the other admin routes use."""
-    try:
-        yield
-    except TooLarge as exc:
-        raise HTTPException(status_code=413, detail=str(exc)) from exc
-    except (InvalidRequest, InvalidInput) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except NotFound as exc:
-        raise HTTPException(status_code=404, detail=f"{what or exc} was not found") from exc
-    except (Conflict, IngestTooOld) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except IngestUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except (IngestRejected, CatalogRejected) as exc:
-        raise HTTPException(status_code=502, detail=f"Ingester: {exc}") from exc
-    except QdrantUnavailable as exc:
-        raise HTTPException(status_code=503, detail=exc.detail) from exc
-    except QdrantError as exc:
-        raise HTTPException(status_code=502, detail=f"Qdrant: {exc.detail}") from exc
 
 
 def get_upload_store(

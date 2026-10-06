@@ -26,6 +26,7 @@ from app.routers import (
     api_collections,
     api_connections,
     api_ingest,
+    api_ingest_jobs,
     api_jobs,
     api_maintenance,
     api_settings,
@@ -35,6 +36,7 @@ from app.routers import (
     auth,
     health,
     ui,
+    ui_ingest,
 )
 from app.templating import templates
 
@@ -67,11 +69,13 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(ui.router)
+    app.include_router(ui_ingest.router)
     app.include_router(api_audit.router)
     app.include_router(api_catalogs.router)
     app.include_router(api_collections.router)
     app.include_router(api_connections.router)
     app.include_router(api_ingest.router)
+    app.include_router(api_ingest_jobs.router)
     app.include_router(api_addons.router)
     app.include_router(api_jobs.router)
     app.include_router(api_maintenance.router)
