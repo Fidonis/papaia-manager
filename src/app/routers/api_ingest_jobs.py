@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app.auth.csrf import verify_csrf
@@ -38,7 +38,8 @@ from app.core.ingest.jobspec import (
     Issue,
     source_forms,
 )
-from app.routers.rag_deps import JobsServiceDep, RagAdmin
+from app.core.rag_collections import CollectionStore
+from app.routers.rag_deps import JobsServiceDep, RagAdmin, get_store
 from app.routers.rag_deps import translated as _translated
 
 router = APIRouter(prefix="/api/v1/rag/ingest")
@@ -229,6 +230,28 @@ async def form_spec(user: RagAdmin) -> dict[str, Any]:
     }
 
 
+@router.get("/collections")
+async def collections_of_connection(
+    user: RagAdmin, store: Annotated[CollectionStore, Depends(get_store)]
+) -> dict[str, Any]:
+    """The collections of a connection (`?connection=`) with the model each records.
+
+    What the editor offers when a job chooses its collection: an existing one carries its
+    model with it, and a job that writes to it has to use that model.
+    """
+    with _translated():
+        view = await store.snapshot()
+    return {
+        "available": view.available,
+        "reason": view.reason,
+        "connection": view.connection,
+        "collections": [
+            {"name": item.name, "points": item.points, "embedding_model": item.embedding_model}
+            for item in view.collections
+        ],
+    }
+
+
 @router.get("/jobs")
 async def list_jobs(user: RagAdmin, service: JobsServiceDep) -> dict[str, Any]:
     with _translated():
@@ -354,6 +377,17 @@ async def disable_job(
     verify_csrf(request)
     with _translated(job_id):
         return save_payload(await service.set_enabled(job_id, False, user=_user_id(user)))
+
+
+@router.post("/jobs/{job_id}/resume")
+async def resume_job(
+    job_id: str, request: Request, user: RagAdmin, service: JobsServiceDep
+) -> dict[str, Any]:
+    """Lift the ingester's own pause of a job, if somebody paused it there."""
+    verify_csrf(request)
+    with _translated(job_id):
+        await service.resume(job_id, user=_user_id(user))
+    return {"job_id": job_id}
 
 
 @router.post("/jobs/{job_id}/run", status_code=status.HTTP_202_ACCEPTED)

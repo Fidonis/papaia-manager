@@ -36,6 +36,7 @@ from app.routers import (
     auth,
     health,
     ui,
+    ui_ingest,
 )
 from app.templating import templates
 
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(ui.router)
+    app.include_router(ui_ingest.router)
     app.include_router(api_audit.router)
     app.include_router(api_catalogs.router)
     app.include_router(api_collections.router)

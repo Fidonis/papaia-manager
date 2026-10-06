@@ -368,7 +368,15 @@ def test_the_admin_sidebar_has_a_rag_category_between_extensions_and_system(
     groups = _nav_groups(_admin(client).get("/").text)
 
     assert list(groups) == ["", "Monitor", "Extensions", "RAG", "System"]
-    assert groups["RAG"] == ["Connections", "Collections", "Embedding", "Ingest", "Qdrant"]
+    assert groups["RAG"] == [
+        "Connections",
+        "Collections",
+        "Embedding",
+        "Ingest jobs",
+        "Ingest runs",
+        "Ingest",
+        "Qdrant",
+    ]
     assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
 
 
@@ -422,7 +430,13 @@ def test_the_category_survives_a_profile_that_is_on_without_its_url_keys(
 
     groups = _nav_groups(_admin(client).get("/").text)
 
-    assert groups["RAG"] == ["Connections", "Collections", "Embedding"]
+    assert groups["RAG"] == [
+        "Connections",
+        "Collections",
+        "Embedding",
+        "Ingest jobs",
+        "Ingest runs",
+    ]
 
 
 def test_the_entries_open_the_web_interfaces_in_a_new_tab(client: TestClient) -> None:

@@ -139,6 +139,7 @@ class JobRow:
     managed: bool
     in_file: bool
     description: str
+    full_scope: str
     source_type: str
     source_title: str
     source_label: str
@@ -302,6 +303,10 @@ class JobsService:
 
     def timezone(self) -> str:
         return ingest_timezone(self._config_dir)
+
+    def connections(self) -> list[str]:
+        """The names of the connections of the ingester's store, for the editor's selector."""
+        return sorted(self._connection_names() or ())
 
     def _audit(self, user: str, action: str, target: str, **params: Any) -> None:
         write_audit_entry(
@@ -492,6 +497,7 @@ class JobsService:
             managed=catalog.is_managed(job_id),
             in_file=True,
             description=str(raw.get("description") or ""),
+            full_scope=str(raw.get("full_scope") or "job"),
             source_type=str(source.get("type") or ""),
             source_title=job_forms.source_title(str(source.get("type") or "")),
             source_label=str(source.get("label") or ""),
@@ -534,6 +540,7 @@ class JobsService:
             managed=catalog.is_managed(job_id),
             in_file=False,
             description="",
+            full_scope="job",
             source_type=str(source.get("type") or ""),
             source_title=job_forms.source_title(str(source.get("type") or "")),
             source_label=str(source.get("label") or ""),
@@ -908,6 +915,16 @@ class JobsService:
                 raise Conflict("That run is not running any more.") from exc
             raise
         self._audit(user, "rag.ingest.run.abort", run_id)
+
+    async def resume(self, job_id: str, *, user: str) -> None:
+        """Lift the ingester's own in-memory pause (it survives neither a restart nor a reload)."""
+        try:
+            await self._client.resume(job_id)
+        except IngestRejected as exc:
+            if exc.status == 404:
+                raise NotFound(job_id) from exc
+            raise
+        self._audit(user, "rag.ingest.job.resume", job_id)
 
     async def reload(self) -> IngesterState:
         """Make the ingester read the catalog now."""

@@ -1,0 +1,21 @@
+{# The files a run would pick up now (the ingester's preview). #}
+{% if problem %}
+<div class="alert alert-warning text-sm" role="status"><span>{{ problem }}</span></div>
+{% elif not files %}
+<p class="text-sm opacity-70">
+  The filters match no file. For a remote source this is also what the ingester sees before the first
+  run has fetched anything.
+</p>
+{% else %}
+<div class="max-h-96 overflow-auto rounded-lg border border-base-300">
+  <table class="table table-xs">
+    <thead><tr class="text-xs uppercase opacity-60"><th>File</th><th class="text-right">Size</th></tr></thead>
+    <tbody>
+      {% for file in files %}
+      <tr><td class="break-all font-mono text-xs">{{ file.rel_path }}</td><td class="text-right text-xs">{{ file.size | filesize }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="mt-1 text-xs opacity-60">{{ files | length }} file{{ '' if files | length == 1 else 's' }} shown{% if files | length >= 100 %} (the first 100){% endif %}.</p>
+{% endif %}

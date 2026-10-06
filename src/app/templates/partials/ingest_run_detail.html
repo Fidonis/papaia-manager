@@ -1,0 +1,137 @@
+{# One run: where it is, what it did, and what went wrong.
+
+   It polls itself while the run works, by rendering its own trigger only then; the root is
+   swapped as a whole, so the polling ends with the run. Messages of the ingester are shown
+   as text, never as markup: they carry file names and tool output. #}
+{% from "partials/_ingest_macros.html" import run_badge, progress %}
+
+{% set problems = [] %}
+{% if view %}{% for event in view.events %}{% if event.level in ('error', 'warning') %}{% set _ = problems.append(event) %}{% endif %}{% endfor %}{% endif %}
+
+<div id="ingest-run" class="flex flex-col gap-4"
+     {% if view and view.active %}
+     hx-get="/partials/ingest/runs/{{ view.run_id }}"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+  {% if problem %}
+  <div class="alert alert-warning text-sm" role="status"><span>{{ problem }}</span></div>
+  {% endif %}
+
+  {% if view %}
+  <div class="rounded-xl border px-5 py-4
+              {% if view.active %}border-info bg-info/10
+              {% elif view.clean %}border-success bg-success/10
+              {% elif view.status == 'success' %}border-warning bg-warning/10
+              {% else %}border-error bg-error/10{% endif %}">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {{ run_badge(view) }}
+      <a href="/ingest/jobs/{{ view.job_id }}" class="link link-hover font-mono text-sm font-semibold">{{ view.job_id }}</a>
+      <span class="text-sm opacity-70">{{ view.job_mode_label }}</span>
+      <span class="text-sm opacity-60">{{ {'cron': 'on schedule', 'manual_rest': 'started by hand', 'manual_ui': 'started by hand', 'manual_mcp': 'started by an assistant', 'startup': 'at start of the ingester'}.get(view.trigger, view.trigger) }}</span>
+      {% if view.active %}
+      <button type="button" class="btn btn-outline btn-xs ml-auto" onclick="ingestAbort('{{ view.run_id }}', reloadRun)">Abort</button>
+      {% endif %}
+    </div>
+    <p class="mt-1 text-sm opacity-70">
+      Started {{ view.started_at | ingest_when(tz) }} ({{ view.started_at | ingest_ago }})
+      {% if view.finished_at %}· took {{ view.started_at | ingest_duration(view.finished_at) }}{% else %}· working for {{ view.started_at | ingest_duration }}{% endif %}
+    </p>
+
+    {% if view.active %}
+    <div class="mt-3">
+      {{ progress(view) }}
+      <p class="mt-1 text-sm">
+        {% if view.phase_label %}<b>{{ view.phase_label }}</b>{% else %}Working in the background.{% endif %}
+        {% if view.files_done is not none and view.counters.files_seen %} · {{ view.files_done }} of {{ view.counters.files_seen }} files{% endif %}
+      </p>
+      {% if view.current %}<p class="truncate font-mono text-xs opacity-60" title="{{ view.current }}">{{ view.current }}</p>{% endif %}
+      {% if progress_supported is sameas false %}
+      <p class="mt-1 text-xs opacity-60">This ingester reports its counts when a run ends; the figures fill in then.</p>
+      {% endif %}
+      <p class="mt-1 text-xs opacity-60">An abort takes effect between two files, so a long file or a slow fetch finishes first.</p>
+    </div>
+    {% elif view.dry_run %}
+    <p class="mt-2 text-sm">This was a dry run: it read and planned, but embedded and wrote nothing. “Would embed” counts the files that <i>would</i> be embedded.</p>
+    {% endif %}
+
+    {% if view.error %}
+    <p class="mt-2 text-sm text-error">{{ view.error }}</p>
+    {% if view.sync_status == 'failed' %}
+    <p class="mt-1 text-sm">The files could not be fetched from the source, so nothing was read. The output of the fetch is below; usually it is a wrong address, a credential that no longer works or a source the ingester cannot reach.</p>
+    {% elif view.status == 'aborted_guard' %}
+    <p class="mt-1 text-sm">A safety check stopped the run before it removed content: the source looked empty, or much smaller than before. If that is expected, run again with “Keep files that disappeared” or raise the safety limit of the job.</p>
+    {% elif view.status == 'aborted_lock' %}
+    <p class="mt-1 text-sm">Another run was changing the same collection and the ingester gave up waiting. The next run will try again.</p>
+    {% elif view.status == 'interrupted' %}
+    <p class="mt-1 text-sm">The run was stopped (by an abort, or because the ingester restarted). What was already embedded stays; the next run continues with the rest.</p>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  {% if not view.active %}
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+        <div><span class="opacity-60">Files seen</span> <b>{{ view.counters.files_seen }}</b></div>
+        <div><span class="opacity-60">{{ 'Would embed' if view.dry_run else 'Embedded' }}</span> <b>{{ view.counters.docs_indexed }}</b></div>
+        <div><span class="opacity-60">Unchanged</span> <b>{{ view.counters.docs_unchanged }}</b></div>
+        <div><span class="opacity-60">Failed</span> <b class="{{ 'text-error' if view.counters.docs_failed else '' }}">{{ view.counters.docs_failed }}</b></div>
+        <div><span class="opacity-60">Removed</span> <b>{{ view.counters.docs_deleted }}</b></div>
+        <div><span class="opacity-60">Chunks written</span> <b>{{ '{:,}'.format(view.counters.chunks_upserted) }}</b></div>
+        <div><span class="opacity-60">Changed, not updated</span> <b title="A job that only adds new files leaves changed files as they were">{{ view.counters.docs_skipped_changed }}</b></div>
+        <div><span class="opacity-60">Data read</span> <b>{{ view.counters.bytes_read | filesize }}</b></div>
+      </div>
+      <p class="mt-2 text-sm">
+        <a class="link" href="/ingest/jobs/{{ view.job_id }}?run={{ view.run_id }}#files">Files this run touched</a>
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if view.sync_stderr_tail %}
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-1 p-4">
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">Output of the fetch</p>
+      <pre class="max-h-72 overflow-auto rounded-lg bg-base-300 p-3 font-mono text-xs">{{ view.sync_stderr_tail }}</pre>
+      <p class="text-xs opacity-60">The last lines of the tool that fetches remote files. It can contain addresses.</p>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if view.events %}
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-2 p-4">
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">Messages from the ingester</p>
+      {% if problems %}
+      <details open>
+        <summary class="cursor-pointer text-sm">{{ problems | length }} problem{{ '' if problems | length == 1 else 's' }}{% if view.events_truncated %} (among the first {{ view.events | length }} messages){% endif %}</summary>
+        <ul class="mt-1 max-h-72 overflow-y-auto rounded bg-base-300 p-2 text-xs">
+          {% for event in problems %}
+          <li class="flex gap-2 py-0.5">
+            <span class="shrink-0 {{ 'text-error' if event.level == 'error' else 'text-warning' }}">{{ event.level }}</span>
+            <span class="break-all font-mono">{% if event.source %}<b>{{ event.source }}</b>: {% endif %}{{ event.message }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+      <details {% if not problems %}open{% endif %}>
+        <summary class="cursor-pointer text-sm">All messages ({{ view.events | length }})</summary>
+        <ul class="mt-1 max-h-72 overflow-y-auto rounded bg-base-300 p-2 text-xs">
+          {% for event in view.events %}
+          <li class="flex gap-2 py-0.5">
+            <span class="w-14 shrink-0 {{ 'text-error' if event.level == 'error' else 'text-warning' if event.level == 'warning' else 'opacity-60' }}">{{ event.level }}</span>
+            <span class="break-all font-mono">{% if event.source %}<b>{{ event.source }}</b>: {% endif %}{{ event.message }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+    </div>
+  </div>
+  {% elif not view.active %}
+  <p class="text-sm opacity-60">The ingester recorded no messages for this run.</p>
+  {% endif %}
+  {% endif %}
+</div>

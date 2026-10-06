@@ -1,0 +1,219 @@
+{# The body of the Ingest jobs page: how the ingester is doing, what is wrong with the catalog,
+   and one row per job.
+
+   It polls itself only while a run is working (the trigger is rendered only then), so the
+   polling ends when the last run does. The whole root is swapped, so everything that has to
+   survive a refresh (the search text, the chosen chip) lives outside it or in
+   `window.ingestFilter`, and is applied again after the swap.
+
+   A job the ingester dropped is listed with the reason, because the ingester's own list shows
+   only what it loaded, and the jobs that matter most when something is wrong are the ones it
+   did not.
+
+   Classes are spelled out per branch rather than assembled from a variable: app.css is built
+   by scanning these templates. #}
+{% from "partials/_actions.html" import row_actions, overflow_menu %}
+{% from "partials/_ingest_macros.html" import state_badge, run_badge, progress %}
+
+{% set ing = view.ingester %}
+
+<div id="ingest-jobs" class="flex flex-col gap-3"
+     {% if active %}
+     hx-get="/partials/ingest/jobs"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+  {# ---- the ingester ---- #}
+  {% if not ing.reachable %}
+  <div class="alert alert-error text-sm" role="alert">
+    <div>
+      <p class="font-semibold">The ingester cannot be reached</p>
+      <p>{{ ing.reason }} The jobs below are read from <span class="font-mono">jobs.yaml</span>; nothing can run and a change cannot be checked.</p>
+    </div>
+  </div>
+  {% elif not ing.usable %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <div>
+      <p class="font-semibold">The ingester is up, but the manager cannot use it</p>
+      <p>{{ ing.reason }}</p>
+    </div>
+  </div>
+  {% else %}
+    {% set down = [] %}
+    {% for name, ok in ing.deps.items() %}{% if not ok %}{% set _ = down.append(name) %}{% endif %}{% endfor %}
+    {% if down %}
+    <div class="alert alert-warning text-sm" role="status">
+      <span>
+        The ingester cannot reach <b>{{ down | join(', ') }}</b>. Runs that need
+        {{ 'it' if down | length == 1 else 'them' }} will fail until it is back.
+      </span>
+    </div>
+    {% endif %}
+  {% endif %}
+
+  {# ---- the catalog ---- #}
+  {% if view.file_problem %}
+  <div class="alert alert-error text-sm" role="alert">
+    <div>
+      <p class="font-semibold"><span class="font-mono">jobs.yaml</span> cannot be read: {{ view.file_problem }}</p>
+      <p>Jobs cannot be listed or changed here until the file is repaired.
+         <a class="link" href="/ingest/catalog">Open the file</a></p>
+    </div>
+  </div>
+  {% endif %}
+  {% if view.legacy %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span>
+      The ingester serves its catalog from <span class="font-mono">{{ ing.config_path }}</span>, not from
+      <span class="font-mono">ai/rag/catalog/jobs.yaml</span>, which is the file the manager edits.
+      Changes made here would never reach it, so editing is switched off. Copy the catalog to
+      <span class="font-mono">ai/rag/catalog/jobs.yaml</span> (the ingester's own interface offers it).
+    </span>
+  </div>
+  {% elif not view.writable and not view.file_problem %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span>The catalog folder does not accept writes from the manager, so jobs are shown read-only.</span>
+  </div>
+  {% endif %}
+  {% if ing.refused %}
+  <div class="alert alert-error text-sm" role="alert">
+    <div>
+      <p class="font-semibold">The ingester found problems in <span class="font-mono">jobs.yaml</span> and keeps its previous catalog</p>
+      <p>
+        Nothing that was changed since {{ ing.loaded_at | ingest_when(tz) }} is active, for any job, until the problems below are fixed.
+        {% if view.problems_elsewhere %}Problems that belong to no job listed here:{% endif %}
+      </p>
+      {% if view.problems_elsewhere %}
+      <ul class="mt-1 list-disc pl-5">{% for text in view.problems_elsewhere %}<li>{{ text }}</li>{% endfor %}</ul>
+      {% endif %}
+      <p class="mt-1">
+        <a class="link" href="/ingest/catalog">Edit jobs.yaml</a>
+        <span class="opacity-50"> · </span>
+        <button type="button" class="link" onclick="ingestReloadCatalog(reloadJobs)">Read it again now</button>
+      </p>
+    </div>
+  </div>
+  {% endif %}
+  {% if view.leftovers %}
+  <div class="alert alert-info text-sm" role="status">
+    <span>
+      The ingester holds content of {{ view.leftovers }} job{{ '' if view.leftovers == 1 else 's' }} that no
+      job in <span class="font-mono">jobs.yaml</span> explains.
+      <a class="link" href="/ingest/orphans">Review the leftovers</a>
+    </span>
+  </div>
+  {% endif %}
+
+  {# ---- the jobs ---- #}
+  {% if not rows %}
+  <div class="flex flex-col items-center py-16 gap-3 opacity-70 text-center">
+    <p class="text-lg font-medium">No ingest jobs yet</p>
+    <p class="max-w-md text-sm">
+      A job tells the ingester where documents are, which collection they belong in and how often
+      to look again. Add the first one{% if not view.editable %} once the catalog can be edited{% endif %}.
+    </p>
+    {% if view.editable %}<a href="/ingest/new" class="btn btn-primary btn-sm">New job</a>{% endif %}
+  </div>
+  {% else %}
+
+  <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filter">
+    <button type="button" class="btn btn-xs btn-active" data-chip="all" onclick="pickGroup('all')">All <span class="opacity-60">{{ rows | length }}</span></button>
+    <button type="button" class="btn btn-xs" data-chip="attention" onclick="pickGroup('attention')">Needs attention <span class="opacity-60">{{ counts.attention }}</span></button>
+    <button type="button" class="btn btn-xs" data-chip="active" onclick="pickGroup('active')">Active <span class="opacity-60">{{ counts.active }}</span></button>
+    <button type="button" class="btn btn-xs" data-chip="disabled" onclick="pickGroup('disabled')">Disabled <span class="opacity-60">{{ counts.disabled }}</span></button>
+  </div>
+
+  <div class="overflow-x-auto rounded-xl border border-base-300 bg-base-100">
+    <table class="table table-sm">
+      <thead>
+        <tr class="text-xs uppercase opacity-60">
+          <th>Job</th><th>Source</th><th>Collection</th><th>Schedule</th><th>Last run</th><th class="text-right"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr data-group="{{ groups[row.id] }}"
+            data-search="{{ (row.id ~ ' ' ~ row.description ~ ' ' ~ row.collection ~ ' ' ~ row.connection ~ ' ' ~ row.source_label ~ ' ' ~ row.source_detail) | lower }}">
+          <td class="align-top">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <a href="/ingest/jobs/{{ row.id }}" class="link link-hover font-mono font-semibold">{{ row.id }}</a>
+              {{ state_badge(row) }}
+              {% if row.managed %}<span class="badge badge-outline badge-sm" title="Created by the Embedding page. Its next run overwrites a change, so it is not edited here.">Embedding page</span>{% endif %}
+              {% if row.paused_in_ingester %}<span class="badge badge-warning badge-sm" title="Paused in the ingester's memory. A restart or a reload lifts it.">Paused</span>{% endif %}
+            </div>
+            {% if row.description %}<p class="mt-0.5 max-w-xs truncate text-xs opacity-60" title="{{ row.description }}">{{ row.description }}</p>{% endif %}
+            {% if row.problems %}
+            <ul class="mt-1 list-disc pl-4 text-xs text-error">{% for text in row.problems %}<li>{{ text }}</li>{% endfor %}</ul>
+            {% elif row.note and row.state != 'loaded' %}
+            <p class="mt-1 max-w-sm text-xs opacity-60">{{ row.note }}</p>
+            {% endif %}
+          </td>
+          <td class="align-top">
+            <p class="text-sm">{{ row.source_title }}</p>
+            <p class="max-w-[16rem] truncate font-mono text-xs opacity-60" title="{{ row.source_detail }}">{{ row.source_detail }}</p>
+          </td>
+          <td class="align-top">
+            <p class="font-mono text-sm">{{ row.collection }}</p>
+            <p class="text-xs opacity-60">on {{ row.connection }}{% if row.documents is not none %} · {{ '{:,}'.format(row.documents) }} file{{ '' if row.documents == 1 else 's' }}{% endif %}</p>
+          </td>
+          <td class="align-top">
+            <p class="text-sm">{{ row.mode_label }}</p>
+            <p class="text-xs opacity-60">{{ row.schedule }}{% if row.next_run_at and row.enabled %} · next {{ row.next_run_at | ingest_when(tz) }}{% endif %}</p>
+          </td>
+          <td class="align-top">
+            {% if row.active_run %}
+              {{ run_badge(row.active_run) }}
+              <div class="mt-1 w-40">{{ progress(row.active_run) }}</div>
+              {% if row.active_run.phase_label %}<p class="text-xs opacity-60">{{ row.active_run.phase_label }}</p>{% endif %}
+            {% elif row.last_run %}
+              <a href="/ingest/runs/{{ row.last_run.run_id }}" class="inline-flex flex-wrap items-center gap-1">{{ run_badge(row.last_run) }}</a>
+              <p class="mt-0.5 text-xs opacity-60" title="{{ row.last_run.started_at | ingest_when(tz) }}">{{ row.last_run.started_at | ingest_ago }}{% if row.last_run.counters.docs_failed %} · {{ row.last_run.counters.docs_failed }} failed{% endif %}</p>
+            {% else %}
+              <span class="text-xs opacity-50">Never run</span>
+            {% endif %}
+          </td>
+          <td class="align-top text-right">
+            {% call row_actions() %}
+              {% if row.managed %}
+              <a href="/ingest/runs?job={{ row.id }}" class="btn btn-outline btn-xs">Runs</a>
+              {% else %}
+              {% if row.runnable %}
+              <button type="button" class="btn btn-success btn-xs"
+                      @click='$dispatch("ingest-run", {{ dialogs[row.id]|tojson }})'>Run</button>
+              {% endif %}
+              {% if view.editable and row.in_file %}
+              <a href="/ingest/jobs/{{ row.id }}/edit" class="btn btn-outline btn-xs">Edit</a>
+              {% endif %}
+              {% if row.in_file and view.editable %}
+              {% call overflow_menu(size='xs', label='More actions for job ' ~ row.id) %}
+                <li><a href="/ingest/jobs/{{ row.id }}" onclick="ingestCloseMenu()">Details</a></li>
+                <li><a href="/ingest/new?duplicate={{ row.id }}">Duplicate</a></li>
+                {% if row.enabled %}
+                <li><a onclick="ingestCloseMenu(); ingestToggle('{{ row.id }}', false, reloadJobs)">Disable</a></li>
+                {% else %}
+                <li><a onclick="ingestCloseMenu(); ingestToggle('{{ row.id }}', true, reloadJobs)">Enable</a></li>
+                {% endif %}
+                {% if row.paused_in_ingester %}
+                <li><a onclick="ingestCloseMenu(); ingestResume('{{ row.id }}', reloadJobs)">Resume scheduling</a></li>
+                {% endif %}
+                <li><a class="text-error"
+                       @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ {"id": row.id, "etag": row.etag, "collection": row.collection}|tojson }})'>Delete</a></li>
+              {% endcall %}
+              {% endif %}
+              {% endif %}
+            {% endcall %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p id="ingest-none" style="display:none" class="p-6 text-center text-sm opacity-60">No job matches.</p>
+  </div>
+
+  <p class="text-xs opacity-50">
+    The ingester reads <span class="font-mono">jobs.yaml</span> every 30 seconds. A disabled job does not
+    run on its schedule and cannot be started; what it embedded stays searchable.
+  </p>
+  {% endif %}
+</div>

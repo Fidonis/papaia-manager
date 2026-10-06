@@ -18,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 
 from app.config import get_settings
+from app.core.ingest import display
 from app.core.rag import RagLink, rag_active, rag_links
 from app.core.settings_store import EffectiveBranding, effective_branding
 
@@ -120,3 +121,11 @@ def rag_enabled(context: dict[str, object]) -> bool:
 
 
 templates.env.globals["rag_enabled"] = rag_enabled
+
+# Times, spans and sizes of the ingest pages. The zone is passed in by the page, because it
+# is the ingester's and not the manager's.
+templates.env.filters["ingest_when"] = display.local_time
+templates.env.filters["ingest_ago"] = display.ago
+templates.env.filters["ingest_duration"] = display.duration
+templates.env.filters["filesize"] = display.size_text
+templates.env.filters["short_id"] = display.short_id
