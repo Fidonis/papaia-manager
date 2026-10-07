@@ -13,6 +13,19 @@ const _ING = '/api/v1/rag/ingest';
 
 function _ingJob(id) { return _ING + '/jobs/' + encodeURIComponent(id); }
 
+// A toast that has to be read after the page changes (a deleted job's page is gone) waits in the
+// session and is shown by the next page that includes this file. Storage can be blocked: then the
+// caller shows it at once and it is lost with the page, which is all there was before.
+document.addEventListener('DOMContentLoaded', function () {
+  try {
+    const raw = sessionStorage.getItem('ingestToast');
+    if (!raw) return;
+    sessionStorage.removeItem('ingestToast');
+    const toast = JSON.parse(raw);
+    showToast(toast.type, toast.html);
+  } catch (_) { /* nothing was waiting, or storage is not available */ }
+});
+
 // What a save or a toggle did, in a sentence for a toast.
 function ingestOutcome(result, what) {
   let text = what;
@@ -164,7 +177,14 @@ function deleteJobDialog() {
       }
       if (res.data.purged) text += '; ' + res.data.deleted_points + ' points removed from the collection';
       if (res.data.note) text += '. ' + _ragEscape(res.data.note);
-      showToast(res.data.note ? 'warning' : 'success', text);
+      // The job's page is gone, so the answer has to be read on the list; a toast does not survive
+      // the navigation, so it waits in the session until the next page shows it.
+      const level = res.data.note ? 'warning' : 'success';
+      try {
+        sessionStorage.setItem('ingestToast', JSON.stringify({ type: level, html: text }));
+      } catch (_) {
+        showToast(level, text);
+      }
       window.location.href = '/ingest/jobs';
     },
   };

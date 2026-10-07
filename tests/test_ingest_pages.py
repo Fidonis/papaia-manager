@@ -368,6 +368,18 @@ def test_a_job_of_the_embedding_page_can_be_deleted_with_its_runs_but_not_edited
     assert "created again with the next embedding" in _body(client, "/ingest/jobs")
 
 
+def test_the_answer_to_a_deleted_job_is_shown_on_the_page_it_goes_to(
+    client: TestClient, deployment: Deployment
+) -> None:
+    """The job's page is gone after a delete, and a toast does not survive the navigation."""
+    deployment.write_catalog(_job())
+
+    body = _body(client, "/ingest/jobs")
+
+    assert "sessionStorage.setItem('ingestToast'" in body
+    assert "sessionStorage.getItem('ingestToast')" in body
+
+
 def test_the_job_page_offers_to_delete_the_runs(client: TestClient, deployment: Deployment) -> None:
     deployment.write_catalog(_job())
 
