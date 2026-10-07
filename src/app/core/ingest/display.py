@@ -7,7 +7,7 @@ cannot be read is shown as it came, because a page must not fail over a timestam
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -26,6 +26,27 @@ def _zone(name: str) -> tzinfo:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError, OSError):
         return UTC
+
+
+def day_bounds(
+    first: date | None, last: date | None, tz_name: str = "UTC"
+) -> tuple[str | None, str | None]:
+    """The span from the start of `first` to the end of `last`, as the ingester stores times.
+
+    Both days are whole days in the zone the ingester schedules in, so "the 29th" of a day on
+    which the clocks change is 23 or 25 hours long. The answer is `[start, end)` in UTC with an
+    explicit `+00:00` and never `Z`: the ingester compares what it stored as text, and `Z` sorts
+    after the fraction of the same second. A missing day leaves that side open.
+    """
+    zone = _zone(tz_name)
+
+    def start_of(day: date) -> str:
+        return datetime.combine(day, time.min, tzinfo=zone).astimezone(UTC).isoformat()
+
+    return (
+        start_of(first) if first is not None else None,
+        start_of(last + timedelta(days=1)) if last is not None else None,
+    )
 
 
 def local_time(value: object, tz_name: str = "UTC", *, now: datetime | None = None) -> str:

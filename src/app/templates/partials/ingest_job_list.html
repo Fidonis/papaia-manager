@@ -175,8 +175,23 @@
           </td>
           <td class="align-top text-right">
             {% call row_actions() %}
+              {% set delete_detail = {"id": row.id, "etag": row.etag, "collection": row.collection, "managed": row.managed, "can_delete_runs": can_delete_runs} %}
+              {% set runs_detail = {"job_id": row.id, "tz": tz} %}
               {% if row.managed %}
               <a href="/ingest/runs?job={{ row.id }}" class="btn btn-outline btn-xs">Runs</a>
+              {# The Embedding page's jobs cannot be edited or paused, but they can be deleted with their runs. #}
+              {% if can_delete_runs or (row.in_file and view.editable) %}
+              {% call overflow_menu(size='xs', label='More actions for job ' ~ row.id) %}
+                <li><a href="/ingest/jobs/{{ row.id }}" onclick="ingestCloseMenu()">Details</a></li>
+                {% if can_delete_runs %}
+                <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>Delete runs…</a></li>
+                {% endif %}
+                {% if row.in_file and view.editable %}
+                <li><a class="text-error"
+                       @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ delete_detail|tojson }})'>Delete</a></li>
+                {% endif %}
+              {% endcall %}
+              {% endif %}
               {% else %}
               {% if row.runnable %}
               <button type="button" class="btn btn-success btn-xs"
@@ -197,8 +212,11 @@
                 {% if row.paused_in_ingester %}
                 <li><a onclick="ingestCloseMenu(); ingestResume('{{ row.id }}', reloadJobs)">Resume scheduling</a></li>
                 {% endif %}
+                {% if can_delete_runs %}
+                <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>Delete runs…</a></li>
+                {% endif %}
                 <li><a class="text-error"
-                       @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ {"id": row.id, "etag": row.etag, "collection": row.collection}|tojson }})'>Delete</a></li>
+                       @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ delete_detail|tojson }})'>Delete</a></li>
               {% endcall %}
               {% endif %}
               {% endif %}

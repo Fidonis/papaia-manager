@@ -23,8 +23,13 @@ properties of the ingester decide how:
 * **An id never changes.** Every point id derives from the job id, so a rename would turn all
   of a job's content into leftovers. The editor offers Duplicate instead.
 
+* **A job's runs go with it.** The ingester prunes a job's history only after one of the job's
+  own runs, which never comes for a deleted job, so `delete` also deletes the runs, once the
+  ingester has let go of the job. What the job embedded is a separate, explicit choice.
+
 The jobs of the Embedding page (`mgr-` prefix) are listed and can be run and watched, never
-edited or deleted from here: their next run overwrites any change.
+edited or paused from here: their next run overwrites any change. They can be deleted, with
+their runs, and come back with the next embedding, which writes the job again.
 """
 from __future__ import annotations
 
@@ -33,13 +38,14 @@ import copy
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
+from datetime import date
 from typing import Any
 
 import yaml
 
 from app.config import Settings
 from app.core.audit import redact_params, write_audit_entry
-from app.core.ingest import catalog, job_forms, jobspec, schedules
+from app.core.ingest import catalog, display, job_forms, jobspec, schedules
 from app.core.ingest import secrets as secrets_store
 from app.core.ingest.catalog_load import LoadOutcome, loaded_as_written, reload_and_verify
 from app.core.ingest.client import IngestClient
@@ -94,6 +100,7 @@ FEATURE_PROGRESS = "run_progress"
 FEATURE_DOCUMENTS = "documents"
 FEATURE_VALIDATE = "validate"
 FEATURE_SECRETS = "secret_store"
+FEATURE_DELETE_RUNS = "delete_runs"
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +211,22 @@ class DeleteResult:
     deleted_rows: int = 0
     purged: bool = False
     note: str = ""
+    deleted_runs: int = 0
+
+
+@dataclass(frozen=True)
+class RunsDeleteResult:
+    """What deleting a job's run history did, or with `dry_run` what it would do."""
+
+    job_id: str
+    # The runs (and their log lines) that were deleted, or that a real call would delete.
+    matched: int = 0
+    matched_events: int = 0
+    deleted_runs: int = 0
+    deleted_events: int = 0
+    # Runs in the period that are still working. They are never deleted.
+    skipped_running: int = 0
+    dry_run: bool = False
 
 
 @dataclass(frozen=True)
@@ -807,18 +830,23 @@ class JobsService:
     async def delete(
         self, job_id: str, *, etag: str | None, purge: bool, user: str
     ) -> DeleteResult:
-        """Remove a job from the catalog, and (on request) its content from the collection."""
-        if catalog.is_managed(job_id):
-            raise Conflict("This job belongs to the Embedding page and cannot be deleted here.")
+        """Remove a job from the catalog with its runs, and (on request) its content.
+
+        The runs go only once the ingester has let go of the job: while it still serves it (it
+        keeps its previous catalog when another job is invalid) a run could start and write to
+        the history just deleted. A step that fails is reported in the note and does not stop
+        the others.
+        """
         if self._find(self._repo.snapshot().document, job_id) is None:
             raise NotFound(job_id)
         await self._refuse_while_running(job_id, "deleted")
         self._repo.remove_job(job_id, etag=etag or None)
-        note = ""
-        points = rows = 0
+        notes: list[str] = []
+        points = rows = deleted_runs = 0
         purged = False
         try:
             await self._client.reload()
+            deleted_runs = await self._delete_history_of_removed(job_id, notes)
             if purge:
                 orphan = next(
                     (o for o in await self._client.orphans() if o.get("job_id") == job_id), None
@@ -829,15 +857,16 @@ class JobsService:
                     rows = int(result.get("deleted_rows") or 0)
                     purged = True
                 else:
-                    note = "The job had embedded nothing, so there was nothing to remove."
+                    notes.append("The job had embedded nothing, so there was nothing to remove.")
         except IngestUnavailable as exc:
-            note = (
+            notes.append(
                 f"The job was removed from jobs.yaml, but the ingester could not be reached: "
                 f"{exc} Its content stays in the collection and can be removed under "
-                "Leftovers once the ingester is back."
+                "Leftovers once the ingester is back, and its runs can be deleted on the "
+                "Runs page."
             )
         except IngestError as exc:
-            note = f"The job was removed from jobs.yaml, but cleaning up failed: {exc}"
+            notes.append(f"The job was removed from jobs.yaml, but cleaning up failed: {exc}")
         self._audit(
             user,
             "rag.ingest.job.delete",
@@ -845,8 +874,83 @@ class JobsService:
             purge=purge,
             deleted_points=points,
             deleted_rows=rows,
+            deleted_runs=deleted_runs,
         )
-        return DeleteResult(job_id, points, rows, purged, note)
+        return DeleteResult(job_id, points, rows, purged, " ".join(notes), deleted_runs)
+
+    async def _delete_history_of_removed(self, job_id: str, notes: list[str]) -> int:
+        """Delete the runs of a job that was just removed from the file. Never raises."""
+        try:
+            if await self._client.job(job_id) is not None:
+                notes.append(
+                    "The ingester still serves this job, because it keeps its previous catalog "
+                    "while another job is invalid. Its runs were kept; delete them on the Runs "
+                    "page once the catalog is repaired."
+                )
+                return 0
+            result = await self._client.delete_runs(job_id)
+        except IngestError as exc:
+            notes.append(f"Its runs could not be deleted: {exc}")
+            return 0
+        if result is None:
+            notes.append(
+                "This ingester cannot delete runs, so the runs of the job stay in its history."
+            )
+            return 0
+        if int(result.get("skipped_running") or 0):
+            notes.append("A run that was still working was kept.")
+        return int(result.get("deleted_runs") or 0)
+
+    async def delete_runs(
+        self,
+        job_id: str,
+        *,
+        since: date | None = None,
+        until: date | None = None,
+        dry_run: bool = False,
+        user: str,
+    ) -> RunsDeleteResult:
+        """Delete the run history of a job: all of it, or the whole days `since` to `until`.
+
+        The days are days in the zone the ingester schedules in and both are included; a
+        missing one leaves that side open. The job need not exist any more (the history of a
+        deleted job is what this is for) and may be one of the Embedding page's. A run that is
+        still working is never deleted, the ingester keeps it and says how many. What the job
+        embedded is not touched. With `dry_run` nothing is deleted and the result says what a
+        real call would delete.
+        """
+        if not jobspec.is_valid_id(job_id):
+            raise InvalidRequest(f"{job_id!r} is not a job id.")
+        if since is not None and until is not None and since > until:
+            raise InvalidRequest("The first day is after the last day.")
+        start, end = display.day_bounds(since, until, self.timezone())
+        result = await self._client.delete_runs(job_id, since=start, until=end, dry_run=dry_run)
+        if result is None:
+            raise IngestTooOld(
+                "This ingester cannot delete runs. Use an ingester release that has the "
+                f"{FEATURE_DELETE_RUNS} feature."
+            )
+        outcome = RunsDeleteResult(
+            job_id=job_id,
+            matched=int(result.get("matched") or 0),
+            matched_events=int(result.get("matched_events") or 0),
+            deleted_runs=int(result.get("deleted_runs") or 0),
+            deleted_events=int(result.get("deleted_events") or 0),
+            skipped_running=int(result.get("skipped_running") or 0),
+            dry_run=dry_run,
+        )
+        if not dry_run:
+            self._audit(
+                user,
+                "rag.ingest.run.delete",
+                job_id,
+                since=since.isoformat() if since else None,
+                until=until.isoformat() if until else None,
+                deleted_runs=outcome.deleted_runs,
+                deleted_events=outcome.deleted_events,
+                skipped_running=outcome.skipped_running,
+            )
+        return outcome
 
     async def _refuse_while_running(self, job_id: str, what: str) -> None:
         try:

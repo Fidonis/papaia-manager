@@ -1,7 +1,7 @@
 """Times, spans and sizes as the ingest pages say them."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -76,3 +76,35 @@ def test_sizes(value: object, expected: str) -> None:
 def test_a_short_id() -> None:
     assert display.short_id("0123456789abcdef") == "01234567"
     assert display.short_id(None) == ""
+
+
+@pytest.mark.parametrize(
+    ("first", "last", "tz", "expected"),
+    [
+        # A whole day in Berlin starts two hours before UTC midnight in summer time ...
+        (date(2026, 10, 3), date(2026, 10, 3), "Europe/Berlin",
+         ("2026-10-02T22:00:00+00:00", "2026-10-03T22:00:00+00:00")),
+        # ... and one hour before in winter time.
+        (date(2026, 12, 1), date(2026, 12, 1), "Europe/Berlin",
+         ("2026-11-30T23:00:00+00:00", "2026-12-01T23:00:00+00:00")),
+        # The day the clocks go forward is 23 hours long, and the one they go back 25.
+        (date(2026, 3, 29), date(2026, 3, 29), "Europe/Berlin",
+         ("2026-03-28T23:00:00+00:00", "2026-03-29T22:00:00+00:00")),
+        (date(2026, 10, 25), date(2026, 10, 25), "Europe/Berlin",
+         ("2026-10-24T22:00:00+00:00", "2026-10-25T23:00:00+00:00")),
+        # Both days are included, so the end is the start of the day after the last one.
+        (date(2026, 10, 1), date(2026, 10, 31), "UTC",
+         ("2026-10-01T00:00:00+00:00", "2026-11-01T00:00:00+00:00")),
+        # A missing day leaves that side open.
+        (None, date(2026, 10, 3), "UTC", (None, "2026-10-04T00:00:00+00:00")),
+        (date(2026, 10, 3), None, "UTC", ("2026-10-03T00:00:00+00:00", None)),
+        (None, None, "UTC", (None, None)),
+        # A zone nobody knows is read as UTC rather than failing the page.
+        (date(2026, 10, 3), date(2026, 10, 3), "Mars/Olympus",
+         ("2026-10-03T00:00:00+00:00", "2026-10-04T00:00:00+00:00")),
+    ],
+)
+def test_whole_days_become_the_instants_the_ingester_compares(
+    first: date | None, last: date | None, tz: str, expected: tuple[str | None, str | None]
+) -> None:
+    assert display.day_bounds(first, last, tz) == expected

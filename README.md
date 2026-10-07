@@ -225,7 +225,8 @@ because the ingester counts them from Monday, and only what differs from the
 catalog defaults ends up in the file. A job's id cannot change, since every point it
 writes derives from it; *Duplicate* starts a new one from it. *Pause* is
 `enabled: false`. The two jobs per collection that the Embedding page keeps (id
-prefix `mgr-`) are listed and say where they come from, but are not edited here.
+prefix `mgr-`) are listed and say where they come from, but are not edited or paused
+here; they can be deleted, and the Embedding page writes them again with its next run.
 
 **Runs.** *Run* opens a dialog: a dry run (fetch, read and plan, write nothing; it is
 preselected for a job that never ran), and the mode, either as the job is set up or
@@ -237,6 +238,21 @@ between two files. When it ends it shows its counts, the ingester's messages
 (problems first), the output of a failed fetch and a way forward for each way a run
 can stop. The *Ingest runs* page lists the runs of all jobs, filtered by job and
 state. Both poll only while a run works.
+
+**Deleting runs.** *Delete* on a job removes it from `jobs.yaml` and, in the same
+step, its runs and their logs: the dialog says so and shows how many, because a job
+that is gone never runs again and the ingester prunes a job's history only after one
+of its own runs. The runs go once the ingester has stopped serving the job; if it
+still serves it (it keeps its previous catalog while another job is invalid), or
+cannot be reached, they are kept and the result says why. *Delete runs* in the same
+menu, and on the Ingest runs page, deletes the history of one job for a period: a
+first and a last day (both included, counted in the ingester's time zone) or, with
+neither, every run, which asks for the id of the job. It counts what it would delete
+before it deletes anything, never touches a run that is still working, and never
+touches what the job embedded. The page of a job that is gone is reached from the
+job column of a run, which is how the runs of a job deleted earlier are cleaned up.
+The time of a job's last run changes with it, so a job that is set to run when it was
+missed starts again at the next start of the ingester once no successful run is left.
 
 **Credentials.** A source refers to a credential by name, `${env:QI_SECRET_<NAME>}`
 in `jobs.yaml`. The ingester answers it from its environment (`QI_SECRET_*` in
@@ -273,15 +289,17 @@ job is checked by the manager's own rules and saved, and the page says it could 
 be confirmed. The previous file is kept as `jobs.yaml.bak`. Comments in `jobs.yaml`
 are lost when the editor or the defaults form saves; editing the file as text keeps them.
 Every change is audited (`rag.ingest.job.*`, `rag.ingest.run.abort`,
-`rag.ingest.orphan.delete`, `rag.ingest.secret.*`, `rag.ingest.defaults.update`,
+`rag.ingest.run.delete`, `rag.ingest.orphan.delete`, `rag.ingest.secret.*`, `rag.ingest.defaults.update`,
 `rag.ingest.catalog.raw`); a credential's value is never part of an entry.
 
 These pages use what the ingester reports it can do (`features` in its `/health`):
 `run_progress` (phase and progress of a run, dry runs), `documents` (the files of a
-job), `validate` (its rules for a job that is not saved yet) and `secret_store` (the
-credentials file). An older ingester keeps working with each part missing and an
-explanation where it would be: no progress, a files tab that says so, the manager's
-own checks, and no stored credentials. 0.3.0 of the ingester has none of them.
+job), `validate` (its rules for a job that is not saved yet), `delete_runs` (deleting a
+job's history) and `secret_store` (the credentials file). An older ingester keeps
+working with each part missing and an explanation where it would be: no progress, a
+files tab that says so, the manager's own checks, no way to delete runs (deleting a
+job leaves them in its history), and no stored credentials. 0.3.0 of the ingester has
+none of them.
 
 **Services.** An admin-only page at `/services` showing what this deployment is
 configured to run and how much of it is up. Containers are read from `docker ps`
@@ -530,12 +548,13 @@ POST   /api/v1/rag/ingest/jobs/validate    # {job, create?, original_id?} → {i
 POST   /api/v1/rag/ingest/jobs             # {job} → 201
 GET    /api/v1/rag/ingest/jobs/{id}/editor # the job as the editor holds it, with its etag
 PUT    /api/v1/rag/ingest/jobs/{id}        # {job, etag?, original_id}
-DELETE /api/v1/rag/ingest/jobs/{id}        # ?etag=&purge= also remove what it embedded
+DELETE /api/v1/rag/ingest/jobs/{id}        # ?etag=&purge= also remove what it embedded; its runs go too
 POST   /api/v1/rag/ingest/jobs/{id}/enable   # and /disable (enabled: false) and /resume (scheduling)
 POST   /api/v1/rag/ingest/jobs/{id}/run    # {mode?, full_scope?, dry_run?, skip_sync?, delete_vanished?, confirm_*} → 202 {run_id}
 GET    /api/v1/rag/ingest/jobs/{id}/files  # ?status=&q=&run_id=&order=&limit=&offset= what happened to each file
 GET    /api/v1/rag/ingest/jobs/{id}/preview  # the files the saved filters match
 GET    /api/v1/rag/ingest/jobs/{id}/runs   # the runs of one job
+POST   /api/v1/rag/ingest/jobs/{id}/runs/delete  # {since?, until?, dry_run?} whole days, both included; counts or deletes the history
 GET    /api/v1/rag/ingest/job-runs         # ?job_id=&status=&since=&limit= the runs of all jobs
 GET    /api/v1/rag/ingest/job-runs/{id}    # one run: counts, phase, current file, messages
 DELETE /api/v1/rag/ingest/job-runs/{id}    # abort
