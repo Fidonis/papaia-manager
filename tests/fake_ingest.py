@@ -20,11 +20,17 @@ documents of a job, the leftovers, a validation of catalog text and `/health` wi
 `features` an ingester announces. `features` is settable, and an empty list is an ingester
 without any of them: the routes of those features then answer 404 and the run rows carry no
 progress fields, exactly like the 0.3.0 the core still pins.
+
+`delete_runs` is the one that deletes: `DELETE /v1/jobs/{id}/runs` takes `since` (included) and
+`until` (excluded), counts with `dry_run`, refuses without `confirm=true`, and never deletes a
+run that is still working. It answers for jobs that are not in the catalog, because the history
+of a deleted job is what it is for.
 """
 from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
@@ -35,7 +41,7 @@ import yaml
 TOKEN = "test-ingest-token"
 
 _RUN_FIELDS = {"mode", "full_scope", "dry_run", "skip_sync", "force", "queue", "delete_vanished"}
-ALL_FEATURES = ["run_progress", "documents", "validate", "secret_store"]
+ALL_FEATURES = ["run_progress", "documents", "validate", "delete_runs", "secret_store"]
 _SECRET_KEYS = {
     "pass",
     "access_key_id",
@@ -94,6 +100,8 @@ class FakeIngest:
         self.paused: set[str] = set()
         self.preview_files: dict[str, list[dict[str, Any]]] = {}
         self.error_status: int | None = None
+        # The queries of the run-deletion calls, in order.
+        self.delete_runs_calls: list[dict[str, str]] = []
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -143,6 +151,28 @@ class FakeIngest:
                 {"dry_run": False, "files_done": 0, "phase": "syncing", "current": None}
             )
         self.events[run_id] = []
+        return run_id
+
+    def seed_run(
+        self,
+        job_id: str,
+        started_at: str,
+        status: str = "success",
+        *,
+        log_lines: int = 1,
+    ) -> str:
+        """A run of any age that is there already, with a few lines of log."""
+        run_id = self.start_run(job_id)
+        run = self.runs[run_id]
+        run["started_at"] = started_at
+        if status != "running":
+            run["status"] = status
+            run["finished_at"] = started_at
+            if "run_progress" in self.features:
+                run.update({"phase": None, "current": None})
+        self.events[run_id] = [
+            {"seq": n, "level": "info", "message": f"line {n}"} for n in range(1, log_lines + 1)
+        ]
         return run_id
 
     def progress(self, run_id: str, **fields: Any) -> None:
@@ -221,6 +251,8 @@ class FakeIngest:
             )
         if parts[:1] == ["jobs"] and len(parts) == 3 and method == "GET":
             return self._job_sub(parts[1], parts[2], query)
+        if parts[:1] == ["jobs"] and parts[2:] == ["runs"] and method == "DELETE":
+            return self._delete_runs(parts[1], query)
         if parts[:1] == ["jobs"] and len(parts) == 3 and parts[2] == "resume" and method == "POST":
             self.paused.discard(parts[1])
             return _json(200, {"enabled": True})
@@ -373,6 +405,49 @@ class FakeIngest:
         if "run_progress" in self.features:
             self.runs[run_id]["dry_run"] = bool(request.get("dry_run"))
         return _json(202, {"run_id": run_id, "queued": False})
+
+    def _delete_runs(self, job_id: str, query: dict[str, str]) -> httpx.Response:
+        if "delete_runs" not in self.features:
+            return _detail(404, "Not Found")  # an ingester that predates the route
+        self.delete_runs_calls.append({"job_id": job_id, **query})
+        dry_run = query.get("dry_run") == "true"
+        if query.get("confirm") != "true" and not dry_run:
+            return _detail(400, "pass ?confirm=true to delete, or ?dry_run=true to count")
+
+        def instant(key: str) -> datetime | None:
+            value = query.get(key)
+            if not value:
+                return None
+            moment = datetime.fromisoformat(value)
+            return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+        since, until = instant("since"), instant("until")
+        if since and until and since > until:
+            return _detail(422, "since is later than until")
+        in_range = [
+            run
+            for run in self.runs.values()
+            if run["job_id"] == job_id
+            and (since is None or datetime.fromisoformat(run["started_at"]) >= since)
+            and (until is None or datetime.fromisoformat(run["started_at"]) < until)
+        ]
+        deletable = [run for run in in_range if run["status"] != "running"]
+        events = sum(len(self.events.get(run["run_id"], [])) for run in deletable)
+        if not dry_run:
+            for run in deletable:
+                del self.runs[run["run_id"]]
+                self.events.pop(run["run_id"], None)
+        return _json(
+            200,
+            {
+                "matched": len(deletable),
+                "matched_events": events,
+                "deleted_runs": 0 if dry_run else len(deletable),
+                "deleted_events": 0 if dry_run else events,
+                "skipped_running": len(in_range) - len(deletable),
+                "dry_run": dry_run,
+            },
+        )
 
     def _list_runs(self, query: dict[str, str]) -> httpx.Response:
         rows = [

@@ -16,6 +16,7 @@ dotted form (`source.bucket`), which is what the editor puts next to the input.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -78,6 +79,14 @@ class RunBody(BaseModel):
     delete_vanished: bool = True
     confirm_rebuild: bool = False
     confirm_collection: bool = False
+
+
+class DeleteRunsBody(BaseModel):
+    # Whole days in the ingester's zone, both included; a missing one leaves that side open.
+    since: date | None = None
+    until: date | None = None
+    # Count what a real call would delete, and delete nothing.
+    dry_run: bool = False
 
 
 class SchedulePreviewBody(BaseModel):
@@ -357,6 +366,7 @@ async def delete_job(
         "purged": result.purged,
         "deleted_points": result.deleted_points,
         "deleted_rows": result.deleted_rows,
+        "deleted_runs": result.deleted_runs,
         "note": result.note,
     }
 
@@ -467,6 +477,39 @@ async def runs_of_job(
     with _translated(job_id):
         views = await service.runs(job_id=job_id, limit=limit)
     return {"runs": [view.as_dict() for view in views]}
+
+
+@router.post("/jobs/{job_id}/runs/delete")
+async def delete_runs_of_job(
+    job_id: str,
+    body: DeleteRunsBody,
+    request: Request,
+    user: RagAdmin,
+    service: JobsServiceDep,
+) -> dict[str, Any]:
+    """Delete the run history of a job, all of it or whole days. Never a run that is working.
+
+    A POST with a body, like the audit log's prune, because the dialog asks first what it would
+    delete (`dry_run`). `DELETE /job-runs/{id}` is something else: it aborts a working run.
+    """
+    verify_csrf(request)
+    with _translated(job_id):
+        result = await service.delete_runs(
+            job_id,
+            since=body.since,
+            until=body.until,
+            dry_run=body.dry_run,
+            user=_user_id(user),
+        )
+    return {
+        "job_id": result.job_id,
+        "matched": result.matched,
+        "matched_events": result.matched_events,
+        "deleted_runs": result.deleted_runs,
+        "deleted_events": result.deleted_events,
+        "skipped_running": result.skipped_running,
+        "dry_run": result.dry_run,
+    }
 
 
 # ---------------------------------------------------------------------------

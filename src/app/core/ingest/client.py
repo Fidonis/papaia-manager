@@ -222,6 +222,32 @@ class IngestClient:
         )
         return result if isinstance(result, dict) else {}
 
+    async def delete_runs(
+        self,
+        job_id: str,
+        *,
+        since: str | None = None,
+        until: str | None = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any] | None:
+        """`DELETE /v1/jobs/{id}/runs`: delete the run history of a job, or only count it.
+
+        `since` is inclusive and `until` exclusive, both ISO instants. `None` if the ingester
+        has no such route (404 or 405): an older release, which keeps the history.
+        """
+        params: dict[str, Any] = {"dry_run": "true"} if dry_run else {"confirm": "true"}
+        if since:
+            params["since"] = since
+        if until:
+            params["until"] = until
+        try:
+            result = await self.request("DELETE", f"/v1/jobs/{job_id}/runs", params=params)
+        except IngestRejected as exc:
+            if exc.status in (404, 405):
+                return None
+            raise
+        return result if isinstance(result, dict) else {}
+
     async def resume(self, job_id: str) -> None:
         """Lift the ingester's own in-memory pause of a job (the manager pauses with `enabled`)."""
         await self.request("POST", f"/v1/jobs/{job_id}/resume")

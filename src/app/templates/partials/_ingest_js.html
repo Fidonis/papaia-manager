@@ -1,5 +1,5 @@
 {# Helpers shared by the ingest pages: the verbs on a job (enable, disable, resume, reload,
-   abort) and the two dialogs that guard the destructive ones (run, delete). The page includes
+   abort) and the dialogs that guard the destructive ones (run, delete, delete runs). The page includes
    `_rag_js.html` first and this once, inside its own content block.
 
    Every verb answers with a toast that says what happened *and* what did not: a change that is
@@ -127,14 +127,26 @@ function runDialog() {
   };
 }
 
-// The delete dialog: the job's entry always goes; what it embedded goes only on request.
+// The delete dialog: the job's entry and its runs always go; what it embedded goes only on request.
 function deleteJobDialog() {
   return {
-    job: { id: '', etag: '', collection: '' },
-    purge: false, typed: '', busy: false, error: '',
+    job: { id: '', etag: '', collection: '', managed: false, can_delete_runs: false },
+    purge: false, typed: '', busy: false, error: '', runs: null,
     open(detail) {
       this.job = detail; this.purge = false; this.typed = ''; this.error = ''; this.busy = false;
+      this.runs = null;
       this.$root.showModal();
+      if (detail.can_delete_runs) this.countRuns(detail.id);
+    },
+    // Asks the ingester how many runs would go; the warning reads the same without the number.
+    async countRuns(id) {
+      const res = await _ragRequest('POST', _ingJob(id) + '/runs/delete', { dry_run: true });
+      if (res.ok && this.job.id === id) this.runs = res.data.matched;
+    },
+    runsText() {
+      if (this.runs === null) return '';
+      if (this.runs === 0) return 'The job has no finished runs.';
+      return this.runs + (this.runs === 1 ? ' run' : ' runs') + ' will be deleted.';
     },
     canSubmit() { return !this.busy && (!this.purge || this.typed === this.job.id); },
     async submit() {
@@ -147,10 +159,97 @@ function deleteJobDialog() {
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
       let text = 'Job <b>' + _ragEscape(this.job.id) + '</b> deleted';
+      if (res.data.deleted_runs) {
+        text += '; ' + res.data.deleted_runs + (res.data.deleted_runs === 1 ? ' run' : ' runs') + ' deleted';
+      }
       if (res.data.purged) text += '; ' + res.data.deleted_points + ' points removed from the collection';
       if (res.data.note) text += '. ' + _ragEscape(res.data.note);
       showToast(res.data.note ? 'warning' : 'success', text);
       window.location.href = '/ingest/jobs';
+    },
+  };
+}
+
+// The delete-runs dialog: the history of one job, all of it or whole days. It asks the ingester what
+// it would delete before it deletes anything. It never touches what the job embedded.
+function deleteRunsDialog() {
+  return {
+    jobId: '', jobs: [], choose: false, tz: '',
+    since: '', until: '', typed: '',
+    count: null, counting: false, error: '', busy: false, seq: 0,
+    open(detail) {
+      this.jobId = detail.job_id || ''; this.jobs = detail.jobs || []; this.choose = !!detail.choose;
+      this.tz = detail.tz || '';
+      this.since = ''; this.until = ''; this.typed = ''; this.error = ''; this.busy = false;
+      this.count = null;
+      this.$root.showModal();
+      this.refresh();
+    },
+    // Delete everything before the last `days` days: the last day to go is `days` days ago.
+    keep(days) {
+      const d = new Date();
+      d.setDate(d.getDate() - days);
+      const pad = function (n) { return String(n).padStart(2, '0'); };
+      this.since = '';
+      this.until = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      this.refresh();
+    },
+    unbounded() { return !this.since && !this.until; },
+    hasRuns() { return !this.counting && !this.error && !!this.count && this.count.matched > 0; },
+    body(dry) { return { since: this.since || null, until: this.until || null, dry_run: dry }; },
+    // The question is asked again for every change; an answer to an older question is dropped.
+    async refresh() {
+      const seq = ++this.seq;
+      this.error = ''; this.count = null;
+      if (!this.jobId) return;
+      if (this.since && this.until && this.since > this.until) {
+        this.error = 'The first day is after the last day.';
+        return;
+      }
+      this.counting = true;
+      const res = await _ragRequest('POST', _ingJob(this.jobId) + '/runs/delete', this.body(true));
+      if (seq !== this.seq) return;
+      this.counting = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.count = res.data;
+    },
+    previewText() {
+      if (this.counting || !this.count) return 'Counting the runs ...';
+      const c = this.count;
+      let text = c.matched === 0
+        ? 'No finished run in this period.'
+        : c.matched + (c.matched === 1 ? ' run' : ' runs') + ' (' + c.matched_events +
+          (c.matched_events === 1 ? ' log line' : ' log lines') + ') will be deleted.';
+      if (c.skipped_running) {
+        text += ' ' + c.skipped_running + (c.skipped_running === 1 ? ' run is' : ' runs are') +
+          ' still working and will be kept.';
+      }
+      return text;
+    },
+    canSubmit() {
+      return !this.busy && this.hasRuns() && (!this.unbounded() || this.typed === this.jobId);
+    },
+    submitText() {
+      return this.hasRuns() ? 'Delete ' + this.count.matched + (this.count.matched === 1 ? ' run' : ' runs') : 'Delete';
+    },
+    async submit() {
+      if (!this.canSubmit()) return;
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('POST', _ingJob(this.jobId) + '/runs/delete', this.body(false));
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      const n = res.data.deleted_runs;
+      let text = n + (n === 1 ? ' run' : ' runs') + ' of <b>' + _ragEscape(this.jobId) + '</b> deleted';
+      if (res.data.skipped_running) text += '. A run that is still working was kept';
+      showToast(res.data.skipped_running ? 'warning' : 'success', text);
+      // Whichever page this is shows runs somewhere: its own refresh, else a reload.
+      if (typeof reloadRuns === 'function') reloadRuns();
+      else if (typeof reloadJobs === 'function') reloadJobs();
+      else window.location.reload();
     },
   };
 }

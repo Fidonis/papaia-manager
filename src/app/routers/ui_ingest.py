@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from app.core.ingest import catalog, job_forms, jobspec
 from app.core.ingest.errors import CatalogRejected, IngestError, NotFound
 from app.core.ingest.jobs_service import (
+    FEATURE_DELETE_RUNS,
     FEATURE_DOCUMENTS,
     FEATURE_PROGRESS,
     FEATURE_SECRETS,
@@ -198,6 +199,7 @@ async def job_page(
         row=row,
         view=view,
         run_dialog=_run_dialog_payload(row, list(view.jobs)) if row else None,
+        can_delete_runs=view.ingester.has(FEATURE_DELETE_RUNS),
         tz=service.timezone(),
     )
 
@@ -216,6 +218,7 @@ async def runs_page(
         user,
         "ingest_runs.html",
         job_choices=[row.id for row in view.jobs],
+        can_delete_runs=view.ingester.has(FEATURE_DELETE_RUNS),
         status_choices=RUN_STATUS_CHOICES,
         selected_job=job,
         selected_status=status,
@@ -278,6 +281,7 @@ async def partial_jobs(
             for name in ("attention", "active", "disabled")
         },
         dialogs={row.id: _run_dialog_payload(row, rows) for row in rows},
+        can_delete_runs=view.ingester.has(FEATURE_DELETE_RUNS),
         active=any(row.active_run for row in rows),
         tz=service.timezone(),
     )

@@ -18,8 +18,22 @@
    what removes or switches it off sits behind the kebab and confirms in a dialog. #}
 {% block page_actions %}
 {% if row %}
+  {% set delete_detail = {"id": row.id, "etag": row.etag, "collection": row.collection, "managed": row.managed, "can_delete_runs": can_delete_runs} %}
+  {% set runs_detail = {"job_id": row.id, "tz": tz} %}
   {% if row.managed %}
   <a href="/ingest/runs?job={{ row.id }}" class="btn btn-outline btn-sm">All runs</a>
+  {# The Embedding page's jobs cannot be edited or paused, but they can be deleted with their runs. #}
+  {% if can_delete_runs or (view.editable and row.in_file) %}
+  {% call overflow_menu(label='More actions for job ' ~ row.id) %}
+    {% if can_delete_runs %}
+    <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>Delete runs…</a></li>
+    {% endif %}
+    {% if view.editable and row.in_file %}
+    <li><a class="text-error"
+           @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ delete_detail|tojson }})'>Delete</a></li>
+    {% endif %}
+  {% endcall %}
+  {% endif %}
   {% else %}
   {% if row.runnable %}
   <button type="button" class="btn btn-success btn-sm"
@@ -37,8 +51,11 @@
     {% if row.paused_in_ingester %}
     <li><a onclick="ingestCloseMenu(); ingestResume('{{ row.id }}', function () { window.location.reload(); })">Resume scheduling</a></li>
     {% endif %}
+    {% if can_delete_runs %}
+    <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>Delete runs…</a></li>
+    {% endif %}
     <li><a class="text-error"
-           @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ {"id": row.id, "etag": row.etag, "collection": row.collection}|tojson }})'>Delete</a></li>
+           @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ delete_detail|tojson }})'>Delete</a></li>
   {% endcall %}
   {% endif %}
   {% endif %}

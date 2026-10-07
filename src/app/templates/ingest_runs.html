@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/_actions.html" import overflow_menu %}
 {% from "partials/_ingest_macros.html" import tabs %}
 {% block title %}Ingest runs — {{ branding().name }}{% endblock %}
 
@@ -7,6 +8,11 @@
 
 {% block page_actions %}
 <button type="button" class="btn btn-outline btn-sm" onclick="reloadRuns()">Refresh</button>
+{% if can_delete_runs %}
+{% call overflow_menu(label='More actions for the runs') %}
+  <li><a class="text-error" onclick="ingestCloseMenu(); openDeleteRuns()">Delete runs…</a></li>
+{% endcall %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -43,8 +49,21 @@
   </div>
 </div>
 
+{% include "partials/_ingest_dialogs.html" %}
 {% include "partials/_rag_js.html" %}
+{% include "partials/_ingest_js.html" %}
 <script>
+// Opens the delete-runs dialog on the job the filter shows, which may be one that is gone (the job
+// column of a run links here), so the job can also be typed.
+function openDeleteRuns() {
+  window.dispatchEvent(new CustomEvent('ingest-delete-runs', { detail: {
+    job_id: document.getElementById('runs-job').value,
+    jobs: {{ job_choices|tojson }},
+    choose: true,
+    tz: {{ tz|tojson }},
+  } }));
+}
+
 function reloadRuns() {
   const values = Object.fromEntries(new FormData(document.getElementById('runs-filter')));
   htmx.ajax('GET', '/partials/ingest/runs', { target: '#ingest-runs', swap: 'innerHTML', values: values });

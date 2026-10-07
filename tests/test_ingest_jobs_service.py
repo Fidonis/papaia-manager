@@ -11,9 +11,11 @@ import json
 import os
 import tempfile
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import yaml
 
@@ -42,6 +44,7 @@ from app.core.ingest.errors import (  # noqa: E402
     CatalogConflict,
     CatalogRejected,
     Conflict,
+    IngestTooOld,
     InvalidJob,
     InvalidRequest,
     NotFound,
@@ -617,16 +620,253 @@ async def test_a_job_with_a_working_run_cannot_be_deleted(env: Env) -> None:
         await env.service().delete("handbook", etag=None, purge=False, user="alice")
 
     assert env.file_bytes() == before
+    assert env.ingest.delete_runs_calls == [], "no history is touched while a run works"
 
 
-async def test_a_job_of_the_embedding_page_cannot_be_deleted_or_disabled(env: Env) -> None:
+async def test_a_job_of_the_embedding_page_can_be_deleted_but_not_paused(env: Env) -> None:
     managed = catalog.managed_job_id("default", "kb", "upload")
     env.write_catalog(_authored(id=managed))
+    env.ingest.seed_run(managed, "2026-10-05T10:00:00+00:00")
 
     with pytest.raises(Conflict):
-        await env.service().delete(managed, etag=None, purge=False, user="alice")
-    with pytest.raises(Conflict):
         await env.service().set_enabled(managed, False, user="alice")
+    result = await env.service().delete(managed, etag=None, purge=False, user="alice")
+
+    assert env.file_jobs() == []
+    assert result.deleted_runs == 1
+    assert env.ingest.runs == {}
+
+
+async def test_deleting_a_job_deletes_its_runs_and_only_its_runs(env: Env) -> None:
+    env.write_catalog(_authored(), _elsewhere("keep", "kb2"))
+    for day in ("01", "02", "03"):
+        env.ingest.seed_run("handbook", f"2026-10-{day}T10:00:00+00:00", log_lines=2)
+    kept = env.ingest.seed_run("keep", "2026-10-02T10:00:00+00:00")
+
+    result = await env.service().delete("handbook", etag=None, purge=False, user="alice")
+
+    assert result.deleted_runs == 3
+    assert list(env.ingest.runs) == [kept]
+    # The ingester has let go of the job before its history is touched.
+    calls = env.ingest.calls
+    reload_at = calls.index(("POST", "/v1/config/reload"))
+    assert reload_at < calls.index(("DELETE", "/v1/jobs/handbook/runs"))
+    entry = env.audit()[-1]
+    assert entry["action"] == "rag.ingest.job.delete"
+    assert entry["params"]["deleted_runs"] == 3
+
+
+async def test_deleting_a_job_keeps_a_run_that_started_meanwhile(env: Env) -> None:
+    env.write_catalog(_authored())
+    env.ingest.seed_run("handbook", "2026-10-01T10:00:00+00:00")
+    original = env.ingest._delete_runs
+
+    def late(job_id: str, query: dict[str, str]) -> Any:
+        # A run starts between the check that none works and the deletion.
+        env.ingest.seed_run(job_id, "2026-10-07T10:00:00+00:00", "running")
+        return original(job_id, query)
+
+    env.ingest._delete_runs = late  # type: ignore[method-assign]
+
+    result = await env.service().delete("handbook", etag=None, purge=False, user="alice")
+
+    assert result.deleted_runs == 1
+    assert "still working was kept" in result.note
+    assert [run["status"] for run in env.ingest.runs.values()] == ["running"]
+
+
+async def test_an_ingester_that_cannot_delete_runs_keeps_the_history_and_says_so(env: Env) -> None:
+    env.write_catalog(_authored())
+    env.ingest.features = ["run_progress", "documents", "validate", "secret_store"]
+    env.ingest.seed_run("handbook", "2026-10-01T10:00:00+00:00")
+
+    result = await env.service().delete("handbook", etag=None, purge=False, user="alice")
+
+    assert env.file_jobs() == []
+    assert result.deleted_runs == 0
+    assert "cannot delete runs" in result.note
+    assert len(env.ingest.runs) == 1
+
+
+async def test_runs_stay_while_the_ingester_still_serves_the_deleted_job(env: Env) -> None:
+    env.write_catalog(_authored(), _elsewhere("broken", "kb9"))
+    env.ingest.seed_run("handbook", "2026-10-01T10:00:00+00:00")
+    # Another job is invalid, so the ingester keeps its previous catalog and the job with it.
+    env.ingest.catalog_errors = [
+        {"job_id": "broken", "field": "schedule.cron", "message": "invalid cron expression"}
+    ]
+
+    result = await env.service().delete("handbook", etag=None, purge=False, user="alice")
+
+    assert [job["id"] for job in env.file_jobs()] == ["broken"]
+    assert result.deleted_runs == 0
+    assert "still serves this job" in result.note
+    assert env.ingest.delete_runs_calls == []
+    assert len(env.ingest.runs) == 1
+
+
+async def test_a_failing_history_step_does_not_stop_the_purge(env: Env) -> None:
+    env.write_catalog(_authored())
+    env.ingest.orphans = [{"job_id": "handbook", "collection": "kb", "state_rows": 4, "points": 12}]
+    env.ingest.seed_run("handbook", "2026-10-01T10:00:00+00:00")
+    env.ingest._delete_runs = (  # type: ignore[method-assign]
+        lambda job_id, query: httpx.Response(500, json={"detail": "the ingester is unwell"})
+    )
+
+    result = await env.service().delete("handbook", etag=None, purge=True, user="alice")
+
+    assert result.purged and result.deleted_points == 12
+    assert result.deleted_runs == 0
+    assert "runs could not be deleted" in result.note
+
+
+async def test_deleting_with_the_ingester_down_removes_the_entry_and_points_to_the_runs_page(
+    env: Env,
+) -> None:
+    env.write_catalog(_authored())
+    env.ingest.down = True
+
+    result = await env.service().delete("handbook", etag=None, purge=False, user="alice")
+
+    assert env.file_jobs() == []
+    assert "could not be reached" in result.note
+    assert "Runs page" in result.note
+
+
+async def test_a_job_that_is_not_in_the_file_is_not_found_before_anything_is_deleted(
+    env: Env,
+) -> None:
+    env.ingest.seed_run("ghost", "2026-10-01T10:00:00+00:00")
+
+    with pytest.raises(NotFound):
+        await env.service().delete("ghost", etag=None, purge=False, user="alice")
+
+    assert env.ingest.delete_runs_calls == []
+
+
+# ---------------------------------------------------------------------------
+# Deleting a job's runs
+# ---------------------------------------------------------------------------
+
+
+def _seed_week(env: Env, job_id: str = "handbook") -> None:
+    """One run a day at 10:00 UTC from 1 to 5 October 2026, each with two log lines."""
+    for day in range(1, 6):
+        env.ingest.seed_run(job_id, f"2026-10-0{day}T10:00:00+00:00", log_lines=2)
+
+
+async def test_runs_are_counted_before_they_are_deleted(env: Env) -> None:
+    env.write_catalog(_authored())
+    _seed_week(env)
+
+    preview = await env.service().delete_runs(
+        "handbook", since=date(2026, 10, 2), until=date(2026, 10, 3), dry_run=True, user="alice"
+    )
+
+    assert (preview.matched, preview.matched_events, preview.deleted_runs) == (2, 4, 0)
+    assert preview.dry_run is True
+    assert len(env.ingest.runs) == 5
+    assert env.audit() == [], "counting is not a change"
+
+
+async def test_runs_of_the_chosen_days_are_deleted_and_audited(env: Env) -> None:
+    env.write_catalog(_authored())
+    _seed_week(env)
+
+    result = await env.service().delete_runs(
+        "handbook", since=date(2026, 10, 2), until=date(2026, 10, 3), user="alice"
+    )
+
+    assert (result.deleted_runs, result.deleted_events) == (2, 4)
+    left = sorted(run["started_at"][:10] for run in env.ingest.runs.values())
+    assert left == ["2026-10-01", "2026-10-04", "2026-10-05"]
+    entry = env.audit()[-1]
+    assert entry["action"] == "rag.ingest.run.delete" and entry["target"] == "handbook"
+    assert entry["params"] == {
+        "since": "2026-10-02", "until": "2026-10-03", "deleted_runs": 2,
+        "deleted_events": 4, "skipped_running": 0,
+    }
+
+
+async def test_the_days_are_days_of_the_ingesters_zone(env: Env) -> None:
+    env.write_catalog(_authored())
+    # 23:30 UTC on the 2nd is already the 3rd in Berlin (UTC+2 in October).
+    env.ingest.seed_run("handbook", "2026-10-02T21:59:00+00:00")
+    env.ingest.seed_run("handbook", "2026-10-02T23:30:00+00:00")
+    env.ingest.seed_run("handbook", "2026-10-03T22:00:00+00:00")
+
+    await env.service().delete_runs(
+        "handbook", since=date(2026, 10, 3), until=date(2026, 10, 3), user="alice"
+    )
+
+    sent = env.ingest.delete_runs_calls[-1]
+    assert sent["since"] == "2026-10-02T22:00:00+00:00"
+    assert sent["until"] == "2026-10-03T22:00:00+00:00"
+    left = sorted(run["started_at"] for run in env.ingest.runs.values())
+    assert left == ["2026-10-02T21:59:00+00:00", "2026-10-03T22:00:00+00:00"]
+
+
+async def test_leaving_both_days_out_deletes_the_whole_history_of_a_job_that_is_gone(
+    env: Env,
+) -> None:
+    # No job in the catalog at all: the history of a deleted job is what this is for.
+    _seed_week(env, "ghost")
+    env.ingest.seed_run("other", "2026-10-01T10:00:00+00:00")
+
+    result = await env.service().delete_runs("ghost", user="alice")
+
+    assert result.deleted_runs == 5
+    assert env.ingest.delete_runs_calls[-1].keys() == {"job_id", "confirm"}
+    assert [run["job_id"] for run in env.ingest.runs.values()] == ["other"]
+
+
+async def test_a_run_that_is_working_is_kept_and_reported(env: Env) -> None:
+    env.write_catalog(_authored())
+    env.ingest.seed_run("handbook", "2026-10-01T10:00:00+00:00")
+    env.ingest.seed_run("handbook", "2026-10-02T10:00:00+00:00", "running")
+
+    result = await env.service().delete_runs("handbook", user="alice")
+
+    assert (result.deleted_runs, result.skipped_running) == (1, 1)
+    assert [run["status"] for run in env.ingest.runs.values()] == ["running"]
+
+
+async def test_the_runs_of_a_job_of_the_embedding_page_can_be_deleted(env: Env) -> None:
+    managed = catalog.managed_job_id("default", "kb", "folder")
+    env.write_catalog(_authored(id=managed))
+    env.ingest.seed_run(managed, "2026-10-01T10:00:00+00:00")
+
+    result = await env.service().delete_runs(managed, user="alice")
+
+    assert result.deleted_runs == 1
+
+
+async def test_the_first_day_may_not_be_after_the_last(env: Env) -> None:
+    with pytest.raises(InvalidRequest, match="first day"):
+        await env.service().delete_runs(
+            "handbook", since=date(2026, 10, 5), until=date(2026, 10, 1), user="alice"
+        )
+
+    assert env.ingest.delete_runs_calls == []
+
+
+async def test_something_that_is_not_a_job_id_is_refused_before_it_reaches_the_ingester(
+    env: Env,
+) -> None:
+    with pytest.raises(InvalidRequest, match="not a job id"):
+        await env.service().delete_runs("../runs", user="alice")
+
+    assert env.ingest.calls == []
+
+
+async def test_an_ingester_without_the_feature_is_told_apart(env: Env) -> None:
+    env.ingest.features = ["run_progress", "documents", "validate", "secret_store"]
+    env.ingest.seed_run("handbook", "2026-10-01T10:00:00+00:00")
+
+    with pytest.raises(IngestTooOld, match="delete_runs"):
+        await env.service().delete_runs("handbook", user="alice")
+
+    assert len(env.ingest.runs) == 1
 
 
 async def test_deleting_a_job_that_is_gone_is_not_found(env: Env) -> None:

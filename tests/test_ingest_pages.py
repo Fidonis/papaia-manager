@@ -337,6 +337,76 @@ def test_a_job_of_the_embedding_page_has_no_edit_or_run_and_says_where_it_comes_
     assert "Run</button>" not in body
 
 
+def test_the_menu_of_a_job_row_deletes_its_runs_and_the_dialog_is_on_the_page(
+    client: TestClient, deployment: Deployment
+) -> None:
+    deployment.write_catalog(_job())
+
+    rows = _body(client, "/partials/ingest/jobs")
+    page = _body(client, "/ingest/jobs")
+
+    assert '$dispatch("ingest-delete-runs"' in rows and "Delete runs…" in rows
+    assert '"can_delete_runs": true' in rows, "the delete dialog is told the ingester can do it"
+    assert 'id="ingest-delete-runs"' in page
+    assert "Its runs are deleted too" in page
+
+
+def test_a_job_of_the_embedding_page_can_be_deleted_with_its_runs_but_not_edited(
+    client: TestClient, deployment: Deployment
+) -> None:
+    managed = catalog.managed_job_id("default", "kb", "upload")
+    deployment.write_catalog(_job(managed))
+
+    rows = _body(client, "/partials/ingest/jobs")
+    job_page = _body(client, f"/ingest/jobs/{managed}")
+
+    for body in (rows, job_page):
+        assert "Delete runs…" in body and '$dispatch("ingest-delete"' in body
+        assert '"managed": true' in body
+        assert f'href="/ingest/jobs/{managed}/edit"' not in body
+        assert "Disable</a>" not in body and "Duplicate</a>" not in body
+    assert "created again with the next embedding" in _body(client, "/ingest/jobs")
+
+
+def test_the_job_page_offers_to_delete_the_runs(client: TestClient, deployment: Deployment) -> None:
+    deployment.write_catalog(_job())
+
+    body = _body(client, "/ingest/jobs/handbook")
+
+    assert '$dispatch("ingest-delete-runs"' in body and "Delete runs…" in body
+    assert 'id="ingest-delete-runs"' in body
+
+
+def test_the_runs_page_deletes_runs_of_the_job_in_its_filter_and_lets_a_gone_job_be_typed(
+    client: TestClient, deployment: Deployment
+) -> None:
+    deployment.write_catalog(_job())
+
+    body = _body(client, "/ingest/runs?job=ghost")
+
+    assert "openDeleteRuns()" in body and "Delete runs…" in body
+    assert 'id="ingest-delete-runs"' in body
+    assert 'list="ingest-delete-runs-jobs"' in body, "an id that is not listed can be typed"
+    assert "choose: true" in body and '["handbook"]' in body
+
+
+def test_an_ingester_that_cannot_delete_runs_gets_no_such_menu_item_and_a_dialog_that_says_so(
+    client: TestClient, deployment: Deployment
+) -> None:
+    deployment.write_catalog(_job())
+    deployment.ingest.features = ["run_progress", "documents", "validate", "secret_store"]
+
+    rows = _body(client, "/partials/ingest/jobs")
+    runs_page = _body(client, "/ingest/runs")
+    job_page = _body(client, "/ingest/jobs/handbook")
+
+    assert '$dispatch("ingest-delete-runs"' not in rows
+    assert '"can_delete_runs": false' in rows
+    assert 'onclick="ingestCloseMenu(); openDeleteRuns()"' not in runs_page
+    assert "Delete runs…" not in runs_page and "Delete runs…" not in job_page
+    assert "This ingester cannot delete runs" in _body(client, "/ingest/jobs")
+
+
 def test_what_a_job_says_about_itself_cannot_break_the_page(
     client: TestClient, deployment: Deployment
 ) -> None:

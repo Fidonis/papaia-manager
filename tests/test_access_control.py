@@ -161,6 +161,7 @@ ADMIN_WRITE_APIS = [
     "/api/v1/rag/ingest/jobs/handbook/disable",
     "/api/v1/rag/ingest/jobs/handbook/enable",
     "/api/v1/rag/ingest/jobs/handbook/run",
+    "/api/v1/rag/ingest/jobs/handbook/runs/delete",
     "/api/v1/rag/ingest/jobs/validate",
     "/api/v1/rag/ingest/reload",
     "/api/v1/rag/ingest/runs",

@@ -193,6 +193,7 @@ _WRITES = [
     ("post", f"{_BASE}/jobs/handbook/enable", None),
     ("post", f"{_BASE}/jobs/handbook/disable", None),
     ("post", f"{_BASE}/jobs/handbook/run", {}),
+    ("post", f"{_BASE}/jobs/handbook/runs/delete", {}),
     ("delete", f"{_BASE}/job-runs/some-run", None),
     ("delete", f"{_BASE}/orphans/gone", None),
     ("put", f"{_BASE}/secrets/DAV", {"value": "x"}),
@@ -449,6 +450,92 @@ def test_disable_enable_and_delete(client: TestClient, deployment: Deployment) -
     assert gone.status_code == 200 and gone.json()["job_id"] == "handbook"
     assert deployment.file_jobs() == []
     assert api.delete(f"{_BASE}/jobs/handbook", headers=_CSRF_HEADER).status_code == 404
+
+
+def test_deleting_a_job_deletes_its_runs_and_the_answer_says_how_many(
+    client: TestClient, deployment: Deployment
+) -> None:
+    deployment.write_catalog(_authored())
+    deployment.ingest.seed_run("handbook", "2026-10-01T10:00:00+00:00")
+    deployment.ingest.seed_run("handbook", "2026-10-02T10:00:00+00:00")
+    kept = deployment.ingest.seed_run("other", "2026-10-02T10:00:00+00:00")
+
+    gone = _admin(client).delete(f"{_BASE}/jobs/handbook", headers=_CSRF_HEADER)
+
+    assert gone.status_code == 200
+    assert gone.json()["deleted_runs"] == 2
+    assert list(deployment.ingest.runs) == [kept]
+
+
+def test_the_runs_of_a_job_are_counted_and_then_deleted_for_a_period(
+    client: TestClient, deployment: Deployment
+) -> None:
+    deployment.write_catalog(_authored())
+    for day in ("01", "02", "03"):
+        deployment.ingest.seed_run("handbook", f"2026-10-{day}T10:00:00+00:00", log_lines=2)
+    api = _admin(client)
+    url = f"{_BASE}/jobs/handbook/runs/delete"
+
+    counted = api.post(
+        url,
+        headers=_CSRF_HEADER,
+        json={"since": "2026-10-02", "until": "2026-10-03", "dry_run": True},
+    ).json()
+    assert (counted["matched"], counted["matched_events"], counted["deleted_runs"]) == (2, 4, 0)
+    assert counted["dry_run"] is True and len(deployment.ingest.runs) == 3
+
+    deleted = api.post(
+        url, headers=_CSRF_HEADER, json={"since": "2026-10-02", "until": "2026-10-03"}
+    ).json()
+    assert (deleted["deleted_runs"], deleted["deleted_events"], deleted["dry_run"]) == (2, 4, False)
+    assert [r["started_at"][:10] for r in deployment.ingest.runs.values()] == ["2026-10-01"]
+    assert "rag.ingest.run.delete" in deployment.audit_text()
+
+
+def test_runs_of_a_job_that_is_gone_can_be_deleted_without_a_period(
+    client: TestClient, deployment: Deployment
+) -> None:
+    deployment.ingest.seed_run("ghost", "2026-10-01T10:00:00+00:00")
+
+    response = _admin(client).post(
+        f"{_BASE}/jobs/ghost/runs/delete", headers=_CSRF_HEADER, json={}
+    )
+
+    assert response.status_code == 200 and response.json()["deleted_runs"] == 1
+    assert deployment.ingest.runs == {}
+
+
+def test_a_bad_period_is_refused_and_nothing_is_deleted(
+    client: TestClient, deployment: Deployment
+) -> None:
+    deployment.ingest.seed_run("handbook", "2026-10-01T10:00:00+00:00")
+    api = _admin(client)
+    url = f"{_BASE}/jobs/handbook/runs/delete"
+
+    backwards = api.post(
+        url, headers=_CSRF_HEADER, json={"since": "2026-10-05", "until": "2026-10-01"}
+    )
+    not_a_date = api.post(url, headers=_CSRF_HEADER, json={"since": "yesterday"})
+    not_a_job = api.post(f"{_BASE}/jobs/Not%20A%20Job/runs/delete", headers=_CSRF_HEADER, json={})
+
+    assert backwards.status_code == 422 and "first day" in backwards.json()["detail"]
+    assert not_a_date.status_code == 422
+    assert not_a_job.status_code == 422
+    assert len(deployment.ingest.runs) == 1
+
+
+def test_an_ingester_that_cannot_delete_runs_answers_with_a_conflict(
+    client: TestClient, deployment: Deployment
+) -> None:
+    deployment.ingest.features = ["run_progress", "documents", "validate", "secret_store"]
+    deployment.ingest.seed_run("handbook", "2026-10-01T10:00:00+00:00")
+
+    response = _admin(client).post(
+        f"{_BASE}/jobs/handbook/runs/delete", headers=_CSRF_HEADER, json={}
+    )
+
+    assert response.status_code == 409 and "delete_runs" in response.json()["detail"]
+    assert len(deployment.ingest.runs) == 1
 
 
 def test_a_run_is_accepted_and_the_destructive_ones_have_to_be_confirmed(
