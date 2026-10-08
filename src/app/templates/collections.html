@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Collections — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Collections{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Qdrant collections of the selected connection and the Keycloak roles that may use them</p>{% endblock %}
+
+{# Tier 1: one filled primary, one outline secondary. The dialogs live in the
+   list partial, so the button finds none while Qdrant cannot be reached. The
+   connection selector is a control of the page's body, not an action: the
+   header holds buttons only. #}
+{% block page_actions %}
+<button type="button"
+        class="btn btn-outline btn-sm"
+        hx-get="/partials/collections"
+        hx-include="#collection-connection"
+        hx-target="#collection-list"
+        hx-swap="innerHTML"
+        hx-disabled-elt="this">
+  Refresh
+</button>
+<button type="button"
+        class="btn btn-primary btn-sm"
+        onclick="var d = document.getElementById('create-collection-modal'); if (d) d.showModal()">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+  </svg>
+  New collection
+</button>
+{% endblock %}
+
+{% block content %}
+{# The selected connection travels as `connection` on every request of the page:
+   the list is loaded with it, and each change names the connection of the list it was
+   made on (see `_collConn`), not whatever the select shows by then. #}
+<form id="collection-connection-form" class="mb-4 flex flex-wrap items-center gap-2"
+      hx-get="/partials/collections"
+      hx-trigger="change"
+      hx-target="#collection-list"
+      hx-swap="innerHTML"
+      onsubmit="return false">
+  <label class="text-sm opacity-60" for="collection-connection">Connection</label>
+  <select id="collection-connection" name="connection"
+          class="select select-bordered select-sm font-mono"
+          onchange="history.replaceState(null, '', '/collections?connection=' + encodeURIComponent(this.value))">
+    {% for option in connection_options %}
+    <option value="{{ option }}"{% if option == selected_connection %} selected{% endif %}>{{ option }}{% if option == default_connection %} (default){% endif %}</option>
+    {% endfor %}
+  </select>
+  <a href="/connections" class="link link-hover text-xs opacity-60">Manage connections</a>
+</form>
+
+<div
+  id="collection-list"
+  hx-get="/partials/collections"
+  hx-include="#collection-connection"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+
+{% include "partials/_rag_js.html" %}
+<script>
+// The connection the list on screen belongs to. The partial wraps its body in an element
+// that carries it; before that has loaded, whatever the selector shows.
+function _collConn() {
+  const shown = document.querySelector('#collection-list [data-connection]');
+  if (shown) return shown.dataset.connection;
+  const select = document.getElementById('collection-connection');
+  return select ? select.value : 'default';
+}
+
+function _collUrl(path) {
+  return '/api/v1/rag/collections' + path + '?connection=' + encodeURIComponent(_collConn());
+}
+
+function reloadCollections() {
+  htmx.ajax('GET', '/partials/collections?connection=' + encodeURIComponent(_collConn()),
+            { target: '#collection-list', swap: 'innerHTML' });
+}
+
+// htmx does not swap a 4xx answer, which would leave the list of a connection that has
+// vanished (deleted in the ingester's interface) on screen. Say so instead. A 401 is
+// handled by the page itself.
+document.body.addEventListener('htmx:responseError', function (event) {
+  const detail = event.detail || {};
+  if (!detail.target || detail.target.id !== 'collection-list') return;
+  if (detail.xhr && detail.xhr.status === 401) return;
+  let reason = 'The list could not be loaded.';
+  try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
+  detail.target.innerHTML =
+    '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
+    '<p class="text-lg font-semibold">Collections are not available</p>' +
+    '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p>' +
+    '<a class="link" href="/collections">Reload the page</a></div>';
+});
+
+// The role rows of a dialog: blank rows are dropped, names are trimmed.
+function _collRoles(rows) {
+  return rows
+    .map(function (row) { return { role: row.role.trim(), access: row.access }; })
+    .filter(function (row) { return row.role; });
+}
+
+function newCollection() {
+  return {
+    name: '', vectorSize: '', model: '', roles: [], busy: false, error: '',
+    addRole() { this.roles.push({ role: '', access: 'r' }); },
+    removeRole(i) { this.roles.splice(i, 1); },
+    reset() { this.name = ''; this.vectorSize = ''; this.model = ''; this.roles = []; this.error = ''; },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const name = this.name.trim();
+      const res = await _ragRequest('POST', _collUrl(''), {
+        name: name,
+        vector_size: Number(this.vectorSize),
+        embedding_model: this.model.trim() || null,
+        roles: _collRoles(this.roles),
+      });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      showToast('success', 'Collection <b>' + _ragEscape(name) + '</b> created');
+      reloadCollections();
+    },
+  };
+}
+
+function editRoles() {
+  return {
+    name: '', roles: [], busy: false, error: '',
+    open(detail) {
+      this.name = detail.name;
+      this.roles = detail.roles.map(function (row) { return { role: row.role, access: row.access }; });
+      this.error = '';
+      this.$root.showModal();
+    },
+    addRole() { this.roles.push({ role: '', access: 'r' }); },
+    removeRole(i) { this.roles.splice(i, 1); },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest(
+        'PUT', _collUrl('/' + encodeURIComponent(this.name) + '/roles'),
+        { roles: _collRoles(this.roles) });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      showToast('success', 'Roles of <b>' + _ragEscape(this.name) + '</b> saved');
+      reloadCollections();
+    },
+  };
+}
+
+function deleteCollection() {
+  return {
+    name: '', points: null, typed: '', busy: false, error: '',
+    open(detail) {
+      this.name = detail.name;
+      this.points = detail.points;
+      this.typed = '';
+      this.error = '';
+      this.$root.showModal();
+    },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('DELETE', _collUrl('/' + encodeURIComponent(this.name)));
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      showToast('success', 'Collection <b>' + _ragEscape(this.name) + '</b> deleted');
+      reloadCollections();
+    },
+  };
+}
+
+async function createOperatorGrant(button) {
+  button.disabled = true;
+  const res = await _ragRequest('POST', _collUrl('/operator-grant'));
+  if (res.handled) return;
+  if (!res.ok) {
+    button.disabled = false;
+    showToast('error', 'The grant was not created: ' + _ragEscape(res.error));
+    return;
+  }
+  reloadCollections();
+}
+</script>
+{% endblock %}

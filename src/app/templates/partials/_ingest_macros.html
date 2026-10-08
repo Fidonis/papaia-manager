@@ -1,0 +1,82 @@
+{# Small pieces the ingest pages share: the tabs of the area, the badge of a job's state, the
+   badge of a run and the progress bar of one that works.
+
+   Class names are spelled out per branch and never assembled from a variable: app.css is built
+   by scanning these templates, so a computed class name does not survive the purge. #}
+
+{# The tabs do not wrap: on a narrow screen "Catalog file" broke into two lines and overflowed the
+   fixed height of a tab, which showed as a vertical scrollbar next to a horizontal one. #}
+{% macro tabs(active) %}
+<nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="Ingest">
+  <a href="/ingest/jobs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'jobs' else '' }}">Jobs</a>
+  <a href="/ingest/runs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'runs' else '' }}">Runs</a>
+  <a href="/ingest/secrets" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'secrets' else '' }}">Credentials</a>
+  <a href="/ingest/orphans" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'orphans' else '' }}">Leftovers</a>
+  <a href="/ingest/catalog" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'catalog' else '' }}">Catalog file</a>
+</nav>
+{% endmacro %}
+
+
+{# How a job stands: serving, serving an older version, not loaded, or not read yet. A job
+   that is switched off says so as well, because it is the reason nothing runs. #}
+{% macro state_badge(row) %}
+{% if row.state == 'loaded' %}
+  {% if row.enabled %}
+  <span class="badge badge-success badge-sm gap-1" title="The ingester serves this job as it is in jobs.yaml">{{ row.state_text }}</span>
+  {% else %}
+  <span class="badge badge-ghost badge-sm" title="Switched off: it does not run on its schedule and cannot be started. Its content stays searchable.">Disabled</span>
+  {% endif %}
+{% elif row.state == 'stale' %}
+<span class="badge badge-warning badge-sm" title="{{ row.note }}">{{ row.state_text }}</span>
+{% elif row.state == 'not_loaded' %}
+<span class="badge badge-error badge-sm" title="{{ row.note }}">{{ row.state_text }}</span>
+{% elif row.state == 'pending' %}
+<span class="badge badge-info badge-sm" title="{{ row.note }}">{{ row.state_text }}</span>
+{% elif row.state == 'registry_only' %}
+<span class="badge badge-warning badge-sm" title="{{ row.note }}">{{ row.state_text }}</span>
+{% else %}
+<span class="badge badge-ghost badge-sm" title="{{ row.note }}">{{ row.state_text }}</span>
+{% endif %}
+{% endmacro %}
+
+
+{# The status of a run, with the marks that change how to read it. #}
+{% macro run_badge(view) %}
+{% if view.active %}
+<span class="badge badge-info badge-sm gap-1"><span class="loading loading-spinner loading-xs"></span>{{ view.label }}</span>
+{% elif view.clean %}
+<span class="badge badge-success badge-sm">{{ view.label }}</span>
+{% elif view.status == 'success' %}
+<span class="badge badge-warning badge-sm" title="The run finished, but some files could not be embedded">{{ view.label }}</span>
+{% elif view.status == 'failed' %}
+<span class="badge badge-error badge-sm">{{ view.label }}</span>
+{% else %}
+<span class="badge badge-warning badge-sm">{{ view.label }}</span>
+{% endif %}
+{% if view.dry_run %}
+<span class="badge badge-outline badge-sm" title="A dry run reads and plans, but embeds and writes nothing">Dry run</span>
+{% endif %}
+{% endmacro %}
+
+
+{# The bar of a run that works. Without the figures an older ingester does not send it is an
+   endless bar, which says "working" and nothing more. #}
+{% macro progress(view) %}
+{% if view.progress is not none %}
+<progress class="progress progress-info w-full" value="{{ (view.progress * 100) | round(0) | int }}" max="100"></progress>
+{% else %}
+<progress class="progress progress-info w-full"></progress>
+{% endif %}
+{% endmacro %}
+
+
+{# What happened to one file the job tracks. #}
+{% macro file_badge(status, status_text) %}
+{% if status == 'indexed' %}
+<span class="badge badge-success badge-sm">{{ status_text.get(status, status) }}</span>
+{% elif status in ('failed_extract', 'failed_embed') %}
+<span class="badge badge-error badge-sm">{{ status_text.get(status, status) }}</span>
+{% else %}
+<span class="badge badge-warning badge-sm">{{ status_text.get(status, status) }}</span>
+{% endif %}
+{% endmacro %}

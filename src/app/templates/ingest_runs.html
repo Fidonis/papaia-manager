@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "partials/_actions.html" import overflow_menu %}
+{% from "partials/_ingest_macros.html" import tabs %}
+{% block title %}Ingest Runs — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Ingest Runs{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">What the ingester did, newest first</p>{% endblock %}
+
+{% block page_actions %}
+<button type="button" class="btn btn-outline btn-sm" onclick="reloadRuns()">Refresh</button>
+{% if can_delete_runs %}
+{% call overflow_menu(label='More actions for the runs') %}
+  <li><a class="text-error" onclick="ingestCloseMenu(); openDeleteRuns()">Delete runs…</a></li>
+{% endcall %}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{{ tabs('runs') }}
+
+{# The filters sit outside what is swapped, so a refresh while a run works cannot reset them. #}
+<form id="runs-filter" class="mb-3 flex flex-wrap items-center gap-2" onsubmit="return false">
+  <label class="text-sm opacity-60" for="runs-job">Job</label>
+  <select id="runs-job" name="job" class="select select-bordered select-sm font-mono">
+    <option value="">All jobs</option>
+    {% for id in job_choices %}
+    <option value="{{ id }}"{% if id == selected_job %} selected{% endif %}>{{ id }}</option>
+    {% endfor %}
+    {% if selected_job and selected_job not in job_choices %}
+    <option value="{{ selected_job }}" selected>{{ selected_job }}</option>
+    {% endif %}
+  </select>
+  <label class="ml-2 text-sm opacity-60" for="runs-status">Status</label>
+  <select id="runs-status" name="status" class="select select-bordered select-sm">
+    <option value="">Any status</option>
+    {% for value, text in status_choices %}
+    <option value="{{ value }}"{% if value == selected_status %} selected{% endif %}>{{ text }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<div id="ingest-runs"
+     hx-get="/partials/ingest/runs"
+     hx-include="#runs-filter"
+     hx-trigger="load, change from:#runs-filter"
+     hx-swap="innerHTML">
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+
+{% include "partials/_ingest_dialogs.html" %}
+{% include "partials/_rag_js.html" %}
+{% include "partials/_ingest_js.html" %}
+<script>
+// Opens the delete-runs dialog on the job the filter shows, which may be one that is gone (the job
+// column of a run links here), so the job can also be typed.
+function openDeleteRuns() {
+  window.dispatchEvent(new CustomEvent('ingest-delete-runs', { detail: {
+    job_id: document.getElementById('runs-job').value,
+    jobs: {{ job_choices|tojson }},
+    choose: true,
+    tz: {{ tz|tojson }},
+  } }));
+}
+
+function reloadRuns() {
+  const values = Object.fromEntries(new FormData(document.getElementById('runs-filter')));
+  htmx.ajax('GET', '/partials/ingest/runs', { target: '#ingest-runs', swap: 'innerHTML', values: values });
+}
+
+// Keep the filter in the address, so a link to a job's runs and the back button do the obvious thing.
+document.getElementById('runs-filter').addEventListener('change', function () {
+  const params = new URLSearchParams(new FormData(this));
+  Array.from(params.keys()).forEach(function (k) { if (!params.get(k)) params.delete(k); });
+  history.replaceState(null, '', '/ingest/runs' + (params.toString() ? '?' + params.toString() : ''));
+});
+
+document.body.addEventListener('htmx:responseError', function (event) {
+  const detail = event.detail || {};
+  if (!detail.target || detail.target.id !== 'ingest-runs') return;
+  if (detail.xhr && detail.xhr.status === 401) return;
+  let reason = 'The runs could not be loaded.';
+  try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
+  detail.target.innerHTML =
+    '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
+    '<p class="text-lg font-semibold">Runs are not available</p>' +
+    '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p></div>';
+});
+</script>
+{% endblock %}

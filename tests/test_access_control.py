@@ -55,7 +55,19 @@ ADMIN_PAGES = [
     "/audit",
     "/backup",
     "/catalogs",
+    "/collections",
+    "/connections",
+    "/embedding",
     "/host",
+    "/ingest/catalog",
+    "/ingest/jobs",
+    "/ingest/jobs/handbook",
+    "/ingest/jobs/handbook/edit",
+    "/ingest/new",
+    "/ingest/orphans",
+    "/ingest/runs",
+    "/ingest/runs/some-run",
+    "/ingest/secrets",
     "/jobs",
     "/services",
     "/upgrade",
@@ -67,7 +79,20 @@ ADMIN_PARTIALS = [
     "/partials/backup/restore-points",
     "/partials/backup/restore-status",
     "/partials/catalogs",
+    "/partials/collections",
+    "/partials/connections",
+    "/partials/embedding",
+    "/partials/embedding/status",
+    "/partials/embedding/tree",
+    "/partials/embedding/uploads",
     "/partials/host",
+    "/partials/ingest/jobs",
+    "/partials/ingest/jobs/handbook/files",
+    "/partials/ingest/jobs/handbook/overview",
+    "/partials/ingest/orphans",
+    "/partials/ingest/runs",
+    "/partials/ingest/runs/some-run",
+    "/partials/ingest/secrets",
     "/partials/jobs",
     "/partials/nav/host-indicator",
     "/partials/nav/job-indicator",
@@ -88,6 +113,20 @@ ADMIN_APIS = [
     "/api/v1/jobs",
     "/api/v1/maintenance/backup-dir",
     "/api/v1/maintenance/restore-points",
+    "/api/v1/rag/connections",
+    "/api/v1/rag/ingest/catalog/defaults",
+    "/api/v1/rag/ingest/catalog/raw",
+    "/api/v1/rag/ingest/collections",
+    "/api/v1/rag/ingest/ingester",
+    "/api/v1/rag/ingest/job-runs",
+    "/api/v1/rag/ingest/jobs",
+    "/api/v1/rag/ingest/jobs/handbook/files",
+    "/api/v1/rag/ingest/orphans",
+    "/api/v1/rag/ingest/runs?collection=kb",
+    "/api/v1/rag/ingest/status",
+    "/api/v1/rag/ingest/tree",
+    "/api/v1/rag/ingest/secrets",
+    "/api/v1/rag/ingest/uploads",
     "/api/v1/stack/groups",
     "/api/v1/stack/runner",
     "/api/v1/tiles",
@@ -112,6 +151,22 @@ ADMIN_WRITE_APIS = [
     "/api/v1/addons/paperless/restart",
     "/api/v1/audit/prune",
     "/api/v1/maintenance/restore-points/delete",
+    "/api/v1/rag/collections",
+    "/api/v1/rag/collections/operator-grant",
+    "/api/v1/rag/connections",
+    "/api/v1/rag/connections/test",
+    "/api/v1/rag/connections/default/reset",
+    "/api/v1/rag/ingest/catalog/validate",
+    "/api/v1/rag/ingest/jobs",
+    "/api/v1/rag/ingest/jobs/handbook/disable",
+    "/api/v1/rag/ingest/jobs/handbook/enable",
+    "/api/v1/rag/ingest/jobs/handbook/run",
+    "/api/v1/rag/ingest/jobs/handbook/runs/delete",
+    "/api/v1/rag/ingest/jobs/validate",
+    "/api/v1/rag/ingest/reload",
+    "/api/v1/rag/ingest/runs",
+    "/api/v1/rag/ingest/schedule/preview",
+    "/api/v1/rag/ingest/uploads",
     "/api/v1/upgrade",
     "/api/v1/upgrade/check",
     "/api/v1/upgrade/runner/clear",
@@ -248,6 +303,42 @@ def test_user_role_is_denied_stack_control(client: TestClient, path: str) -> Non
 def test_anonymous_is_denied_stack_control(client: TestClient, path: str) -> None:
     client.cookies.clear()
     assert client.post(path, json={}).status_code == 401
+
+
+# The write lists above only POST. The connections and collections also change state with
+# PUT and DELETE, and a lost dependency on either would hand a plain user the ingester's
+# connections (and with them an api-key that reaches the whole vector database).
+_OTHER_WRITES = [
+    ("put", "/api/v1/rag/connections/default", {"fields": {"url": "http://x"}, "etag": "x"}),
+    ("delete", "/api/v1/rag/connections/archive?etag=x", None),
+    ("put", "/api/v1/rag/collections/finance/roles", {"roles": []}),
+    ("delete", "/api/v1/rag/collections/finance", None),
+    # Ingest jobs: the editor's PUT and DELETE, the credentials (a value goes in through
+    # PUT), the raw catalog and the defaults.
+    ("put", "/api/v1/rag/ingest/jobs/handbook", {"job": {}}),
+    ("delete", "/api/v1/rag/ingest/jobs/handbook", None),
+    ("delete", "/api/v1/rag/ingest/job-runs/some-run", None),
+    ("delete", "/api/v1/rag/ingest/orphans/gone", None),
+    ("put", "/api/v1/rag/ingest/secrets/DAV", {"value": "x"}),
+    ("delete", "/api/v1/rag/ingest/secrets/DAV", None),
+    ("put", "/api/v1/rag/ingest/catalog/raw", {"text": "", "revision": ""}),
+    ("put", "/api/v1/rag/ingest/catalog/defaults", {"defaults": {}}),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "body"), _OTHER_WRITES)
+def test_user_role_is_denied_the_put_and_delete_routes_of_the_rag_pages(
+    client: TestClient, method: str, path: str, body: object
+) -> None:
+    assert _as(client, "user").request(method, path, json=body).status_code == 403
+
+
+@pytest.mark.parametrize(("method", "path", "body"), _OTHER_WRITES)
+def test_anonymous_is_denied_the_put_and_delete_routes_of_the_rag_pages(
+    client: TestClient, method: str, path: str, body: object
+) -> None:
+    client.cookies.clear()
+    assert client.request(method, path, json=body).status_code == 401
 
 
 @pytest.mark.parametrize("path", ADMIN_APIS_SELF_CONTAINED)

@@ -1,0 +1,276 @@
+{# Helpers shared by the ingest pages: the verbs on a job (enable, disable, resume, reload,
+   abort) and the dialogs that guard the destructive ones (run, delete, delete runs). The page includes
+   `_rag_js.html` first and this once, inside its own content block.
+
+   Every verb answers with a toast that says what happened *and* what did not: a change that is
+   saved but not active, or saved without the ingester having been asked, is told apart from one
+   that is live, because they look the same in the file and not in the world.
+
+   Careful with doubled braces in this file: it is a Jinja template, and two opening braces in a
+   row start an expression. #}
+<script>
+const _ING = '/api/v1/rag/ingest';
+
+function _ingJob(id) { return _ING + '/jobs/' + encodeURIComponent(id); }
+
+// A toast that has to be read after the page changes (a deleted job's page is gone) waits in the
+// session and is shown by the next page that includes this file. Storage can be blocked: then the
+// caller shows it at once and it is lost with the page, which is all there was before.
+document.addEventListener('DOMContentLoaded', function () {
+  try {
+    const raw = sessionStorage.getItem('ingestToast');
+    if (!raw) return;
+    sessionStorage.removeItem('ingestToast');
+    const toast = JSON.parse(raw);
+    showToast(toast.type, toast.html);
+  } catch (_) { /* nothing was waiting, or storage is not available */ }
+});
+
+// What a save or a toggle did, in a sentence for a toast.
+function ingestOutcome(result, what) {
+  let text = what;
+  let level = 'success';
+  if (!result.verified) {
+    level = 'warning';
+    text += ' (the ingester could not be asked' + (result.note ? ': ' + _ragEscape(result.note) : '') + ')';
+  } else if (!result.applied) {
+    level = 'warning';
+    text += '. It is saved but not active yet: ' +
+      (result.elsewhere.length ? _ragEscape(result.elsewhere.join('; ')) : 'the ingester did not apply the catalog');
+  }
+  return { level: level, text: text };
+}
+
+async function ingestToggle(id, enable, after) {
+  const res = await _ragRequest('POST', _ingJob(id) + (enable ? '/enable' : '/disable'));
+  if (res.handled) return;
+  const label = '<b>' + _ragEscape(id) + '</b>';
+  if (!res.ok) { showToast('error', label + ': ' + _ragEscape(res.error)); return; }
+  const out = ingestOutcome(res.data, 'Job ' + label + (enable ? ' enabled' : ' disabled'));
+  showToast(out.level, out.text);
+  if (after) after();
+}
+
+async function ingestResume(id, after) {
+  const res = await _ragRequest('POST', _ingJob(id) + '/resume');
+  if (res.handled) return;
+  if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
+  showToast('success', 'Scheduling of <b>' + _ragEscape(id) + '</b> resumed');
+  if (after) after();
+}
+
+async function ingestReloadCatalog(after) {
+  const res = await _ragRequest('POST', _ING + '/reload');
+  if (res.handled) return;
+  if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
+  showToast(res.data.refused ? 'warning' : 'success',
+            res.data.refused ? 'The ingester read jobs.yaml and found problems' : 'The ingester read jobs.yaml');
+  if (after) after();
+}
+
+async function ingestAbort(runId, after) {
+  const res = await _ragRequest('DELETE', _ING + '/job-runs/' + encodeURIComponent(runId));
+  if (res.handled) return;
+  if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
+  showToast('info', 'Abort requested. The run stops after the file it is working on.');
+  if (after) after();
+}
+
+// The dropdown menus of a row stay open while the pointer rests on them; close on a choice.
+function ingestCloseMenu() {
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+
+// The run dialog. The row that opens it hands over what the dialog has to know about the job,
+// so it needs no request of its own to open.
+function runDialog() {
+  return {
+    job: { id: '', collection: '', mode: '', mode_label: '', full_scope: 'job', remote: false, first_run: false, siblings: [] },
+    mode: '', dry: false, skipSync: false, keep: false, confirmRebuild: false, typed: '',
+    busy: false, error: '', advanced: false,
+    open(detail) {
+      this.job = detail;
+      this.mode = '';
+      // The first run of a job is the one worth looking at before it writes anything.
+      this.dry = !!detail.first_run;
+      this.skipSync = false; this.keep = false; this.confirmRebuild = false; this.typed = '';
+      this.error = ''; this.advanced = false; this.busy = false;
+      this.$root.showModal();
+    },
+    effectiveMode() { return this.mode ? this.mode.split('/')[0] : this.job.mode; },
+    effectiveScope() {
+      if (this.mode === 'full/collection') return 'collection';
+      if (this.mode === 'full/job') return 'job';
+      return this.job.full_scope;
+    },
+    rebuild() { return this.effectiveMode() === 'full'; },
+    wholeCollection() { return this.rebuild() && this.effectiveScope() === 'collection'; },
+    canSubmit() {
+      if (this.busy) return false;
+      if (this.dry) return true;
+      if (this.rebuild() && !this.confirmRebuild) return false;
+      if (this.wholeCollection() && this.typed !== this.job.collection) return false;
+      return true;
+    },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const body = {
+        dry_run: this.dry,
+        skip_sync: this.skipSync && this.job.remote,
+        delete_vanished: !(this.keep && this.effectiveMode() === 'upsert'),
+      };
+      if (this.mode) {
+        const parts = this.mode.split('/');
+        body.mode = parts[0];
+        if (parts[1]) body.full_scope = parts[1];
+      }
+      if (!this.dry) {
+        body.confirm_rebuild = this.confirmRebuild;
+        body.confirm_collection = this.typed === this.job.collection;
+        if (this.wholeCollection() && this.job.siblings.length) body.force = true;
+      }
+      const res = await _ragRequest('POST', _ingJob(this.job.id) + '/run', body);
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      window.location.href = '/ingest/runs/' + encodeURIComponent(res.data.run_id);
+    },
+  };
+}
+
+// The delete dialog: the job's entry and its runs always go; what it embedded goes only on request.
+function deleteJobDialog() {
+  return {
+    job: { id: '', etag: '', collection: '', managed: false, can_delete_runs: false },
+    purge: false, typed: '', busy: false, error: '', runs: null,
+    open(detail) {
+      this.job = detail; this.purge = false; this.typed = ''; this.error = ''; this.busy = false;
+      this.runs = null;
+      this.$root.showModal();
+      if (detail.can_delete_runs) this.countRuns(detail.id);
+    },
+    // Asks the ingester how many runs would go; the warning reads the same without the number.
+    async countRuns(id) {
+      const res = await _ragRequest('POST', _ingJob(id) + '/runs/delete', { dry_run: true });
+      if (res.ok && this.job.id === id) this.runs = res.data.matched;
+    },
+    runsText() {
+      if (this.runs === null) return '';
+      if (this.runs === 0) return 'The job has no finished runs.';
+      return this.runs + (this.runs === 1 ? ' run' : ' runs') + ' will be deleted.';
+    },
+    canSubmit() { return !this.busy && (!this.purge || this.typed === this.job.id); },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('DELETE', _ingJob(this.job.id) +
+        '?purge=' + (this.purge ? 'true' : 'false') + '&etag=' + encodeURIComponent(this.job.etag || ''));
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      let text = 'Job <b>' + _ragEscape(this.job.id) + '</b> deleted';
+      if (res.data.deleted_runs) {
+        text += '; ' + res.data.deleted_runs + (res.data.deleted_runs === 1 ? ' run' : ' runs') + ' deleted';
+      }
+      if (res.data.purged) text += '; ' + res.data.deleted_points + ' points removed from the collection';
+      if (res.data.note) text += '. ' + _ragEscape(res.data.note);
+      // The job's page is gone, so the answer has to be read on the list; a toast does not survive
+      // the navigation, so it waits in the session until the next page shows it.
+      const level = res.data.note ? 'warning' : 'success';
+      try {
+        sessionStorage.setItem('ingestToast', JSON.stringify({ type: level, html: text }));
+      } catch (_) {
+        showToast(level, text);
+      }
+      window.location.href = '/ingest/jobs';
+    },
+  };
+}
+
+// The delete-runs dialog: the history of one job, all of it or whole days. It asks the ingester what
+// it would delete before it deletes anything. It never touches what the job embedded.
+function deleteRunsDialog() {
+  return {
+    jobId: '', jobs: [], choose: false, tz: '',
+    since: '', until: '', typed: '',
+    count: null, counting: false, error: '', busy: false, seq: 0,
+    open(detail) {
+      this.jobId = detail.job_id || ''; this.jobs = detail.jobs || []; this.choose = !!detail.choose;
+      this.tz = detail.tz || '';
+      this.since = ''; this.until = ''; this.typed = ''; this.error = ''; this.busy = false;
+      this.count = null;
+      this.$root.showModal();
+      this.refresh();
+    },
+    // Delete everything before the last `days` days: the last day to go is `days` days ago.
+    keep(days) {
+      const d = new Date();
+      d.setDate(d.getDate() - days);
+      const pad = function (n) { return String(n).padStart(2, '0'); };
+      this.since = '';
+      this.until = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      this.refresh();
+    },
+    unbounded() { return !this.since && !this.until; },
+    hasRuns() { return !this.counting && !this.error && !!this.count && this.count.matched > 0; },
+    body(dry) { return { since: this.since || null, until: this.until || null, dry_run: dry }; },
+    // The question is asked again for every change; an answer to an older question is dropped.
+    async refresh() {
+      const seq = ++this.seq;
+      this.error = ''; this.count = null;
+      if (!this.jobId) return;
+      if (this.since && this.until && this.since > this.until) {
+        this.error = 'The first day is after the last day.';
+        return;
+      }
+      this.counting = true;
+      const res = await _ragRequest('POST', _ingJob(this.jobId) + '/runs/delete', this.body(true));
+      if (seq !== this.seq) return;
+      this.counting = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.count = res.data;
+    },
+    previewText() {
+      if (this.counting || !this.count) return 'Counting the runs ...';
+      const c = this.count;
+      let text = c.matched === 0
+        ? 'No finished run in this period.'
+        : c.matched + (c.matched === 1 ? ' run' : ' runs') + ' (' + c.matched_events +
+          (c.matched_events === 1 ? ' log line' : ' log lines') + ') will be deleted.';
+      if (c.skipped_running) {
+        text += ' ' + c.skipped_running + (c.skipped_running === 1 ? ' run is' : ' runs are') +
+          ' still working and will be kept.';
+      }
+      return text;
+    },
+    canSubmit() {
+      return !this.busy && this.hasRuns() && (!this.unbounded() || this.typed === this.jobId);
+    },
+    submitText() {
+      return this.hasRuns() ? 'Delete ' + this.count.matched + (this.count.matched === 1 ? ' run' : ' runs') : 'Delete';
+    },
+    async submit() {
+      if (!this.canSubmit()) return;
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('POST', _ingJob(this.jobId) + '/runs/delete', this.body(false));
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      const n = res.data.deleted_runs;
+      let text = n + (n === 1 ? ' run' : ' runs') + ' of <b>' + _ragEscape(this.jobId) + '</b> deleted';
+      if (res.data.skipped_running) text += '. A run that is still working was kept';
+      showToast(res.data.skipped_running ? 'warning' : 'success', text);
+      // Whichever page this is shows runs somewhere: its own refresh, else a reload.
+      if (typeof reloadRuns === 'function') reloadRuns();
+      else if (typeof reloadJobs === 'function') reloadJobs();
+      else window.location.reload();
+    },
+  };
+}
+</script>

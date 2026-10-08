@@ -1,0 +1,26 @@
+{# The Configuration tab: the job as it is written in jobs.yaml, and what it inherits.
+
+   Read-only. A credential is shown as the reference it is (${env:QI_SECRET_X}); its value is
+   not in this file and not on this page. #}
+<div class="flex flex-col gap-4">
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-2 p-4">
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">As written in jobs.yaml</p>
+      <pre class="overflow-x-auto rounded-lg bg-base-300 p-3 font-mono text-xs leading-relaxed">{{ yaml_text }}</pre>
+      <p class="text-xs opacity-60">
+        Only what differs from the defaults is written. Credentials appear as references; the
+        values are kept on the <a class="link" href="/ingest/secrets">Credentials</a> page or in
+        <span class="font-mono">ai/rag/.env</span>.
+      </p>
+    </div>
+  </div>
+  {% if defaults %}
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-2 p-4">
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">Inherited from the catalog defaults</p>
+      <pre class="overflow-x-auto rounded-lg bg-base-300 p-3 font-mono text-xs leading-relaxed">{{ defaults_text }}</pre>
+      <p class="text-xs opacity-60">A job that does not set one of these values itself uses the catalog's. <a class="link" href="/ingest/catalog">Change the defaults</a></p>
+    </div>
+  </div>
+  {% endif %}
+</div>

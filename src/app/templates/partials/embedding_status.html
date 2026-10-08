@@ -1,0 +1,121 @@
+{# The run strip of the Embedding page: what the run is doing, then what it did, and the
+   latest runs of the collection.
+
+   It polls only while a run works. A run that has ended is rendered without a trigger, so
+   the polling stops by itself, and the strip announces the state to the page
+   (`embed-run-state`) so the page can drop the upload the run read. The same technique as
+   the backup strip: an inline script in a swapped partial.
+
+   The ingester reports its counters only when a run ends, so while it works the strip
+   shows the points written so far, counted in Qdrant. That number is a hint: it is absent
+   when Qdrant cannot be asked, and a replace starts from an empty collection. #}
+<div id="embed-status"
+     {% if view and view.active %}
+     hx-get="/partials/embedding/status?connection={{ connection | urlencode }}&collection={{ collection | urlencode }}&run={{ view.run_id | urlencode }}"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}
+     class="flex flex-col gap-3">
+
+  {% if problem %}
+  <div class="alert alert-warning text-sm" role="status"><span>{{ problem }}</span></div>
+  {% endif %}
+
+  {% if view %}
+  <div class="rounded-xl border px-5 py-3
+              {% if view.active %}border-warning bg-warning/10
+              {% elif view.clean %}border-success bg-success/10
+              {% else %}border-error bg-error/10{% endif %}">
+
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {% if view.active %}
+        <span class="loading loading-spinner loading-xs text-warning"></span>
+      {% elif view.clean %}
+        <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
+      {% else %}
+        <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-error"></span>
+      {% endif %}
+      <p class="text-sm font-semibold">{{ view.label }}</p>
+      <p class="text-xs opacity-60">{{ view.mode_label }}</p>
+      {% if view.started_at %}<p class="text-xs opacity-50">started {{ view.started_at[11:19] }} UTC</p>{% endif %}
+      {% if view.finished_at %}<p class="text-xs opacity-50">finished {{ view.finished_at[11:19] }} UTC</p>{% endif %}
+      {% if view.active %}
+      <button type="button" class="btn btn-outline btn-xs ml-auto" :disabled="aborting" @click="abort()">
+        <span x-text="aborting ? 'Aborting…' : 'Abort'">Abort</span>
+      </button>
+      {% endif %}
+    </div>
+
+    {% if view.active %}
+    <p class="mt-2 text-sm">
+      {% if view.live_chunks is not none %}
+      <b>{{ '{:,}'.format(view.live_chunks) }}</b> chunk{{ '' if view.live_chunks == 1 else 's' }} written so far.
+      {% else %}
+      Embedding in the background.
+      {% endif %}
+      <span class="opacity-60">The ingester reports its counts when the run ends.</span>
+    </p>
+    {% else %}
+    <div class="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
+      <div><span class="opacity-60">Files seen</span> <b>{{ view.counters.files_seen }}</b></div>
+      <div><span class="opacity-60">Embedded</span> <b>{{ view.counters.docs_indexed }}</b></div>
+      <div><span class="opacity-60">Unchanged</span> <b>{{ view.counters.docs_unchanged }}</b></div>
+      <div><span class="opacity-60">Chunks</span> <b>{{ '{:,}'.format(view.counters.chunks_upserted) }}</b></div>
+      <div><span class="opacity-60">Failed</span> <b>{{ view.counters.docs_failed }}</b></div>
+    </div>
+    {% if view.source_kind == 'upload' %}
+    {% if view.clean %}
+    <p class="mt-2 text-xs opacity-60">The upload this run read has been deleted.</p>
+    {% else %}
+    <p class="mt-2 text-xs opacity-60">The upload this run read is kept, so the run can be repeated. It is deleted after its time limit.</p>
+    {% endif %}
+    {% endif %}
+    {% endif %}
+
+    {% if view.error %}
+    <p class="mt-2 text-sm text-error">{{ view.error }}</p>
+    {% endif %}
+
+    {% if view.events %}
+    <details class="mt-2" {% if not view.clean %}open{% endif %}>
+      <summary class="cursor-pointer text-xs opacity-70">{{ view.events | length }}{% if view.events_truncated %}+{% endif %} message{{ '' if view.events | length == 1 else 's' }} from the ingester</summary>
+      <ul class="mt-1 max-h-48 overflow-y-auto rounded bg-base-300 p-2 text-xs">
+        {% for event in view.events %}
+        <li class="flex gap-2 py-0.5">
+          <span class="shrink-0 {{ 'text-error' if event.level == 'error' else 'text-warning' if event.level == 'warning' else 'opacity-60' }}">{{ event.level }}</span>
+          <span class="font-mono break-all">{% if event.source %}{{ event.source }}: {% endif %}{{ event.message }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if history %}
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Earlier runs</p>
+      <ul class="flex flex-col divide-y divide-base-300 text-sm">
+        {% for run in history %}
+        <li class="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5">
+          <span class="badge badge-sm {{ 'badge-success' if run.clean else 'badge-warning' if run.active else 'badge-error' }}">{{ run.label }}</span>
+          <span class="text-xs opacity-60">{{ run.mode_label }}</span>
+          <span class="text-xs opacity-60">{{ run.started_at[:16] | replace('T', ' ') }} UTC</span>
+          {% if not run.active %}
+          <span class="text-xs opacity-60">{{ run.counters.docs_indexed }} embedded · {{ run.counters.docs_failed }} failed · {{ '{:,}'.format(run.counters.chunks_upserted) }} chunks</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <script>
+    window.dispatchEvent(new CustomEvent("embed-run-state", { detail: {
+      active: {{ "true" if view and view.active else "false" }},
+      runId: {{ (view.run_id | tojson) if view else "null" }},
+    }}));
+  </script>
+</div>

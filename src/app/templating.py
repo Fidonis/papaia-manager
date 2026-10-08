@@ -18,6 +18,8 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 
 from app.config import get_settings
+from app.core.ingest import display
+from app.core.rag import rag_active
 from app.core.settings_store import EffectiveBranding, effective_branding
 
 templates = Jinja2Templates(directory="app/templates")
@@ -84,3 +86,29 @@ def branding(context: dict[str, object]) -> EffectiveBranding:
 
 
 templates.env.globals["branding"] = branding
+
+
+@pass_context
+def rag_enabled(context: dict[str, object]) -> bool:
+    """Whether the core runs the RAG system; what the sidebar category hangs off.
+
+    A global for the same reason as `branding`: the sidebar is part of every admin page,
+    including the ones rendered by an error handler, which never go through the UI router's
+    context builder. The lookup is one small `.env` read.
+    """
+    request = context.get("request")
+    resolver = get_settings
+    if isinstance(request, Request):
+        resolver = request.app.dependency_overrides.get(get_settings, get_settings)
+    return rag_active(resolver().papaia_config_dir)
+
+
+templates.env.globals["rag_enabled"] = rag_enabled
+
+# Times, spans and sizes of the ingest pages. The zone is passed in by the page, because it
+# is the ingester's and not the manager's.
+templates.env.filters["ingest_when"] = display.local_time
+templates.env.filters["ingest_ago"] = display.ago
+templates.env.filters["ingest_duration"] = display.duration
+templates.env.filters["filesize"] = display.size_text
+templates.env.filters["short_id"] = display.short_id

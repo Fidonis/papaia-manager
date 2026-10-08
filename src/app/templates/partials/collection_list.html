@@ -1,0 +1,259 @@
+{# The body of the Collections page: the collections of the RAG system with the
+   roles that may use them, or the reason there is nothing to show.
+
+   The dialogs are part of this partial and only rendered while Qdrant can be
+   used. The page does not poll, and every change reloads the partial, so a dialog
+   is never torn down while somebody is typing in it. They talk to the rows through
+   window events (`collection-roles`, `collection-delete`): a row cannot reach the
+   scope of a dialog that is not its parent.
+
+   `{{ view.operator_role }}` is shown as a locked chip wherever roles are listed.
+   It always has access to every collection, through a global grant the page keeps
+   in the ACL collection, so it is never part of a per-collection list.
+
+   The marker element names the connection this list was rendered for. Every change
+   the dialogs make is sent to that connection, whatever the selector shows by then.
+
+   Classes are spelled out per branch rather than assembled from a variable:
+   app.css is built by scanning these templates. #}
+{% from "partials/_actions.html" import row_actions, overflow_menu %}
+
+{% macro operator_chip(role, text) %}
+<span class="badge badge-secondary badge-sm gap-1"
+      title="{{ role }} always has access to every collection and cannot be removed">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+  </svg>
+  <span class="font-mono">{{ role }}</span> · {{ text }}
+</span>
+{% endmacro %}
+
+{# The role rows of the create and edit dialogs. Both dialogs carry `roles`,
+   `addRole()` and `removeRole()` in their Alpine scope. #}
+{% macro roles_editor(operator_role) %}
+<div class="mb-3">
+  <label class="label"><span class="label-text">Roles</span></label>
+  <p class="mb-2 text-xs opacity-60">
+    Keycloak role names that may use this collection. They are not checked against Keycloak.
+    <span class="font-mono">{{ operator_role }}</span> always has access and is not listed.
+  </p>
+  <template x-for="(row, i) in roles" :key="i">
+    <div class="mb-2 flex items-center gap-2">
+      <input type="text" class="input input-bordered input-sm flex-1 font-mono"
+             x-model="row.role" maxlength="255" placeholder="role name" aria-label="Role name">
+      <select class="select select-bordered select-sm" x-model="row.access" aria-label="Access level">
+        <option value="r">read</option>
+        <option value="rw">read + write</option>
+      </select>
+      <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Remove role" @click="removeRole(i)">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  </template>
+  <button type="button" class="btn btn-outline btn-xs" @click="addRole()">Add role</button>
+  <p class="mt-2 text-xs opacity-50">A change reaches the MCP server within about a minute, the length of its access cache.</p>
+</div>
+{% endmacro %}
+
+<div data-connection="{{ view.connection }}" hidden></div>
+
+{% if not view.available %}
+<div class="flex flex-col items-center py-24 gap-4 opacity-60 text-center">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+  </svg>
+  <p class="text-lg font-semibold">Collections are not available</p>
+  <p class="max-w-xl text-sm">{{ view.reason }}</p>
+  {% for warning in view.warnings %}
+  <p class="max-w-xl text-sm text-warning">{{ warning }}</p>
+  {% endfor %}
+</div>
+{% else %}
+
+<div class="flex flex-col gap-3">
+
+  {% for warning in view.warnings %}
+  <div class="alert alert-warning text-sm" role="alert"><span>{{ warning }}</span></div>
+  {% endfor %}
+
+  {% if not view.roles_enforced %}
+  <div class="alert alert-info text-sm" role="status">
+    <span>
+      The stack's MCP server reads roles from the integrated Qdrant only. Roles set on
+      <span class="font-mono">{{ view.connection }}</span> are stored in the same format,
+      but nothing in the stack enforces them there.
+    </span>
+  </div>
+  {% endif %}
+
+  {% if not view.operator_granted %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span>
+      <span class="font-mono">{{ view.operator_role }}</span> has no global grant in the ACL collection yet,
+      so the MCP server does not give it access to every collection.
+    </span>
+    <button type="button" class="btn btn-sm" onclick="createOperatorGrant(this)">Create grant</button>
+  </div>
+  {% endif %}
+
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Access to every collection</p>
+      <div class="flex flex-wrap items-center gap-1.5">
+        {{ operator_chip(view.operator_role, 'manage') }}
+        {% for role in view.global_roles %}
+        <span class="badge badge-outline badge-sm"><span class="font-mono">{{ role }}</span>&nbsp;· manage</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {% if not view.collections %}
+  <div class="flex flex-col items-center py-16 gap-3 opacity-60">
+    <p class="text-lg font-medium">No collections yet</p>
+    <p class="text-sm">Create one here, or let an ingest job create it on its first run.</p>
+  </div>
+  {% endif %}
+
+  {% for c in view.collections %}
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-semibold font-mono">{{ c.name }}</span>
+          {% if c.points is not none %}
+          <span class="badge badge-ghost badge-sm">{{ '{:,}'.format(c.points) }} point{{ '' if c.points == 1 else 's' }}</span>
+          {% endif %}
+          {% if c.vector_size %}
+          <span class="badge badge-outline badge-sm" title="Vector size and distance">{{ c.vector_size }}{% if c.distance %} · {{ c.distance }}{% endif %}</span>
+          {% endif %}
+          {% if c.embedding_model %}
+          <span class="badge badge-outline badge-sm" title="Embedding model recorded in the meta collection">{{ c.embedding_model }}</span>
+          {% elif not c.has_meta %}
+          <span class="badge badge-warning badge-outline badge-sm"
+                title="No record in the meta collection: the MCP server cannot embed a text query for this collection until the ingester has run or a model is recorded">no embedding model</span>
+          {% endif %}
+          {% if c.status and c.status != 'green' %}
+          <span class="badge badge-warning badge-sm">{{ c.status }}</span>
+          {% endif %}
+        </div>
+
+        {# Tier 2: roles are what this row is for, and Embed files leads to the page that puts
+           documents into it. Delete is destructive, so it sits behind the kebab and confirms
+           in a dialog. #}
+        {% call row_actions() %}
+          <a class="btn btn-outline btn-xs"
+             href="/embedding?connection={{ view.connection | urlencode }}&collection={{ c.name | urlencode }}">Embed files</a>
+          <button type="button" class="btn btn-outline btn-xs"
+                  @click='$dispatch("collection-roles", {{ {"name": c.name, "roles": c.roles_payload}|tojson }})'>Roles</button>
+          {% call overflow_menu(size='xs', label='More actions for collection ' ~ c.name) %}
+            <li><a class="text-error"
+                   @click='$dispatch("collection-delete", {{ {"name": c.name, "points": c.points}|tojson }})'>Delete</a></li>
+          {% endcall %}
+        {% endcall %}
+      </div>
+
+      <div class="mt-1 flex flex-wrap items-center gap-1.5">
+        {{ operator_chip(view.operator_role, 'manage') }}
+        {% for g in c.grants %}
+        <span class="badge badge-outline badge-sm"><span class="font-mono">{{ g.role }}</span>&nbsp;· {{ 'read' if g.access == 'r' else 'read + write' }}</span>
+        {% endfor %}
+        {% if not c.grants %}
+        <span class="text-xs opacity-50">No other roles</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- New collection -->
+<dialog id="create-collection-modal" class="modal" x-data="newCollection()" @close="reset()">
+  <div class="modal-box max-w-xl">
+    <h3 class="mb-4 text-lg font-bold">New collection</h3>
+    <form @submit.prevent="submit()">
+      <div class="form-control mb-3">
+        <label class="label"><span class="label-text">Name</span></label>
+        <input type="text" class="input input-bordered font-mono" x-model="name" required
+               placeholder="finance" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,254}" maxlength="255">
+        <p class="mt-1 text-xs opacity-60">Letters, digits, '.', '_' and '-'. It cannot start with an underscore.</p>
+      </div>
+      <div class="form-control mb-3">
+        <label class="label"><span class="label-text">Vector size</span></label>
+        <input type="number" class="input input-bordered" x-model="vectorSize" required min="1" max="65536"
+               placeholder="1024">
+        <p class="mt-1 text-xs opacity-60">The output size of the embedding model. Vectors use cosine distance.</p>
+      </div>
+      <div class="form-control mb-3">
+        <label class="label"><span class="label-text">Embedding model (optional)</span></label>
+        <input type="text" class="input input-bordered font-mono" x-model="model" maxlength="255"
+               placeholder="bge-m3">
+        <p class="mt-1 text-xs opacity-60">
+          Recorded in the meta collection, so the MCP server can embed text queries.
+          Leave it empty and the ingester records it on its first run. An ingest job
+          must use the same model, or its run is refused.
+        </p>
+      </div>
+      {{ roles_editor(view.operator_role) }}
+      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-primary" :disabled="busy">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Create
+        </button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Roles of a collection -->
+<dialog id="roles-modal" class="modal" x-data="editRoles()"
+        @collection-roles.window="open($event.detail)">
+  <div class="modal-box max-w-xl">
+    <h3 class="mb-4 text-lg font-bold">Roles of <span class="font-mono" x-text="name"></span></h3>
+    <form @submit.prevent="submit()">
+      {{ roles_editor(view.operator_role) }}
+      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-primary" :disabled="busy">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Save
+        </button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Delete a collection -->
+<dialog id="delete-collection-modal" class="modal" x-data="deleteCollection()"
+        @collection-delete.window="open($event.detail)">
+  <div class="modal-box">
+    <h3 class="mb-2 text-lg font-bold">Delete <span class="font-mono" x-text="name"></span>?</h3>
+    <p class="mb-3 text-sm">
+      This deletes the collection<span x-show="points !== null" style="display:none"> with its
+      <span x-text="points"></span> points</span>, its record in the meta collection and all
+      roles listed for it. It cannot be undone.
+    </p>
+    <form @submit.prevent="submit()">
+      <div class="form-control mb-3">
+        <label class="label"><span class="label-text">Type the name to confirm</span></label>
+        <input type="text" class="input input-bordered font-mono" x-model="typed"
+               autocomplete="off" :placeholder="name">
+      </div>
+      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-error" :disabled="busy || typed !== name">Delete</button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+{% endif %}

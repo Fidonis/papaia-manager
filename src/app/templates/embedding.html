@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+{% block title %}Embedding — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Embedding{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Put files into a collection. The ingester reads them in the background</p>{% endblock %}
+
+{# Tier 1: the page's one action is starting a run, and that button belongs to the options
+   it depends on, so the header carries only the outline secondary. #}
+{% block page_actions %}
+<button type="button"
+        class="btn btn-outline btn-sm"
+        onclick="reloadEmbedding()">
+  Refresh
+</button>
+{% endblock %}
+
+{% block content %}
+{# One Alpine scope for the whole page, outside everything that is swapped: the selection
+   in the trees, the chosen upload and the options survive a reload of an upload list or a
+   status strip, and a reload of the body (another collection) starts them afresh through
+   `loaded()`. The connection selector is a control of the body, not an action. #}
+<div id="embed-page" x-data="embedPage()" @embed-run-state.window="runState($event.detail)">
+
+  <form id="embed-connection-form" class="mb-4 flex flex-wrap items-center gap-2"
+        onsubmit="return false">
+    <label class="text-sm opacity-60" for="embed-connection">Connection</label>
+    <select id="embed-connection" name="connection"
+            class="select select-bordered select-sm font-mono"
+            onchange="history.replaceState(null, '', '/embedding?connection=' + encodeURIComponent(this.value)); reloadEmbedding()">
+      {% for option in connection_options %}
+      <option value="{{ option }}"{% if option == selected_connection %} selected{% endif %}>{{ option }}{% if option == default_connection %} (default){% endif %}</option>
+      {% endfor %}
+    </select>
+    <a href="/connections" class="link link-hover text-xs opacity-60">Manage connections</a>
+  </form>
+
+  <div
+    id="embed-body"
+    hx-get="/partials/embedding?connection={{ selected_connection | urlencode }}&collection={{ selected_collection | urlencode }}"
+    hx-trigger="load"
+    hx-swap="innerHTML"
+  >
+    <div class="flex justify-center py-20">
+      <span class="loading loading-spinner loading-lg text-primary"></span>
+    </div>
+  </div>
+
+  {# Replace is the one run that destroys something, so it confirms in a dialog that names
+     what goes. The dialog lives in the page, outside the swapped body, so a reload of the
+     body cannot tear it down while somebody is typing in it. #}
+  <dialog id="embed-confirm" class="modal" x-ref="confirm">
+    <div class="modal-box">
+      <h3 class="mb-2 text-lg font-bold">Replace <span class="font-mono" x-text="collection"></span>?</h3>
+      <p class="mb-2 text-sm">
+        This deletes everything in the collection<span x-show="points !== null" style="display:none">
+        (<span x-text="points"></span> points)</span> and fills it from this selection.
+        Searches in it return nothing, or part of the content, until the run is finished.
+        Its roles and its model record are kept.
+      </p>
+      <div x-show="otherJobs.length" style="display:none" class="alert alert-warning mb-3 text-sm" role="alert">
+        <div>
+          <p>Other ingest jobs write to this collection and lose their content too:</p>
+          <p class="font-mono" x-text="otherJobs.join(', ')"></p>
+          <label class="mt-2 flex items-center gap-2">
+            <input type="checkbox" class="checkbox checkbox-sm" x-model="confirmOthers">
+            <span>Replace their content as well</span>
+          </label>
+        </div>
+      </div>
+      <form @submit.prevent="submit()">
+        <div class="form-control mb-3">
+          <label class="label"><span class="label-text">Type the name of the collection to confirm</span></label>
+          <input type="text" class="input input-bordered font-mono" x-model="typed"
+                 autocomplete="off" :placeholder="collection">
+        </div>
+        <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+        <div class="modal-action">
+          <button type="button" class="btn btn-ghost" @click="$refs.confirm.close()">Cancel</button>
+          <button type="submit" class="btn btn-error"
+                  :disabled="busy || typed !== collection || (otherJobs.length > 0 && !confirmOthers)">
+            <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+            Replace
+          </button>
+        </div>
+      </form>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  {# Discarding an upload deletes files that were never embedded, so it confirms in a dialog
+     too, not in the browser's own. It names what goes, from what the list handed over. #}
+  <dialog id="embed-discard" class="modal" x-ref="discardDialog">
+    <div class="modal-box">
+      <h3 class="mb-2 text-lg font-bold">Discard this upload?</h3>
+      <p class="mb-1 text-sm" x-show="discardItem" style="display:none">
+        <span class="font-semibold" x-text="discardItem && discardItem.name"></span>
+        from <span x-text="discardItem && discardItem.owner"></span>:
+        <span x-text="discardItem && discardItem.files"></span>
+        file<span x-show="discardItem && discardItem.files !== 1" style="display:none">s</span>,
+        <span x-text="discardItem && discardItem.size"></span>.
+      </p>
+      <p class="mb-3 text-sm">
+        Its files are deleted without being embedded. This cannot be undone.
+      </p>
+      <p style="display:none" x-show="discardError" class="mb-2 text-sm text-error" x-text="discardError"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$refs.discardDialog.close()">Cancel</button>
+        <button type="button" class="btn btn-error" :disabled="discardBusy" @click="confirmDiscard()">
+          <span x-show="discardBusy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Discard
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+</div>
+
+{% include "partials/_rag_js.html" %}
+<script>
+function _embedConn() {
+  const select = document.getElementById('embed-connection');
+  return select ? select.value : 'default';
+}
+
+function _embedUrl(path, extra) {
+  return path + '?connection=' + encodeURIComponent(_embedConn()) + (extra || '');
+}
+
+// Reload the body of the page, for the connection on screen. A collection name picks that
+// collection; without one the first is shown.
+function reloadEmbedding(collection) {
+  const extra = collection ? '&collection=' + encodeURIComponent(collection) : '';
+  htmx.ajax('GET', _embedUrl('/partials/embedding', extra), { target: '#embed-body', swap: 'innerHTML' });
+}
+
+// htmx does not swap a 4xx answer. Say what happened instead of leaving a stale body.
+document.body.addEventListener('htmx:responseError', function (event) {
+  const detail = event.detail || {};
+  if (!detail.target || detail.target.id !== 'embed-body') return;
+  if (detail.xhr && detail.xhr.status === 401) return;
+  let reason = 'The page could not be loaded.';
+  try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
+  detail.target.innerHTML =
+    '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
+    '<p class="text-lg font-semibold">Embedding is not available</p>' +
+    '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p>' +
+    '<a class="link" href="/embedding">Reload the page</a></div>';
+});
+
+function embedPage() {
+  return {
+    connection: {{ selected_connection | tojson }},
+    collection: '', points: null, recorded: '', model: '',
+    supportsAdd: true, ready: false, otherJobs: [],
+    tab: 'upload', mode: 'add',
+    batch: '', selected: {},
+    uploading: false, progress: '', uploadErrors: [],
+    error: '', busy: false, typed: '', confirmOthers: false,
+    runId: '', runActive: false, aborting: false,
+    discardItem: null, discardBusy: false, discardError: '',
+
+    // The body was (re)loaded: what it says about the collection replaces what was here.
+    loaded(d) {
+      this.connection = _embedConn();
+      this.collection = d.collection;
+      this.points = d.points;
+      this.recorded = d.model || '';
+      this.model = d.model || '';
+      this.supportsAdd = d.supportsAdd;
+      this.ready = d.ready;
+      this.otherJobs = d.otherJobs;
+      this.runId = d.activeRun || '';
+      this.runActive = !!d.activeRun;
+      this.aborting = false;
+      if (!this.supportsAdd && this.mode === 'add') this.mode = 'replace';
+      this.batch = '';
+      this.selected = {};
+      this.error = '';
+      this.uploadErrors = [];
+    },
+
+    // ── what is selected: paths relative to the tree on screen, '' being its root ──
+    paths() {
+      const picked = this.selected;
+      return Object.keys(picked).filter(function (key) { return picked[key]; });
+    },
+    isOn(path) { return !!this.selected[path]; },
+    // Below a selected folder: shown as selected, and changed by changing the folder.
+    covered(path) {
+      if (path === '') return false;
+      if (this.selected['']) return true;
+      const parts = path.split('/');
+      for (let i = 1; i < parts.length; i++) {
+        if (this.selected[parts.slice(0, i).join('/')]) return true;
+      }
+      return false;
+    },
+    toggle(path, on) {
+      const next = Object.assign({}, this.selected);
+      if (on) {
+        const prefix = path === '' ? '' : path + '/';
+        Object.keys(next).forEach(function (key) {
+          if (key !== path && (path === '' || key.indexOf(prefix) === 0)) delete next[key];
+        });
+        next[path] = true;
+      } else {
+        delete next[path];
+      }
+      this.selected = next;
+    },
+    switchTab(tab) {
+      this.tab = tab;
+      this.selected = {};
+      this.batch = '';
+      this.error = '';
+    },
+    source() {
+      if (this.tab === 'upload') return { kind: 'upload', batch: this.batch, paths: this.paths() };
+      return { kind: 'folder', paths: this.paths() };
+    },
+    canStart() {
+      if (this.busy || this.uploading || this.runActive || !this.ready || !this.collection) return false;
+      if (this.mode === 'add' && !this.supportsAdd) return false;
+      if (!this.model.trim()) return false;
+      if (this.tab === 'upload' && !this.batch) return false;
+      return this.paths().length > 0;
+    },
+
+    // ── the upload area ─────────────────────────────────────────────────────
+    refreshUploads() {
+      htmx.ajax('GET', '/partials/embedding/uploads', { target: '#embed-uploads', swap: 'outerHTML' });
+    },
+    loadBatchTree() {
+      const target = document.getElementById('embed-batch-tree');
+      if (!target) return;
+      if (!this.batch) { target.innerHTML = ''; return; }
+      htmx.ajax('GET', '/partials/embedding/tree?source=upload&upload=' + encodeURIComponent(this.batch),
+                { target: '#embed-batch-tree', swap: 'innerHTML' });
+    },
+    pickBatch(id) {
+      this.batch = id;
+      this.selected = { '': true };
+      this.loadBatchTree();
+    },
+    newUpload() {
+      this.batch = '';
+      this.selected = {};
+      this.loadBatchTree();
+    },
+    async uploadFiles(list) {
+      const files = Array.from(list || []);
+      if (!files.length) return;
+      this.uploadErrors = [];
+      this.uploading = true;
+      try {
+        if (!this.batch) {
+          const made = await _ragRequest('POST', '/api/v1/rag/ingest/uploads', { name: '' });
+          if (made.handled) return;
+          if (!made.ok) { this.uploadErrors.push(made.error); return; }
+          this.batch = made.data.id;
+          this.selected = { '': true };
+        }
+        const url = '/api/v1/rag/ingest/uploads/' + encodeURIComponent(this.batch) + '/files';
+        const token = document.querySelector('meta[name=csrf]').content;
+        let done = 0;
+        for (const file of files) {
+          const path = file.webkitRelativePath || file.name;
+          this.progress = 'Uploading ' + (done + 1) + ' of ' + files.length;
+          const form = new FormData();
+          form.append('file', file);
+          form.append('path', path);
+          let response;
+          try {
+            response = await fetch(url, { method: 'POST', headers: { 'X-CSRF-Token': token }, body: form });
+          } catch (_) {
+            this.uploadErrors.push(path + ': the connection was interrupted');
+            break;
+          }
+          if (_authGuard(response)) return;
+          if (!response.ok) this.uploadErrors.push(path + ': ' + await _ragError(response));
+          done++;
+        }
+      } finally {
+        this.uploading = false;
+        this.progress = '';
+        this.refreshUploads();
+        this.loadBatchTree();
+      }
+    },
+    // Discarding asks first, in a dialog of the page. `item` is what the list knows about the
+    // upload: id, name, owner, files and size.
+    askDiscard(item) {
+      this.discardItem = item;
+      this.discardError = '';
+      this.$refs.discardDialog.showModal();
+    },
+    async confirmDiscard() {
+      if (!this.discardItem || this.discardBusy) return;
+      const id = this.discardItem.id;
+      this.discardBusy = true;
+      this.discardError = '';
+      const res = await _ragRequest('DELETE', '/api/v1/rag/ingest/uploads/' + encodeURIComponent(id));
+      this.discardBusy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.discardError = res.error; return; }
+      this.$refs.discardDialog.close();
+      showToast('success', 'Upload discarded');
+      if (this.batch === id) this.newUpload();
+      this.refreshUploads();
+    },
+
+    // ── the run ─────────────────────────────────────────────────────────────
+    async start() {
+      this.error = '';
+      if (this.mode === 'replace') {
+        this.typed = '';
+        this.confirmOthers = false;
+        this.$refs.confirm.showModal();
+        return;
+      }
+      await this.submit();
+    },
+    async submit() {
+      this.busy = true;
+      this.error = '';
+      const res = await _ragRequest(
+        'POST', '/api/v1/rag/ingest/runs?connection=' + encodeURIComponent(this.connection), {
+          collection: this.collection,
+          mode: this.mode,
+          model: this.model.trim() || null,
+          source: this.source(),
+          confirm_replace: this.mode === 'replace',
+          confirm_other_jobs: this.confirmOthers,
+        });
+      this.busy = false;
+      if (res.handled) return;
+      if (this.$refs.confirm.open) this.$refs.confirm.close();
+      if (!res.ok) { this.error = res.error; return; }
+      this.runId = res.data.run_id;
+      this.runActive = true;
+      this.aborting = false;
+      showToast('success', 'Embedding started for ' + res.data.files + ' file(s)');
+      this.showStatus();
+      this.refreshUploads();
+    },
+    showStatus() {
+      htmx.ajax('GET', _embedUrl('/partials/embedding/status',
+                                 '&collection=' + encodeURIComponent(this.collection) +
+                                 '&run=' + encodeURIComponent(this.runId)),
+                { target: '#embed-status', swap: 'outerHTML' });
+    },
+    // The ingester aborts between documents: the one it is working on is finished first,
+    // and a run on its last document ends as an ordinary success. Say so, because the strip
+    // keeps showing "Running" for a while after the click.
+    async abort() {
+      if (!this.runId || this.aborting) return;
+      const res = await _ragRequest('DELETE', '/api/v1/rag/ingest/runs/' + encodeURIComponent(this.runId) +
+                                    '?connection=' + encodeURIComponent(this.connection));
+      if (res.handled) return;
+      if (!res.ok) { showToast('error', 'The run was not aborted: ' + _ragEscape(res.error)); return; }
+      this.aborting = true;
+      showToast('info', 'Abort requested. The ingester stops between documents, so the one it is working on is finished first.');
+      this.showStatus();
+    },
+    // The status strip tells when the run ends; the upload it read is gone by then.
+    runState(detail) {
+      if (detail.active) { this.runActive = true; return; }
+      if (!this.runActive) return;
+      this.runActive = false;
+      this.aborting = false;
+      this.newUpload();
+      this.refreshUploads();
+    },
+  };
+}
+</script>
+{% endblock %}

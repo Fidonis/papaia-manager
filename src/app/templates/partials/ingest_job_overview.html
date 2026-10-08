@@ -1,0 +1,124 @@
+{# The Overview tab of a job: how it stands, what it does, and its latest run.
+
+   While a run works the tab polls itself, by rendering its own trigger only then, so the
+   polling ends with the run. #}
+{% from "partials/_ingest_macros.html" import state_badge, run_badge, progress %}
+
+<div class="flex flex-col gap-4"
+     {% if active %}
+     hx-get="/partials/ingest/jobs/{{ row.id }}/overview"
+     hx-trigger="every 3s"
+     hx-target="#job-tab"
+     hx-swap="innerHTML"
+     {% endif %}>
+
+  {# ---- how it stands ---- #}
+  {% if row.problems %}
+  <div class="alert alert-error text-sm" role="alert">
+    <div>
+      <p class="font-semibold">The ingester does not load this job</p>
+      <ul class="mt-1 list-disc pl-5">{% for text in row.problems %}<li>{{ text }}</li>{% endfor %}</ul>
+      <p class="mt-1">Fix these in the editor. Until then the job does not run, and the ingester applies no other change either.</p>
+    </div>
+  </div>
+  {% elif row.state in ('stale', 'pending', 'registry_only', 'unknown') %}
+  <div class="alert alert-warning text-sm" role="status"><span>{{ row.note }}</span></div>
+  {% endif %}
+  {% if not row.enabled %}
+  <div class="alert alert-info text-sm" role="status">
+    <span>
+      This job is disabled: it does not run on its schedule and cannot be started. What it embedded stays in
+      the collection and stays searchable.
+    </span>
+  </div>
+  {% endif %}
+  {% if row.paused_in_ingester %}
+  <div class="alert alert-warning text-sm" role="status">
+    <span>Scheduling is paused in the ingester's memory. A restart or a reload of the catalog lifts it.</span>
+    <button type="button" class="btn btn-sm" onclick="ingestResume('{{ row.id }}', function () { jobTab('overview'); })">Resume scheduling</button>
+  </div>
+  {% endif %}
+
+  {# ---- the latest run ---- #}
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">Latest run</p>
+      {% if row.active_run %}
+        {% set run = row.active_run %}
+        <div class="flex flex-wrap items-center gap-2">
+          {{ run_badge(run) }}
+          <span class="text-sm opacity-70">started {{ run.started_at | ingest_ago }}</span>
+          <a class="link ml-auto text-sm" href="/ingest/runs/{{ run.run_id }}">Follow this run</a>
+        </div>
+        {{ progress(run) }}
+        <p class="text-sm">
+          {% if run.phase_label %}{{ run.phase_label }}{% else %}Working in the background.{% endif %}
+          {% if run.files_done is not none and run.counters.files_seen %} · {{ run.files_done }} of {{ run.counters.files_seen }} files{% endif %}
+        </p>
+        {% if run.current %}<p class="truncate font-mono text-xs opacity-60" title="{{ run.current }}">{{ run.current }}</p>{% endif %}
+      {% elif row.last_run %}
+        {% set run = row.last_run %}
+        <div class="flex flex-wrap items-center gap-2">
+          {{ run_badge(run) }}
+          <span class="text-sm opacity-70" title="{{ run.started_at | ingest_when(tz) }}">{{ run.started_at | ingest_ago }}</span>
+          <span class="text-sm opacity-60">took {{ run.started_at | ingest_duration(run.finished_at) }}</span>
+          <a class="link ml-auto text-sm" href="/ingest/runs/{{ run.run_id }}">Details</a>
+        </div>
+        <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-5">
+          <div><span class="opacity-60">Files seen</span> <b>{{ run.counters.files_seen }}</b></div>
+          <div><span class="opacity-60">Embedded</span> <b>{{ run.counters.docs_indexed }}</b></div>
+          <div><span class="opacity-60">Unchanged</span> <b>{{ run.counters.docs_unchanged }}</b></div>
+          <div><span class="opacity-60">Failed</span> <b>{{ run.counters.docs_failed }}</b></div>
+          <div><span class="opacity-60">Removed</span> <b>{{ run.counters.docs_deleted }}</b></div>
+        </div>
+        {% if run.error %}<p class="text-sm text-error">{{ run.error }}</p>{% endif %}
+        {% if run.counters.docs_failed %}
+        <p class="text-sm"><a class="link" href="#files" onclick="jobTab('files', '?status=failed_extract')">See the files that failed</a></p>
+        {% endif %}
+      {% else %}
+        <p class="text-sm opacity-70">This job has not run yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ---- what it does ---- #}
+  <div class="card bg-base-100 border border-base-300">
+    <div class="card-body p-4">
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">What it does</p>
+      <dl class="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-[10rem_1fr]">
+        <dt class="opacity-60">Source</dt>
+        <dd>
+          {{ row.source_title }}
+          <span class="block break-all font-mono text-xs opacity-70">{{ row.source_detail }}</span>
+          <span class="block text-xs opacity-60">Shown in search results as <span class="font-mono">{{ row.source_label }}</span></span>
+        </dd>
+
+        <dt class="opacity-60">Goes to</dt>
+        <dd>
+          <span class="font-mono">{{ row.collection }}</span> on <span class="font-mono">{{ row.connection }}</span>
+          {% if model %}<span class="block text-xs opacity-60">Embedded with <span class="font-mono">{{ model }}</span></span>{% endif %}
+          {% if acl_tags %}<span class="block text-xs opacity-60">Access tags: {{ acl_tags | join(', ') }}</span>{% endif %}
+        </dd>
+
+        <dt class="opacity-60">Each run</dt>
+        <dd>
+          {{ row.mode_label }}
+          <span class="block text-xs opacity-60">{{ mode_text }}</span>
+        </dd>
+
+        <dt class="opacity-60">Schedule</dt>
+        <dd>
+          {{ row.schedule }}
+          {% if row.next_run_at and row.enabled %}<span class="block text-xs opacity-60">Next run {{ row.next_run_at | ingest_when(tz) }} ({{ row.next_run_at | ingest_ago }})</span>{% endif %}
+        </dd>
+
+        <dt class="opacity-60">Files</dt>
+        <dd>
+          {% if include %}Only <span class="font-mono text-xs">{{ include | join(', ') }}</span>{% else %}Every supported file{% endif %}
+          {% if exclude %}<span class="block text-xs opacity-60">Skipping <span class="font-mono">{{ exclude | join(', ') }}</span></span>{% endif %}
+          {% if row.documents is not none %}<span class="block text-xs opacity-60">{{ '{:,}'.format(row.documents) }} file{{ '' if row.documents == 1 else 's' }} tracked, {{ '{:,}'.format(row.chunks or 0) }} chunks written</span>{% endif %}
+        </dd>
+      </dl>
+    </div>
+  </div>
+</div>

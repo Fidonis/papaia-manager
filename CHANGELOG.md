@@ -12,6 +12,72 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [1.3.0] - 2026-10-08
+
+### Added
+- The RAG system in the manager. While the core's optional `rag` profile is active,
+  administrators get a computed **RAG** group on the dashboard with a *Qdrant* tile (the vector
+  database's dashboard) and a **RAG** category in the sidebar, between Extensions and System,
+  holding the pages below. Without the profile nothing changes
+  ([#119](https://github.com/Fidonis/papaia-manager/pull/119); closes
+  [#118](https://github.com/Fidonis/papaia-manager/issues/118)).
+- Collections page at `/collections`: list, create and delete the Qdrant collections of the
+  selected connection and keep the Keycloak roles that may use each of them, with the access
+  level *read* or *read + write*. The roles are stored in the format `qdrant-mcp-rbac` reads, so
+  its MCP server enforces them unchanged
+  ([#121](https://github.com/Fidonis/papaia-manager/pull/121); closes
+  [#120](https://github.com/Fidonis/papaia-manager/issues/120)).
+- Connections page at `/connections`: create, edit, test and delete the vector database
+  connections of the RAG system. They live in the ingester's own store,
+  `ai/rag/catalog/connections.yaml`, with the api-keys encrypted as the ingester expects them.
+  The connection `default` (the integrated Qdrant) is created automatically. The Collections
+  page works on any connection
+  ([#123](https://github.com/Fidonis/papaia-manager/pull/123); closes
+  [#122](https://github.com/Fidonis/papaia-manager/issues/122)).
+- Embedding page at `/embedding`: upload files or a folder, or pick files in the documents
+  folder, and embed them into a collection through the ingester, as *add and update* or *replace
+  the collection*. An upload is deleted after a run that succeeded without a failed document and
+  after `INGEST_UPLOAD_TTL_HOURS` (24 by default) in any case
+  ([#125](https://github.com/Fidonis/papaia-manager/pull/125); closes
+  [#124](https://github.com/Fidonis/papaia-manager/issues/124)).
+- Ingest Jobs pages under `/ingest/`: create, edit, pause, run and delete the ingester's jobs
+  with a schedule builder, a dry run and live validation; follow runs with their phase,
+  progress and a file-by-file result and abort them; store the credentials of remote sources
+  encrypted; remove the leftovers of deleted jobs; edit the catalog defaults and `jobs.yaml`. The
+  pages take over what the ingester's own web interface offered
+  ([#127](https://github.com/Fidonis/papaia-manager/pull/127); closes
+  [#126](https://github.com/Fidonis/papaia-manager/issues/126)).
+- Deleting an ingest job now deletes its runs with it, and *Delete runs* removes the history of a
+  job for a period (whole days, counted before anything is deleted)
+  ([#129](https://github.com/Fidonis/papaia-manager/pull/129); closes
+  [#128](https://github.com/Fidonis/papaia-manager/issues/128)).
+- New optional settings `QDRANT_URL`, `QDRANT_INGEST_URL`, `INGEST_UPLOAD_TTL_HOURS`,
+  `INGEST_MAX_UPLOAD_MB` and `INGEST_MAX_BATCH_MB`, documented in both `.env.example` files
+  ([#125](https://github.com/Fidonis/papaia-manager/pull/125)).
+
+### Changed
+- `cryptography` and `certifi` are declared as runtime dependencies; both were already installed
+  as dependencies of other packages. They encrypt the stored api-keys and let a connection to a
+  Qdrant outside the stack be verified against the public certificate authorities as well as the
+  stack's own ([#123](https://github.com/Fidonis/papaia-manager/pull/123)).
+
+### Fixed
+- The row menus of the Ingest Jobs lists are no longer clipped, a wide table scrolls inside its
+  wrapper instead of widening the page, and the tabs no longer wrap. The sidebar has one entry,
+  *Ingest Jobs*, which is also marked on the *Runs* tab
+  ([#131](https://github.com/Fidonis/papaia-manager/pull/131); closes
+  [#130](https://github.com/Fidonis/papaia-manager/issues/130)).
+
+### Notes
+- The RAG pages appear only with a core that ships the optional `rag` profile (newer than papAIa
+  1.4.0). With an older core the manager looks and behaves as before.
+- The pages use what the ingester reports it can do. For run progress, the file list, the
+  ingester's own validation, deleting runs, stored credentials and the *add and update* mode of
+  the Embedding page, use `qdrant-ingest` 1.0.0 or newer. With 0.3.0 each of them is missing and
+  says so; *add and update* is refused, *replace the collection* works.
+- `qdrant-ingest` 1.0.0 no longer has a web interface of its own. Its jobs, runs, connections
+  and credentials are managed on the pages above.
+
 ## [1.2.0] - 2026-10-03
 
 ### Added
@@ -404,6 +470,8 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[1.3.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.3.0
+
 [1.2.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.2.0
 
 [1.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.1.0
@@ -422,4 +490,4 @@ based on merged pull requests; this file mirrors the published releases.
 
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.3.0...HEAD

@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% from "partials/_ingest_macros.html" import tabs %}
+{% block title %}Catalog file — Ingest — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Catalog file{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">The defaults every job inherits, and <span class="font-mono">jobs.yaml</span> itself</p>{% endblock %}
+
+{% block content %}
+{{ tabs('catalog') }}
+
+<div class="mx-auto flex max-w-4xl flex-col gap-4">
+
+  {% if raw.problem %}
+  <div class="alert alert-error text-sm" role="alert">
+    <span><span class="font-mono">jobs.yaml</span> cannot be read: {{ raw.problem }}. Fix it in the editor below.</span>
+  </div>
+  {% endif %}
+  {% if not raw.writable %}
+  <div class="alert alert-warning text-sm" role="alert">
+    <span>The catalog folder does not accept writes from the manager, so the file is shown read-only.</span>
+  </div>
+  {% endif %}
+
+  {# ---- the defaults ---- #}
+  <section class="card bg-base-100 border border-base-300" x-data='catalogDefaults({{ defaults|tojson }})'>
+    <div class="card-body gap-4 p-5">
+      <div>
+        <h2 class="font-semibold">Defaults</h2>
+        <p class="text-sm opacity-70">
+          What a job gets for a setting it does not make itself. Changing one moves every job that does not set it.
+          The embedding model is the one worth setting here: a job needs one, from itself or from here.
+        </p>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text">Embedding model</span></label>
+          <input type="text" class="input input-bordered input-sm font-mono" x-model="d.embedding.model" placeholder="nomic-embed-text">
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text">Files per embedding request</span></label>
+          <input type="number" min="1" class="input input-bordered input-sm" x-model="d.embedding.batch_size">
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text">How text is split</span></label>
+          <select class="select select-bordered select-sm" x-model="d.chunking.strategy">
+            <option value="">(the ingester's choice)</option>
+            {% for value in chunk_strategies %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="form-control">
+            <label class="label py-1"><span class="label-text">Chunk size</span></label>
+            <input type="number" min="1" class="input input-bordered input-sm" x-model="d.chunking.words" placeholder="400">
+          </div>
+          <div class="form-control">
+            <label class="label py-1"><span class="label-text">Overlap</span></label>
+            <input type="number" min="0" class="input input-bordered input-sm" x-model="d.chunking.overlap" placeholder="50">
+          </div>
+        </div>
+        <div class="form-control sm:col-span-2">
+          <label class="label py-1"><span class="label-text">Always skip</span></label>
+          <textarea rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="d.filters.exclude" spellcheck="false" placeholder="**/.DS_Store&#10;**/~$*"></textarea>
+          <p class="mt-1 text-xs opacity-60">One pattern per line, for every job that does not list its own.</p>
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text">Time zone of schedules</span></label>
+          <input type="text" list="catalog-timezones" class="input input-bordered input-sm" x-model="d.schedule.timezone" placeholder="{{ tz }}">
+          <datalist id="catalog-timezones">{% for zone in timezones %}<option value="{{ zone }}"></option>{% endfor %}</datalist>
+          <p class="mt-1 text-xs opacity-60">Empty uses the ingester's own zone ({{ tz }}).</p>
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text">Most that may be removed in one run</span></label>
+          <input type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm" x-model="d.safety.max_delete_ratio" placeholder="0.25">
+        </div>
+      </div>
+      <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
+      <div class="flex items-center gap-2">
+        <button type="button" class="btn btn-primary btn-sm" :disabled="busy" @click="save()"{% if not raw.writable %} disabled{% endif %}>
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Save defaults
+        </button>
+        <span class="text-xs opacity-60">Every job is checked against the new defaults before anything is written.</span>
+      </div>
+    </div>
+  </section>
+
+  {# ---- the file ---- #}
+  <section class="card bg-base-100 border border-base-300" x-data='rawEditor({{ {"text": raw.text, "revision": raw.revision}|tojson }})'>
+    <div class="card-body gap-3 p-5">
+      <div>
+        <h2 class="font-semibold">jobs.yaml</h2>
+        <p class="text-sm opacity-70">
+          Edited exactly as typed: comments and blank lines stay. The job editor rewrites the file and drops them
+          (the previous version is kept as <span class="font-mono">jobs.yaml.bak</span>), so keep notes here if you want them.
+        </p>
+      </div>
+      <textarea rows="22" class="textarea textarea-bordered w-full font-mono text-xs leading-relaxed" x-model="text"
+                spellcheck="false" :readonly="!writable" @input="checked = false"></textarea>
+      <div style="display:none" x-show="issues.length" class="alert alert-error text-sm" role="alert">
+        <div>
+          <p class="font-semibold" x-text="issues.length + (issues.length === 1 ? ' problem' : ' problems')"></p>
+          <ul class="mt-1 list-disc pl-5">
+            <template x-for="i in issues.slice(0, 12)" :key="i.field + i.message + String(i.job_id)">
+              <li><span x-show="i.job_id" class="font-mono" x-text="i.job_id + ': '"></span><span class="font-mono" x-text="i.field"></span>: <span x-text="i.message"></span></li>
+            </template>
+          </ul>
+        </div>
+      </div>
+      <p style="display:none" x-show="ok" class="text-sm text-success">This would load.</p>
+      <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" class="btn btn-outline btn-sm" :disabled="busy" @click="check()">Check</button>
+        <button type="button" class="btn btn-primary btn-sm" :disabled="busy || !writable" @click="save()">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Save
+        </button>
+        <a href="/ingest/catalog" class="btn btn-ghost btn-sm" x-show="stale" style="display:none">Reload the file</a>
+      </div>
+    </div>
+  </section>
+</div>
+
+{% include "partials/_rag_js.html" %}
+{% include "partials/_ingest_js.html" %}
+<script>
+function catalogDefaults(stored) {
+  const pick = (section, key) => (stored[section] && stored[section][key] !== undefined && stored[section][key] !== null) ? stored[section][key] : '';
+  const exclude = (stored.filters && stored.filters.exclude) ? stored.filters.exclude.join('\n') : '';
+  return {
+    d: {
+      embedding: { model: pick('embedding', 'model'), batch_size: pick('embedding', 'batch_size') },
+      chunking: { strategy: pick('chunking', 'strategy'), words: pick('chunking', 'words'), overlap: pick('chunking', 'overlap') },
+      filters: { exclude: exclude },
+      schedule: { timezone: pick('schedule', 'timezone') },
+      safety: { max_delete_ratio: pick('safety', 'max_delete_ratio') },
+    },
+    // What is not in the form is not touched: the catalog may carry settings of its own.
+    base: JSON.parse(JSON.stringify(stored)),
+    busy: false, error: '',
+    build() {
+      const out = JSON.parse(JSON.stringify(this.base));
+      const set = (section, key, value, numeric) => {
+        const empty = value === '' || value === null || value === undefined;
+        out[section] = out[section] || {};
+        if (empty) delete out[section][key]; else out[section][key] = numeric ? Number(value) : value;
+        if (!Object.keys(out[section]).length) delete out[section];
+      };
+      set('embedding', 'model', String(this.d.embedding.model).trim(), false);
+      set('embedding', 'batch_size', this.d.embedding.batch_size, true);
+      set('chunking', 'strategy', this.d.chunking.strategy, false);
+      set('chunking', 'words', this.d.chunking.words, true);
+      set('chunking', 'overlap', this.d.chunking.overlap, true);
+      const lines = String(this.d.filters.exclude).split('\n').map((l) => l.trim()).filter((l) => l);
+      set('filters', 'exclude', lines.length ? lines : '', false);
+      set('schedule', 'timezone', String(this.d.schedule.timezone).trim(), false);
+      set('safety', 'max_delete_ratio', this.d.safety.max_delete_ratio, true);
+      return out;
+    },
+    async save() {
+      this.error = ''; this.busy = true;
+      const res = await _ragRequest('PUT', '/api/v1/rag/ingest/catalog/defaults', { defaults: this.build() });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.base = JSON.parse(JSON.stringify(res.data.defaults));
+      const out = ingestOutcome(res.data, 'Defaults saved');
+      showToast(out.level, out.text);
+    },
+  };
+}
+
+function rawEditor(initial) {
+  return {
+    text: initial.text, revision: initial.revision, writable: {{ 'true' if raw.writable else 'false' }},
+    issues: [], ok: false, error: '', busy: false, checked: false, stale: false,
+    async check() {
+      this.error = ''; this.ok = false; this.busy = true;
+      const res = await _ragRequest('POST', '/api/v1/rag/ingest/catalog/validate', { text: this.text });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.issues = res.data.issues; this.ok = res.data.ok; this.checked = true;
+    },
+    async save() {
+      this.error = ''; this.ok = false; this.busy = true; this.stale = false;
+      const res = await _ragRequest('PUT', '/api/v1/rag/ingest/catalog/raw', { text: this.text, revision: this.revision });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) {
+        this.error = res.error;
+        this.stale = /changed since|changed while/.test(res.error);
+        await this.check();
+        return;
+      }
+      this.issues = []; this.revision = res.data.raw.revision;
+      const out = ingestOutcome(res.data, 'jobs.yaml saved');
+      showToast(out.level, out.text);
+    },
+  };
+}
+</script>
+{% endblock %}

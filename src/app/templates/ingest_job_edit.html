@@ -1,0 +1,687 @@
+{% extends "base.html" %}
+{% from "partials/_ingest_macros.html" import tabs %}
+{% block title %}{{ 'New ingest job' if job_id is none else job_id }} — Ingest Jobs — {{ branding().name }}{% endblock %}
+
+{% block page_breadcrumb %}
+<a href="{{ '/ingest/jobs' if job_id is none else '/ingest/jobs/' ~ job_id }}" class="inline-flex items-center gap-1 text-sm opacity-60 hover:opacity-100">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+  </svg>
+  {{ 'Ingest Jobs' if job_id is none else job_id }}
+</a>
+{% endblock %}
+{% block page_title %}{% if job_id is none %}{{ 'New job' if not copy_of else 'Copy of ' ~ copy_of }}{% else %}Edit <span class="font-mono">{{ job_id }}</span>{% endif %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Where the documents are, where they go, and when to look again</p>{% endblock %}
+
+{# Tier 1: Save is the primary action and is also at the foot of the form, where a long form
+   ends. The header button only asks the form to save. #}
+{% block page_actions %}
+{% if not problem %}
+<a href="{{ '/ingest/jobs' if job_id is none else '/ingest/jobs/' ~ job_id }}" class="btn btn-outline btn-sm">Cancel</a>
+<button type="button" class="btn btn-primary btn-sm"
+        onclick="window.dispatchEvent(new CustomEvent('ingest-save', { detail: { run: false } }))">Save</button>
+{% endif %}
+{% endblock %}
+
+{% macro field(label, path, help='', required=False) %}
+<div class="form-control">
+  <label class="label py-1">
+    <span class="label-text">{{ label }}{% if required %}<span class="text-error"> *</span>{% endif %}</span>
+    <span class="label-text-alt opacity-60" style="display:none" x-show="inheritedNote('{{ path }}')" x-text="inheritedNote('{{ path }}')"></span>
+  </label>
+  {{ caller() }}
+  {% if help %}<p class="mt-1 text-xs opacity-60">{{ help }}</p>{% endif %}
+  <p class="mt-1 text-xs text-error" style="display:none" x-show="err('{{ path }}')" x-text="err('{{ path }}')"></p>
+</div>
+{% endmacro %}
+
+{% block content %}
+{% if problem %}
+<div class="flex flex-col items-center py-20 gap-3 opacity-80 text-center">
+  <p class="text-lg font-semibold">This job cannot be edited</p>
+  <p class="max-w-xl text-sm">{{ problem }}</p>
+  <a class="btn btn-outline btn-sm" href="/ingest/jobs">Back to the jobs</a>
+</div>
+{% else %}
+
+<div id="job-editor" class="mx-auto flex max-w-4xl flex-col gap-4" x-data='jobEditor({{ boot|tojson }})'
+     @ingest-save.window="save($event.detail.run)"
+     @credential-saved.window="credentialSaved($event.detail)">
+
+  <div class="alert alert-error text-sm" role="alert" style="display:none" x-show="summary.length">
+    <div>
+      <p class="font-semibold" x-text="summary.length + (summary.length === 1 ? ' problem to fix' : ' problems to fix')"></p>
+      <ul class="mt-1 list-disc pl-5">
+        <template x-for="issue in summary.slice(0, 6)" :key="issue.field + issue.message">
+          <li><span class="font-mono" x-text="issue.field"></span>: <span x-text="issue.message"></span></li>
+        </template>
+      </ul>
+    </div>
+  </div>
+  <p class="text-sm text-error" style="display:none" x-show="saveError" x-text="saveError"></p>
+
+  {# ---- 1. identity ---- #}
+  <section class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-4 p-5">
+      <h2 class="font-semibold">1 · Name</h2>
+      {% call field('Job id', 'id', 'A short name. It is part of every point the job writes, so it cannot be changed later; duplicate the job to start under another name.', True) %}
+      <input type="text" class="input input-bordered input-sm w-full max-w-sm font-mono" x-model="job.id"
+             :readonly="!isNew" :class="err('id') ? 'input-error' : ''" placeholder="nextcloud-handbook"
+             maxlength="64" autocomplete="off" @blur="labelFromId()">
+      {% endcall %}
+      {% call field('Description', 'description', 'For people. Shown in the list.') %}
+      <input type="text" class="input input-bordered input-sm w-full" x-model="job.description" maxlength="200" placeholder="Handbook from the shared drive">
+      {% endcall %}
+      <label class="flex items-start gap-3">
+        <input type="checkbox" class="toggle toggle-sm mt-0.5" x-model="job.enabled">
+        <span>
+          <span class="block text-sm font-semibold">Enabled</span>
+          <span class="block text-xs opacity-60">A disabled job does not run on its schedule and cannot be started. What it embedded stays searchable.</span>
+        </span>
+      </label>
+    </div>
+  </section>
+
+  {# ---- 2. source ---- #}
+  <section class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-4 p-5">
+      <h2 class="font-semibold">2 · Where do the files come from?</h2>
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <template x-for="src in sources" :key="src.type">
+          <button type="button" class="rounded-lg border p-3 text-left transition-colors"
+                  :class="job.source.type === src.type ? 'border-primary bg-primary/10' : 'border-base-300 hover:bg-base-200'"
+                  @click="setType(src.type)">
+            <span class="block text-sm font-semibold" x-text="src.title"></span>
+            <span class="block text-xs opacity-60" x-text="src.blurb"></span>
+          </button>
+        </template>
+      </div>
+      <p class="text-xs text-error" style="display:none" x-show="err('source.type')" x-text="err('source.type')"></p>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        {% call field('Label', 'source.label', 'How results name this source (it is the first part of their address). Short, lowercase; it has to differ between jobs that write to the same collection.', True) %}
+        <input type="text" class="input input-bordered input-sm w-full font-mono" x-model="job.source.label"
+               :class="err('source.label') ? 'input-error' : ''" maxlength="64" autocomplete="off">
+        {% endcall %}
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <template x-for="f in fields()" :key="job.source.type + f.key">
+          <div class="form-control" :class="f.kind === 'folder' || f.kind === 'url' ? 'sm:col-span-2' : ''">
+            <label class="label py-1">
+              <span class="label-text"><span x-text="f.label"></span><span class="text-error" x-show="f.required" style="display:none"> *</span></span>
+            </label>
+
+            <template x-if="f.kind === 'secret'">
+              <div class="flex items-center gap-2">
+                <select class="select select-bordered select-sm grow font-mono" x-model="job.source[f.key]"
+                        x-effect="sync($el, job.source[f.key], credentials.length)"
+                        :class="err('source.' + f.key) ? 'select-error' : ''">
+                  <option value="">None</option>
+                  <template x-for="c in credentialOptions(f.key)" :key="c.name">
+                    <option :value="c.name" x-text="c.label"></option>
+                  </template>
+                </select>
+                <button type="button" class="btn btn-outline btn-sm" @click="newCredential(f.key)">New…</button>
+              </div>
+            </template>
+            <template x-if="f.kind === 'folder'">
+              <div class="flex items-center gap-2">
+                <input type="text" class="input input-bordered input-sm grow font-mono" x-model="job.source[f.key]"
+                       :class="err('source.' + f.key) ? 'input-error' : ''" :placeholder="f.placeholder" autocomplete="off">
+                <button type="button" class="btn btn-outline btn-sm" @click="openPicker()">Browse…</button>
+              </div>
+            </template>
+            <template x-if="f.kind === 'select'">
+              <select class="select select-bordered select-sm" x-model="job.source[f.key]"
+                      x-effect="sync($el, job.source[f.key])">
+                <template x-for="o in f.options" :key="o"><option :value="o" x-text="o"></option></template>
+              </select>
+            </template>
+            <template x-if="f.kind === 'integer'">
+              <input type="number" min="1" class="input input-bordered input-sm" x-model.number="job.source[f.key]"
+                     :class="err('source.' + f.key) ? 'input-error' : ''">
+            </template>
+            <template x-if="f.kind === 'bool'">
+              <label class="flex items-center gap-2 py-1">
+                <input type="checkbox" class="checkbox checkbox-sm" x-model="job.source[f.key]">
+                <span class="text-sm opacity-70" x-text="f.help"></span>
+              </label>
+            </template>
+            <template x-if="f.kind === 'text' || f.kind === 'url'">
+              <input :type="f.kind === 'url' ? 'url' : 'text'" class="input input-bordered input-sm w-full"
+                     x-model="job.source[f.key]" :class="err('source.' + f.key) ? 'input-error' : ''"
+                     :placeholder="f.placeholder" autocomplete="off">
+            </template>
+
+            <p class="mt-1 text-xs opacity-60" x-show="f.help && f.kind !== 'bool'" style="display:none" x-text="f.help"></p>
+            <p class="mt-1 text-xs text-error" style="display:none" x-show="err('source.' + f.key)" x-text="err('source.' + f.key)"></p>
+          </div>
+        </template>
+      </div>
+
+      <p class="text-xs opacity-60" x-show="form().remote" style="display:none">
+        Credentials are chosen, not typed: a typed value would end up in <span class="font-mono">jobs.yaml</span>.
+        <b>New…</b> stores one encrypted. Manage them on the <a class="link" href="/ingest/secrets" target="_blank" rel="noopener">Credentials</a> page.
+      </p>
+
+      <div x-show="form().remote" style="display:none">
+        <button type="button" class="link link-hover text-xs opacity-70" @click="advancedSource = !advancedSource"
+                x-text="advancedSource ? 'Hide advanced options' : 'Advanced options'"></button>
+        <div x-show="advancedSource" style="display:none" class="mt-2">
+          {% call field('Extra rclone options', 'source.rclone_flags', 'One option per line, for example --s3-no-check-bucket. Passed on to the tool that fetches the files.') %}
+          <textarea rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="text.rclone" spellcheck="false"></textarea>
+          {% endcall %}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ---- 3. target ---- #}
+  <section class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-4 p-5">
+      <h2 class="font-semibold">3 · Where do they go?</h2>
+      <div class="grid gap-4 sm:grid-cols-2">
+        {% call field('Vector database', 'target.connection', 'A connection of the RAG system. A collection lives in exactly one of them.', True) %}
+        <select class="select select-bordered select-sm font-mono" x-model="job.target.connection" @change="loadCollections()"
+                x-effect="sync($el, job.target.connection, connections.length)"
+                :class="err('target.connection') ? 'select-error' : ''">
+          <template x-for="c in connections" :key="c"><option :value="c" x-text="c"></option></template>
+          <option x-show="connections.indexOf(job.target.connection) === -1" style="display:none" :value="job.target.connection" x-text="job.target.connection + ' (not found)'"></option>
+        </select>
+        {% endcall %}
+        {% call field('Collection', 'target.collection', '', True) %}
+        <input type="text" list="editor-collections" class="input input-bordered input-sm font-mono" x-model="job.target.collection"
+               :class="err('target.collection') ? 'input-error' : ''" placeholder="knowledge-base" maxlength="128" autocomplete="off">
+        <datalist id="editor-collections">
+          <template x-for="c in collections" :key="c.name"><option :value="c.name"></option></template>
+        </datalist>
+        <p class="mt-1 text-xs opacity-60" x-show="collectionNote()" style="display:none" x-text="collectionNote()"></p>
+        {% endcall %}
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        {% call field('Embedding model', 'embedding.model', '', True) %}
+        <input type="text" class="input input-bordered input-sm font-mono" x-model="job.embedding.model" :readonly="modelLocked()"
+               :class="err('embedding.model') ? 'input-error' : ''" placeholder="nomic-embed-text" autocomplete="off">
+        <p class="mt-1 text-xs opacity-60" x-show="modelLocked()" style="display:none">
+          The collection records this model. Every job that writes to it has to use it.
+        </p>
+        <p class="mt-1 text-xs opacity-60" x-show="!modelLocked()" style="display:none">
+          The model your embeddings service offers. A collection embeds with exactly one model, recorded at its first run.
+        </p>
+        {% endcall %}
+      </div>
+      {% call field('Access tags', 'target.acl_tags', 'One per line. Searches can be limited to the tags a person is allowed to see (for example dept:finance).') %}
+      <textarea rows="2" class="textarea textarea-bordered text-sm" x-model="text.acl" spellcheck="false" placeholder="dept:finance"></textarea>
+      {% endcall %}
+      <details>
+        <summary class="cursor-pointer text-xs opacity-70">Extra fields on every point</summary>
+        <div class="mt-2">
+          {% call field('Extra payload (JSON)', 'target.extra_payload', 'A JSON object added to the payload of every point, for filters of your own. Not text, source, ingest_job, ingest_run or acl_tags.') %}
+          <textarea rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="job.target.extra_payload" spellcheck="false" placeholder='{"origin": "nextcloud"}'></textarea>
+          {% endcall %}
+        </div>
+      </details>
+    </div>
+  </section>
+
+  {# ---- 4. files ---- #}
+  <section class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-4 p-5">
+      <h2 class="font-semibold">4 · Which files?</h2>
+      <div>
+        <p class="mb-1 text-xs opacity-60">Only these kinds of files (add or remove with a click, or write your own patterns below). Leave empty for every supported file.</p>
+        <div class="flex flex-wrap gap-2">
+          <template x-for="p in presets" :key="p.title">
+            <button type="button" class="btn btn-xs" :class="presetOn(p) ? 'btn-primary' : 'btn-outline'" @click="togglePreset(p)" x-text="p.title"></button>
+          </template>
+        </div>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        {% call field('Include', 'filters.include', 'One pattern per line. * matches within a folder, ** across folders, ? one character.') %}
+        <textarea rows="4" class="textarea textarea-bordered font-mono text-xs" x-model="text.include" spellcheck="false" placeholder="**/*.pdf"></textarea>
+        {% endcall %}
+        {% call field('Skip', 'filters.exclude', 'Patterns that are never read, even when they match an include.') %}
+        <textarea rows="4" class="textarea textarea-bordered font-mono text-xs" x-model="text.exclude" spellcheck="false" placeholder="**/drafts/**"></textarea>
+        {% endcall %}
+      </div>
+      {% call field('Largest file', 'filters.max_file_bytes', 'In megabytes. Larger files are left out. Empty uses the ingester\'s limit.') %}
+      <label class="input input-bordered input-sm flex w-40 items-center gap-2">
+        <input type="number" min="1" step="1" class="grow" x-model="maxMb" placeholder="200"><span class="opacity-50">MB</span>
+      </label>
+      {% endcall %}
+      {% if job_id is not none %}
+      <div>
+        <button type="button" class="btn btn-outline btn-xs"
+                hx-get="/partials/ingest/preview/{{ job_id }}" hx-target="#editor-preview" hx-swap="innerHTML">Show the files the saved filters match</button>
+        <div id="editor-preview" class="mt-2"></div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ---- 5. mode ---- #}
+  <section class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-3 p-5">
+      <h2 class="font-semibold">5 · What does each run do?</h2>
+      <div class="flex flex-col gap-2">
+        <template x-for="m in modes" :key="m.value">
+          <label class="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+                 :class="job.mode === m.value ? 'border-primary bg-primary/10' : 'border-base-300 hover:bg-base-200'">
+            <input type="radio" class="radio radio-sm mt-0.5" :value="m.value" x-model="job.mode">
+            <span>
+              <span class="block text-sm font-semibold" x-text="m.title"></span>
+              <span class="block text-xs opacity-70" x-text="m.text"></span>
+            </span>
+          </label>
+        </template>
+      </div>
+      <p class="text-xs text-error" style="display:none" x-show="err('mode')" x-text="err('mode')"></p>
+      <div class="grid gap-4 sm:grid-cols-2" x-show="job.mode === 'full' || job.mode === 'append'" style="display:none">
+        <div class="form-control" x-show="job.mode === 'full'" style="display:none">
+          <label class="label py-1"><span class="label-text">What a rebuild replaces</span></label>
+          <select class="select select-bordered select-sm" x-model="job.full_scope">
+            <option value="job">Only this job's content</option>
+            <option value="collection">The whole collection (other jobs lose theirs)</option>
+          </select>
+        </div>
+        <div class="form-control" x-show="job.mode === 'append'" style="display:none">
+          <label class="label py-1"><span class="label-text">How "new" is decided</span></label>
+          <select class="select select-bordered select-sm" x-model="job.append_probe">
+            <option value="auto">Automatically</option>
+            <option value="state">By the ingester's own record</option>
+            <option value="qdrant">By asking the collection</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ---- 6. schedule ---- #}
+  <section class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-4 p-5">
+      <h2 class="font-semibold">6 · When?</h2>
+      <div class="flex flex-wrap gap-2" role="tablist">
+        <template x-for="m in scheduleModes" :key="m.value">
+          <button type="button" role="tab" class="btn btn-sm" :class="job.schedule.mode === m.value ? 'btn-primary' : 'btn-outline'"
+                  @click="job.schedule.mode = m.value" x-text="m.label"></button>
+        </template>
+      </div>
+
+      <div x-show="job.schedule.mode === 'interval'" style="display:none" class="flex flex-wrap items-center gap-2">
+        <span class="text-sm">Every</span>
+        <input type="number" min="1" class="input input-bordered input-sm w-24" x-model.number="job.schedule.every_n">
+        <select class="select select-bordered select-sm" x-model="job.schedule.every_unit">
+          <option value="s">seconds</option><option value="m">minutes</option><option value="h">hours</option><option value="d">days</option>
+        </select>
+      </div>
+      <div x-show="job.schedule.mode === 'hourly'" style="display:none" class="flex flex-wrap items-center gap-2">
+        <span class="text-sm">Every hour, at minute</span>
+        <input type="number" min="0" max="59" class="input input-bordered input-sm w-24" x-model.number="job.schedule.minute">
+      </div>
+      <div x-show="job.schedule.mode === 'daily'" style="display:none" class="flex flex-wrap items-center gap-2">
+        <span class="text-sm">Every day at</span>
+        <input type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
+      </div>
+      <div x-show="job.schedule.mode === 'weekly'" style="display:none" class="flex flex-col gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-sm">On</span>
+          <template x-for="d in weekdays" :key="d.key">
+            <button type="button" class="btn btn-xs" :class="job.schedule.weekdays.indexOf(d.key) !== -1 ? 'btn-primary' : 'btn-outline'"
+                    @click="toggleDay(d.key)" x-text="d.label.slice(0, 3)"></button>
+          </template>
+          <span class="text-sm">at</span>
+          <input type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
+        </div>
+      </div>
+      <div x-show="job.schedule.mode === 'monthly'" style="display:none" class="flex flex-wrap items-center gap-2">
+        <span class="text-sm">On day</span>
+        <input type="number" min="1" max="31" class="input input-bordered input-sm w-20" x-model.number="job.schedule.day_of_month">
+        <span class="text-sm">of every month at</span>
+        <input type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
+      </div>
+      <div x-show="job.schedule.mode === 'cron'" style="display:none" class="flex flex-col gap-1">
+        <input type="text" class="input input-bordered input-sm w-full max-w-md font-mono" x-model="job.schedule.cron" placeholder="0 2 * * mon-fri" spellcheck="false">
+        <p class="text-xs opacity-60">Five fields: minute, hour, day of the month, month, weekday. Weekdays by name (mon-fri) mean the same everywhere; numbers count from Monday here.</p>
+      </div>
+
+      <div class="rounded-lg bg-base-200 p-3 text-sm" style="display:none" x-show="preview">
+        <template x-if="preview && preview.ok">
+          <div>
+            <p class="font-semibold" x-text="preview.description"></p>
+            <template x-if="preview.runs.length">
+              <p class="mt-1 text-xs opacity-70">Next: <span x-text="preview.runs.join('  ·  ')"></span> (<span x-text="preview.timezone"></span>)</p>
+            </template>
+            <p class="mt-1 text-xs opacity-70" x-show="preview.counts_from_load" style="display:none">An interval counts from the moment the ingester loads the job, so no clock time is promised.</p>
+            <template x-for="n in preview.notes" :key="n"><p class="mt-1 text-xs text-warning" x-text="n"></p></template>
+          </div>
+        </template>
+        <template x-if="preview && !preview.ok">
+          <p class="text-error" x-text="preview.error"></p>
+        </template>
+      </div>
+
+      <details>
+        <summary class="cursor-pointer text-xs opacity-70">Time zone and timing</summary>
+        <div class="mt-3 grid gap-4 sm:grid-cols-2">
+          {% call field('Time zone', 'schedule.timezone', 'Empty uses the catalog default, else the ingester\'s own zone.') %}
+          <input type="text" list="editor-timezones" class="input input-bordered input-sm" x-model="job.schedule.timezone" :placeholder="ingestTz" autocomplete="off">
+          <datalist id="editor-timezones"><template x-for="z in timezones" :key="z"><option :value="z"></option></template></datalist>
+          {% endcall %}
+          {% call field('If a run was missed', 'schedule.run_on_startup', 'What the ingester does at its start for a run it slept through.') %}
+          <select class="select select-bordered select-sm" x-model="job.schedule.run_on_startup"
+                  x-effect="sync($el, job.schedule.run_on_startup)">
+            <template x-for="(text, value) in startups" :key="value"><option :value="value" x-text="text"></option></template>
+          </select>
+          {% endcall %}
+          {% call field('Random delay', 'schedule.jitter_seconds', 'Up to this many seconds, so jobs on the same minute do not start together.') %}
+          <input type="number" min="0" class="input input-bordered input-sm" x-model.number="job.schedule.jitter_seconds">
+          {% endcall %}
+          {% call field('Tolerated lateness', 'schedule.misfire_grace_seconds', 'A run that could not start on time still starts if it is no later than this.') %}
+          <input type="number" min="0" class="input input-bordered input-sm" x-model.number="job.schedule.misfire_grace_seconds">
+          {% endcall %}
+        </div>
+      </details>
+    </div>
+  </section>
+
+  {# ---- 7. processing ---- #}
+  <details class="card bg-base-100 border border-base-300">
+    <summary class="cursor-pointer p-5 font-semibold">7 · Processing <span class="ml-2 text-xs font-normal opacity-60">chunking, safety limits and a few switches</span></summary>
+    <div class="flex flex-col gap-4 px-5 pb-5">
+      <div class="grid gap-4 sm:grid-cols-3">
+        {% call field('How text is split', 'chunking.strategy') %}
+        <select class="select select-bordered select-sm" x-model="job.chunking.strategy"
+                x-effect="sync($el, job.chunking.strategy)">
+          <template x-for="(text, value) in strategies" :key="value"><option :value="value" x-text="text"></option></template>
+        </select>
+        {% endcall %}
+        {% call field('Chunk size (words)', 'chunking.words') %}
+        <input type="number" min="1" class="input input-bordered input-sm" x-model.number="job.chunking.words" :class="err('chunking.words') ? 'input-error' : ''">
+        {% endcall %}
+        {% call field('Overlap (words)', 'chunking.overlap', 'Smaller than the chunk size.') %}
+        <input type="number" min="0" class="input input-bordered input-sm" x-model.number="job.chunking.overlap" :class="err('chunking') || err('chunking.overlap') ? 'input-error' : ''">
+        {% endcall %}
+      </div>
+      <p class="text-xs text-error" style="display:none" x-show="err('chunking')" x-text="err('chunking')"></p>
+      <div class="grid gap-4 sm:grid-cols-3">
+        {% call field('Files per embedding request', 'embedding.batch_size', 'Empty uses the ingester\'s setting.') %}
+        <input type="number" min="1" class="input input-bordered input-sm" x-model.number="job.embedding.batch_size">
+        {% endcall %}
+        {% call field('Most that may be removed in one run', 'safety.max_delete_ratio', 'A fraction from 0 to 1. A run that would remove more stops instead.') %}
+        <input type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm" x-model.number="job.safety.max_delete_ratio">
+        {% endcall %}
+      </div>
+      <label class="flex items-start gap-3"><input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="job.safety.empty_source_guard"><span class="text-sm">Stop a run that finds the source empty, instead of removing everything</span></label>
+      <label class="flex items-start gap-3"><input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="job.mcp_allow_full"><span class="text-sm">An assistant may start a full rebuild of this job</span></label>
+      <label class="flex items-start gap-3"><input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="job.expand_embedded"><span class="text-sm">Index attachments of e-mails as documents of their own</span></label>
+      {% call field('Address pattern of results', 'source_template', 'How the source address of a point is built. It must contain {label} and {rel_path}.') %}
+      <input type="text" class="input input-bordered input-sm font-mono" x-model="job.source_template" spellcheck="false">
+      {% endcall %}
+    </div>
+  </details>
+
+  {# ---- the foot ---- #}
+  <div class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-5 py-3 shadow-lg">
+    <button type="button" class="btn btn-primary btn-sm" :disabled="busy" @click="save(false)">
+      <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+      Save
+    </button>
+    <button type="button" class="btn btn-outline btn-sm" :disabled="busy" @click="save(true)">Save and dry run</button>
+    <a href="{{ '/ingest/jobs' if job_id is none else '/ingest/jobs/' ~ job_id }}" class="btn btn-ghost btn-sm">Cancel</a>
+    <span class="ml-auto text-xs opacity-60" x-show="validating" style="display:none">Checking…</span>
+    <span class="ml-auto text-xs opacity-60" x-show="!validating && dirty && !summary.length" style="display:none">Unsaved changes</span>
+  </div>
+
+  {# ---- leaving with unsaved changes (the browser's own prompt cannot be styled or worded) ---- #}
+  <dialog id="leave-editor" class="modal" x-ref="leave" aria-labelledby="leave-editor-title">
+    <div class="modal-box max-w-md">
+      <h3 id="leave-editor-title" class="text-lg font-bold">Discard your changes?</h3>
+      <p class="mt-2 text-sm">
+        The changes to this job have not been saved. If you leave now, they are lost.
+      </p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$refs.leave.close()">Keep editing</button>
+        <button type="button" class="btn btn-error" @click="leaveNow()">Discard changes</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  {# ---- the folder picker ---- #}
+  <dialog id="folder-picker" class="modal" x-ref="picker">
+    <div class="modal-box max-w-xl">
+      <h3 class="mb-1 text-lg font-bold">Choose a folder</h3>
+      <p class="mb-2 text-sm opacity-70">The documents folder of the RAG module. The job reads everything below the folder you choose.</p>
+      <p class="mb-2 break-all font-mono text-xs">/data/local<span x-text="pick.path ? '/' + pick.path : ''"></span></p>
+      <div class="max-h-72 overflow-y-auto rounded-lg border border-base-300">
+        <ul class="menu menu-sm">
+          <li x-show="pick.path" style="display:none"><a @click="browse(parentOf(pick.path))">.. (up)</a></li>
+          <template x-for="e in pick.entries" :key="e.path">
+            <li>
+              <a x-show="e.dir" style="display:none" @click="browse(e.path)">📁 <span x-text="e.name"></span></a>
+              <span x-show="!e.dir" style="display:none" class="opacity-40" x-text="e.name"></span>
+            </li>
+          </template>
+        </ul>
+        <p class="p-3 text-sm opacity-60" x-show="!pick.loading && !pick.entries.length" style="display:none">Nothing here.</p>
+        <p class="p-3 text-sm opacity-60" x-show="pick.loading" style="display:none">Loading…</p>
+      </div>
+      <p class="mt-2 text-sm text-error" style="display:none" x-show="pick.error" x-text="pick.error"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$refs.picker.close()">Cancel</button>
+        <button type="button" class="btn btn-primary" @click="choose()">Use this folder</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+</div>
+
+{% include "partials/_ingest_credential_dialog.html" %}
+{% include "partials/_rag_js.html" %}
+{% include "partials/_ingest_js.html" %}
+<script>
+const _SCHEDULE_MODES = [
+  { value: 'manual', label: 'Only when started' },
+  { value: 'interval', label: 'Every…' },
+  { value: 'hourly', label: 'Hourly' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'cron', label: 'Custom' },
+];
+
+function jobEditor(boot) {
+  const lines = function (list) { return (list || []).join('\n'); };
+  return {
+    job: boot.state, etag: boot.etag, isNew: boot.isNew, originalId: boot.originalId,
+    sources: boot.sources, credentials: boot.credentials, connections: boot.connections,
+    modes: boot.modes, strategies: boot.strategies, startups: boot.startups, presets: boot.presets,
+    timezones: boot.timezones, weekdays: boot.weekdays, defaults: boot.defaults, inherited: boot.inherited,
+    ingestTz: boot.timezone, scheduleModes: _SCHEDULE_MODES,
+    text: { rclone: lines(boot.state.source.rclone_flags), acl: lines(boot.state.target.acl_tags), include: lines(boot.state.filters.include), exclude: lines(boot.state.filters.exclude) },
+    maxMb: boot.state.filters.max_file_bytes ? boot.state.filters.max_file_bytes / 1048576 : '',
+    errors: {}, summary: [], busy: false, saveError: '', dirty: false, validating: false, saving: false,
+    advancedSource: false, collections: [], preview: null, pendingKey: '',
+    pick: { path: '', entries: [], loading: false, error: '' },
+    timers: { validate: null, preview: null }, leaving: '',
+
+    init() {
+      this.loadCollections();
+      this.refreshPreview();
+      this.syncModel();
+      // A job that is already saved may have a problem the ingester refused it for; say so at once.
+      if (!this.isNew) this.validate();
+      this.$watch('job', () => { this.dirty = true; this.later('validate', 700, () => this.validate()); this.later('preview', 400, () => this.refreshPreview()); });
+      this.$watch('text', () => { this.dirty = true; this.later('validate', 700, () => this.validate()); });
+      this.$watch('maxMb', () => { this.dirty = true; this.later('validate', 700, () => this.validate()); });
+      this.$watch('job.target.collection', () => this.syncModel());
+      // A link that leaves the page asks in the app's own dialog. Only a reload, closing the tab, the
+      // back button or a typed address still reach the browser's prompt, which a page cannot replace.
+      document.addEventListener('click', (event) => this.guardLink(event), true);
+      window.addEventListener('beforeunload', (event) => {
+        if (this.dirty && !this.saving) { event.preventDefault(); event.returnValue = ''; }
+      });
+    },
+    guardLink(event) {
+      if (!this.dirty || this.saving || event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      if (!link || (link.target && link.target !== '_self') || link.hasAttribute('download')) return;
+      const url = new URL(link.href, window.location.href);
+      if (url.origin === window.location.origin && url.pathname === window.location.pathname
+          && url.search === window.location.search) return;
+      event.preventDefault();
+      this.leaving = url.href;
+      this.$refs.leave.showModal();
+    },
+    leaveNow() {
+      const target = this.leaving;
+      this.dirty = false;
+      if (target) window.location.href = target;
+    },
+    later(name, ms, fn) { clearTimeout(this.timers[name]); this.timers[name] = setTimeout(fn, ms); },
+
+    // -- source
+    form() { return this.sources.find((s) => s.type === this.job.source.type) || this.sources[0]; },
+    fields() { return this.form().fields; },
+    setType(type) {
+      const form = this.sources.find((s) => s.type === type);
+      const next = { type: type, label: this.job.source.label, rclone_flags: this.job.source.rclone_flags };
+      form.fields.forEach((f) => { next[f.key] = f.default === undefined || f.default === null ? '' : f.default; });
+      this.job.source = next;
+    },
+    // x-model fills a select before its x-for options exist, so the first option would show
+    // whatever the model holds; this puts the shown option right once they are there.
+    sync(el, value) { this.$nextTick(() => { el.value = value === undefined || value === null ? '' : value; }); },
+    labelFromId() { if (this.isNew && !this.job.source.label && this.job.id) this.job.source.label = this.job.id; },
+    credentialOptions(key) {
+      const out = this.credentials.map((c) => ({ name: c.name, label: c.name + (c.origin === 'store' ? '  (stored)' : '  (environment)') }));
+      const current = this.job.source[key];
+      if (current && !out.some((c) => c.name === current)) out.push({ name: current, label: current + '  (not found)' });
+      return out;
+    },
+    newCredential(key) {
+      this.pendingKey = key;
+      window.dispatchEvent(new CustomEvent('credential-new', { detail: {} }));
+    },
+    credentialSaved(detail) {
+      if (!this.credentials.some((c) => c.name === detail.name)) this.credentials.push({ name: detail.name, origin: 'store' });
+      if (this.pendingKey) this.job.source[this.pendingKey] = detail.name;
+      this.pendingKey = '';
+    },
+
+    // -- folder picker
+    openPicker() {
+      const current = String(this.job.source.path || '');
+      const start = current.indexOf('/data/local/') === 0 ? current.slice('/data/local/'.length) : '';
+      this.pick = { path: '', entries: [], loading: false, error: '' };
+      this.$refs.picker.showModal();
+      this.browse(start.replace(/\/+$/, ''));
+    },
+    parentOf(path) { const i = path.lastIndexOf('/'); return i === -1 ? '' : path.slice(0, i); },
+    async browse(path) {
+      this.pick.loading = true; this.pick.error = '';
+      const res = await _ragRequest('GET', _ING + '/tree?source=folder&path=' + encodeURIComponent(path));
+      this.pick.loading = false;
+      if (res.handled) return;
+      if (!res.ok) { this.pick.error = res.error; return; }
+      this.pick.path = path;
+      this.pick.entries = res.data.entries;
+    },
+    choose() {
+      this.job.source.path = '/data/local' + (this.pick.path ? '/' + this.pick.path : '');
+      this.$refs.picker.close();
+    },
+
+    // -- target
+    async loadCollections() {
+      this.collections = [];
+      const res = await _ragRequest('GET', _ING + '/collections?connection=' + encodeURIComponent(this.job.target.connection));
+      if (res.handled || !res.ok) return;
+      this.collections = res.data.collections || [];
+      this.syncModel();
+    },
+    currentCollection() { return this.collections.find((c) => c.name === this.job.target.collection) || null; },
+    collectionNote() {
+      const c = this.currentCollection();
+      if (c) return 'An existing collection' + (c.points !== null ? ' with ' + c.points.toLocaleString() + ' points' : '') + '.';
+      return this.job.target.collection ? 'Not there yet: the first run creates it.' : 'Choose an existing collection or name a new one.';
+    },
+    modelLocked() { const c = this.currentCollection(); return !!(c && c.embedding_model); },
+    syncModel() { const c = this.currentCollection(); if (c && c.embedding_model && this.job.embedding.model !== c.embedding_model) this.job.embedding.model = c.embedding_model; },
+
+    // -- files
+    lineSet(text) { return text.split('\n').map((l) => l.trim()).filter((l) => l); },
+    presetOn(p) { const have = this.lineSet(this.text.include); return p.include.every((x) => have.indexOf(x) !== -1); },
+    togglePreset(p) {
+      const have = this.lineSet(this.text.include);
+      this.text.include = (this.presetOn(p) ? have.filter((x) => p.include.indexOf(x) === -1) : have.concat(p.include.filter((x) => have.indexOf(x) === -1))).join('\n');
+    },
+
+    // -- schedule
+    toggleDay(day) {
+      const days = this.job.schedule.weekdays.slice();
+      const at = days.indexOf(day);
+      if (at === -1) days.push(day); else days.splice(at, 1);
+      this.job.schedule.weekdays = days;
+    },
+    async refreshPreview() {
+      const res = await _ragRequest('POST', _ING + '/schedule/preview', { schedule: this.job.schedule });
+      if (res.handled || !res.ok) return;
+      this.preview = res.data;
+    },
+    inheritedNote(path) {
+      const value = this.defaults[path];
+      return value === undefined || value === null ? '' : 'catalog default: ' + (Array.isArray(value) ? value.join(', ') : value);
+    },
+
+    // -- validation and saving
+    payload() {
+      const job = JSON.parse(JSON.stringify(this.job));
+      job.source.rclone_flags = this.text.rclone;
+      job.target.acl_tags = this.text.acl;
+      job.filters.include = this.text.include;
+      job.filters.exclude = this.text.exclude;
+      job.filters.max_file_bytes = this.maxMb === '' || this.maxMb === null ? null : Math.round(Number(this.maxMb) * 1048576);
+      return job;
+    },
+    err(field) { return this.errors[field] || ''; },
+    setIssues(issues) {
+      const map = {};
+      issues.forEach((i) => { if (!map[i.field]) map[i.field] = i.message; });
+      this.errors = map;
+      this.summary = issues;
+    },
+    async validate() {
+      this.validating = true;
+      const res = await _ragRequest('POST', _ING + '/jobs/validate', { job: this.payload(), create: this.isNew, original_id: this.originalId || null });
+      this.validating = false;
+      if (res.handled || !res.ok) return;
+      this.setIssues(res.data.issues);
+    },
+    async save(thenRun) {
+      if (this.busy) return;
+      this.saveError = ''; this.busy = true;
+      const job = this.payload();
+      const res = this.isNew
+        ? await _ragRequest('POST', _ING + '/jobs', { job: job })
+        : await _ragRequest('PUT', _ingJob(this.originalId), { job: job, etag: this.etag || null, original_id: this.originalId });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.saveError = res.error; await this.validate(); return; }
+      this.saving = true; this.dirty = false;
+      const out = ingestOutcome(res.data, 'Job <b>' + _ragEscape(job.id) + '</b> saved');
+      showToast(out.level, out.text);
+      if (thenRun) {
+        const run = await _ragRequest('POST', _ingJob(job.id) + '/run', { dry_run: true });
+        if (run.ok) { window.location.href = '/ingest/runs/' + encodeURIComponent(run.data.run_id); return; }
+        showToast('error', 'The dry run could not be started: ' + _ragEscape(run.error || ''));
+      }
+      window.location.href = '/ingest/jobs/' + encodeURIComponent(job.id);
+    },
+  };
+}
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,210 @@
+{# The run, delete and delete-runs dialogs of a job. Included by the pages that list or show jobs
+   or runs. They live in the page, outside anything that is swapped, so a refresh of a list
+   cannot tear one down while somebody is reading it. A row opens one through a window event
+   carrying what the dialog needs to know (`ingest-run`, `ingest-delete`, `ingest-delete-runs`). #}
+
+<dialog id="ingest-run" class="modal" x-data="runDialog()" @ingest-run.window="open($event.detail)">
+  <div class="modal-box max-w-lg">
+    <h3 class="mb-1 text-lg font-bold">Run <span class="font-mono" x-text="job.id"></span></h3>
+    <p class="mb-3 text-sm opacity-70">
+      The ingester fetches the files, embeds what is new or changed and writes it to
+      <span class="font-mono" x-text="job.collection"></span>.
+    </p>
+    <form @submit.prevent="submit()" class="flex flex-col gap-3">
+
+      <label class="flex items-start gap-3 rounded-lg border border-base-300 p-3">
+        <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="dry">
+        <span>
+          <span class="block text-sm font-semibold">Dry run first</span>
+          <span class="block text-xs opacity-70">
+            Fetches and reads the files and reports what would be embedded, but embeds and writes
+            nothing. <span x-show="job.first_run" style="display:none">Recommended for a job that never ran.</span>
+          </span>
+        </span>
+      </label>
+
+      <div class="form-control">
+        <label class="label py-1" for="ingest-run-mode"><span class="label-text">What the run does</span></label>
+        <select id="ingest-run-mode" class="select select-bordered select-sm" x-model="mode">
+          <option value="" x-text="'As the job is set up: ' + job.mode_label"></option>
+          <option value="append/">Add new files only</option>
+          <option value="upsert/">Keep in sync (add, update and remove)</option>
+          <option value="full/job">Rebuild the job's content</option>
+          <option value="full/collection">Replace the whole collection</option>
+        </select>
+      </div>
+
+      <div x-show="rebuild() && !dry" style="display:none" class="alert alert-warning text-sm" role="alert">
+        <div class="w-full">
+          <p x-show="!wholeCollection()" style="display:none">
+            Everything this job embedded is embedded again, and whatever is not refreshed is
+            removed afterwards. Searches may return less until the run is done.
+          </p>
+          <p x-show="wholeCollection()" style="display:none">
+            This deletes <b>everything in the collection</b>, also what other jobs put there, and
+            fills it from this job. Roles and the model record of the collection are kept.
+          </p>
+          <p x-show="wholeCollection() && job.siblings.length" style="display:none" class="mt-1">
+            Other jobs write to it and lose their content too:
+            <span class="font-mono" x-text="job.siblings.join(', ')"></span>.
+          </p>
+          <label class="mt-2 flex items-center gap-2">
+            <input type="checkbox" class="checkbox checkbox-sm" x-model="confirmRebuild">
+            <span>I understand</span>
+          </label>
+          <div x-show="wholeCollection()" style="display:none" class="mt-2">
+            <label class="label py-1" for="ingest-run-typed">
+              <span class="label-text">Type the name of the collection to confirm</span>
+            </label>
+            <input id="ingest-run-typed" type="text" class="input input-bordered input-sm w-full font-mono"
+                   x-model="typed" autocomplete="off" :placeholder="job.collection">
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <button type="button" class="link link-hover text-xs opacity-70" @click="advanced = !advanced"
+                x-text="advanced ? 'Hide options' : 'More options'"></button>
+        <div x-show="advanced" style="display:none" class="mt-2 flex flex-col gap-2">
+          <label class="flex items-start gap-2 text-sm" x-show="job.remote" style="display:none">
+            <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="skipSync">
+            <span>Use the files fetched last time (do not fetch again)</span>
+          </label>
+          <label class="flex items-start gap-2 text-sm" x-show="effectiveMode() === 'upsert'" style="display:none">
+            <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="keep">
+            <span>Keep files that disappeared from the source (do not remove them)</span>
+          </label>
+        </div>
+      </div>
+
+      <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
+      <div class="modal-action mt-1">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-success" :disabled="!canSubmit()">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-text="dry ? 'Start dry run' : 'Start run'"></span>
+        </button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<dialog id="ingest-delete" class="modal" x-data="deleteJobDialog()" @ingest-delete.window="open($event.detail)">
+  <div class="modal-box">
+    <h3 class="mb-2 text-lg font-bold">Delete <span class="font-mono" x-text="job.id"></span>?</h3>
+    <p class="mb-3 text-sm">
+      The job is removed from <span class="font-mono">jobs.yaml</span> and stops running. What it
+      already embedded stays in <span class="font-mono" x-text="job.collection"></span> unless you
+      remove it too.
+    </p>
+    <div x-show="job.can_delete_runs" style="display:none" class="alert alert-warning mb-3 py-2 text-sm" role="alert">
+      <span>
+        <b>Its runs are deleted too.</b>
+        <span x-text="runsText()"></span> They and their logs cannot be restored.
+      </span>
+    </div>
+    <p x-show="!job.can_delete_runs" style="display:none" class="mb-3 text-sm opacity-70">
+      This ingester cannot delete runs, so the runs of the job stay in its history.
+    </p>
+    <p x-show="job.managed" style="display:none" class="mb-3 text-sm opacity-70">
+      This job belongs to the Embedding page and is created again with the next embedding. An
+      upload that is still waiting keeps its files until the time limit.
+    </p>
+    <form @submit.prevent="submit()" class="flex flex-col gap-3">
+      <label class="flex items-start gap-3 rounded-lg border border-base-300 p-3">
+        <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="purge">
+        <span>
+          <span class="block text-sm font-semibold">Remove what this job embedded, too</span>
+          <span class="block text-xs opacity-70">
+            Deletes its points from the collection. Without this the content shows up under
+            Leftovers, where it can be removed later.
+          </span>
+        </span>
+      </label>
+      <div x-show="purge" style="display:none" class="form-control">
+        <label class="label py-1" for="ingest-delete-typed">
+          <span class="label-text">Type the id of the job to confirm. This cannot be undone.</span>
+        </label>
+        <input id="ingest-delete-typed" type="text" class="input input-bordered input-sm font-mono"
+               x-model="typed" autocomplete="off" :placeholder="job.id">
+      </div>
+      <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
+      <div class="modal-action mt-1">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-error" :disabled="!canSubmit()">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Delete
+        </button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<dialog id="ingest-delete-runs" class="modal" x-data="deleteRunsDialog()" @ingest-delete-runs.window="open($event.detail)">
+  <div class="modal-box max-w-lg">
+    <h3 class="mb-1 text-lg font-bold">
+      Delete runs<span x-show="!choose" style="display:none"> of <span class="font-mono" x-text="jobId"></span></span>
+    </h3>
+    <p class="mb-3 text-sm opacity-70">
+      Deletes the history of a job, with the log of every run, for the days you pick. This cannot be
+      undone. What the job embedded is not touched, and a run that is still working is kept.
+    </p>
+    <form @submit.prevent="submit()" class="flex flex-col gap-3">
+      <div x-show="choose" style="display:none" class="form-control">
+        <label class="label py-1" for="ingest-delete-runs-job"><span class="label-text">Job</span></label>
+        <input id="ingest-delete-runs-job" type="text" class="input input-bordered input-sm font-mono"
+               list="ingest-delete-runs-jobs" x-model="jobId" @input.debounce.400ms="refresh()"
+               autocomplete="off" placeholder="job id">
+        <datalist id="ingest-delete-runs-jobs">
+          <template x-for="id in jobs" :key="id"><option :value="id"></option></template>
+        </datalist>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-control">
+          <label class="label py-1" for="ingest-delete-runs-since"><span class="label-text">From</span></label>
+          <input id="ingest-delete-runs-since" type="date" class="input input-bordered input-sm"
+                 x-model="since" @change="refresh()">
+        </div>
+        <div class="form-control">
+          <label class="label py-1" for="ingest-delete-runs-until"><span class="label-text">To</span></label>
+          <input id="ingest-delete-runs-until" type="date" class="input input-bordered input-sm"
+                 x-model="until" @change="refresh()">
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="text-xs opacity-60">Keep the last</span>
+        <button type="button" class="btn btn-ghost btn-xs" @click="keep(30)">30 days</button>
+        <button type="button" class="btn btn-ghost btn-xs" @click="keep(90)">90 days</button>
+        <button type="button" class="btn btn-ghost btn-xs" @click="keep(180)">180 days</button>
+        <button type="button" class="btn btn-ghost btn-xs" @click="keep(365)">365 days</button>
+      </div>
+      <p class="text-xs opacity-60">
+        Both days are included<span x-show="tz" style="display:none">, counted in
+        <span class="font-mono" x-text="tz"></span></span>. Leave both empty to delete every run of the job.
+      </p>
+      <p x-show="jobId && !error" style="display:none" class="text-sm font-semibold" x-text="previewText()"></p>
+      <p x-show="hasRuns()" style="display:none" class="text-xs opacity-70">
+        The time of the job's last run changes. A job that is set to run when it was missed starts
+        again at the next start of the ingester once no successful run is left.
+      </p>
+      <div x-show="hasRuns() && unbounded()" style="display:none" class="form-control">
+        <label class="label py-1" for="ingest-delete-runs-typed">
+          <span class="label-text">Every run of the job goes. Type its id to confirm.</span>
+        </label>
+        <input id="ingest-delete-runs-typed" type="text" class="input input-bordered input-sm font-mono"
+               x-model="typed" autocomplete="off" :placeholder="jobId">
+      </div>
+      <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
+      <div class="modal-action mt-1">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-error" :disabled="!canSubmit()">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-text="submitText()"></span>
+        </button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>

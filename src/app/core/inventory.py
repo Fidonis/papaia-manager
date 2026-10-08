@@ -28,7 +28,7 @@ view it had before rather than breaking it.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -85,14 +85,18 @@ class ExpectedService:
     profiles: frozenset[str] = frozenset()
 
 
+def profiles_in(env: Mapping[str, str]) -> set[str]:
+    """Compose profiles named by `COMPOSE_PROFILES` in an already parsed `.env`."""
+    return {p.strip() for p in env.get("COMPOSE_PROFILES", "").split(",") if p.strip()}
+
+
 def active_profiles(config_dir: str) -> set[str]:
     """Compose profiles enabled for this deployment, from the core `.env`.
 
     An absent or empty `COMPOSE_PROFILES` yields an empty set, and therefore an
     empty core inventory -- correct, since Compose would start nothing either.
     """
-    env = load_env_file(Path(config_dir) / ".env")
-    return {p.strip() for p in env.get("COMPOSE_PROFILES", "").split(",") if p.strip()}
+    return profiles_in(load_env_file(Path(config_dir) / ".env"))
 
 
 def core_inventory(workspace_dir: str, profiles: set[str]) -> list[ExpectedService]:
