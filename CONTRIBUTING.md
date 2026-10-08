@@ -36,7 +36,7 @@ Each form prefills the right labels and structure, so please use them rather tha
    - `chore/<short-name>` — maintenance
 3. Make your change in small, reviewable commits.
 4. Open a pull request against `main`. The PR template is filled in automatically; please complete each section, especially **Linked issues**, **Type of change**, and **Test plan**.
-5. CI runs lint and PR-title checks. Address any failures. Once green, request a review.
+5. CI runs the linters (Ruff, Yamllint), the type check (Mypy), the tests (Pytest), the license check and the PR-title check. Address any failures. Once green, request a review.
 6. PRs are merged via **Squash & Merge**. The PR title becomes the squash commit message — make sure it follows Conventional Commits (see below).
 
 ## Commit and PR title convention
@@ -85,6 +85,12 @@ uv run mypy .
 uv run pytest -q
 ```
 
+Two groups of tests depend on where they run. `tests/test_ingester_contract.py` compares the manager's
+mirror of the ingester's job schema with the ingester's own modules and is skipped unless
+`QDRANT_INGEST_SRC` points at the `src` directory of a `qdrant-ingest` checkout; run it with the ingester's
+latest release whenever either schema changes. The tests that need a symbolic link are skipped where the
+platform cannot create one (run them on Linux).
+
 Run `ruff` from the repository root, not from `src/`: `tests/` sits next to `src/`, and
 `ruff check .` inside `src/` does not see it, so a line in a test that CI rejects would pass
 locally. `--project src` only makes `uv` use the environment that `uv sync` created there.
@@ -107,31 +113,21 @@ cp .env.example .env
 uv run uvicorn app.main:create_app --factory --reload --port 8120
 ```
 
-The application expects a running Keycloak instance with a configured `papaia-manager` client. See the docker-compose dev setup under `docker/` for a self-contained environment.
+The application expects a running Keycloak instance with a configured `papaia-manager` client. The compose file under `docker/` builds and runs the manager only, with the Docker socket and the workspace, config and backup directories mounted; it brings no Keycloak and does not join the stack's Docker network, so addresses such as `QDRANT_URL` and `QDRANT_INGEST_URL` have to be set to something it can reach.
 
 ## Brand layer
 
-`Fidonis/qdrant-ingest` ships its own operator web interface that shares this
-project's visual identity — same daisyUI themes, same self-hosted fonts, same
-brand mark. There is no shared package; the relevant files are copied into
-that repository verbatim (or adapted, for the application shell), and each
-copy carries a `fidonis-brand: N` comment stamp:
+The visual identity of the interface (the daisyUI themes, the self-hosted fonts and the brand mark) is
+defined in this repository, in `docker/tailwind.config.js`, `docker/tailwind.brand.css`,
+`docker/tailwind.app.css`, the `asset_url()` fingerprinting in `src/app/templating.py` and the theme init,
+brand mark and theme toggle in `src/app/templates/base.html`. Each of these carries a `fidonis-brand: N`
+comment stamp.
 
-| File here | Vendored into `qdrant-ingest` as |
-|---|---|
-| `docker/tailwind.config.js` | `docker/tailwind.config.js` |
-| `docker/tailwind.brand.css` | `docker/tailwind.brand.css` |
-| `docker/tailwind.app.css` | `docker/tailwind.app.css` (adapted, not verbatim) |
-| `src/app/templating.py` | `src/ui/templating.py` (the `asset_url()` fingerprinting) |
-| `src/app/templates/base.html` | `src/ui/templates/base.html` (theme init, brand mark, theme toggle only) |
-
-`tests/test_brand_layer.py` catches a half-finished edit on this side — a
-file that lost its stamp, or stamps that disagree with each other. It cannot
-see the other repository, so the cross-repo half of the contract is a rule
-rather than a check:
-
-> **A brand change is finished when both interfaces carry it in the same
-> revision.** Bump the stamp in both repositories, in the same milestone.
+Up to `qdrant-ingest` 0.3.0 its operator web interface carried copies of these files, and a brand change was
+finished only when both repositories carried the same stamp. `qdrant-ingest` 1.0.0 removed that interface,
+so there is no second copy to keep in step any more. The stamps remain as the version of the brand layer:
+change it in every file at once. `tests/test_brand_layer.py` catches a half-finished edit, that is a file
+that lost its stamp or stamps that disagree with each other.
 
 ## License of your contributions (Inbound = Outbound)
 

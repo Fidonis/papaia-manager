@@ -58,9 +58,13 @@ and uses arg arrays rather than shell string interpolation.
 
 **Core stack lifecycle:** Two allowlists are kept apart, so an add-on name can
 never be dispatched as a stack operation or the other way round. The stack-level
-set holds `backup`, `start` and `stop`. `restore` is deliberately absent: it
-tears the core stack down unconditionally, and the manager is a service of that
-same project. `start` and `stop` are reachable only because every caller scopes
+set holds `backup`, `backup-delete`, `start`, `stop` and `restore-scoped`.
+`restore` is deliberately absent: it tears the core stack down unconditionally,
+and the manager is a service of that same project. `restore-scoped` is a different
+verb that requires a selection and refuses the option that clears volumes in
+`papaia-ctl` itself, so it cannot replace `$PAPAIA_CONFIG_DIR`; `backup-delete`
+runs no `docker compose` command and needs an explicit restore point. `start` and
+`stop` are reachable only because every caller scopes
 them to Compose profiles, and the profile names are validated against the set
 read out of the deployment's own Compose fragments — not against a pattern
 alone. The profile the manager itself runs under is rejected regardless of what
@@ -70,7 +74,25 @@ routes requires the admin role and a session-bound CSRF token, and writes an
 audit entry to `$PAPAIA_CONFIG_DIR/manager/audit.log`.
 
 **Token handling:** OIDC client secrets and catalog tokens never appear
-in logs, process arguments, or HTTP responses.
+in logs, process arguments, or HTTP responses. The same holds for the secrets of
+the RAG system described next.
+
+**RAG system:** The RAG pages and `/api/v1/rag/` exist only while the core's
+optional `rag` profile is active (they answer 404 otherwise, after the role check),
+require the admin role and, for changes, a session-bound CSRF token, and every
+change is audited. The secrets they handle are write-only and never appear in logs,
+responses or audit entries: the Qdrant api-keys (`QDRANT_JWT_SECRET` and the keys
+stored in connections), `QI_CONNECTIONS_SECRET`, the ingester's `QI_API_TOKEN` and
+the values of ingest credentials. Stored api-keys and credentials are Fernet tokens
+(`enc:1:`) whose key is derived from `QI_CONNECTIONS_SECRET`, which lives in
+`ai/rag/.env` next to the files that hold them. That keeps them out of casual sight
+(a copied file, a screenshot, a log) but not away from anyone who can read both,
+and a backup contains both. A stored api-key is sent only to the address it was
+stored with. Uploaded files are staged per administrator, removed after a
+successful run and after a time limit otherwise, and the folders the pages browse
+are confined to the documents folder; a symbolic link is refused. The dashboard
+tile for Qdrant is shown to administrators only, because Qdrant's own dashboard
+bypasses the MCP server's role checks.
 
 ## Out of scope
 
