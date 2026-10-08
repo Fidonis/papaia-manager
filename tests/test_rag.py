@@ -362,7 +362,6 @@ def test_the_admin_sidebar_has_a_rag_category_between_extensions_and_system(
         "Collections",
         "Embedding",
         "Ingest Jobs",
-        "Ingest Runs",
     ]
     assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
 
@@ -422,7 +421,6 @@ def test_the_category_survives_a_profile_that_is_on_without_its_url_keys(
         "Collections",
         "Embedding",
         "Ingest Jobs",
-        "Ingest Runs",
     ]
 
 

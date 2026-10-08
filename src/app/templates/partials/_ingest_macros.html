@@ -4,13 +4,15 @@
    Class names are spelled out per branch and never assembled from a variable: app.css is built
    by scanning these templates, so a computed class name does not survive the purge. #}
 
+{# The tabs do not wrap: on a narrow screen "Catalog file" broke into two lines and overflowed the
+   fixed height of a tab, which showed as a vertical scrollbar next to a horizontal one. #}
 {% macro tabs(active) %}
-<nav class="tabs tabs-bordered mb-4 overflow-x-auto" aria-label="Ingest">
-  <a href="/ingest/jobs" class="tab {{ 'tab-active font-semibold' if active == 'jobs' else '' }}">Jobs</a>
-  <a href="/ingest/runs" class="tab {{ 'tab-active font-semibold' if active == 'runs' else '' }}">Runs</a>
-  <a href="/ingest/secrets" class="tab {{ 'tab-active font-semibold' if active == 'secrets' else '' }}">Credentials</a>
-  <a href="/ingest/orphans" class="tab {{ 'tab-active font-semibold' if active == 'orphans' else '' }}">Leftovers</a>
-  <a href="/ingest/catalog" class="tab {{ 'tab-active font-semibold' if active == 'catalog' else '' }}">Catalog file</a>
+<nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="Ingest">
+  <a href="/ingest/jobs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'jobs' else '' }}">Jobs</a>
+  <a href="/ingest/runs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'runs' else '' }}">Runs</a>
+  <a href="/ingest/secrets" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'secrets' else '' }}">Credentials</a>
+  <a href="/ingest/orphans" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'orphans' else '' }}">Leftovers</a>
+  <a href="/ingest/catalog" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'catalog' else '' }}">Catalog file</a>
 </nav>
 {% endmacro %}
 

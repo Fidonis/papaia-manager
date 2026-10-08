@@ -49,9 +49,21 @@
    control of its cluster, so a menu growing to the right would leave the
    viewport. Callers that sit inside an `overflow-hidden` container have to
    lift that clip themselves -- an absolutely positioned menu is clipped by it
-   just like anything else. #}
-{% macro overflow_menu(size='sm', label='More actions') %}
+   just like anything else.
+
+   A menu in a row of a table that scrolls sideways (`overflow-x-auto`) cannot
+   do that: the scroll container clips it, and even a closed menu adds to the
+   area it scrolls, so a table of one row grows a scrollbar. Such callers pass
+   `float=True`. The menu is then `fixed`, which neither is clipped by nor adds
+   to a scroll container, and the script in base.html (`.dropdown-float`) puts
+   it next to its trigger when it opens. The position is an inline style
+   because daisyUI's `.dropdown .dropdown-content` outranks a `fixed` class. #}
+{% macro overflow_menu(size='sm', label='More actions', float=False) %}
+{% if float %}
+<div class="dropdown dropdown-end dropdown-float shrink-0">
+{% else %}
 <div class="dropdown dropdown-end shrink-0">
+{% endif %}
   {% if size == 'xs' %}
   <div tabindex="0" role="button" aria-label="{{ label }}"
        class="btn btn-ghost btn-xs btn-square">
@@ -63,9 +75,15 @@
     {{ kebab() }}
   </div>
   {% endif %}
+  {% if float %}
+  <ul tabindex="0" style="position:fixed" class="dropdown-content z-30 menu bg-base-100 rounded-box w-56 p-2 shadow border border-base-300">
+    {{ caller() }}
+  </ul>
+  {% else %}
   <ul tabindex="0" class="dropdown-content z-30 menu bg-base-100 rounded-box w-56 p-2 shadow border border-base-300">
     {{ caller() }}
   </ul>
+  {% endif %}
 </div>
 {% endmacro %}
 

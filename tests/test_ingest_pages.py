@@ -220,10 +220,33 @@ def test_the_sidebar_lights_the_right_entry(client: TestClient) -> None:
     assert active("/ingest/jobs") == ["Ingest Jobs"]
     assert active("/ingest/secrets") == ["Ingest Jobs"]
     assert active("/ingest/new") == ["Ingest Jobs"]
-    assert active("/ingest/runs") == ["Ingest Runs"]
-    assert active("/ingest/runs/abc") == ["Ingest Runs"]
+    # The runs are a tab of the jobs section and have no entry of their own.
+    assert active("/ingest/runs") == ["Ingest Jobs"]
+    assert active("/ingest/runs/abc") == ["Ingest Jobs"]
     # The manager's own queue is another page and does not light these.
     assert "Ingest Jobs" not in active("/jobs")
+
+
+def test_the_sidebar_has_one_entry_for_the_ingest_pages(client: TestClient) -> None:
+    body = _body(client, "/ingest/runs")
+    sidebar = body[body.index("<nav") : body.index("</nav>")]
+
+    assert _nav(body)["RAG"] == ["Connections", "Collections", "Embedding", "Ingest Jobs"]
+    assert 'href="/ingest/runs"' not in sidebar
+    assert 'href="/ingest/runs" class="tab' in body, "the Runs tab is the way to the runs"
+
+
+def test_the_pages_are_named_in_title_case(client: TestClient, deployment: Deployment) -> None:
+    deployment.write_catalog(_job())
+    jobs = _body(client, "/ingest/jobs")
+    runs_page = _body(client, "/ingest/runs")
+
+    assert ">Ingest Jobs</h1>" in jobs and "<title>Ingest Jobs —" in jobs
+    assert ">Ingest Runs</h1>" in runs_page and "<title>Ingest Runs —" in runs_page
+    # A page that names its parent says it the same way.
+    assert re.search(r"Ingest Jobs\s*</a>", _body(client, "/ingest/jobs/handbook"))
+    assert re.search(r"Ingest Runs\s*</a>", _body(client, "/ingest/runs/some-run"))
+    assert "Ingest Jobs" in _body(client, "/ingest/new")
 
 
 # ---------------------------------------------------------------------------
@@ -867,6 +890,35 @@ def test_the_credentials_page_lists_names_and_where_they_are_used_and_never_a_va
     assert "Delete (in use)" in body and "ai/rag/.env" in body
     assert "very-secret-value" not in body
     assert "secrets.yaml" in body
+
+
+def test_the_row_menus_of_the_tables_that_scroll_float(
+    client: TestClient, deployment: Deployment
+) -> None:
+    """A menu inside `overflow-x-auto` is clipped and grows a scrollbar, so these are `fixed`."""
+    from app.core.ingest.secrets import SecretsRepository
+
+    SecretsRepository(deployment.config_dir, "s").set("QI_SECRET_DAV", "value")
+    deployment.write_catalog(_job())
+
+    for path in ("/partials/ingest/jobs", "/partials/ingest/secrets"):
+        body = _body(client, path)
+        menus = re.findall(r'<div class="dropdown dropdown-end([^"]*)"', body)
+        assert menus, path
+        assert all("dropdown-float" in menu for menu in menus), path
+        assert 'style="position:fixed" class="dropdown-content' in body, path
+
+
+def test_a_poll_waits_while_a_row_menu_is_open_and_a_wide_table_cannot_widen_the_page(
+    client: TestClient,
+) -> None:
+    """Both are only visible in a browser, so the markup that does them is pinned here."""
+    jobs = _body(client, "/ingest/jobs")
+
+    # The list swaps itself every few seconds while a run works; that must not close a menu.
+    assert "htmx:beforeSwap" in jobs and "shouldSwap = false" in jobs
+    # Without `min-w-0` a table in `overflow-x-auto` widens the main column and with it the page.
+    assert 'class="app-main ml-64 flex min-h-screen w-full min-w-0 flex-col"' in jobs
 
 
 def test_the_credentials_page_explains_a_missing_key_and_an_old_ingester(

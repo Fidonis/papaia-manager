@@ -77,7 +77,7 @@ in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
 The dashboard shows a **RAG** group with a *Qdrant* tile (the vector database's
 dashboard), and the sidebar gets a **RAG** category between *Extensions* and
 *System* with the pages described below: *Connections*, *Collections*,
-*Embedding*, *Ingest Jobs* and *Ingest Runs*. The ingest service's own web
+*Embedding* and *Ingest Jobs*. The ingest service's own web
 interface has no tile and no menu entry: what it offered is on those pages.
 The link of the tile is built from `QDRANT_PUBLIC_URL` in the core `.env`. The
 profile decides, not that key: the core keeps it while the system is switched
@@ -196,8 +196,8 @@ says so. The limits are `INGEST_MAX_UPLOAD_MB` per file (200) and
 `INGEST_MAX_BATCH_MB` per upload (2048). A backup of the configuration directory
 contains an upload that is still staged while it runs.
 
-**Ingest jobs.** Admin-only pages under `/ingest/`, fourth and fifth under *RAG*
-(*Ingest Jobs* and *Ingest Runs*) and only while the `rag` profile is active, that
+**Ingest jobs.** Admin-only pages under `/ingest/`, fourth under *RAG*
+(*Ingest Jobs*) and only while the `rag` profile is active, that
 take over from the ingester's own web interface. A **job** says what the ingester
 reads (a folder in the documents folder, S3, WebDAV, SFTP, SMB, FTP, Google Drive,
 Azure Blob Storage or a web directory), which collection on which connection the
@@ -236,7 +236,7 @@ not fetching again. A run shows its phase (fetching the files, looking at them,
 embedding them, removing what is gone), how many files are done, the file in hand, and *Abort*, which takes effect
 between two files. When it ends it shows its counts, the ingester's messages
 (problems first), the output of a failed fetch and a way forward for each way a run
-can stop. The *Ingest runs* page lists the runs of all jobs, filtered by job and
+can stop. The *Runs* tab (*Ingest Runs*) lists the runs of all jobs, filtered by job and
 state. Both poll only while a run works.
 
 **Deleting runs.** *Delete* on a job removes it from `jobs.yaml` and, in the same
@@ -245,7 +245,7 @@ that is gone never runs again and the ingester prunes a job's history only after
 of its own runs. The runs go once the ingester has stopped serving the job; if it
 still serves it (it keeps its previous catalog while another job is invalid), or
 cannot be reached, they are kept and the result says why. *Delete runs* in the same
-menu, and on the Ingest runs page, deletes the history of one job for a period: a
+menu, and on the *Ingest Runs* page, deletes the history of one job for a period: a
 first and a last day (both included, counted in the ingester's time zone) or, with
 neither, every run, which asks for the id of the job. It counts what it would delete
 before it deletes anything, never touches a run that is still working, and never
