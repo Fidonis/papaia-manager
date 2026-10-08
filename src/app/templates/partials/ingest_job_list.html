@@ -142,7 +142,7 @@
               {% if row.managed %}<span class="badge badge-outline badge-sm" title="Created by the Embedding page. Its next run overwrites a change, so it is not edited here.">Embedding page</span>{% endif %}
               {% if row.paused_in_ingester %}<span class="badge badge-warning badge-sm" title="Paused in the ingester's memory. A restart or a reload lifts it.">Paused</span>{% endif %}
             </div>
-            {% if row.description %}<p class="mt-0.5 max-w-xs truncate text-xs opacity-60" title="{{ row.description }}">{{ row.description }}</p>{% endif %}
+            {% if row.description %}<p class="mt-0.5 max-w-[13rem] truncate text-xs opacity-60" title="{{ row.description }}">{{ row.description }}</p>{% endif %}
             {% if row.problems %}
             <ul class="mt-1 list-disc pl-4 text-xs text-error">{% for text in row.problems %}<li>{{ text }}</li>{% endfor %}</ul>
             {% elif row.note and row.state != 'loaded' %}
@@ -151,7 +151,7 @@
           </td>
           <td class="align-top">
             <p class="text-sm">{{ row.source_title }}</p>
-            <p class="max-w-[16rem] truncate font-mono text-xs opacity-60" title="{{ row.source_detail }}">{{ row.source_detail }}</p>
+            <p class="max-w-[11rem] truncate font-mono text-xs opacity-60" title="{{ row.source_detail }}">{{ row.source_detail }}</p>
           </td>
           <td class="align-top">
             <p class="font-mono text-sm">{{ row.collection }}</p>
@@ -164,7 +164,7 @@
           <td class="align-top">
             {% if row.active_run %}
               {{ run_badge(row.active_run) }}
-              <div class="mt-1 w-40">{{ progress(row.active_run) }}</div>
+              <div class="mt-1 w-32">{{ progress(row.active_run) }}</div>
               {% if row.active_run.phase_label %}<p class="text-xs opacity-60">{{ row.active_run.phase_label }}</p>{% endif %}
             {% elif row.last_run %}
               <a href="/ingest/runs/{{ row.last_run.run_id }}" class="inline-flex flex-wrap items-center gap-1">{{ run_badge(row.last_run) }}</a>
@@ -181,7 +181,7 @@
               <a href="/ingest/runs?job={{ row.id }}" class="btn btn-outline btn-xs">Runs</a>
               {# The Embedding page's jobs cannot be edited or paused, but they can be deleted with their runs. #}
               {% if can_delete_runs or (row.in_file and view.editable) %}
-              {% call overflow_menu(size='xs', label='More actions for job ' ~ row.id) %}
+              {% call overflow_menu(size='xs', label='More actions for job ' ~ row.id, float=True) %}
                 <li><a href="/ingest/jobs/{{ row.id }}" onclick="ingestCloseMenu()">Details</a></li>
                 {% if can_delete_runs %}
                 <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>Delete runs…</a></li>
@@ -201,7 +201,7 @@
               <a href="/ingest/jobs/{{ row.id }}/edit" class="btn btn-outline btn-xs">Edit</a>
               {% endif %}
               {% if row.in_file and view.editable %}
-              {% call overflow_menu(size='xs', label='More actions for job ' ~ row.id) %}
+              {% call overflow_menu(size='xs', label='More actions for job ' ~ row.id, float=True) %}
                 <li><a href="/ingest/jobs/{{ row.id }}" onclick="ingestCloseMenu()">Details</a></li>
                 <li><a href="/ingest/new?duplicate={{ row.id }}">Duplicate</a></li>
                 {% if row.enabled %}

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% from "partials/_ingest_macros.html" import tabs %}
-{% block title %}Ingest jobs — {{ branding().name }}{% endblock %}
+{% block title %}Ingest Jobs — {{ branding().name }}{% endblock %}
 
-{% block page_title %}Ingest jobs{% endblock %}
+{% block page_title %}Ingest Jobs{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Sources the ingester reads on a schedule and keeps in a collection</p>{% endblock %}
 
 {# Tier 1: one filled primary, one outline secondary. #}
@@ -76,6 +76,18 @@ function pickGroup(group) {
 document.body.addEventListener('htmx:afterSettle', function (event) {
   if (event.detail && event.detail.target && event.detail.target.id === 'ingest-list') filterJobRows();
   else if (event.detail && event.detail.elt && event.detail.elt.id === 'ingest-jobs') filterJobRows();
+});
+
+// While a run works the list replaces itself every few seconds. That would take an open row menu
+// away from somebody who is reading it (the swap removes the focus that holds the menu open), so
+// a poll waits until the menu is closed; the next one picks the change up.
+document.body.addEventListener('htmx:beforeSwap', function (event) {
+  const target = event.detail && event.detail.target;
+  const active = document.activeElement;
+  if (target && target.id === 'ingest-jobs' && active && active.closest &&
+      active.closest('.dropdown') && target.contains(active)) {
+    event.detail.shouldSwap = false;
+  }
 });
 
 // htmx does not swap a 4xx answer, so a failed load would leave the spinner up.
