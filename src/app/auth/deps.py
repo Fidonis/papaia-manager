@@ -9,7 +9,7 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, Request, status
 
 from app.auth.oidc import OIDCClaims, OIDCError, get_oidc_client
-from app.auth.roles import has_manager_access, is_admin
+from app.auth.roles import has_manager_access, is_admin, is_identity_admin
 from app.config import Settings, get_settings
 
 # Renew the session this many seconds before the access token actually expires,
@@ -136,6 +136,22 @@ def require_admin(
     return claims
 
 
+def require_identity_admin(
+    claims: Annotated[OIDCClaims, Depends(get_current_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> OIDCClaims:
+    """Raise 403 unless the account holds the role that may manage users and roles."""
+    if not is_identity_admin(claims, settings):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"the {settings.manager_identity_admin_role} role is required "
+                "to manage users and roles"
+            ),
+        )
+    return claims
+
+
 def require_manager_access(
     claims: Annotated[OIDCClaims, Depends(get_current_user)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -153,3 +169,4 @@ def require_manager_access(
 # level is readable at its signature instead of hidden in a shared alias.
 AdminUser = Annotated[OIDCClaims, Depends(require_admin)]
 AnyUser = Annotated[OIDCClaims, Depends(require_manager_access)]
+IdentityAdmin = Annotated[OIDCClaims, Depends(require_identity_admin)]

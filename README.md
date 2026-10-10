@@ -72,6 +72,8 @@ filtered server-side, so an admin-only tile is absent from a regular user's
 response rather than hidden by CSS. Authorization is enforced by the route
 dependencies, so the JSON API is restricted exactly like the pages.
 
+**Users.** A third tier sits above the admin role: `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`, which already includes the admin role) opens **Users**, where accounts of the bundled Keycloak are managed without the Admin Console. The list shows each account's status and roles, with search and paging. From it an administrator creates an account (with the roles to start from, the dashboard role ticked, and a first password: a temporary one shown once, or a mailed link), enables or disables it (disabling also ends its sessions), changes its roles, resets its password, and views and ends its sessions. A temporary password makes Keycloak ask for a new one at the first sign-in. The mailed link needs a mail server on the realm and is offered only when there is one. Nobody can disable their own account, take the identity role from themselves or end all of their own sessions here, so the page cannot lock its last administrator out. There is no service account behind it: the manager calls Keycloak's Admin API with the access token of the signed-in account, obtained from the session's refresh token and kept in memory only, so Keycloak applies that account's own rights. The identity role therefore has to carry `manage-users`, `view-users`, `query-users` and `view-realm` of the realm's `realm-management` client; where it does not (yet), the page says so. A session ended in Keycloak stops working in the manager when its token is next renewed, within a few minutes. Every change is audited and no password is ever written to the log. The page does not exist where the accounts live in an external identity provider (`AUTH_PROVIDER=external_oidc`).
+
 **RAG system.** When the core runs its optional RAG system (the `rag` profile
 in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
 The dashboard shows a **RAG** group with a *Qdrant* tile (the vector database's
@@ -509,7 +511,7 @@ dry-run preview; the prune itself is recorded as its own audit entry.
 
 ## REST API
 
-All mutating routes require the `MANAGER_ADMIN_ROLE` and a CSRF header.
+All mutating routes require the `MANAGER_ADMIN_ROLE` and a CSRF header, except those of the Users page (`/api/v1/users`), which require the `MANAGER_IDENTITY_ADMIN_ROLE` instead.
 Long-running operations return `202` with a job id. The RAG routes
 (`/api/v1/rag/`) are admin-only too and, after the role check, answer 404 while the
 `rag` profile is not active.
@@ -647,6 +649,20 @@ DELETE /api/v1/settings/branding/logo        # remove the logo
 POST   /api/v1/settings/branding/reset       # {revision} back to the defaults, logo removed
 PUT    /api/v1/settings/host                 # {revision, refresh_seconds} 10 to 3600
 GET    /brand/logo                           # the stored logo, for any signed-in user
+
+GET    /api/v1/users                         # ?search&first&limit: a page of accounts with their roles
+GET    /api/v1/users/roles                   # the roles a new account can be given
+POST   /api/v1/users                         # {username, email?, first_name?, last_name?, credential?, roles?}
+                                             #   credential: temporary | email | none; a temporary password
+                                             #   is in this one response only
+PUT    /api/v1/users/{id}/enabled            # {enabled}; disabling also ends the sessions
+GET    /api/v1/users/{id}/roles              # the roles, marked with what the account holds
+PUT    /api/v1/users/{id}/roles              # {roles} the account's own realm roles
+POST   /api/v1/users/{id}/password/temporary # a new temporary password, in this response only
+POST   /api/v1/users/{id}/password/email     # mail the account Keycloak's update-password link
+GET    /api/v1/users/{id}/sessions           # where the account is signed in
+DELETE /api/v1/users/{id}/sessions/{sid}     # end one session
+DELETE /api/v1/users/{id}/sessions           # end all of them
 ```
 
 ## Layout
@@ -660,10 +676,11 @@ papaia-manager/
 │   └── app/
 │       ├── main.py         # FastAPI application factory
 │       ├── config.py       # Pydantic Settings
-│       ├── auth/           # OIDC + PKCE login, CSRF, admin-role dependency
+│       ├── auth/           # OIDC + PKCE login, CSRF, role dependencies, the user's own token
 │       ├── core/           # ctl (whitelisted papaia-ctl calls), papaia_lib (core handshake),
 │       │                   # catalogs, snapshots, status, env-forms, jobs, audit, tiles,
-│       │                   # keycloak, resolve (cross-catalog add-on dedup),
+│       │                   # keycloak, keycloak_users + users_service (the Users page),
+│       │                   # resolve (cross-catalog add-on dedup),
 │       │                   # services (container status), inventory (declared state),
 │       │                   # backups (restore-point catalogue), restore_scope (partial restore),
 │       │                   # runner (detached restore, stack and upgrade runs),
@@ -681,7 +698,8 @@ papaia-manager/
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
 │       │                   # api_tiles, api_settings, api_collections, api_connections, api_ingest,
-│       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store)
+│       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store),
+│       │                   # api_users, users_deps (identity role, Keycloak client)
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)

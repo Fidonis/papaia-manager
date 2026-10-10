@@ -33,6 +33,7 @@ from app.routers import (
     api_stack,
     api_tiles,
     api_upgrade,
+    api_users,
     auth,
     health,
     ui,
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(api_stack.router)
     app.include_router(api_tiles.router)
     app.include_router(api_upgrade.router)
+    app.include_router(api_users.router)
 
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

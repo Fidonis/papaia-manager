@@ -28,6 +28,8 @@ Host (`/host`) reports memory, CPU, GPU, clock synchronisation, disk space and c
 
 Settings (`/settings`) holds the manager's own configuration in `$PAPAIA_CONFIG_DIR/manager/settings.yaml`, one section per topic: Branding (the name and second line at the top of the sidebar, and an uploaded logo) and Host monitoring (the interval of the Host page's measurements). Admin-only and CSRF-checked like every other mutating route, with every change audited; the logo is the one thing every role fetches, because the sidebar shows it (see the Settings and branding section below).
 
+Users (`/users`) manages the accounts of the bundled Keycloak: list, create (with roles and a first password), enable and disable, roles, password reset, and the sessions of an account. It is reserved for `MANAGER_IDENTITY_ADMIN_ROLE`, a tier above the admin role, and acts with the signed-in account's own Keycloak token rather than a credential of the manager's own (see the User management section below).
+
 Services (`/services`) reports the declared state of the deployment against the live one. Containers come from a single unfiltered `docker ps -a`, partitioned by `com.docker.compose.project` into the core stack and the active add-ons, grouped by their `de.fidonis.module` label and scored from their healthcheck. The declared half comes from the Compose files themselves — core fragments filtered by `COMPOSE_PROFILES`, add-on fragments named by `deployment.yaml` — so a service that was configured but never started renders as *not deployed* rather than vanishing. The page also drives lifecycle: one Compose profile at a time via `papaia-ctl start`/`stop --profiles=`, several profiles at once, or the whole stack in a detached container (see the Service group control section below). The same snapshot drives the status row in the sidebar of every page, for every authenticated role; its popover keeps the core stack and the add-ons apart and adds a row for the host.
 
 That snapshot is also the single Docker reading behind the add-on surfaces: `state.compute_status` takes its set of running Compose projects from `StackSnapshot.running_projects` rather than issuing a `docker ps` of its own, so `/addons` and `/services` cannot disagree about whether an add-on is up.
@@ -51,7 +53,8 @@ papaia-manager/
 │       ├── auth/
 │       │   ├── oidc.py     # OIDC Authorization Code + PKCE client
 │       │   ├── roles.py    # Authorization policy: which realm role grants what
-│       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser
+│       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser, IdentityAdmin
+│       │   ├── user_token.py # The signed-in user's own access token, from the session's refresh token
 │       │   └── csrf.py     # Session-bound CSRF Double-Submit token
 │       ├── core/
 │       │   ├── papaia_lib.py   # sys.path bootstrap + core version handshake
@@ -109,6 +112,8 @@ papaia-manager/
 │       │   ├── envvalidate.py  # Server-side validation/coercion of add-on env values
 │       │   ├── resolve.py      # Cross-catalog addon dedup: groups same-name hits by version
 │       │   ├── keycloak.py     # Idempotent Keycloak admin REST client registration
+│       │   ├── keycloak_users.py # Keycloak Admin API as the signed-in user: users, roles, passwords, sessions
+│       │   ├── users_service.py # The Users page's rules: validation, temporary passwords, lock-out guard, views
 │       │   ├── jobs.py         # Single-flight job queue + streaming log store
 │       │   └── audit.py        # Append-only JSONL audit log
 │       ├── routers/
@@ -123,6 +128,7 @@ papaia-manager/
 │       │   ├── api_audit.py    # /api/v1/audit — read, export, prune
 │       │   ├── api_stack.py    # /api/v1/stack — service groups and whole-stack actions
 │       │   ├── api_settings.py # /api/v1/settings — branding, host monitoring; GET /brand/logo
+│       │   ├── api_users.py    # /api/v1/users — accounts, roles, passwords and sessions of the realm
 │       │   ├── api_tiles.py    # /api/v1/tiles — dashboard tile configuration
 │       │   ├── api_collections.py # /api/v1/rag/collections — Qdrant collections and their roles
 │       │   ├── api_connections.py # /api/v1/rag/connections — connections of the ingester's store
@@ -130,6 +136,7 @@ papaia-manager/
 │       │   ├── api_ingest_jobs.py # /api/v1/rag/ingest — jobs, their runs, credentials, the catalog file
 │       │   ├── ui_ingest.py    # /ingest/... pages and their partials
 │       │   └── rag_deps.py     # RagAdmin (admin + `rag` profile), the connection service and the
+│       │   └── users_deps.py   # UsersAdmin (identity role, bundled Keycloak), the Keycloak client and its error mapping
 │       │                       #   per-request CollectionStore on the selected connection
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
@@ -150,6 +157,7 @@ papaia-manager/
 │       │       ├── ingest_*.html, _ingest_*.html # Ingest jobs: list, job tabs, runs, credentials, leftovers,
 │       │       │                                 #   the editor's dialogs and the scripts the pages share
 │       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
+│       │       ├── user_list.html            # Users page body: accounts with roles and actions, or why there are none
 │       │       ├── job_status.html           # Polled job progress/log fragment
 │       │       ├── restore_point_list.html   # Restore point cards
 │       │       ├── restore_status.html       # Polled restore-runner state
@@ -190,6 +198,9 @@ role dependency  (deps.py → roles.py)
   │                                                    which answers 404 without the `rag`
   │                                                    profile, after the role check)
   │  AnyUser    →  MANAGER_ADMIN_ROLE OR MANAGER_USER_ROLE (dashboard, status pill)
+  │  IdentityAdmin → MANAGER_IDENTITY_ADMIN_ROLE required  (the Users page and /api/v1/users;
+  │                                                    404 after the role check where the
+  │                                                    accounts are not in the bundled Keycloak)
   │  role missing  →  403  (HTML page, or JSON under /api/)
   ▼
 Route handler
@@ -340,6 +351,28 @@ Consequences worth remembering when touching this area:
 - **The logo type is decided by its bytes.** `save_logo` looks at magic bytes (PNG, JPEG, WebP, SVG) and ignores the client's filename and `Content-Type`. At most 512 KB are read, one byte past the cap so an oversized body is refused without being buffered. An SVG that contains a script, `foreignObject`, an event handler, `javascript:`, an entity declaration or an `iframe` is refused at upload.
 - **The logo is served defensively.** `GET /brand/logo` is open to every signed-in role, since the sidebar shows it to all of them, and answers with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, so an SVG opened directly by URL cannot run anything. The URL carries the stored filename (`?v=`), which changes with the content, so the one-day private cache cannot show a stale logo.
 - **Every change is audited** as `settings.branding.update`, `settings.branding.logo.upload`, `settings.branding.logo.delete`, `settings.branding.reset` or `settings.host.update`, with target `settings`.
+
+### User management
+
+The page and its API (`/users`, `/api/v1/users`) manage the accounts of the realm the manager signs in against. `core/keycloak_users.py` is the Admin API client, `core/users_service.py` holds the rules, `routers/users_deps.py` builds both for one request, and `tests/test_users_service.py`, `tests/test_api_users.py`, `tests/test_user_token.py` and `tests/test_keycloak_users.py` pin them, against `tests/fake_keycloak.py`.
+
+Consequences worth remembering when touching this area:
+
+- **There is no credential of the manager's own.** Every call goes to `/admin/realms/<realm>` with the access token of the signed-in account, so Keycloak applies that account's rights and nothing more. The session keeps only the refresh token; `auth/user_token.py` turns it into an access token on demand, single-flight per refresh token, and caches that token in memory until shortly before it expires. It is never put in the session cookie, a log line or an exception text (`TokenSet` keeps it out of `repr`). The cache assumes one process, like the refresh state in `auth/deps.py`.
+- **The role carries Keycloak's rights, the manager only gates the page.** `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`) must hold `manage-users`, `view-users`, `query-users` and `view-realm` of the `realm-management` client, as a composite. Where it does not, Keycloak answers 403 and the page shows that as a state, with the way out (`papaia-ctl start`, or `papaia-ctl keycloak-role-sync`, applies the composite to an existing realm; a new sign-in picks it up). A plain administrator is denied before Keycloak is asked. There is deliberately no allowlist of roles: the role is the highest in the stack. What the page does guard is the lock-out: nobody disables their own account, takes the identity role from themselves or ends all of their own sessions.
+- **The address comes from the token endpoint.** `admin_endpoint` reads the base URL and the realm out of `OIDC_ISSUER_KC_TOKEN` (`…/realms/<realm>/protocol/openid-connect/token`), so there is nothing new to configure. An address that is not a Keycloak realm's, or `AUTH_PROVIDER=external_oidc`, means no page (404 after the role check) or a 503 from the API.
+- **A refusal and an unreachable Keycloak are states of the page, not errors.** `UsersService.snapshot` returns a view with `state` `forbidden` or `unavailable`; the API answers the same conditions with 403 and 503. A token Keycloak refuses (401) is neither: the session is over, and the browser signs in again.
+- **The realm's default role does not carry the dashboard role.** The realm import leaves `default-roles-<realm>` with Keycloak's own roles (`offline_access`, `uma_authorization`) and the account's, not the `user` role the template asks for, so a new account can sign in to Keycloak and use nothing. The New user dialog therefore offers the roles up front with `MANAGER_USER_ROLE` ticked, and the roles are checked before anything is written, so a mistyped one leaves no account behind. Technical roles (`default-roles-*`, `offline_access`, `uma_authorization`) are never offered or touched. A role held through a composite is shown as inherited and can only be removed by changing that role.
+- **Passwords.** A temporary password is generated here (`generate_temporary_password`: 20 characters, all four classes, no look-alikes), set with `temporary: true` so Keycloak asks for a new one at the first sign-in, and returned once by the route that makes it, with `Cache-Control: no-store`. It is not in the audit log, any log line, or the page after its dialog closes. The audit log masks values under keys that sound like secrets, so the parameter that records how the first sign-in was arranged is `first_login`, not `credential`. A mailed link (`execute-actions-email`, `UPDATE_PASSWORD`) needs a mail server on the realm; the page reads that from the realm (`smtpServer.host`) and offers the link only then.
+- **An account that exists is always recorded.** Creating one is several calls (the account, its roles, its password). If a later one fails, `create` raises `PartiallyCreated`: the route writes `user.create` with `result` `partial`, answers 422 (Keycloak refused the values, for instance a password policy) or 502 with what is missing, and the page reloads the list, because the account is there.
+- **A write sends the whole representation.** Enabling and disabling `PUT`s the account as it was read with `enabled` changed: with a declarative user profile a partial body is validated as if the missing fields had been cleared. Disabling also ends the account's sessions, best effort, so a departed employee does not stay signed in until a token refresh happens to fail.
+- **Ids are checked before they reach a URL.** A user id is a UUID; a session id is a 24-character base64url string, not a UUID, which a real Keycloak shows and a fake of UUIDs would hide (`tests/fake_keycloak.py` hands out the real format). An account can only end sessions it owns: the session is looked up among the account's own first.
+- **An ended session ends at the next renewal.** The manager validates the id token locally and refreshes within a minute of its expiry, so a session ended in Keycloak stops working here at the next refresh, within the access token's lifetime (five minutes in the shipped realm).
+- **The dialogs live on the page, not in the list.** The list is replaced after every change and on every search; a dialog that holds a password must survive that. The list partial carries what the dialogs need (whether the realm can send mail, where this page starts) in a marker element.
+- **Every change is audited** as `user.create`, `user.enable`, `user.disable`, `user.role.assign`, `user.role.revoke`, `user.password.temporary`, `user.password.reset-email`, `user.session.revoke` or `user.session.revoke-all`, with the username as the target and never a password. An account created with roles leaves both `user.create` and `user.role.assign`. `tests/test_api_users.py` fails when a mutating route is added without being listed there.
+- **Verified against a real Keycloak.** The page was driven in a browser against a throwaway Keycloak (26.7) imported from the core's realm template with the composite added: sign-in, creating an account with a temporary password and signing in as it (forced password change, dashboard), enabling and disabling (a disabled account is refused), roles, a mailed link that sets a password, several sessions of one account ended one by one and all together (their refresh tokens then fail), and an account that holds only the admin role being denied. Repeat this when Keycloak's Admin API, the realm template's roles or the token flow change.
+
+Known limits: no unlock for an account that brute-force protection has locked, no "last sign-in" (that needs Keycloak's event log), no deletion of accounts (erasing data is a different job from account lifecycle), no federated users, and no bulk import.
 
 ### RAG connections
 
@@ -503,6 +536,7 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `AUTH_PROVIDER` | Auth provider type, `internal_keycloak` (default) or `external_oidc`. Read into the settings; nothing acts on it yet |
 | `MANAGER_ADMIN_ROLE` | Keycloak realm role granting full access — add-ons, catalogs, jobs, dashboard (default: `manager-admin`) |
 | `MANAGER_USER_ROLE` | Keycloak realm role granting dashboard-only access (default: `user`) |
+| `MANAGER_IDENTITY_ADMIN_ROLE` | Keycloak realm role that may manage users and roles (the Users page). It must carry Keycloak's user-administration rights, because the manager acts with the signed-in account's own token (default: `papaia-admin`) |
 | `MANAGER_HOST` | Public base URL of the manager (used as OIDC redirect URI base) |
 | `MANAGER_OIDC_CLIENT_ID` | Keycloak client ID (default: `papaia-manager`) |
 | `MANAGER_OIDC_CLIENT_SECRET` | Keycloak client secret |
@@ -537,6 +571,7 @@ mount.
 ## Security boundaries
 
 - **Never log** session secrets, OIDC client secrets, catalog tokens, Qdrant api-keys (`QDRANT_JWT_SECRET` and the keys stored in connections), `QI_API_TOKEN`, `QI_CONNECTIONS_SECRET` or the values of ingest credentials. They are never part of a response or an audit entry either.
+- **The signed-in user's access token** (used by the Users page) lives in memory only: never in the session cookie, a response, an audit entry or a log line. Temporary passwords are returned once and are never part of an audit entry or a log line.
 - **docker.sock access is root-equivalent.** The manager container mounts `/var/run/docker.sock`. This is required for Compose operations and is intentional — the manager profile is off by default.
 - **Subprocess inputs are whitelisted.** All calls to `papaia-ctl` go through `core/ctl.py` which validates the verb against an allowlist and uses arg arrays (never `shell=True`).
 - **Copyleft dependencies are not accepted.** The CI license-check workflow rejects GPL, LGPL, AGPL, EUPL, and similar licences.
