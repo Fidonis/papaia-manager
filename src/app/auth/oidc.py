@@ -8,7 +8,7 @@ import logging
 import os
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from typing import Any
 from urllib.parse import urlencode
@@ -72,10 +72,18 @@ class OIDCClaims:
 
 @dataclass(frozen=True, slots=True)
 class TokenSet:
-    """Validated claims together with the refresh token that produced them."""
+    """Validated claims together with the refresh token that produced them.
+
+    The access token of the same response travels along for the calls that act with the
+    user's own rights (see `app.auth.user_token`). It is kept out of `repr`, and it never
+    goes into the session cookie: only the refresh token does.
+    """
 
     claims: OIDCClaims
     refresh_token: str | None
+    access_token: str | None = field(default=None, repr=False)
+    # Epoch seconds at which `access_token` stops being valid; 0 when the response did not say.
+    access_expires_at: float = 0.0
 
 
 class OIDCClient:
@@ -179,7 +187,7 @@ class OIDCClient:
         if token_set.refresh_token is not None:
             return token_set
         # Keycloak normally rotates the token; keep the current one if it did not.
-        return TokenSet(claims=token_set.claims, refresh_token=refresh_token)
+        return replace(token_set, refresh_token=refresh_token)
 
     async def _token_request(self, data: dict[str, str]) -> dict[str, Any]:
         async with httpx.AsyncClient(
@@ -200,11 +208,18 @@ class OIDCClient:
         claims = await self._validate_id_token(id_token, access_token=access_token)
         claims = self._apply_role_fallback(claims, access_token)
         refresh_token = token_response.get("refresh_token")
+        expires_in = token_response.get("expires_in")
         return TokenSet(
             claims=claims,
             refresh_token=refresh_token
             if isinstance(refresh_token, str) and refresh_token
             else None,
+            access_token=access_token,
+            access_expires_at=(
+                time.time() + float(expires_in)
+                if isinstance(expires_in, int | float) and not isinstance(expires_in, bool)
+                else 0.0
+            ),
         )
 
     def _apply_role_fallback(

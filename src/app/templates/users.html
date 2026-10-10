@@ -1,0 +1,685 @@
+{% extends "base.html" %}
+{% from "partials/_users_tabs.html" import tabs %}
+{% block title %}Users — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Users{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Who can sign in, with which roles, and from where</p>{% endblock %}
+
+{# Tier 1: one filled primary, one outline secondary. The dialogs live on the page and not in
+   the list partial: the list is replaced after every change and on every search, and a
+   dialog that holds a password (or a half-typed form) must not be torn down with it. #}
+{% block page_actions %}
+<button type="button"
+        class="btn btn-outline btn-sm"
+        hx-get="/partials/users"
+        hx-include="#user-search-form"
+        hx-target="#user-list"
+        hx-swap="innerHTML"
+        hx-disabled-elt="this">
+  Refresh
+</button>
+<button type="button"
+        class="btn btn-primary btn-sm"
+        onclick="window.dispatchEvent(new CustomEvent('user-new'))">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+  </svg>
+  New user
+</button>
+{% endblock %}
+
+{% block content %}
+{{ tabs('users') }}
+
+{# The search is a control of the page's body, not an action: the header holds buttons only.
+   Typing searches after a short pause; every new search starts on the first page, because no
+   `first` travels in this form (the pager adds its own). #}
+<form id="user-search-form" class="mb-4 flex flex-wrap items-center gap-3"
+      hx-get="/partials/users"
+      hx-trigger="input changed delay:350ms from:#user-search, submit"
+      hx-target="#user-list"
+      hx-swap="innerHTML"
+      onsubmit="return false">
+  <label class="input input-bordered input-sm flex w-full max-w-sm items-center gap-2" for="user-search">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z"/>
+    </svg>
+    <input id="user-search" name="search" type="search" class="grow" autocomplete="off"
+           maxlength="100" placeholder="Search by name, username or email">
+  </label>
+</form>
+
+<div
+  id="user-list"
+  hx-get="/partials/users"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+
+<!-- New user -->
+<dialog id="new-user-modal" class="modal" x-data="newUser()"
+        @user-new.window="open()" @close="reset()">
+  <div class="modal-box max-w-xl">
+    <h3 class="text-lg font-bold">New user</h3>
+    <p class="mb-4 text-sm opacity-60">The account can sign in to the manager's dashboard and the other services right away.</p>
+    <form @submit.prevent="submit()">
+      <div class="form-control mb-3">
+        <label class="label py-1" for="new-user-username"><span class="label-text">Username</span></label>
+        <input id="new-user-username" type="text" class="input input-bordered font-mono" x-model="username"
+               required maxlength="255" autocomplete="off" placeholder="jane.doe"
+               pattern="[A-Za-z0-9][A-Za-z0-9._@+\-]{1,254}">
+        <p class="mt-1 text-xs opacity-60">Letters, digits and . _ @ + - . Keycloak stores it in lower case.</p>
+      </div>
+      <div class="form-control mb-3">
+        <label class="label py-1" for="new-user-email"><span class="label-text">Email (optional)</span></label>
+        <input id="new-user-email" type="email" class="input input-bordered" x-model="email"
+               maxlength="255" autocomplete="off" placeholder="jane.doe@example.com">
+      </div>
+      <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div class="form-control">
+          <label class="label py-1" for="new-user-first"><span class="label-text">First name (optional)</span></label>
+          <input id="new-user-first" type="text" class="input input-bordered" x-model="firstName"
+                 maxlength="255" autocomplete="off">
+        </div>
+        <div class="form-control">
+          <label class="label py-1" for="new-user-last"><span class="label-text">Last name (optional)</span></label>
+          <input id="new-user-last" type="text" class="input input-bordered" x-model="lastName"
+                 maxlength="255" autocomplete="off">
+        </div>
+      </div>
+
+      <fieldset class="mb-4">
+        <legend class="label-text mb-1 text-sm">Roles</legend>
+        <p class="mb-2 text-xs opacity-60">
+          What the account may use. The dashboard role lets it sign in to the manager; without
+          a role it can sign in to Keycloak and nothing else.
+        </p>
+        <div x-show="rolesLoading" style="display:none" class="flex justify-center py-4">
+          <span class="loading loading-spinner loading-sm text-primary"></span>
+        </div>
+        <p style="display:none" x-show="rolesError" class="text-sm text-error" x-text="rolesError"></p>
+        <div x-show="!rolesLoading && !rolesError" style="display:none"
+             class="max-h-44 overflow-y-auto rounded-lg border border-base-300">
+          <template x-for="role in roles" :key="role.name">
+            <label class="flex cursor-pointer items-start gap-3 border-b border-base-300 px-3 py-2 last:border-b-0 hover:bg-base-200/60">
+              <input type="checkbox" class="checkbox checkbox-primary checkbox-sm mt-0.5"
+                     :checked="selected[role.name]" @change="selected[role.name] = $event.target.checked">
+              <span class="min-w-0">
+                <span class="flex flex-wrap items-center gap-1.5">
+                  <span class="font-mono text-sm" x-text="role.name"></span>
+                  <span class="badge badge-primary badge-outline badge-sm" style="display:none"
+                        x-show="role.default">dashboard</span>
+                </span>
+                <span class="block text-xs opacity-60" x-show="role.description" style="display:none" x-text="role.description"></span>
+              </span>
+            </label>
+          </template>
+          <p x-show="roles.length === 0" style="display:none" class="px-3 py-4 text-center text-sm opacity-60">The realm has no roles to hand out.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="mb-2">
+        <legend class="label-text mb-2 text-sm">First password</legend>
+        <div class="flex flex-col gap-2">
+          <label class="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+                 :class="credential === 'temporary' ? 'border-primary bg-primary/5' : 'border-base-300 hover:bg-base-200/60'">
+            <input type="radio" class="radio radio-primary radio-sm mt-0.5" name="new-user-credential"
+                   value="temporary" x-model="credential">
+            <span>
+              <span class="block text-sm font-medium">Temporary password</span>
+              <span class="block text-xs opacity-60">Shown once after you create the account. The user has to choose their own at the first sign-in.</span>
+            </span>
+          </label>
+          <label class="flex items-start gap-3 rounded-lg border p-3"
+                 :class="[canMail() ? 'cursor-pointer' : 'cursor-not-allowed opacity-60', credential === 'email' ? 'border-primary bg-primary/5' : 'border-base-300']">
+            <input type="radio" class="radio radio-primary radio-sm mt-0.5" name="new-user-credential"
+                   value="email" x-model="credential" :disabled="!canMail()">
+            <span>
+              <span class="block text-sm font-medium">Email a link</span>
+              <span class="block text-xs opacity-60">Keycloak mails the user a link to set their own password.</span>
+              <span class="mt-1 block text-xs text-warning" style="display:none" x-show="!canMail()" x-text="mailBlocked()"></span>
+            </span>
+          </label>
+          <label class="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+                 :class="credential === 'none' ? 'border-primary bg-primary/5' : 'border-base-300 hover:bg-base-200/60'">
+            <input type="radio" class="radio radio-primary radio-sm mt-0.5" name="new-user-credential"
+                   value="none" x-model="credential">
+            <span>
+              <span class="block text-sm font-medium">Decide later</span>
+              <span class="block text-xs opacity-60">Create the account without a password. Set one from the user's menu when it is time.</span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+
+      <p style="display:none" x-show="error" class="mt-3 text-sm text-error" x-text="error"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-primary" :disabled="busy">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Create user
+        </button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- A temporary password, shown once -->
+<dialog id="user-secret-modal" class="modal" x-data="secretDialog()"
+        @user-secret.window="open($event.detail)" @close="clear()">
+  <div class="modal-box max-w-md">
+    <div class="mb-3 flex items-center gap-3">
+      <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+        </svg>
+      </span>
+      <div class="min-w-0">
+        <h3 class="text-lg font-bold leading-tight" x-text="created ? 'User created' : 'Temporary password'"></h3>
+        <p class="truncate text-sm opacity-60">for <span class="font-mono" x-text="username"></span></p>
+      </div>
+    </div>
+    <div class="join w-full">
+      <input type="text" readonly class="input input-bordered join-item w-full font-mono"
+             :value="password" @focus="$el.select()" aria-label="Temporary password">
+      <button type="button" class="btn btn-primary join-item" @click="copy()" x-text="copied ? 'Copied' : 'Copy'"></button>
+    </div>
+    <div class="alert alert-warning mt-4 text-sm" role="alert">
+      <span>
+        This is the only time the password is shown. Pass it on in person or through a secure
+        channel. The user has to choose a new one at the first sign-in.
+      </span>
+    </div>
+    <div class="modal-action">
+      <button type="button" class="btn btn-primary" @click="$root.close()">Done</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Roles of a user -->
+<dialog id="user-roles-modal" class="modal" x-data="editUserRoles()"
+        @user-roles.window="open($event.detail)">
+  <div class="modal-box max-w-lg">
+    <h3 class="text-lg font-bold">Roles of <span class="font-mono" x-text="username"></span></h3>
+    <p class="mb-3 text-sm opacity-60">A role decides which services the account may use and how far.</p>
+
+    <div x-show="loading" style="display:none" class="flex justify-center py-10">
+      <span class="loading loading-spinner loading-md text-primary"></span>
+    </div>
+    <p style="display:none" x-show="loadError" class="py-6 text-center text-sm text-error" x-text="loadError"></p>
+
+    <form @submit.prevent="submit()" x-show="!loading && !loadError" style="display:none">
+      <div class="max-h-[50vh] overflow-y-auto rounded-lg border border-base-300">
+        <template x-for="role in roles" :key="role.name">
+          <label class="flex items-start gap-3 border-b border-base-300 px-3 py-2.5 last:border-b-0"
+                 :class="role.locked || (role.inherited && !role.direct) ? 'cursor-default' : 'cursor-pointer hover:bg-base-200/60'">
+            <input type="checkbox" class="checkbox checkbox-primary checkbox-sm mt-0.5"
+                   :checked="selected[role.name]"
+                   :disabled="role.locked || (role.inherited && !role.direct)"
+                   @change="selected[role.name] = $event.target.checked">
+            <span class="min-w-0">
+              <span class="flex flex-wrap items-center gap-1.5">
+                <span class="font-mono text-sm" x-text="role.name"></span>
+                <span class="badge badge-ghost badge-sm" style="display:none"
+                      x-show="role.inherited && !role.direct">inherited</span>
+                <span class="badge badge-warning badge-outline badge-sm" style="display:none"
+                      x-show="role.locked">your own role</span>
+              </span>
+              <span class="block text-xs opacity-60" x-show="role.description" style="display:none" x-text="role.description"></span>
+            </span>
+          </label>
+        </template>
+        <p x-show="roles.length === 0" style="display:none" class="px-3 py-6 text-center text-sm opacity-60">The realm has no roles to hand out.</p>
+      </div>
+      <p class="mt-2 text-xs opacity-60">
+        A role marked <em>inherited</em> comes with another role the account holds and is taken
+        away by changing that one. Services pick up a change at the next sign-in or token refresh.
+      </p>
+      <p style="display:none" x-show="error" class="mt-2 text-sm text-error" x-text="error"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-primary" :disabled="busy || !dirty()">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          Save roles
+        </button>
+      </div>
+    </form>
+    <div class="modal-action" x-show="loadError" style="display:none">
+      <button type="button" class="btn btn-ghost" @click="$root.close()">Close</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Sessions of a user -->
+<dialog id="user-sessions-modal" class="modal" x-data="userSessions()"
+        @user-sessions.window="open($event.detail)">
+  <div class="modal-box max-w-2xl">
+    <h3 class="text-lg font-bold">Sessions of <span class="font-mono" x-text="username"></span></h3>
+    <p class="mb-3 text-sm opacity-60">Where this account is signed in right now.</p>
+
+    <div x-show="loading" style="display:none" class="flex justify-center py-10">
+      <span class="loading loading-spinner loading-md text-primary"></span>
+    </div>
+    <p style="display:none" x-show="loadError" class="py-6 text-center text-sm text-error" x-text="loadError"></p>
+
+    <div x-show="!loading && !loadError" style="display:none">
+      <div class="alert alert-info mb-3 text-sm" role="status" style="display:none" x-show="isSelf">
+        <span>These are your own sessions. Ending the one you are using now signs you out of this page too.</span>
+      </div>
+      <p x-show="sessions.length === 0" style="display:none" class="rounded-xl border border-base-300 px-5 py-8 text-center text-sm opacity-60">
+        No active sessions.
+      </p>
+      <div x-show="sessions.length > 0" style="display:none" class="overflow-x-auto rounded-xl border border-base-300">
+        <table class="table table-sm">
+          <thead>
+            <tr><th>Signed in</th><th>Last activity</th><th>Address</th><th>Used for</th><th class="w-px"></th></tr>
+          </thead>
+          <tbody>
+            <template x-for="s in sessions" :key="s.id">
+              <tr>
+                <td class="whitespace-nowrap text-xs" x-text="when(s.started)"></td>
+                <td class="whitespace-nowrap text-xs" :title="when(s.last_access)" x-text="ago(s.last_access)"></td>
+                <td class="font-mono text-xs" x-text="s.ip_address || '—'"></td>
+                <td class="text-xs">
+                  <template x-for="c in s.clients" :key="c">
+                    <span class="badge badge-outline badge-sm mr-1" x-text="c"></span>
+                  </template>
+                  <span x-show="s.clients.length === 0" style="display:none" class="opacity-40">—</span>
+                </td>
+                <td class="text-right">
+                  <button type="button" class="btn btn-ghost btn-xs text-error" :disabled="busy"
+                          @click="end(s.id)">End</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-2 text-xs opacity-60">
+        A session that is ended stops working when its token is next renewed, which is within
+        a few minutes.
+      </p>
+      <p style="display:none" x-show="error" class="mt-2 text-sm text-error" x-text="error"></p>
+    </div>
+
+    <div class="modal-action">
+      <button type="button" class="btn btn-outline btn-error btn-sm" style="display:none"
+              x-show="!loading && !loadError && !isSelf && sessions.length > 1" :disabled="busy"
+              @click="endAll()">End all sessions</button>
+      <button type="button" class="btn btn-ghost" @click="$root.close()">Close</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Reset a password -->
+<dialog id="user-password-modal" class="modal" x-data="resetPassword()"
+        @user-password.window="open($event.detail)">
+  <div class="modal-box max-w-lg">
+    <h3 class="text-lg font-bold">Reset the password of <span class="font-mono" x-text="username"></span></h3>
+    <p class="mb-4 text-sm opacity-60">The current password stops working once a new one is set.</p>
+
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between gap-3 rounded-lg border border-base-300 p-3">
+        <div class="min-w-0">
+          <p class="text-sm font-medium">Temporary password</p>
+          <p class="text-xs opacity-60">Shown once. The user has to choose their own at the next sign-in.</p>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm shrink-0" :disabled="busy" @click="temporary()">Generate</button>
+      </div>
+      <div class="flex items-center justify-between gap-3 rounded-lg border border-base-300 p-3"
+           :class="canMail() ? '' : 'opacity-60'">
+        <div class="min-w-0">
+          <p class="text-sm font-medium">Email a link</p>
+          <p class="text-xs opacity-60">Keycloak mails the user a link to set a new password.</p>
+          <p class="mt-1 text-xs text-warning" style="display:none" x-show="!canMail()" x-text="mailBlocked()"></p>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm shrink-0" :disabled="busy || !canMail()" @click="email()">Send</button>
+      </div>
+    </div>
+
+    <p style="display:none" x-show="error" class="mt-3 text-sm text-error" x-text="error"></p>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" @click="$root.close()">Close</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Enable or disable an account -->
+<dialog id="user-toggle-modal" class="modal" x-data="toggleUser()"
+        @user-toggle.window="open($event.detail)">
+  <div class="modal-box">
+    <h3 class="mb-2 text-lg font-bold" x-text="enable ? 'Enable the account?' : 'Disable the account?'"></h3>
+    <p class="mb-3 text-sm" x-show="!enable" style="display:none">
+      <span class="font-mono" x-text="username"></span> can no longer sign in, and the sessions
+      they have right now are ended. Nothing is deleted: the account, its roles and its data are
+      still there, and enabling it again restores access.
+    </p>
+    <p class="mb-3 text-sm" x-show="enable" style="display:none">
+      <span class="font-mono" x-text="username"></span> can sign in again with the password they had.
+    </p>
+    <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+      <button type="button" class="btn" :class="enable ? 'btn-primary' : 'btn-error'" :disabled="busy" @click="submit()">
+        <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+        <span x-text="enable ? 'Enable' : 'Disable'"></span>
+      </button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+{% include "partials/_rag_js.html" %}
+<script>
+const _USERS_API = '/api/v1/users';
+
+// What the list on screen says about the realm. The partial carries it in a marker element,
+// so the dialogs (which live outside the list) never need a request of their own for it.
+function _usersMarker() {
+  return document.querySelector('#user-list [data-users-marker]');
+}
+function _usersSmtp() {
+  const marker = _usersMarker();
+  return !!marker && marker.dataset.smtp === 'true';
+}
+
+function reloadUsers() {
+  const marker = _usersMarker();
+  const params = new URLSearchParams();
+  const search = document.getElementById('user-search').value.trim();
+  if (search) params.set('search', search);
+  if (marker && marker.dataset.first) params.set('first', marker.dataset.first);
+  htmx.ajax('GET', '/partials/users?' + params.toString(), { target: '#user-list', swap: 'innerHTML' });
+}
+
+// htmx does not swap a 4xx or 5xx answer, which would leave the page spinning. Say why
+// instead. A 401 is handled by the page itself.
+document.body.addEventListener('htmx:responseError', function (event) {
+  const detail = event.detail || {};
+  if (!detail.target || detail.target.id !== 'user-list') return;
+  if (detail.xhr && detail.xhr.status === 401) return;
+  let reason = 'The list could not be loaded.';
+  try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
+  detail.target.innerHTML =
+    '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
+    '<p class="text-lg font-semibold">Users are not available</p>' +
+    '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p>' +
+    '<a class="link" href="/users">Reload the page</a></div>';
+});
+
+function _usersWhen(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function _usersAgo(iso) {
+  if (!iso) return '—';
+  const seconds = Math.round((new Date(iso).getTime() - Date.now()) / 1000);
+  const units = [['day', 86400], ['hour', 3600], ['minute', 60]];
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
+  }
+  return 'just now';
+}
+
+function _usersMailBlocked(smtp, email) {
+  if (!smtp) return 'The realm has no mail server configured, so Keycloak cannot send mail.';
+  if (!email) return 'This account has no email address.';
+  return '';
+}
+
+function newUser() {
+  return {
+    username: '', email: '', firstName: '', lastName: '', credential: 'temporary',
+    roles: [], selected: {}, rolesLoading: false, rolesError: '',
+    smtp: false, busy: false, error: '',
+    async open() {
+      this.reset();
+      this.smtp = _usersSmtp();
+      this.$root.showModal();
+      this.rolesLoading = true;
+      const res = await _ragRequest('GET', _USERS_API + '/roles');
+      this.rolesLoading = false;
+      if (res.handled) return;
+      if (!res.ok) { this.rolesError = res.error; return; }
+      this.roles = res.data.roles;
+      // The dashboard role is what makes a new account usable, so it starts ticked.
+      const picked = {};
+      this.roles.forEach(function (role) { picked[role.name] = role.default; });
+      this.selected = picked;
+    },
+    reset() {
+      this.username = ''; this.email = ''; this.firstName = ''; this.lastName = '';
+      this.credential = 'temporary'; this.error = '';
+      this.roles = []; this.selected = {}; this.rolesError = '';
+    },
+    chosen() {
+      const self = this;
+      return this.roles.filter(function (r) { return self.selected[r.name]; })
+                       .map(function (r) { return r.name; });
+    },
+    canMail() { return this.smtp && this.email.trim() !== ''; },
+    mailBlocked() { return _usersMailBlocked(this.smtp, this.email.trim()); },
+    async submit() {
+      this.error = '';
+      if (this.credential === 'email' && !this.canMail()) this.credential = 'temporary';
+      this.busy = true;
+      const name = this.username.trim();
+      const res = await _ragRequest('POST', _USERS_API, {
+        username: name,
+        email: this.email.trim(),
+        first_name: this.firstName.trim(),
+        last_name: this.lastName.trim(),
+        credential: this.credential,
+        roles: this.chosen(),
+      });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) {
+        this.error = res.error;
+        // A step after creating the account may have failed: the account is there.
+        reloadUsers();
+        return;
+      }
+      this.$root.close();
+      reloadUsers();
+      const made = res.data;
+      if (made.temporary_password) {
+        window.dispatchEvent(new CustomEvent('user-secret', {
+          detail: { username: made.username, password: made.temporary_password, created: true },
+        }));
+      } else if (made.email_sent) {
+        showToast('success', 'User <b>' + _ragEscape(made.username) + '</b> created. A link to set a password was sent.');
+      } else if (made.email_error) {
+        showToast('warning', 'User <b>' + _ragEscape(made.username) + '</b> was created, but the email was not sent: ' + _ragEscape(made.email_error));
+      } else {
+        showToast('success', 'User <b>' + _ragEscape(made.username) + '</b> created.');
+      }
+    },
+  };
+}
+
+function secretDialog() {
+  return {
+    username: '', password: '', created: false, copied: false,
+    open(detail) {
+      this.username = detail.username;
+      this.password = detail.password;
+      this.created = !!detail.created;
+      this.copied = false;
+      this.$root.showModal();
+    },
+    // The password is shown once: nothing of it stays in the page after the dialog closes.
+    clear() { this.password = ''; this.username = ''; this.copied = false; },
+    async copy() {
+      try {
+        await navigator.clipboard.writeText(this.password);
+      } catch (_) {
+        // No clipboard API outside a secure context: select it, the person can copy by hand.
+        const field = this.$root.querySelector('input[readonly]');
+        field.select();
+        try { document.execCommand('copy'); } catch (__) {}
+      }
+      this.copied = true;
+    },
+  };
+}
+
+function editUserRoles() {
+  return {
+    id: '', username: '', roles: [], selected: {}, initial: {},
+    loading: false, loadError: '', busy: false, error: '',
+    async open(detail) {
+      this.id = detail.id; this.username = detail.username;
+      this.roles = []; this.selected = {}; this.initial = {};
+      this.loading = true; this.loadError = ''; this.error = '';
+      this.$root.showModal();
+      const res = await _ragRequest('GET', _USERS_API + '/' + encodeURIComponent(this.id) + '/roles');
+      this.loading = false;
+      if (res.handled) return;
+      if (!res.ok) { this.loadError = res.error; return; }
+      this.roles = res.data.roles;
+      const picked = {};
+      this.roles.forEach(function (role) { picked[role.name] = role.direct; });
+      this.selected = Object.assign({}, picked);
+      this.initial = Object.assign({}, picked);
+    },
+    chosen() {
+      const self = this;
+      return this.roles.filter(function (r) { return self.selected[r.name]; }).map(function (r) { return r.name; });
+    },
+    dirty() {
+      const self = this;
+      return this.roles.some(function (r) { return !!self.selected[r.name] !== !!self.initial[r.name]; });
+    },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('PUT', _USERS_API + '/' + encodeURIComponent(this.id) + '/roles',
+                                    { roles: this.chosen() });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      showToast('success', 'Roles of <b>' + _ragEscape(this.username) + '</b> saved.');
+      reloadUsers();
+    },
+  };
+}
+
+function userSessions() {
+  return {
+    id: '', username: '', isSelf: false, sessions: [],
+    loading: false, loadError: '', busy: false, error: '',
+    when: _usersWhen, ago: _usersAgo,
+    async open(detail) {
+      this.id = detail.id; this.username = detail.username;
+      this.sessions = []; this.isSelf = false;
+      this.loadError = ''; this.error = '';
+      this.$root.showModal();
+      await this.load();
+    },
+    async load() {
+      this.loading = true;
+      const res = await _ragRequest('GET', _USERS_API + '/' + encodeURIComponent(this.id) + '/sessions');
+      this.loading = false;
+      if (res.handled) return;
+      if (!res.ok) { this.loadError = res.error; return; }
+      this.sessions = res.data.sessions;
+      this.isSelf = res.data.is_self;
+    },
+    async end(sessionId) {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest(
+        'DELETE', _USERS_API + '/' + encodeURIComponent(this.id) + '/sessions/' + encodeURIComponent(sessionId));
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      showToast('success', 'Session ended.');
+      await this.load();
+    },
+    async endAll() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('DELETE', _USERS_API + '/' + encodeURIComponent(this.id) + '/sessions');
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      showToast('success', 'All sessions of <b>' + _ragEscape(this.username) + '</b> ended.');
+      await this.load();
+    },
+  };
+}
+
+function resetPassword() {
+  return {
+    id: '', username: '', emailAddress: '', smtp: false, busy: false, error: '',
+    open(detail) {
+      this.id = detail.id; this.username = detail.username;
+      this.emailAddress = detail.email || ''; this.smtp = _usersSmtp();
+      this.error = '';
+      this.$root.showModal();
+    },
+    canMail() { return this.smtp && this.emailAddress !== ''; },
+    mailBlocked() { return _usersMailBlocked(this.smtp, this.emailAddress); },
+    async temporary() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('POST', _USERS_API + '/' + encodeURIComponent(this.id) + '/password/temporary');
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      reloadUsers();
+      window.dispatchEvent(new CustomEvent('user-secret', {
+        detail: { username: res.data.username, password: res.data.temporary_password, created: false },
+      }));
+    },
+    async email() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('POST', _USERS_API + '/' + encodeURIComponent(this.id) + '/password/email');
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      showToast('success', 'A link to set a new password was sent to <b>' + _ragEscape(this.username) + '</b>.');
+    },
+  };
+}
+
+function toggleUser() {
+  return {
+    id: '', username: '', enable: false, busy: false, error: '',
+    open(detail) {
+      this.id = detail.id; this.username = detail.username;
+      this.enable = !detail.enabled; this.error = '';
+      this.$root.showModal();
+    },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('PUT', _USERS_API + '/' + encodeURIComponent(this.id) + '/enabled',
+                                    { enabled: this.enable });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      showToast('success', 'Account <b>' + _ragEscape(this.username) + '</b> ' + (this.enable ? 'enabled' : 'disabled') + '.');
+      reloadUsers();
+    },
+  };
+}
+</script>
+{% endblock %}

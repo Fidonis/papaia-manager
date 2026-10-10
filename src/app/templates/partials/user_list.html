@@ -1,0 +1,180 @@
+{# The body of the Users page: a page of accounts, or the reason there is none.
+
+   The dialogs are not part of this partial. The list is replaced after every change and on
+   every search, and a dialog that holds a password must survive that. The rows reach them
+   through window events (`user-roles`, `user-sessions`, `user-password`, `user-toggle`): a
+   row cannot reach the scope of a dialog that is not its parent.
+
+   The marker element tells the dialogs what the list knows -- whether the realm can send
+   mail, and where this page of the list starts -- so they need no request of their own.
+
+   A Keycloak that is down and a missing right are states of the page, not errors: the
+   reason is shown here, with the way out.
+
+   Classes are spelled out per branch rather than assembled from a variable: app.css is
+   built by scanning these templates. #}
+{% from "partials/_actions.html" import row_actions, overflow_menu %}
+
+<div data-users-marker data-smtp="{{ 'true' if view.smtp else 'false' }}" data-first="{{ view.first }}" hidden></div>
+
+{% if view.state == 'forbidden' %}
+<div class="flex flex-col items-center py-24 gap-4 opacity-70 text-center">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+  </svg>
+  <p class="text-lg font-semibold">Your account cannot manage users yet</p>
+  <p class="max-w-xl text-sm">{{ view.reason }}</p>
+  <button type="button" class="btn btn-outline btn-sm"
+          hx-get="/partials/users" hx-target="#user-list" hx-swap="innerHTML" hx-disabled-elt="this">Try again</button>
+</div>
+
+{% elif view.state == 'unavailable' %}
+<div class="flex flex-col items-center py-24 gap-4 opacity-70 text-center">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728M5.636 18.364a9 9 0 010-12.728M15.536 8.464a5 5 0 010 7.072M8.464 15.536a5 5 0 010-7.072M13 12a1 1 0 11-2 0 1 1 0 012 0z"/>
+  </svg>
+  <p class="text-lg font-semibold">Keycloak does not answer</p>
+  <p class="max-w-xl text-sm">{{ view.reason }}</p>
+  <button type="button" class="btn btn-outline btn-sm"
+          hx-get="/partials/users" hx-target="#user-list" hx-swap="innerHTML" hx-disabled-elt="this">Try again</button>
+</div>
+
+{% else %}
+
+{% if not view.users %}
+<div class="flex flex-col items-center py-20 gap-3 opacity-70 text-center">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+  </svg>
+  {% if view.search %}
+  <p class="text-lg font-semibold">No user matches “{{ view.search }}”</p>
+  <p class="text-sm">Try a part of the name, the username or the email address.</p>
+  {% else %}
+  <p class="text-lg font-semibold">No users yet</p>
+  <p class="text-sm">Create the first account with “New user”.</p>
+  {% endif %}
+</div>
+
+{% else %}
+<div class="overflow-x-auto rounded-xl border border-base-300 bg-base-100">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Account</th>
+        <th>Status</th>
+        <th>Roles</th>
+        <th class="hidden md:table-cell">Created</th>
+        <th class="w-px"><span class="sr-only">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in view.users %}
+      <tr class="hover">
+        <td>
+          <div class="flex items-center gap-3">
+            {% if u.enabled %}
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary" aria-hidden="true">{{ u.initial }}</span>
+            {% else %}
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-base-300 text-sm font-semibold text-base-content/50" aria-hidden="true">{{ u.initial }}</span>
+            {% endif %}
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-1.5">
+                {% if u.enabled %}
+                <span class="font-semibold font-mono text-sm">{{ u.username }}</span>
+                {% else %}
+                <span class="font-semibold font-mono text-sm opacity-60">{{ u.username }}</span>
+                {% endif %}
+                {% if u.is_self %}
+                <span class="badge badge-primary badge-outline badge-sm">You</span>
+                {% endif %}
+              </div>
+              {% if u.display_name or u.email %}
+              <p class="max-w-xs truncate text-xs opacity-60" title="{{ u.display_name }}{{ ' · ' if u.display_name and u.email }}{{ u.email }}">
+                {{ u.display_name }}{{ ' · ' if u.display_name and u.email }}{{ u.email }}
+              </p>
+              {% endif %}
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="flex flex-col items-start gap-1">
+            {% if u.enabled %}
+            <span class="badge badge-success badge-sm">Active</span>
+            {% else %}
+            <span class="badge badge-ghost badge-sm">Disabled</span>
+            {% endif %}
+            {% if u.password_change_pending %}
+            <span class="badge badge-warning badge-outline badge-sm whitespace-nowrap"
+                  title="The account has to choose a new password at its next sign-in">Must change password</span>
+            {% endif %}
+          </div>
+        </td>
+        <td>
+          {% if u.roles %}
+          <div class="flex flex-wrap items-center gap-1">
+            {% for role in u.roles[:3] %}
+            {% if role == view.identity_role %}
+            <span class="badge badge-secondary badge-sm font-mono" title="May manage users and roles">{{ role }}</span>
+            {% else %}
+            <span class="badge badge-outline badge-sm font-mono">{{ role }}</span>
+            {% endif %}
+            {% endfor %}
+            {% if u.roles | length > 3 %}
+            <span class="badge badge-ghost badge-sm" title="{{ u.roles[3:] | join(', ') }}">+{{ u.roles | length - 3 }}</span>
+            {% endif %}
+          </div>
+          {% else %}
+          <span class="text-xs opacity-40">No roles</span>
+          {% endif %}
+        </td>
+        <td class="hidden whitespace-nowrap text-xs opacity-70 md:table-cell">
+          {{ u.created.strftime('%Y-%m-%d') if u.created else '—' }}
+        </td>
+        <td>
+          {# Tier 2: roles and sessions are what an administrator comes for. Everything that
+             changes the account's standing goes behind the kebab and confirms in a dialog.
+             The table scrolls sideways on a narrow screen, so the menu is `float`: an
+             absolutely positioned one would be clipped by the scroll container. #}
+          {% call row_actions() %}
+            <button type="button" class="btn btn-outline btn-xs"
+                    @click='$dispatch("user-roles", {{ {"id": u.id, "username": u.username}|tojson }})'>Roles</button>
+            <button type="button" class="btn btn-outline btn-xs"
+                    @click='$dispatch("user-sessions", {{ {"id": u.id, "username": u.username}|tojson }})'>Sessions</button>
+            {% call overflow_menu(size='xs', label='More actions for ' ~ u.username, float=True) %}
+              <li><a @click='$dispatch("user-password", {{ {"id": u.id, "username": u.username, "email": u.email}|tojson }})'>Reset password…</a></li>
+              {% if not u.enabled %}
+              <li><a @click='$dispatch("user-toggle", {{ {"id": u.id, "username": u.username, "enabled": false}|tojson }})'>Enable account</a></li>
+              {% elif not u.is_self %}
+              <li><a class="text-error" @click='$dispatch("user-toggle", {{ {"id": u.id, "username": u.username, "enabled": true}|tojson }})'>Disable account…</a></li>
+              {% endif %}
+            {% endcall %}
+          {% endcall %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="mt-3 flex items-center justify-between">
+  <p class="text-xs opacity-60">
+    {{ view.first + 1 }}–{{ view.first + (view.users | length) }} of {{ view.total }}
+  </p>
+  <div class="flex gap-2">
+    <button type="button" class="btn btn-ghost btn-sm" {{ "disabled" if view.first == 0 }}
+            hx-get="/partials/users" hx-target="#user-list" hx-swap="innerHTML"
+            hx-include="#user-search-form"
+            hx-vals='{"first": {{ [view.first - view.limit, 0] | max }}, "limit": {{ view.limit }}}'>
+      Prev
+    </button>
+    <button type="button" class="btn btn-ghost btn-sm" {{ "disabled" if view.first + view.limit >= view.total }}
+            hx-get="/partials/users" hx-target="#user-list" hx-swap="innerHTML"
+            hx-include="#user-search-form"
+            hx-vals='{"first": {{ view.first + view.limit }}, "limit": {{ view.limit }}}'>
+      Next
+    </button>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}

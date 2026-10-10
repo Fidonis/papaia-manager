@@ -29,10 +29,12 @@ from app.routers import (
     api_ingest_jobs,
     api_jobs,
     api_maintenance,
+    api_roles,
     api_settings,
     api_stack,
     api_tiles,
     api_upgrade,
+    api_users,
     auth,
     health,
     ui,
@@ -79,10 +81,12 @@ def create_app() -> FastAPI:
     app.include_router(api_addons.router)
     app.include_router(api_jobs.router)
     app.include_router(api_maintenance.router)
+    app.include_router(api_roles.router)
     app.include_router(api_settings.router)
     app.include_router(api_stack.router)
     app.include_router(api_tiles.router)
     app.include_router(api_upgrade.router)
+    app.include_router(api_users.router)
 
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

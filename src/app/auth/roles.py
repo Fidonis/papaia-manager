@@ -24,6 +24,16 @@ def is_user(claims: OIDCClaims, settings: Settings) -> bool:
     return settings.manager_user_role in claims.roles
 
 
+def is_identity_admin(claims: OIDCClaims, settings: Settings) -> bool:
+    """True if the account may manage the realm's users and roles.
+
+    A tier of its own above the admin role: the Users page acts with the Keycloak rights of
+    the signed-in account, which only this role carries, so a plain administrator is denied
+    here before Keycloak would have to refuse them.
+    """
+    return settings.manager_identity_admin_role in claims.roles
+
+
 def has_manager_access(claims: OIDCClaims, settings: Settings) -> bool:
     """True if the account may use the manager at all.
 

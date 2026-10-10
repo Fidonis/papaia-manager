@@ -255,6 +255,53 @@ async def test_refresh_keeps_the_current_token_when_none_is_returned(
     assert token_set.refresh_token == "old-rt"
 
 
+async def test_the_access_token_and_its_expiry_travel_with_the_token_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client()
+    monkeypatch.setattr(
+        client,
+        "_token_request",
+        _areturn(
+            {"id_token": "x", "access_token": "a-1", "refresh_token": "rt", "expires_in": 300}
+        ),
+    )
+    monkeypatch.setattr(client, "_validate_id_token", _areturn(_CLAIMS))
+
+    before = time.time()
+    token_set = await client.refresh(refresh_token="old-rt")
+
+    assert token_set.access_token == "a-1"
+    assert before + 299 <= token_set.access_expires_at <= time.time() + 301
+
+
+async def test_the_access_token_survives_a_refresh_that_keeps_the_refresh_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client()
+    monkeypatch.setattr(
+        client,
+        "_token_request",
+        _areturn({"id_token": "x", "access_token": "a-2", "expires_in": 60}),
+    )
+    monkeypatch.setattr(client, "_validate_id_token", _areturn(_CLAIMS))
+
+    token_set = await client.refresh(refresh_token="old-rt")
+
+    assert (token_set.refresh_token, token_set.access_token) == ("old-rt", "a-2")
+    assert token_set.access_expires_at > 0
+
+
+async def test_a_response_without_expiry_leaves_it_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client()
+    monkeypatch.setattr(client, "_token_request", _areturn({"id_token": "x", "access_token": "a"}))
+    monkeypatch.setattr(client, "_validate_id_token", _areturn(_CLAIMS))
+
+    assert (await client.refresh(refresh_token="r")).access_expires_at == 0.0
+
+
 async def test_refresh_propagates_a_token_endpoint_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

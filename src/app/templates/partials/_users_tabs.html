@@ -1,0 +1,9 @@
+{# The two pages of the Users section: the accounts and the roles they hold. Same bar as the
+   ingest pages. The tabs do not wrap: on a narrow screen a label that broke into two lines
+   overflowed the fixed height of a tab. #}
+{% macro tabs(active) %}
+<nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="Users">
+  <a href="/users" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'users' else '' }}">Users</a>
+  <a href="/users/roles" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'roles' else '' }}">Roles</a>
+</nav>
+{% endmacro %}
