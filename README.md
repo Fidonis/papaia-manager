@@ -72,7 +72,7 @@ filtered server-side, so an admin-only tile is absent from a regular user's
 response rather than hidden by CSS. Authorization is enforced by the route
 dependencies, so the JSON API is restricted exactly like the pages.
 
-**Users.** A third tier sits above the admin role: `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`, which already includes the admin role) opens **Users**, where accounts of the bundled Keycloak are managed without the Admin Console. The list shows each account's status and roles, with search and paging. From it an administrator creates an account (with the roles to start from, the dashboard role ticked, and a first password: a temporary one shown once, or a mailed link), enables or disables it (disabling also ends its sessions), changes its roles, resets its password, and views and ends its sessions. A temporary password makes Keycloak ask for a new one at the first sign-in. The mailed link needs a mail server on the realm and is offered only when there is one. Nobody can disable their own account, take the identity role from themselves or end all of their own sessions here, so the page cannot lock its last administrator out. There is no service account behind it: the manager calls Keycloak's Admin API with the access token of the signed-in account, obtained from the session's refresh token and kept in memory only, so Keycloak applies that account's own rights. The identity role therefore has to carry `manage-users`, `view-users`, `query-users` and `view-realm` of the realm's `realm-management` client; where it does not (yet), the page says so. A session ended in Keycloak stops working in the manager when its token is next renewed, within a few minutes. Every change is audited and no password is ever written to the log. The page does not exist where the accounts live in an external identity provider (`AUTH_PROVIDER=external_oidc`).
+**Users.** A third tier sits above the admin role: `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`, which already includes the admin role) opens **Users**, where accounts of the bundled Keycloak are managed without the Admin Console. The list shows each account's status and roles, with search and paging. From it an administrator creates an account (with the roles to start from, the dashboard role ticked, and a first password: a temporary one shown once, or a mailed link), enables or disables it (disabling also ends its sessions), changes its roles, resets its password, and views and ends its sessions. The **Roles** tab manages the roles themselves: it lists every realm role with what it contains, creates a role, changes its description and the roles it contains, and deletes it after showing which accounts hold it. The roles the stack ships (and the three the manager is configured with) are shown but not changed or deleted, because services refer to them by name; a role cannot be renamed, and cannot contain itself, directly or through another role. A temporary password makes Keycloak ask for a new one at the first sign-in. The mailed link needs a mail server on the realm and is offered only when there is one. Nobody can disable their own account, take the identity role from themselves or end all of their own sessions here, so the page cannot lock its last administrator out. There is no service account behind it: the manager calls Keycloak's Admin API with the access token of the signed-in account, obtained from the session's refresh token and kept in memory only, so Keycloak applies that account's own rights. The identity role therefore has to carry `manage-users`, `view-users`, `query-users`, `view-realm` and `manage-realm` of the realm's `realm-management` client (the last is what Keycloak asks for to create, change or delete a role); where it does not (yet), the page says so. A session ended in Keycloak stops working in the manager when its token is next renewed, within a few minutes. Every change is audited and no password is ever written to the log. The page does not exist where the accounts live in an external identity provider (`AUTH_PROVIDER=external_oidc`).
 
 **RAG system.** When the core runs its optional RAG system (the `rag` profile
 in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
@@ -511,7 +511,7 @@ dry-run preview; the prune itself is recorded as its own audit entry.
 
 ## REST API
 
-All mutating routes require the `MANAGER_ADMIN_ROLE` and a CSRF header, except those of the Users page (`/api/v1/users`), which require the `MANAGER_IDENTITY_ADMIN_ROLE` instead.
+All mutating routes require the `MANAGER_ADMIN_ROLE` and a CSRF header, except those of the Users page (`/api/v1/users`, `/api/v1/roles`), which require the `MANAGER_IDENTITY_ADMIN_ROLE` instead.
 Long-running operations return `202` with a job id. The RAG routes
 (`/api/v1/rag/`) are admin-only too and, after the role check, answer 404 while the
 `rag` profile is not active.
@@ -663,6 +663,12 @@ POST   /api/v1/users/{id}/password/email     # mail the account Keycloak's updat
 GET    /api/v1/users/{id}/sessions           # where the account is signed in
 DELETE /api/v1/users/{id}/sessions/{sid}     # end one session
 DELETE /api/v1/users/{id}/sessions           # end all of them
+
+GET    /api/v1/roles                         # every realm role with what it contains
+GET    /api/v1/roles/{name}                  # one role, with the accounts that hold it
+POST   /api/v1/roles                         # {name, description?, members?}
+PUT    /api/v1/roles/{name}                  # {description, members}: the realm roles it contains
+DELETE /api/v1/roles/{name}                  # not a built-in role
 ```
 
 ## Layout
@@ -679,7 +685,7 @@ papaia-manager/
 │       ├── auth/           # OIDC + PKCE login, CSRF, role dependencies, the user's own token
 │       ├── core/           # ctl (whitelisted papaia-ctl calls), papaia_lib (core handshake),
 │       │                   # catalogs, snapshots, status, env-forms, jobs, audit, tiles,
-│       │                   # keycloak, keycloak_users + users_service (the Users page),
+│       │                   # keycloak, keycloak_users + users_service + roles_service (the Users page),
 │       │                   # resolve (cross-catalog add-on dedup),
 │       │                   # services (container status), inventory (declared state),
 │       │                   # backups (restore-point catalogue), restore_scope (partial restore),
@@ -699,7 +705,7 @@ papaia-manager/
 │       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
 │       │                   # api_tiles, api_settings, api_collections, api_connections, api_ingest,
 │       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store),
-│       │                   # api_users, users_deps (identity role, Keycloak client)
+│       │                   # api_users, api_roles, users_deps (identity role, Keycloak client)
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)

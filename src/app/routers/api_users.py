@@ -14,12 +14,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.auth.csrf import verify_csrf
-from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core.audit import redact_params, write_audit_entry
 from app.core.keycloak_users import KeycloakRejectedError
 from app.core.users_service import MAX_PAGE_SIZE, PAGE_SIZE, PartiallyCreated
 from app.routers.users_deps import UsersAdmin, UsersServiceDep, translated
+from app.routers.users_deps import audit as _audit
 
 router = APIRouter(prefix="/api/v1/users")
 
@@ -46,28 +45,6 @@ class EnabledBody(BaseModel):
 
 class RolesBody(BaseModel):
     roles: list[str] = Field(max_length=500)
-
-
-def _user_id(user: OIDCClaims) -> str:
-    return user.preferred_username or user.sub
-
-
-def _audit(
-    settings: Settings,
-    user: OIDCClaims,
-    action: str,
-    target: str,
-    params: dict[str, Any] | None = None,
-    result: str = "ok",
-) -> None:
-    write_audit_entry(
-        settings.papaia_config_dir,
-        user=_user_id(user),
-        action=action,
-        target=target,
-        params=redact_params(params) if params else None,
-        result=result,
-    )
 
 
 def _secret(content: dict[str, Any], status_code: int = status.HTTP_200_OK) -> Response:

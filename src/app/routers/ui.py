@@ -81,7 +81,7 @@ from app.routers.rag_deps import (
     RagAdmin,
     get_store,
 )
-from app.routers.users_deps import UsersAdmin, UsersServiceDep, translated
+from app.routers.users_deps import RolesServiceDep, UsersAdmin, UsersServiceDep, translated
 from app.templating import templates as _templates
 
 router = APIRouter()
@@ -698,6 +698,33 @@ async def partial_users(
         request,
         "partials/user_list.html",
         _ctx(request, user, view=view),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/users/roles", response_class=HTMLResponse)
+async def roles_page(request: Request, user: UsersAdmin) -> HTMLResponse:
+    """The realm's roles: what an account may use, and the roles an operator adds to that."""
+    return _templates.TemplateResponse(request, "roles.html", _ctx(request, user))
+
+
+@router.get("/partials/roles", response_class=HTMLResponse)
+async def partial_roles(
+    request: Request,
+    user: UsersAdmin,
+    service: RolesServiceDep,
+) -> HTMLResponse:
+    """The Roles page's body: every role with what it contains, or why there is none.
+
+    Read on every load and never cached: the list is what an administrator just changed.
+    """
+    with translated():
+        view = await service.snapshot()
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/role_list.html",
+        _ctx(request, user, view=view, identity_role=get_settings().manager_identity_admin_role),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

@@ -74,6 +74,7 @@ ADMIN_PAGES = [
     "/services",
     "/upgrade",
     "/users",
+    "/users/roles",
 ]
 ADMIN_PARTIALS = [
     "/partials/addons",
@@ -105,6 +106,7 @@ ADMIN_PARTIALS = [
     "/partials/upgrade/log",
     "/partials/upgrade/runner",
     "/partials/upgrade/status",
+    "/partials/roles",
     "/partials/users",
     # The dashboard itself is open to both roles; only its editor is not.
     "/partials/tiles/edit",
@@ -138,6 +140,8 @@ ADMIN_APIS = [
     "/api/v1/upgrade/check",
     "/api/v1/upgrade/runner",
     "/api/v1/upgrade/status",
+    "/api/v1/roles",
+    "/api/v1/roles/sales",
     "/api/v1/users",
     "/api/v1/users/roles",
     f"/api/v1/users/{_UID}/roles",
@@ -178,6 +182,7 @@ ADMIN_WRITE_APIS = [
     "/api/v1/upgrade",
     "/api/v1/upgrade/check",
     "/api/v1/upgrade/runner/clear",
+    "/api/v1/roles",
     "/api/v1/users",
     f"/api/v1/users/{_UID}/password/temporary",
     f"/api/v1/users/{_UID}/password/email",
@@ -339,6 +344,8 @@ _OTHER_WRITES = [
     ("put", f"/api/v1/users/{_UID}/roles", {"roles": ["papaia-admin"]}),
     ("delete", f"/api/v1/users/{_UID}/sessions", None),
     ("delete", f"/api/v1/users/{_UID}/sessions/{_UID}", None),
+    ("put", "/api/v1/roles/sales", {"description": "", "members": []}),
+    ("delete", "/api/v1/roles/sales", None),
 ]
 
 
@@ -367,7 +374,11 @@ def test_admin_role_reaches_the_api(client: TestClient, path: str) -> None:
 # manager acts with the rights of whoever is signed in.
 IDENTITY_SURFACES = [
     "/users",
+    "/users/roles",
     "/partials/users",
+    "/partials/roles",
+    "/api/v1/roles",
+    "/api/v1/roles/sales",
     "/api/v1/users",
     "/api/v1/users/roles",
     f"/api/v1/users/{_UID}/roles",
@@ -380,20 +391,21 @@ def test_a_plain_administrator_is_denied_the_users_surfaces(client: TestClient, 
     assert _as(client, "admin").get(path).status_code == 403
 
 
-@pytest.mark.parametrize(("method", "path", "body"), _OTHER_WRITES[-4:])
+@pytest.mark.parametrize(("method", "path", "body"), _OTHER_WRITES[-6:])
 def test_a_plain_administrator_is_denied_the_users_writes(
     client: TestClient, method: str, path: str, body: object
 ) -> None:
     assert _as(client, "admin").request(method, path, json=body).status_code == 403
 
 
-@pytest.mark.parametrize("path", [*ADMIN_WRITE_APIS[-3:]])
+@pytest.mark.parametrize("path", [*ADMIN_WRITE_APIS[-4:]])
 def test_a_plain_administrator_is_denied_creating_accounts(client: TestClient, path: str) -> None:
     assert _as(client, "admin").post(path, json={"username": "jane"}).status_code == 403
 
 
-def test_the_identity_role_reaches_the_users_page(client: TestClient) -> None:
+def test_the_identity_role_reaches_the_users_and_roles_pages(client: TestClient) -> None:
     assert _as(client, "papaia-admin").get("/users").status_code == 200
+    assert _as(client, "papaia-admin").get("/users/roles").status_code == 200
 
 
 def test_the_denial_names_the_role_that_is_needed(client: TestClient) -> None:

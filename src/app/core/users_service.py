@@ -59,8 +59,8 @@ PASSWORD_LENGTH = 20
 
 _FORBIDDEN_HINT = (
     "Your account does not have Keycloak's user-administration rights. The role {role} has "
-    "to carry the roles manage-users, view-users, query-users and view-realm of the "
-    "realm-management client. Add them in the Keycloak Admin Console under Realm roles > "
+    "to carry the roles manage-users, view-users, query-users, view-realm and manage-realm of "
+    "the realm-management client. Add them in the Keycloak Admin Console under Realm roles > "
     "{role} > Associated roles (filter by clients), or use a papAIa release whose realm "
     "gives {role} these rights: `papaia-ctl start` then applies them to an existing "
     "installation. Sign in again afterwards."
@@ -90,6 +90,13 @@ class PartiallyCreated(Exception):  # noqa: N818 - a state of the account, not a
 
 def is_technical_role(name: str) -> bool:
     return name in _TECHNICAL_ROLES or name.startswith("default-roles-")
+
+
+def require_known_roles(wanted: list[str], known: dict[str, dict[str, Any]]) -> None:
+    """Refuse a role that does not exist (or is Keycloak's own) before anything is written."""
+    unknown = sorted({name for name in wanted if name not in known})
+    if unknown:
+        raise InvalidInput("Unknown role: " + ", ".join(unknown))
 
 
 def generate_temporary_password() -> str:
@@ -480,9 +487,7 @@ class UsersService:
 
     @staticmethod
     def _require_known(wanted: list[str], known: dict[str, dict[str, Any]]) -> None:
-        unknown = sorted({name for name in wanted if name not in known})
-        if unknown:
-            raise InvalidInput("Unknown role: " + ", ".join(unknown))
+        require_known_roles(wanted, known)
 
     async def assignable_roles(self) -> list[RoleOption]:
         """The roles a new account can be given, with the dashboard role marked."""

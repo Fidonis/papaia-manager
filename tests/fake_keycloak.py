@@ -62,6 +62,23 @@ class FakeKeycloak:
         # written as "METHOD <rest>": for example "POST /role-mappings/realm".
         self.fail_on: set[str] = set()
         self.reject_passwords = False
+        # Whether the account holds manage-realm, which creating, changing and deleting a role
+        # needs. Reading roles (view-realm) works without it.
+        self.manage_realm = True
+        # Roles of clients that a realm role contains, as Keycloak lists them next to the realm
+        # roles: told apart by `clientRole` and `containerId`.
+        self.client_composites: dict[str, list[dict[str, Any]]] = {
+            "papaia-admin": [
+                {
+                    "id": f"rm-{right}",
+                    "name": right,
+                    "clientRole": True,
+                    "containerId": "realm-management-uuid",
+                    "composite": False,
+                }
+                for right in ("manage-users", "view-realm", "manage-realm")
+            ]
+        }
         for name, description in _ROLE_DEFAULTS.items():
             self.roles[name] = {
                 "id": str(uuid.uuid4()),
@@ -185,10 +202,9 @@ class FakeKeycloak:
 
         if path == "/roles" and method == "GET":
             return httpx.Response(200, json=list(self.roles.values()))
-        match = re.fullmatch(r"/roles/([^/]+)", path)
-        if match and method == "GET":
-            role = self.roles.get(match[1])
-            return httpx.Response(200, json=role) if role else _err(404, "Could not find role")
+        match = re.fullmatch(r"/roles(?:/([^/]+)(/composites|/users)?)?", path)
+        if match:
+            return self._role_route(method, match[1], match[2] or "", params, body)
 
         match = re.fullmatch(r"/sessions/([^/]+)", path)
         if match and method == "DELETE":
@@ -199,6 +215,68 @@ class FakeKeycloak:
                         return httpx.Response(204)
             return _err(404, "Session not found")
         return _err(404, f"No route for {method} {path}")
+
+    def _role_route(  # noqa: PLR0911, PLR0912
+        self, method: str, name: str | None, rest: str, params: dict[str, str], body: Any
+    ) -> httpx.Response:
+        """Create, read, change and delete a realm role, and what it contains."""
+        if f"{method} /roles{rest}" in self.fail_on:
+            return _err(500, "Keycloak had a problem")
+        writes = method != "GET"
+        if writes and not self.manage_realm:
+            return httpx.Response(403, json={"error": "HTTP 403 Forbidden"})
+        if name is None:  # POST /roles
+            if body["name"] in self.roles:
+                return _err(409, f"Role with name {body['name']} already exists")
+            self.roles[body["name"]] = {
+                "id": str(uuid.uuid4()),
+                "name": body["name"],
+                "description": body.get("description", ""),
+                "composite": False,
+                "clientRole": False,
+            }
+            return httpx.Response(201)
+        role = self.roles.get(name)
+        if role is None:
+            return _err(404, "Could not find role")
+        if rest == "":
+            if method == "GET":
+                return httpx.Response(200, json=role)
+            if method == "PUT":
+                role["description"] = body.get("description", "")
+                return httpx.Response(204)
+            if method == "DELETE":
+                del self.roles[name]
+                self.composites.pop(name, None)
+                for members in self.composites.values():
+                    if name in members:
+                        members.remove(name)
+                for held in self.direct.values():
+                    held.discard(name)
+                return httpx.Response(204)
+        if rest == "/composites":
+            members = self.composites.setdefault(name, [])
+            if method == "GET":
+                reps = [self.roles[m] for m in members if m in self.roles]
+                return httpx.Response(200, json=[*reps, *self.client_composites.get(name, [])])
+            names = [r["name"] for r in body if not r.get("clientRole")]
+            if method == "POST":
+                members.extend(n for n in names if n not in members)
+            if method == "DELETE":
+                for n in names:
+                    if n in members:
+                        members.remove(n)
+            role["composite"] = bool(members or self.client_composites.get(name))
+            return httpx.Response(204)
+        if rest == "/users" and method == "GET":
+            holders = [
+                {"id": uid, "username": self.users[uid]["username"]}
+                for uid, held in self.direct.items()
+                if name in held
+            ]
+            first, limit = int(params.get("first", 0)), int(params.get("max", 100))
+            return httpx.Response(200, json=holders[first : first + limit])
+        return _err(404, f"No route for {method} /roles/{name}{rest}")
 
     def _matching(self, search: str) -> list[dict[str, Any]]:
         needle = search.lower()

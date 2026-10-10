@@ -195,3 +195,62 @@ async def test_neither_the_token_nor_a_password_is_in_an_error() -> None:
     text = f"{caught.value!s} {caught.value!r} {caught.value.detail}"
     assert TOKEN not in text
     assert "Sup3r-secret-value" not in text
+
+
+# -- roles ---------------------------------------------------------------------------
+
+
+async def test_a_role_is_created_changed_and_deleted() -> None:
+    fake = FakeKeycloak()
+    async with _client(fake) as client:
+        await client.create_role("sales", "Sales team")
+        assert fake.roles["sales"]["description"] == "Sales team"
+        rep = await client.get_role("sales")
+        await client.update_role("sales", {**rep, "description": "Sales"})
+        assert fake.roles["sales"]["description"] == "Sales"
+        await client.delete_role("sales")
+    assert "sales" not in fake.roles
+
+
+async def test_a_role_that_exists_is_a_conflict() -> None:
+    fake = FakeKeycloak()
+    async with _client(fake) as client:
+        with pytest.raises(KeycloakConflictError):
+            await client.create_role("user", "again")
+
+
+async def test_what_a_role_contains_is_read_added_and_removed() -> None:
+    fake = FakeKeycloak()
+    async with _client(fake) as client:
+        await client.create_role("team", "")
+        await client.add_role_composites("team", [fake.roles["user"], fake.roles["viewer"]])
+        members = await client.role_composites("team")
+        assert sorted(m["name"] for m in members) == ["user", "viewer"]
+        await client.remove_role_composites("team", [fake.roles["viewer"]])
+        assert [m["name"] for m in await client.role_composites("team")] == ["user"]
+    assert fake.roles["team"]["composite"] is True
+
+
+async def test_the_roles_of_a_client_are_listed_apart_from_realm_roles() -> None:
+    async with _client(FakeKeycloak()) as client:
+        members = await client.role_composites("papaia-admin")
+    assert {m["name"] for m in members if m.get("clientRole")} >= {"manage-users", "manage-realm"}
+    assert any(not m.get("clientRole") for m in members)
+
+
+async def test_the_accounts_holding_a_role_are_listed_with_a_limit() -> None:
+    fake = FakeKeycloak()
+    for number in range(5):
+        fake.add_user(f"user{number}", roles=("viewer",))
+    async with _client(fake) as client:
+        found = await client.role_users("viewer", limit=3)
+    assert len(found) == 3
+
+
+async def test_changing_a_role_without_manage_realm_is_forbidden() -> None:
+    fake = FakeKeycloak()
+    fake.manage_realm = False
+    async with _client(fake) as client:
+        assert await client.list_roles()
+        with pytest.raises(KeycloakForbiddenError):
+            await client.create_role("sales", "")

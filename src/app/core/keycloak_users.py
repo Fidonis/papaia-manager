@@ -275,6 +275,40 @@ class KeycloakUsers:
             raise KeycloakError(200, "Keycloak sent an unreadable answer")
         return body
 
+    async def create_role(self, name: str, description: str) -> None:
+        await self._request("POST", "/roles", json={"name": name, "description": description})
+
+    async def update_role(self, name: str, representation: dict[str, Any]) -> None:
+        await self._request("PUT", f"/roles/{quote(name, safe='')}", json=representation)
+
+    async def delete_role(self, name: str) -> None:
+        await self._request("DELETE", f"/roles/{quote(name, safe='')}")
+
+    async def role_composites(self, name: str) -> list[dict[str, Any]]:
+        """What a composite role contains: realm roles and roles of clients, told apart by
+        `clientRole`."""
+        body = self._json(
+            await self._request("GET", f"/roles/{quote(name, safe='')}/composites")
+        )
+        return [r for r in body if isinstance(r, dict)] if isinstance(body, list) else []
+
+    async def add_role_composites(self, name: str, roles: list[dict[str, Any]]) -> None:
+        await self._request("POST", f"/roles/{quote(name, safe='')}/composites", json=roles)
+
+    async def remove_role_composites(self, name: str, roles: list[dict[str, Any]]) -> None:
+        await self._request("DELETE", f"/roles/{quote(name, safe='')}/composites", json=roles)
+
+    async def role_users(self, name: str, *, limit: int) -> list[dict[str, Any]]:
+        """Some of the accounts that hold a role directly."""
+        body = self._json(
+            await self._request(
+                "GET",
+                f"/roles/{quote(name, safe='')}/users",
+                params={"first": "0", "max": str(limit)},
+            )
+        )
+        return [u for u in body if isinstance(u, dict)] if isinstance(body, list) else []
+
     async def direct_roles(self, user_id: str) -> list[dict[str, Any]]:
         """The realm roles mapped to the user itself."""
         body = self._json(

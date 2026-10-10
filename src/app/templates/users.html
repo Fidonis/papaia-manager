@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/_users_tabs.html" import tabs %}
 {% block title %}Users — {{ branding().name }}{% endblock %}
 
 {% block page_title %}Users{% endblock %}
@@ -28,6 +29,8 @@
 {% endblock %}
 
 {% block content %}
+{{ tabs('users') }}
+
 {# The search is a control of the page's body, not an action: the header holds buttons only.
    Typing searches after a short pause; every new search starts on the first page, because no
    `first` travels in this form (the pager adds its own). #}

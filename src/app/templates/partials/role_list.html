@@ -1,0 +1,123 @@
+{# The body of the Roles page: every realm role with what it contains, or the reason there is
+   none.
+
+   The dialogs are not part of this partial: the list is replaced after every change, and a form
+   that is being filled in must survive that. The rows reach them through window events
+   (`role-open`, `role-delete`).
+
+   A Keycloak that is down and a missing right are states of the page, not errors.
+
+   Classes are spelled out per branch rather than assembled from a variable: app.css is built by
+   scanning these templates. #}
+{% from "partials/_actions.html" import row_actions, overflow_menu %}
+
+{% if view.state == 'forbidden' %}
+<div class="flex flex-col items-center py-24 gap-4 opacity-70 text-center">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+  </svg>
+  <p class="text-lg font-semibold">Your account cannot read the roles yet</p>
+  <p class="max-w-xl text-sm">{{ view.reason }}</p>
+  <button type="button" class="btn btn-outline btn-sm"
+          hx-get="/partials/roles" hx-target="#role-list" hx-swap="innerHTML" hx-disabled-elt="this">Try again</button>
+</div>
+
+{% elif view.state == 'unavailable' %}
+<div class="flex flex-col items-center py-24 gap-4 opacity-70 text-center">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728M5.636 18.364a9 9 0 010-12.728M15.536 8.464a5 5 0 010 7.072M8.464 15.536a5 5 0 010-7.072M13 12a1 1 0 11-2 0 1 1 0 012 0z"/>
+  </svg>
+  <p class="text-lg font-semibold">Keycloak does not answer</p>
+  <p class="max-w-xl text-sm">{{ view.reason }}</p>
+  <button type="button" class="btn btn-outline btn-sm"
+          hx-get="/partials/roles" hx-target="#role-list" hx-swap="innerHTML" hx-disabled-elt="this">Try again</button>
+</div>
+
+{% else %}
+
+{% if not view.roles %}
+<div class="flex flex-col items-center py-20 gap-3 opacity-70 text-center">
+  <p class="text-lg font-semibold">The realm has no roles yet</p>
+  <p class="text-sm">Create the first one with “New role”.</p>
+</div>
+
+{% else %}
+<div class="overflow-x-auto rounded-xl border border-base-300 bg-base-100">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Role</th>
+        <th>Contains</th>
+        <th class="w-px"><span class="sr-only">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for role in view.roles %}
+      <tr class="hover">
+        <td>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="font-semibold font-mono text-sm">{{ role.name }}</span>
+            {% if role.built_in %}
+            <span class="badge badge-ghost badge-sm" title="Belongs to the stack: services refer to it by name">Built in</span>
+            {% else %}
+            <span class="badge badge-primary badge-outline badge-sm">Custom</span>
+            {% endif %}
+            {% if role.default %}
+            <span class="badge badge-secondary badge-sm" title="Lets an account sign in to the manager's dashboard">dashboard</span>
+            {% endif %}
+            {% if role.name == identity_role %}
+            <span class="badge badge-secondary badge-sm" title="May manage users and roles">identity admin</span>
+            {% endif %}
+          </div>
+          {% if role.description %}
+          <p class="max-w-md truncate text-xs opacity-60" title="{{ role.description }}">{{ role.description }}</p>
+          {% endif %}
+        </td>
+        <td>
+          {% if role.members or role.client_members %}
+          <div class="flex flex-wrap items-center gap-1">
+            {% for member in role.members[:4] %}
+            <span class="badge badge-outline badge-sm font-mono">{{ member }}</span>
+            {% endfor %}
+            {% if role.members | length > 4 %}
+            <span class="badge badge-ghost badge-sm" title="{{ role.members[4:] | join(', ') }}">+{{ role.members | length - 4 }}</span>
+            {% endif %}
+            {% if role.client_members %}
+            <span class="badge badge-ghost badge-sm" title="Keycloak administration roles: {{ role.client_members | join(', ') }}">Keycloak admin · {{ role.client_members | length }}</span>
+            {% endif %}
+          </div>
+          {% else %}
+          <span class="text-xs opacity-40">Nothing</span>
+          {% endif %}
+        </td>
+        <td>
+          {# Tier 2: a role of the stack can be looked at; one of the operator's own is edited,
+             and deleting it confirms in a dialog behind the kebab. #}
+          {% if role.built_in %}
+          {% call row_actions() %}
+            <button type="button" class="btn btn-outline btn-xs"
+                    @click='$dispatch("role-open", {{ {"name": role.name, "builtIn": true}|tojson }})'>View</button>
+          {% endcall %}
+          {% else %}
+          {% call row_actions() %}
+            <button type="button" class="btn btn-outline btn-xs"
+                    @click='$dispatch("role-open", {{ {"name": role.name, "builtIn": false}|tojson }})'>Edit</button>
+            {% call overflow_menu(size='xs', label='More actions for ' ~ role.name, float=True) %}
+              <li><a class="text-error"
+                     @click='$dispatch("role-delete", {{ {"name": role.name}|tojson }})'>Delete…</a></li>
+            {% endcall %}
+          {% endcall %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="mt-3 text-xs opacity-60">
+  {{ view.roles | length }} role{{ '' if view.roles | length == 1 else 's' }}.
+  Keycloak's own roles (offline access and the realm's default role) are not listed.
+</p>
+{% endif %}
+
+{% endif %}
