@@ -167,7 +167,7 @@ async def test_a_missing_right_is_a_state_of_the_page_not_an_error(rig: _Rig) ->
     assert view.state == "forbidden"
     assert not view.available
     assert _IDENTITY_ROLE in view.reason
-    assert "keycloak-role-sync" in view.reason
+    assert "Associated roles" in view.reason and "realm-management" in view.reason
 
 
 async def test_an_unreachable_keycloak_is_a_state_of_the_page_not_an_error(rig: _Rig) -> None:

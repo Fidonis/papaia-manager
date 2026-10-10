@@ -58,10 +58,12 @@ _SYMBOLS = "-_.!#$%&*+=?@"
 PASSWORD_LENGTH = 20
 
 _FORBIDDEN_HINT = (
-    "Your account does not have Keycloak's user-administration rights. Newer releases give "
-    "the role {role} these rights through the realm. On an existing installation "
-    "`papaia-ctl start` (or `papaia-ctl keycloak-role-sync`) applies them, and signing in "
-    "again picks them up."
+    "Your account does not have Keycloak's user-administration rights. The role {role} has "
+    "to carry the roles manage-users, view-users, query-users and view-realm of the "
+    "realm-management client. Add them in the Keycloak Admin Console under Realm roles > "
+    "{role} > Associated roles (filter by clients), or use a papAIa release whose realm "
+    "gives {role} these rights: `papaia-ctl start` then applies them to an existing "
+    "installation. Sign in again afterwards."
 )
 
 

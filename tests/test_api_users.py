@@ -254,7 +254,7 @@ def test_a_missing_keycloak_right_is_a_403_with_the_way_out(
     keycloak.allowed = False
     response = _admin(client).get(_BASE)
     assert response.status_code == 403
-    assert "keycloak-role-sync" in response.json()["detail"]
+    assert "Associated roles" in response.json()["detail"]
 
 
 def test_an_unreachable_keycloak_is_a_503(client: TestClient, keycloak: FakeKeycloak) -> None:
@@ -745,7 +745,7 @@ def test_the_partial_explains_a_missing_right(client: TestClient, keycloak: Fake
     response = _admin(client).get("/partials/users")
     assert response.status_code == 200
     assert "cannot manage users yet" in response.text
-    assert "keycloak-role-sync" in response.text
+    assert "Associated roles" in response.text
 
 
 def test_the_partial_explains_an_unreachable_keycloak(
