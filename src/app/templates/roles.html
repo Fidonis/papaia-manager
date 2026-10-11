@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% from "partials/_users_tabs.html" import tabs %}
+{% block title %}Roles — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Roles{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">What an account may use, and the roles you add to that</p>{% endblock %}
+
+{# Tier 1: one filled primary, one outline secondary. The dialogs live on the page and not in
+   the list partial, so a reload of the list never tears down a form that is being filled in. #}
+{% block page_actions %}
+<button type="button"
+        class="btn btn-outline btn-sm"
+        hx-get="/partials/roles"
+        hx-target="#role-list"
+        hx-swap="innerHTML"
+        hx-disabled-elt="this">
+  Refresh
+</button>
+<button type="button"
+        class="btn btn-primary btn-sm"
+        onclick="window.dispatchEvent(new CustomEvent('role-new'))">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+  </svg>
+  New role
+</button>
+{% endblock %}
+
+{% block content %}
+{{ tabs('roles') }}
+
+<div
+  id="role-list"
+  hx-get="/partials/roles"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+
+<!-- Create, change or look at a role -->
+<dialog id="role-modal" class="modal" x-data="roleDialog()"
+        @role-new.window="openNew()" @role-open.window="openRole($event.detail)">
+  <div class="modal-box max-w-xl">
+    <div class="flex flex-wrap items-center gap-2">
+      <h3 class="text-lg font-bold" x-text="mode === 'create' ? 'New role' : 'Role'"></h3>
+      <span class="badge badge-ghost badge-sm" style="display:none" x-show="builtIn">Built in</span>
+    </div>
+    <p class="mb-4 text-sm opacity-60" x-show="mode === 'create'" style="display:none">
+      A role is a name services can ask for. Giving it to an account is done on the Users tab.
+    </p>
+    <p class="mb-4 text-sm opacity-60" x-show="builtIn" style="display:none">
+      Built-in roles belong to the stack: services refer to them by name, so they are shown here
+      and changed only in the Keycloak Admin Console.
+    </p>
+
+    <div x-show="loading" style="display:none" class="flex justify-center py-10">
+      <span class="loading loading-spinner loading-md text-primary"></span>
+    </div>
+    <p style="display:none" x-show="loadError" class="py-6 text-center text-sm text-error" x-text="loadError"></p>
+
+    <form @submit.prevent="submit()" x-show="!loading && !loadError" style="display:none">
+      <div class="form-control mb-3">
+        <label class="label py-1" for="role-name"><span class="label-text">Name</span></label>
+        <input id="role-name" type="text" class="input input-bordered font-mono" x-model="name"
+               :disabled="mode !== 'create'" :required="mode === 'create'" maxlength="127"
+               autocomplete="off" placeholder="sales-team"
+               pattern="[A-Za-z0-9][A-Za-z0-9._:\-]{0,126}">
+        <p class="mt-1 text-xs opacity-60" x-show="mode === 'create'" style="display:none">
+          Letters, digits and . _ : - . The name cannot be changed later, because services refer to it.
+        </p>
+      </div>
+      <div class="form-control mb-3">
+        <label class="label py-1" for="role-description"><span class="label-text">Description (optional)</span></label>
+        <input id="role-description" type="text" class="input input-bordered" x-model="description"
+               :disabled="builtIn" maxlength="255" autocomplete="off"
+               placeholder="What an account with this role is for">
+      </div>
+
+      <fieldset class="mb-2">
+        <legend class="label-text mb-1 text-sm">Contains these roles</legend>
+        <p class="mb-2 text-xs opacity-60">
+          An account that holds this role holds the roles it contains as well. Leave it empty for a plain role.
+        </p>
+        <div class="max-h-48 overflow-y-auto rounded-lg border border-base-300">
+          <template x-for="role in candidates()" :key="role.name">
+            <label class="flex items-start gap-3 border-b border-base-300 px-3 py-2 last:border-b-0"
+                   :class="builtIn ? 'cursor-default' : 'cursor-pointer hover:bg-base-200/60'">
+              <input type="checkbox" class="checkbox checkbox-primary checkbox-sm mt-0.5"
+                     :checked="selected[role.name]" :disabled="builtIn"
+                     @change="selected[role.name] = $event.target.checked">
+              <span class="min-w-0">
+                <span class="font-mono text-sm" x-text="role.name"></span>
+                <span class="block text-xs opacity-60" x-show="role.description" style="display:none" x-text="role.description"></span>
+              </span>
+            </label>
+          </template>
+          <p x-show="candidates().length === 0" style="display:none" class="px-3 py-4 text-center text-sm opacity-60">There are no other roles.</p>
+        </div>
+        <p class="mt-2 text-xs opacity-60" style="display:none" x-show="clientMembers.length > 0">
+          It also contains <span x-text="clientMembers.length"></span> Keycloak administration
+          roles (<span class="font-mono" x-text="clientMembers.join(', ')"></span>), which stay as they are.
+        </p>
+      </fieldset>
+
+      <p style="display:none" x-show="error" class="mt-3 text-sm text-error" x-text="error"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$root.close()" x-text="builtIn ? 'Close' : 'Cancel'"></button>
+        <button type="submit" class="btn btn-primary" style="display:none" x-show="!builtIn"
+                :disabled="busy || (mode === 'edit' && !dirty())">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-text="mode === 'create' ? 'Create role' : 'Save changes'"></span>
+        </button>
+      </div>
+    </form>
+    <div class="modal-action" x-show="loadError" style="display:none">
+      <button type="button" class="btn btn-ghost" @click="$root.close()">Close</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Delete a role -->
+<dialog id="role-delete-modal" class="modal" x-data="deleteRole()"
+        @role-delete.window="open($event.detail)">
+  <div class="modal-box">
+    <h3 class="mb-2 text-lg font-bold">Delete <span class="font-mono" x-text="name"></span>?</h3>
+
+    <div x-show="loading" style="display:none" class="flex justify-center py-6">
+      <span class="loading loading-spinner loading-md text-primary"></span>
+    </div>
+    <p style="display:none" x-show="loadError" class="mb-3 text-sm text-error" x-text="loadError"></p>
+
+    <div x-show="!loading && !loadError" style="display:none">
+      <p class="mb-2 text-sm">
+        The role is removed from every account and from every role that contains it. The
+        accounts themselves stay. Services that ask for this role will no longer find it. It
+        cannot be undone.
+      </p>
+      <p class="mb-3 text-sm" x-show="users.length === 0" style="display:none">No account holds it directly.</p>
+      <div class="mb-3 text-sm" x-show="users.length > 0" style="display:none">
+        <p class="mb-1">
+          Held directly by
+          <b x-text="users.length + (more ? '+' : '')"></b>
+          <span x-text="users.length === 1 && !more ? 'account' : 'accounts'"></span>:
+        </p>
+        <div class="flex flex-wrap gap-1">
+          <template x-for="u in users.slice(0, 12)" :key="u">
+            <span class="badge badge-outline badge-sm font-mono" x-text="u"></span>
+          </template>
+          <span class="badge badge-ghost badge-sm" style="display:none" x-show="users.length > 12"
+                x-text="'+' + (users.length - 12) + (more ? '+' : '') + ' more'"></span>
+        </div>
+      </div>
+      <form @submit.prevent="submit()">
+        <div class="form-control mb-3">
+          <label class="label"><span class="label-text">Type the name to confirm</span></label>
+          <input type="text" class="input input-bordered font-mono" x-model="typed"
+                 autocomplete="off" :placeholder="name">
+        </div>
+        <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+        <div class="modal-action">
+          <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+          <button type="submit" class="btn btn-error" :disabled="busy || typed !== name">Delete</button>
+        </div>
+      </form>
+    </div>
+    <div class="modal-action" x-show="loadError" style="display:none">
+      <button type="button" class="btn btn-ghost" @click="$root.close()">Close</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+{% include "partials/_rag_js.html" %}
+<script>
+const _ROLES_API = '/api/v1/roles';
+
+function reloadRoles() {
+  htmx.ajax('GET', '/partials/roles', { target: '#role-list', swap: 'innerHTML' });
+}
+
+// htmx does not swap a 4xx or 5xx answer, which would leave the page spinning. Say why
+// instead. A 401 is handled by the page itself.
+document.body.addEventListener('htmx:responseError', function (event) {
+  const detail = event.detail || {};
+  if (!detail.target || detail.target.id !== 'role-list') return;
+  if (detail.xhr && detail.xhr.status === 401) return;
+  let reason = 'The list could not be loaded.';
+  try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
+  detail.target.innerHTML =
+    '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
+    '<p class="text-lg font-semibold">Roles are not available</p>' +
+    '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p>' +
+    '<a class="link" href="/users/roles">Reload the page</a></div>';
+});
+
+function roleDialog() {
+  return {
+    mode: 'create', name: '', description: '', builtIn: false, all: [], selected: {}, initial: {},
+    initialDescription: '', clientMembers: [],
+    loading: false, loadError: '', busy: false, error: '',
+    reset() {
+      this.name = ''; this.description = ''; this.builtIn = false; this.all = [];
+      this.selected = {}; this.initial = {}; this.initialDescription = ''; this.clientMembers = [];
+      this.loadError = ''; this.error = '';
+    },
+    // Every other role, as something this one can contain.
+    candidates() {
+      const self = this;
+      return this.all.filter(function (role) { return role.name !== self.name; });
+    },
+    async load(open) {
+      this.loading = true;
+      const res = await _ragRequest('GET', _ROLES_API);
+      this.loading = false;
+      if (res.handled) return;
+      if (!res.ok) { this.loadError = res.error; return; }
+      this.all = res.data.roles;
+      const picked = {};
+      this.all.forEach(function (role) { picked[role.name] = false; });
+      if (open) {
+        const row = this.all.find(function (role) { return role.name === open; });
+        if (!row) { this.loadError = 'That role no longer exists.'; return; }
+        this.description = row.description;
+        this.builtIn = row.built_in;
+        this.clientMembers = row.client_members;
+        row.members.forEach(function (member) { picked[member] = true; });
+        this.initialDescription = row.description;
+      }
+      this.selected = Object.assign({}, picked);
+      this.initial = Object.assign({}, picked);
+    },
+    async openNew() {
+      this.reset(); this.mode = 'create';
+      this.$root.showModal();
+      await this.load(null);
+    },
+    async openRole(detail) {
+      this.reset(); this.name = detail.name;
+      this.mode = detail.builtIn ? 'view' : 'edit';
+      this.builtIn = !!detail.builtIn;
+      this.$root.showModal();
+      await this.load(detail.name);
+    },
+    chosen() {
+      const self = this;
+      return this.candidates().filter(function (r) { return self.selected[r.name]; })
+                              .map(function (r) { return r.name; });
+    },
+    dirty() {
+      const self = this;
+      return this.description.trim() !== this.initialDescription.trim() ||
+        this.candidates().some(function (r) { return !!self.selected[r.name] !== !!self.initial[r.name]; });
+    },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const create = this.mode === 'create';
+      const name = this.name.trim();
+      const res = create
+        ? await _ragRequest('POST', _ROLES_API,
+            { name: name, description: this.description.trim(), members: this.chosen() })
+        : await _ragRequest('PUT', _ROLES_API + '/' + encodeURIComponent(name),
+            { description: this.description.trim(), members: this.chosen() });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) {
+        this.error = res.error;
+        // A step after creating the role may have failed: the role is there.
+        if (create) reloadRoles();
+        return;
+      }
+      this.$root.close();
+      showToast('success', 'Role <b>' + _ragEscape(name) + '</b> ' + (create ? 'created' : 'saved') + '.');
+      reloadRoles();
+    },
+  };
+}
+
+function deleteRole() {
+  return {
+    name: '', users: [], more: false, typed: '',
+    loading: false, loadError: '', busy: false, error: '',
+    async open(detail) {
+      this.name = detail.name; this.users = []; this.more = false; this.typed = '';
+      this.loadError = ''; this.error = '';
+      this.$root.showModal();
+      this.loading = true;
+      const res = await _ragRequest('GET', _ROLES_API + '/' + encodeURIComponent(this.name));
+      this.loading = false;
+      if (res.handled) return;
+      if (!res.ok) { this.loadError = res.error; return; }
+      this.users = res.data.users;
+      this.more = res.data.users_more;
+    },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('DELETE', _ROLES_API + '/' + encodeURIComponent(this.name));
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.$root.close();
+      showToast('success', 'Role <b>' + _ragEscape(this.name) + '</b> deleted.');
+      reloadRoles();
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -17,6 +17,8 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 
+from app.auth.oidc import OIDCClaims
+from app.auth.roles import is_identity_admin
 from app.config import get_settings
 from app.core.ingest import display
 from app.core.rag import rag_active
@@ -104,6 +106,29 @@ def rag_enabled(context: dict[str, object]) -> bool:
 
 
 templates.env.globals["rag_enabled"] = rag_enabled
+
+
+@pass_context
+def users_nav(context: dict[str, object]) -> bool:
+    """Whether the sidebar offers the Users page to the account looking at it.
+
+    A global for the same reason as `rag_enabled`: the sidebar is part of every admin page,
+    including the ones an error handler renders. Presentation only -- the routes enforce
+    the role themselves. The page exists only where the accounts live in the bundled
+    Keycloak.
+    """
+    claims = context.get("user")
+    if not isinstance(claims, OIDCClaims):
+        return False
+    request = context.get("request")
+    resolver = get_settings
+    if isinstance(request, Request):
+        resolver = request.app.dependency_overrides.get(get_settings, get_settings)
+    settings = resolver()
+    return settings.is_internal_keycloak and is_identity_admin(claims, settings)
+
+
+templates.env.globals["users_nav"] = users_nav
 
 # Times, spans and sizes of the ingest pages. The zone is passed in by the page, because it
 # is the ingester's and not the manager's.

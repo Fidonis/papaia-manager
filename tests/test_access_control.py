@@ -47,6 +47,8 @@ from itsdangerous import TimestampSigner  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.main import create_app  # noqa: E402
 
+_UID = "11111111-1111-1111-1111-111111111111"
+
 # Surfaces reserved for administrators, and the dashboard surfaces every
 # authenticated account reaches. Kept as data so a new route is one line.
 ADMIN_PAGES = [
@@ -71,6 +73,8 @@ ADMIN_PAGES = [
     "/jobs",
     "/services",
     "/upgrade",
+    "/users",
+    "/users/roles",
 ]
 ADMIN_PARTIALS = [
     "/partials/addons",
@@ -102,6 +106,8 @@ ADMIN_PARTIALS = [
     "/partials/upgrade/log",
     "/partials/upgrade/runner",
     "/partials/upgrade/status",
+    "/partials/roles",
+    "/partials/users",
     # The dashboard itself is open to both roles; only its editor is not.
     "/partials/tiles/edit",
 ]
@@ -134,6 +140,12 @@ ADMIN_APIS = [
     "/api/v1/upgrade/check",
     "/api/v1/upgrade/runner",
     "/api/v1/upgrade/status",
+    "/api/v1/roles",
+    "/api/v1/roles/sales",
+    "/api/v1/users",
+    "/api/v1/users/roles",
+    f"/api/v1/users/{_UID}/roles",
+    f"/api/v1/users/{_UID}/sessions",
 ]
 
 # Lifecycle control over the core stack. Denial is decided by the dependency, so
@@ -170,6 +182,10 @@ ADMIN_WRITE_APIS = [
     "/api/v1/upgrade",
     "/api/v1/upgrade/check",
     "/api/v1/upgrade/runner/clear",
+    "/api/v1/roles",
+    "/api/v1/users",
+    f"/api/v1/users/{_UID}/password/temporary",
+    f"/api/v1/users/{_UID}/password/email",
 ]
 # The status pill sits in the header of every page, so it has to answer for
 # both roles even though the page it links to is admin-only.
@@ -323,6 +339,13 @@ _OTHER_WRITES = [
     ("delete", "/api/v1/rag/ingest/secrets/DAV", None),
     ("put", "/api/v1/rag/ingest/catalog/raw", {"text": "", "revision": ""}),
     ("put", "/api/v1/rag/ingest/catalog/defaults", {"defaults": {}}),
+    # Accounts and roles: a lost dependency here would hand a plain user the realm.
+    ("put", f"/api/v1/users/{_UID}/enabled", {"enabled": False}),
+    ("put", f"/api/v1/users/{_UID}/roles", {"roles": ["papaia-admin"]}),
+    ("delete", f"/api/v1/users/{_UID}/sessions", None),
+    ("delete", f"/api/v1/users/{_UID}/sessions/{_UID}", None),
+    ("put", "/api/v1/roles/sales", {"description": "", "members": []}),
+    ("delete", "/api/v1/roles/sales", None),
 ]
 
 
@@ -344,6 +367,51 @@ def test_anonymous_is_denied_the_put_and_delete_routes_of_the_rag_pages(
 @pytest.mark.parametrize("path", ADMIN_APIS_SELF_CONTAINED)
 def test_admin_role_reaches_the_api(client: TestClient, path: str) -> None:
     assert _as(client, "admin").get(path).status_code == 200
+
+
+# The Users page is a tier above the admin role: a plain administrator is denied it too,
+# because Keycloak's user-administration rights belong to the identity role alone and the
+# manager acts with the rights of whoever is signed in.
+IDENTITY_SURFACES = [
+    "/users",
+    "/users/roles",
+    "/partials/users",
+    "/partials/roles",
+    "/api/v1/roles",
+    "/api/v1/roles/sales",
+    "/api/v1/users",
+    "/api/v1/users/roles",
+    f"/api/v1/users/{_UID}/roles",
+    f"/api/v1/users/{_UID}/sessions",
+]
+
+
+@pytest.mark.parametrize("path", IDENTITY_SURFACES)
+def test_a_plain_administrator_is_denied_the_users_surfaces(client: TestClient, path: str) -> None:
+    assert _as(client, "admin").get(path).status_code == 403
+
+
+@pytest.mark.parametrize(("method", "path", "body"), _OTHER_WRITES[-6:])
+def test_a_plain_administrator_is_denied_the_users_writes(
+    client: TestClient, method: str, path: str, body: object
+) -> None:
+    assert _as(client, "admin").request(method, path, json=body).status_code == 403
+
+
+@pytest.mark.parametrize("path", [*ADMIN_WRITE_APIS[-4:]])
+def test_a_plain_administrator_is_denied_creating_accounts(client: TestClient, path: str) -> None:
+    assert _as(client, "admin").post(path, json={"username": "jane"}).status_code == 403
+
+
+def test_the_identity_role_reaches_the_users_and_roles_pages(client: TestClient) -> None:
+    assert _as(client, "papaia-admin").get("/users").status_code == 200
+    assert _as(client, "papaia-admin").get("/users/roles").status_code == 200
+
+
+def test_the_denial_names_the_role_that_is_needed(client: TestClient) -> None:
+    response = _as(client, "admin").get("/api/v1/users")
+    assert response.status_code == 403
+    assert "papaia-admin" in response.json()["detail"]
 
 
 # The dashboard is the one page both roles reach, so its write path is the one

@@ -429,6 +429,7 @@
    a page of that section rather than a detour out of another one. #}
 {% set nav_jobs      = path.startswith("/jobs") %}
 {% set nav_audit     = path.startswith("/audit") %}
+{% set nav_users     = path.startswith("/users") %}
 {% set nav_upgrade   = path.startswith("/upgrade") %}
 {% set nav_settings  = path.startswith("/settings") %}
 
@@ -665,6 +666,20 @@
                 hx-trigger="load, every 30s"
                 hx-swap="innerHTML"></span>
         </a>
+
+        {# Who may sign in. Only for the role that may manage accounts, and only where the
+           accounts live in the bundled Keycloak (`users_nav`); the page and its API enforce
+           the role themselves, so this is presentation. #}
+        {% if users_nav() %}
+        <a href="/users" aria-label="Users"
+           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_users else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+          </svg>
+          <span class="sidebar-label">Users</span>
+        </a>
+        {% endif %}
 
         {# Shield: this is the one entry that is about the deployment's own
            record-keeping rather than about a service it runs. No indicator --

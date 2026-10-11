@@ -10,9 +10,14 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from app.auth import deps
-from app.auth.deps import get_current_user, require_admin, require_manager_access
+from app.auth.deps import (
+    get_current_user,
+    require_admin,
+    require_identity_admin,
+    require_manager_access,
+)
 from app.auth.oidc import OIDCClaims, OIDCError, TokenSet
-from app.auth.roles import has_manager_access, is_admin, is_user
+from app.auth.roles import has_manager_access, is_admin, is_identity_admin, is_user
 from app.config import Settings
 
 
@@ -105,6 +110,21 @@ def test_has_manager_access(roles: tuple[str, ...], expected: bool) -> None:
     assert has_manager_access(_claims(*roles), _settings()) is expected
 
 
+def test_is_identity_admin_recognises_the_configured_role() -> None:
+    settings = _settings()
+    assert is_identity_admin(_claims("papaia-admin"), settings) is True
+    # The admin role is not enough: the tier above it belongs to the identity role alone.
+    assert is_identity_admin(_claims("admin"), settings) is False
+    assert is_identity_admin(_claims("admin", "user"), settings) is False
+    assert is_identity_admin(_claims(), settings) is False
+
+
+def test_the_identity_role_is_configurable() -> None:
+    settings = _settings(manager_identity_admin_role="realm-boss")
+    assert is_identity_admin(_claims("realm-boss"), settings) is True
+    assert is_identity_admin(_claims("papaia-admin"), settings) is False
+
+
 def test_role_names_are_configurable() -> None:
     """Both role names come from settings, not from hardcoded literals."""
     settings = _settings(manager_admin_role="papaia-ops", manager_user_role="papaia-staff")
@@ -131,6 +151,21 @@ def test_require_admin_rejects_non_admin(roles: tuple[str, ...]) -> None:
     with pytest.raises(HTTPException) as exc:
         require_admin(_claims(*roles), _settings())
     assert exc.value.status_code == 403
+
+
+def test_require_identity_admin_accepts_the_identity_role() -> None:
+    claims = _claims("papaia-admin")
+    assert require_identity_admin(claims, _settings()) is claims
+
+
+@pytest.mark.parametrize("roles", [("admin",), ("user",), ("admin", "user"), ()])
+def test_require_identity_admin_rejects_everybody_else_and_names_the_role(
+    roles: tuple[str, ...],
+) -> None:
+    with pytest.raises(HTTPException) as exc:
+        require_identity_admin(_claims(*roles), _settings())
+    assert exc.value.status_code == 403
+    assert "papaia-admin" in str(exc.value.detail)
 
 
 @pytest.mark.parametrize("roles", [("admin",), ("user",), ("admin", "user")])
