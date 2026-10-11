@@ -61,6 +61,19 @@ def admin_endpoint(token_url: str) -> AdminEndpoint | None:
     return AdminEndpoint(base=match["base"].rstrip("/"), realm=match["realm"])
 
 
+def logout_url(token_url: str) -> str | None:
+    """The OIDC logout endpoint of the realm the manager signs in against, or None.
+
+    Derived from the token endpoint like `admin_endpoint`, and only for an address that is a
+    Keycloak realm's: another provider's logout endpoint cannot be guessed from its token
+    endpoint, and a guess would send the refresh token to the wrong place.
+    """
+    stripped = token_url.strip()
+    if _TOKEN_URL.match(stripped) is None:
+        return None
+    return stripped.rstrip("/").removesuffix("/token") + "/logout"
+
+
 class KeycloakError(Exception):
     """Keycloak answered with an error status."""
 

@@ -130,6 +130,27 @@ async def test_a_second_tab_with_the_old_cookie_is_served_from_the_same_entry(
     assert len(keycloak.refreshes) == 1
 
 
+async def test_forgetting_a_session_drops_the_token_under_every_refresh_token(
+    keycloak: _Keycloak,
+) -> None:
+    keycloak.expires_at = time.time() + 300
+    await _token(_session("refresh-1"))
+    assert await _token(_session("refresh-2")) == "access-1"
+
+    user_token.forget("refresh-2")
+
+    # Neither the rotated token nor the one a stale tab still holds is served from memory.
+    keycloak.access_token = "access-2"
+    assert await _token(_session("refresh-2")) == "access-2"
+    keycloak.access_token = "access-3"
+    assert await _token(_session("refresh-1")) == "access-3"
+
+
+def test_forgetting_a_session_that_was_never_cached_is_harmless() -> None:
+    user_token.clear()
+    user_token.forget("never-seen")
+
+
 async def test_a_token_about_to_expire_is_replaced(keycloak: _Keycloak) -> None:
     keycloak.expires_at = time.time() + 5  # inside the skew
     session = _session()

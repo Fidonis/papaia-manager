@@ -51,7 +51,7 @@ papaia-manager/
 │       ├── config.py       # Pydantic Settings; all env-var configuration
 │       ├── templating.py   # Shared Jinja2 environment
 │       ├── auth/
-│       │   ├── oidc.py     # OIDC Authorization Code + PKCE client
+│       │   ├── oidc.py     # OIDC Authorization Code + PKCE client; ends the provider's session on sign-out
 │       │   ├── roles.py    # Authorization policy: which realm role grants what
 │       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser, IdentityAdmin
 │       │   ├── user_token.py # The signed-in user's own access token, from the session's refresh token
@@ -227,7 +227,23 @@ Browser → /auth/callback?code&state
   Manager: require admin OR user role, else 403 without a session
   Manager: store refresh token in the session for silent renewal
   Manager: set session cookie → 302 to the remembered `next`, else /
+
+Browser → POST /auth/logout   (the sidebar's "Sign out" form, field `csrf_token`)
+  Manager: check the CSRF token (form field or `X-CSRF-Token` header)
+  Manager: POST refresh token + client credentials to the realm's logout endpoint
+           (derived from OIDC_ISSUER_KC_TOKEN, `core/keycloak_users.logout_url`)
+  Manager: drop the cached access token, clear the session cookie → 303 /auth/login
+Browser → /auth/login → Keycloak shows its login form (the SSO session is over)
 ```
+
+Consequences worth remembering when touching sign-out:
+
+- **Clearing the manager's cookie is not signing out.** The redirect to `/auth/login` goes straight to Keycloak, and while Keycloak's SSO session lives it answers with a code without asking for anything. So the manager ends that session itself (`OIDCClient.end_session`), with the refresh token the session already holds: no redirect URI has to be registered for the client, nothing is added to the cookie, and the realm template needs no change. The same call ends the SSO session for the rest of the stack (LibreChat and the others sign in against the same realm); their own application sessions run until their tokens expire.
+- **The logout endpoint is only derived for a Keycloak realm.** `logout_url` accepts exactly the shape `admin_endpoint` accepts (`…/realms/<realm>/protocol/openid-connect/token`), and `OIDCClient.end_session` returns False without one: another provider's logout endpoint cannot be guessed, and the refresh token must not go to a guess. The session is then ended locally only.
+- **A Keycloak that cannot end the session does not keep the user signed in.** The failure is a warning in the log (without a token), and the manager's own session is cleared regardless. A session Keycloak no longer knows (`400 invalid_grant`) counts as ended.
+- **The form posts the CSRF token as a field.** A plain HTML form cannot set a header, so `verify_csrf(request, form_token)` accepts either, compared as bytes. A route that is the target of a form takes `csrf_token` as `Form()` and passes it on; `tests/test_auth_logout.py` pins the field, the header, a wrong or non-ASCII token and the missing GET.
+- **There is no `GET /auth/logout`.** It would end the SSO session of everybody whose browser loads a link. A POST without any session (an expired session in a stale tab) is not an error: it goes to the login page.
+- **Verified against a real Keycloak.** In a browser against a throwaway Keycloak (26.7) imported from the core's realm template, with the manager reaching it over the address it uses for tokens: the sign-out form posts, Keycloak answers the logout call with 204 and holds no session for the account any more, and the redirect to `/auth/login` shows Keycloak's login form. Before the change the same form answered 403, and the old GET variant went through Keycloak and back to the dashboard without a login form while Keycloak kept the session. Repeat this when the token endpoint's address, the client's settings or Keycloak's logout endpoint change.
 
 ### Job model
 
