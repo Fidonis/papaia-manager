@@ -4,12 +4,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse, Response
 
+from app.auth import user_token
 from app.auth.csrf import verify_csrf
 from app.auth.oidc import OIDCError, _pkce_pair, get_oidc_client
 from app.auth.roles import has_manager_access
@@ -144,15 +145,51 @@ async def callback(
 
 
 @router.post("/logout")
-async def logout(request: Request) -> Response:
-    """Clear the session and redirect to the login page."""
-    verify_csrf(request)
-    request.session.clear()
-    return RedirectResponse("/auth/login", status_code=status.HTTP_302_FOUND)
+async def logout(
+    request: Request,
+    csrf_token: Annotated[str, Form()] = "",
+) -> Response:
+    """End the Keycloak session, clear the manager's own and show the login page.
+
+    The sidebar's sign-out is a plain HTML form, so the CSRF token arrives as the form field
+    `csrf_token`. There is deliberately no GET variant: it would end the SSO session shared
+    with the rest of the stack for anyone who can make a browser load a link.
+
+    The login page is the one the Keycloak realm shows: with its SSO session over, the
+    redirect to `/auth/login` is answered with the login form instead of a silent sign-in.
+    A Keycloak that cannot be reached must not keep the user signed in to the manager, so
+    that failure is logged and the local session is cleared regardless.
+    """
+    session = request.session
+    refresh_token = _refresh_token(session)
+    if not session.get("user") and refresh_token is None:
+        # An expired session in a stale tab: nothing to end and nothing to protect.
+        session.clear()
+        return RedirectResponse("/auth/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    verify_csrf(request, csrf_token)
+
+    username = _username(session)
+    if refresh_token is not None:
+        try:
+            if not await get_oidc_client().end_session(refresh_token=refresh_token):
+                logger.info("auth/logout: the provider has no logout endpoint; local only")
+        except OIDCError as exc:
+            logger.warning("auth/logout: could not end the Keycloak session: %s", exc)
+        user_token.forget(refresh_token)
+
+    session.clear()
+    logger.info("user %s signed out", username)
+    return RedirectResponse("/auth/login", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.get("/logout")
-async def logout_get(request: Request) -> Response:
-    """GET /auth/logout for convenience (no CSRF required — only clears session)."""
-    request.session.clear()
-    return RedirectResponse("/auth/login", status_code=status.HTTP_302_FOUND)
+def _refresh_token(session: dict[str, Any]) -> str | None:
+    oidc_state = session.get("oidc")
+    token = oidc_state.get("refresh_token") if isinstance(oidc_state, dict) else None
+    return token if isinstance(token, str) and token else None
+
+
+def _username(session: dict[str, Any]) -> str:
+    user = session.get("user")
+    name = user.get("preferred_username") if isinstance(user, dict) else None
+    return name if isinstance(name, str) and name else "unknown"

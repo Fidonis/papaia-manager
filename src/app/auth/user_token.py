@@ -53,6 +53,20 @@ def clear() -> None:
     _locks.clear()
 
 
+def forget(refresh_token: str) -> None:
+    """Drop the access token cached for a session that has ended (sign-out).
+
+    The cache holds the same token under the old and the rotated refresh token, so every
+    entry that carries it goes, not only the one for this key.
+    """
+    key = _key(refresh_token)
+    entry = _cache.pop(key, None)
+    _locks.pop(key, None)
+    if entry is not None:
+        for other in [k for k, (_, access_token) in _cache.items() if access_token == entry[1]]:
+            _cache.pop(other, None)
+
+
 async def user_access_token(request: Request) -> str:
     """The access token of the account behind this request's session.
 

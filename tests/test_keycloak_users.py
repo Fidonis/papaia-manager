@@ -16,6 +16,7 @@ from app.core.keycloak_users import (
     KeycloakUnavailableError,
     KeycloakUsers,
     admin_endpoint,
+    logout_url,
 )
 from tests.fake_keycloak import REALM, TOKEN, FakeKeycloak
 
@@ -76,6 +77,50 @@ def test_the_admin_api_is_derived_from_the_token_endpoint(
 )
 def test_a_token_endpoint_that_is_not_a_keycloak_realm_has_no_admin_api(token_url: str) -> None:
     assert admin_endpoint(token_url) is None
+
+
+@pytest.mark.parametrize(
+    ("token_url", "expected"),
+    [
+        (
+            "http://keycloak:8080/realms/papaia/protocol/openid-connect/token",
+            "http://keycloak:8080/realms/papaia/protocol/openid-connect/logout",
+        ),
+        (
+            "http://keycloak:8080/realms/papaia/protocol/openid-connect/token/",
+            "http://keycloak:8080/realms/papaia/protocol/openid-connect/logout",
+        ),
+        # A Keycloak that still serves under a path.
+        (
+            "https://id.example.com/auth/realms/acme/protocol/openid-connect/token",
+            "https://id.example.com/auth/realms/acme/protocol/openid-connect/logout",
+        ),
+        (
+            "  https://kc.test/realms/papaia/protocol/openid-connect/token  ",
+            "https://kc.test/realms/papaia/protocol/openid-connect/logout",
+        ),
+    ],
+)
+def test_the_logout_endpoint_is_derived_from_the_token_endpoint(
+    token_url: str, expected: str
+) -> None:
+    assert logout_url(token_url) == expected
+
+
+@pytest.mark.parametrize(
+    "token_url",
+    [
+        "https://kc.test/token",
+        "https://login.example.com/oauth2/v2.0/token",
+        "https://kc.test/realms/papaia/protocol/openid-connect/auth",
+        "",
+        "not a url",
+    ],
+)
+def test_a_token_endpoint_that_is_not_a_keycloak_realm_has_no_logout_endpoint(
+    token_url: str,
+) -> None:
+    assert logout_url(token_url) is None
 
 
 # -- what is sent --------------------------------------------------------------------
