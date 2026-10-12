@@ -1,10 +1,12 @@
 """Whitelisted subprocess wrapper for papaia-ctl.
 
-Three entry points, three separate allowlists: `run_addon_verb` for
+Four entry points, four separate allowlists: `run_addon_verb` for
 `papaia-ctl addon <verb> <name>`, `run_core_verb` for the stack-level verbs that
-take no target, and `run_py_cli` for the core's own read-only Python
-sub-commands. Keeping the sets apart is what makes it impossible for an addon
-name to be dispatched as a stack operation, or the other way round.
+take no target, `run_py_cli` for the core's own read-only Python
+sub-commands, and `run_smtp_setup` for the one that writes (the core's `setup`,
+restricted to the mail relay's options). Keeping the sets apart is what makes it
+impossible for an addon name to be dispatched as a stack operation, or the
+other way round.
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import logging
 import os
 import re
 from collections.abc import AsyncGenerator, Collection, Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.core.inventory import SELF_PROFILE
@@ -49,8 +52,14 @@ ALLOWED_VERBS: frozenset[str] = frozenset(
 # rewrites `backup.yaml` under $PAPAIA_BACKUP_DIR -- and papaia-ctl requires an
 # explicit `--restore-point=ID` for every point it deletes (each a guarded
 # timestamp id), so no call from here can widen it into a mass delete.
+#
+# `keycloak-role-sync` is the standalone form of the last step `start` runs. It
+# applies what the realm template and the active profiles say (roles, composites,
+# and the relay's mail server) to the running Keycloak, runs no `docker compose`
+# command and is idempotent. The mail page needs it after switching the relay
+# off, where there is no `start` to ride on.
 ALLOWED_CORE_VERBS: frozenset[str] = frozenset(
-    {"backup", "backup-delete", "start", "stop", "restore-scoped"}
+    {"backup", "backup-delete", "start", "stop", "restore-scoped", "keycloak-role-sync"}
 )
 
 # `upgrade` is deliberately absent from the set above, for a stronger version of
@@ -74,6 +83,26 @@ ALLOWED_CORE_VERBS: frozenset[str] = frozenset(
 ALLOWED_PY_COMMANDS: frozenset[str] = frozenset(
     {"upgrade-resolve", "upgrade-plan", "addon-check", "doctor"}
 )
+
+# The one command that writes, kept apart from the read-only set so that adding to
+# either is a decision of its own. `setup` is the core's non-interactive
+# configuration engine; it is reachable only through `run_smtp_setup`, which builds
+# its arguments from a typed `SmtpSetup` and passes nothing but the mail relay's
+# options -- never `--force`, `--env`, a host name or any other part of the stack's
+# configuration. The core is what validates and stores the values, so the rules
+# (what is sticky, when the password revision rises, how `COMPOSE_PROFILES` changes)
+# stay in one place.
+ALLOWED_PY_WRITE_COMMANDS: frozenset[str] = frozenset({"setup"})
+
+SMTP_SECURITY_MODES: tuple[str, ...] = ("starttls", "tls", "none")
+
+# The environment variable the core reads the upstream password from. A password
+# in an argument would show in `ps` and in the process table of the container.
+SMTP_PASSWORD_ENV = "PAPAIA_SMTP_PASSWORD"
+
+# Longer than the read-only commands: setup renders the configuration and writes the
+# env tree, but it starts nothing.
+SETUP_TIMEOUT_SECONDS = 120.0
 
 # Exit status `run_py_cli` reports for a child it had to kill, the one the
 # shell's `timeout` uses.
@@ -279,7 +308,122 @@ async def run_py_cli(
         raise ValueError(
             f"command {command!r} is not in the allowed set {sorted(ALLOWED_PY_COMMANDS)}"
         )
+    return await _run_py(
+        command=command,
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        repo_root=repo_root,
+        extra_flags=extra_flags,
+        limit=limit,
+    )
 
+
+@dataclass(frozen=True)
+class SmtpSetup:
+    """What the mail page asks the core's `setup` to do, and nothing else.
+
+    `enable=False` switches the relay off and takes no other field: the core keeps
+    the settings and the password for a later opt-in. With `enable=True` the caller
+    names every value it wants stored, so what ends up in the configuration does
+    not depend on what happened to be sticky. `password` is the one field that
+    travels in the environment; `None` keeps the stored one.
+    """
+
+    enable: bool
+    host: str | None = None
+    port: int | None = None
+    security: str | None = None
+    user: str | None = None
+    no_auth: bool = False
+    sender: str | None = None
+    sender_name: str | None = None
+    password: str | None = field(default=None, repr=False)
+
+
+def _plain(label: str, value: str) -> str:
+    if not value or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{label} must be a non-empty single line")
+    return value
+
+
+def smtp_setup_flags(spec: SmtpSetup) -> list[str]:
+    """The `setup` options for `spec`. Raises ValueError for a spec that is not coherent.
+
+    Each value is glued to its option (`--smtp-host=x`), so no value can become an
+    option of its own. The core validates the values themselves; what is checked here
+    is the shape the manager promises: coherent combinations, no control characters,
+    no password anywhere in the result.
+    """
+    flags = [f"--enable-smtp={'true' if spec.enable else 'false'}"]
+    given = (
+        spec.host,
+        spec.port,
+        spec.security,
+        spec.user,
+        spec.sender,
+        spec.sender_name,
+        spec.password,
+    )
+    if not spec.enable:
+        if spec.no_auth or any(value is not None for value in given):
+            raise ValueError("switching the relay off takes no other setting")
+        return flags
+    if spec.no_auth and (spec.user or spec.password):
+        raise ValueError("a mail server without login takes neither a login nor a password")
+    if spec.host is None or spec.security is None or spec.port is None or spec.sender is None:
+        raise ValueError("host, security, port and sender address are required")
+    if spec.security not in SMTP_SECURITY_MODES:
+        raise ValueError(f"security must be one of {', '.join(SMTP_SECURITY_MODES)}")
+    if not 1 <= spec.port <= 65535:
+        raise ValueError("port must be between 1 and 65535")
+    flags.append(f"--smtp-host={_plain('host', spec.host)}")
+    flags.append(f"--smtp-port={spec.port}")
+    flags.append(f"--smtp-security={spec.security}")
+    if spec.no_auth:
+        flags.append("--smtp-no-auth")
+    elif spec.user:
+        flags.append(f"--smtp-user={_plain('login', spec.user)}")
+    flags.append(f"--smtp-from={_plain('sender address', spec.sender)}")
+    if spec.sender_name is not None:
+        flags.append(f"--smtp-from-name={_plain('sender name', spec.sender_name)}")
+    return flags
+
+
+async def run_smtp_setup(
+    spec: SmtpSetup,
+    *,
+    workspace_dir: str,
+    config_dir: str,
+    limit: float | None = SETUP_TIMEOUT_SECONDS,
+) -> tuple[int, str, str]:
+    """Run the core's `setup` for the mail relay's options only.
+
+    Exit 3 with `ERROR: ...` on stderr is the core refusing a value; nothing is
+    written then. The password goes in the environment of the child and only there.
+    """
+    if "setup" not in ALLOWED_PY_WRITE_COMMANDS:  # pragma: no cover - the set is a constant
+        raise ValueError("setup is not an allowed write command")
+    return await _run_py(
+        command="setup",
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        extra_flags=smtp_setup_flags(spec),
+        limit=limit,
+        env_extra={SMTP_PASSWORD_ENV: spec.password or ""},
+    )
+
+
+async def _run_py(
+    *,
+    command: str,
+    workspace_dir: str,
+    config_dir: str,
+    repo_root: str | None = None,
+    extra_flags: list[str] | None = None,
+    limit: float | None = None,
+    env_extra: dict[str, str] | None = None,
+) -> tuple[int, str, str]:
+    """The process half of `run_py_cli` and `run_smtp_setup`; the callers check the allowlist."""
     tools = Path(workspace_dir) / "papaia" / "tools"
     cmd: list[str] = [
         "python3",
@@ -294,9 +438,14 @@ async def run_py_cli(
     ]
 
     env = dict(os.environ)
+    # Never inherited: a password the manager's own environment happens to carry is
+    # not the one the operator typed.
+    env.pop(SMTP_PASSWORD_ENV, None)
     env["PAPAIA_CONFIG_DIR"] = config_dir
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = f"{tools}{os.pathsep}{existing}" if existing else str(tools)
+    if env_extra:
+        env.update(env_extra)
 
     try:
         proc = await asyncio.create_subprocess_exec(

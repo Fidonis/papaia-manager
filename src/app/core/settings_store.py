@@ -1,8 +1,8 @@
 """Manager settings, stored in `$PAPAIA_CONFIG_DIR/manager/settings.yaml`.
 
 One document with one top-level section per topic (`branding` and `host` today,
-further sections such as `smtp` later). Every section has defaults for all of its
-fields, so a missing file, a missing section or a section written by a newer
+further sections for the manager's own configuration later). Every section has
+defaults for all of its fields, so a missing file, a missing section or a section written by a newer
 release never stops the manager from rendering: unknown keys are ignored on
 read and dropped on the next save.
 

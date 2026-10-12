@@ -433,7 +433,7 @@ function _usersAgo(iso) {
 }
 
 function _usersMailBlocked(smtp, email) {
-  if (!smtp) return 'The realm has no mail server configured, so Keycloak cannot send mail.';
+  if (!smtp) return 'The realm has no mail server configured, so Keycloak cannot send mail. An administrator can set one up on the Mail page.';
   if (!email) return 'This account has no email address.';
   return '';
 }

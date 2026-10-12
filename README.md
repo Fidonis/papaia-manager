@@ -74,6 +74,8 @@ dependencies, so the JSON API is restricted exactly like the pages.
 
 **Users.** A third tier sits above the admin role: `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`, which already includes the admin role) opens **Users**, where accounts of the bundled Keycloak are managed without the Admin Console. The list shows each account's status and roles, with search and paging. From it an administrator creates an account (with the roles to start from, the dashboard role ticked, and a first password: a temporary one shown once, or a mailed link), enables or disables it (disabling also ends its sessions), changes its roles, resets its password, and views and ends its sessions. The **Roles** tab manages the roles themselves: it lists every realm role with what it contains, creates a role, changes its description and the roles it contains, and deletes it after showing which accounts hold it. The roles the stack ships (and the three the manager is configured with) are shown but not changed or deleted, because services refer to them by name; a role cannot be renamed, and cannot contain itself, directly or through another role. A temporary password makes Keycloak ask for a new one at the first sign-in. The mailed link needs a mail server on the realm and is offered only when there is one. Nobody can disable their own account, take the identity role from themselves or end all of their own sessions here, so the page cannot lock its last administrator out. There is no service account behind it: the manager calls Keycloak's Admin API with the access token of the signed-in account, obtained from the session's refresh token and kept in memory only, so Keycloak applies that account's own rights. The identity role therefore has to carry `manage-users`, `view-users`, `query-users`, `view-realm` and `manage-realm` of the realm's `realm-management` client (the last is what Keycloak asks for to create, change or delete a role); where it does not (yet), the page says so. A session ended in Keycloak stops working in the manager when its token is next renewed, within a few minutes. Every change is audited and no password is ever written to the log. The page does not exist where the accounts live in an external identity provider (`AUTH_PROVIDER=external_oidc`).
 
+**Mail.** Administrators open **Mail** (System) to set up the stack's outbound mail relay, the optional `smtp` profile of papAIa 1.6.0 and newer. One internal relay holds the credentials of your mail server and forwards to it, and Keycloak, and add-ons that attach it, send through it. The page switches the relay on or off and edits the mail server behind it: host, connection security (STARTTLS, TLS or none), port, login, password, sender address and sender name. The password is write-only: it is never shown, an empty field keeps the stored one, and a stored password is only used for the host, port and login it was stored with. **Save and apply** is a queued job: the core's own `setup` stores the values (so its validation, sticky values and password revision stay in one place), `papaia-ctl start --profiles=smtp` creates or recreates the relay, and Keycloak's realm gets the relay as its mail server, so the Users page offers "email a link" from then on. A job whose last step could not reach Keycloak fails with that reason instead of reporting success. **Test connection** talks to the mail server with the values in the form (greeting, STARTTLS or TLS, login) without sending a mail or saving anything, and **Send test mail** hands one message to the relay: "sent" means the relay took it, not that it arrived, because the relay queues and retries for a day. The page shows whether the relay runs and how many messages wait in its queue. Switching the relay off stops it, takes it out of the stack's profiles and removes the mail server it put into the realm; the settings and the password are kept. The page needs a core with the relay and tells you so otherwise.
+
 **RAG system.** When the core runs its optional RAG system (the `rag` profile
 in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
 The dashboard shows a **RAG** group with a *Qdrant* tile (the vector database's
@@ -669,6 +671,13 @@ GET    /api/v1/roles/{name}                  # one role, with the accounts that 
 POST   /api/v1/roles                         # {name, description?, members?}
 PUT    /api/v1/roles/{name}                  # {description, members}: the realm roles it contains
 DELETE /api/v1/roles/{name}                  # not a built-in role
+
+GET    /api/v1/mail                          # ?fresh: the stored settings (never the password) and the relay's status
+PUT    /api/v1/mail                          # {revision, host, port?, security, user?, password?, from_address, from_name?}
+                                             #   switch on or change; 202 with a job. An empty password keeps the stored one
+POST   /api/v1/mail/disable                  # {revision} stop the relay and take it out of the profiles; 202 with a job
+POST   /api/v1/mail/probe                    # {host?, port?, security?, user?, password?} try the mail server, send nothing
+POST   /api/v1/mail/test-message             # {to} hand one message to the relay
 ```
 
 ## Layout
@@ -700,12 +709,15 @@ papaia-manager/
 │       │                   # ingest/ (the ingester's jobs.yaml and secrets.yaml, its REST API,
 │       │                   # job editor and schedules, runs, the Embedding page's managed
 │       │                   # jobs, jailed browsing, staged uploads, background clean-up),
-│       │                   # settings_store (settings.yaml and the logo)
+│       │                   # settings_store (settings.yaml and the logo),
+│       │                   # mail/ (the mail relay: stored settings and their rules, SMTP probes,
+│       │                   # status from the core's doctor, the jobs that apply a change)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
 │       │                   # api_tiles, api_settings, api_collections, api_connections, api_ingest,
 │       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store),
-│       │                   # api_users, api_roles, users_deps (identity role, Keycloak client)
+│       │                   # api_users, api_roles, users_deps (identity role, Keycloak client),
+│       │                   # api_mail, ui_mail
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)
