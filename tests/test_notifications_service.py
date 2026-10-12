@@ -33,6 +33,7 @@ for _key, _value in {
     os.environ.setdefault(_key, _value)
 
 from app.config import Settings  # noqa: E402
+from app.core import services  # noqa: E402
 from app.core.audit import audit_path  # noqa: E402
 from app.core.jobs import JobContext, JobQueue, JobStatus  # noqa: E402
 from app.core.notifications import detect, store  # noqa: E402
@@ -458,3 +459,130 @@ async def test_the_loop_waits_for_the_stack_to_settle_and_then_runs(
     finally:
         service.shutdown()
         await service.stopped()
+
+
+# -- a service that was running and is gone ------------------------------------------
+
+
+def _stack(health: services.ServiceHealth | None) -> services.StackSnapshot | None:
+    """Docker's answer: `localai` in this health, with `keycloak` healthy; None for no answer."""
+    if health is None:
+        return None
+    container = services.ServiceContainer(
+        name="localai-1" if health is not services.ServiceHealth.MISSING else "",
+        service="localai",
+        role="",
+        state="x",
+        status_text="x",
+        health=health,
+    )
+    keycloak = services.ServiceContainer(
+        name="keycloak-1",
+        service="keycloak",
+        role="",
+        state="running",
+        status_text="Up",
+        health=services.ServiceHealth.HEALTHY,
+    )
+    return services.StackSnapshot(
+        core=[
+            services.ServiceModule(name="keycloak", containers=[keycloak]),
+            services.ServiceModule(name="localai", containers=[container]),
+        ]
+    )
+
+
+class _Docker:
+    """What `detect` is told about the stack: one answer at a time, and whether it is busy."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.answer: services.ServiceHealth | None = services.ServiceHealth.HEALTHY
+        self.busy = False
+
+        async def busy(_: Any) -> bool:
+            return self.busy
+
+        monkeypatch.setattr(detect, "read_services", lambda *_: _stack(self.answer))
+        monkeypatch.setattr(detect, "stack_is_busy", busy)
+
+
+def _real_detectors(settings: Settings) -> dict[Event, detect.Detector]:
+    return {
+        Event.SERVICE_UNHEALTHY: detect.build_detectors(settings, None)[Event.SERVICE_UNHEALTHY]
+    }
+
+
+async def test_a_service_stopped_with_clean_up_is_reported_once_it_was_seen_running(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _subscribe(settings, "Chat", _HOOK, [Event.SERVICE_UNHEALTHY])
+    docker = _Docker(monkeypatch)
+    service = _service(settings, receiver, _real_detectors(settings))
+
+    assert (await service.run_once()).notified == 0  # running: remembered, nothing to say
+    assert store.load_state(settings.papaia_config_dir).up == {"keycloak", "localai"}
+
+    docker.answer = services.ServiceHealth.MISSING  # "Clean up": the containers are gone
+    assert (await service.run_once()).notified == 1
+    (body,) = receiver.to(_HOOK)
+    assert body["event"] == "service_unhealthy"
+    assert body["message"] == "localai is not running: its containers are gone."
+    assert body["details"]["state"] == "missing"
+
+    assert (await service.run_once()).notified == 0  # still gone: said once
+    assert len(receiver.posts) == 1
+
+
+async def test_a_service_that_was_never_seen_running_says_nothing_when_it_is_gone(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _subscribe(settings, "Chat", _HOOK, [Event.SERVICE_UNHEALTHY])
+    docker = _Docker(monkeypatch)
+    docker.answer = services.ServiceHealth.MISSING
+    service = _service(settings, receiver, _real_detectors(settings))
+    assert (await service.run_once()).notified == 0
+    assert store.load_state(settings.papaia_config_dir).up == {"keycloak"}
+    assert receiver.posts == []
+
+
+async def test_a_restart_remembers_what_was_running_and_repeats_nothing(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _subscribe(settings, "Chat", _HOOK, [Event.SERVICE_UNHEALTHY])
+    docker = _Docker(monkeypatch)
+    await _service(settings, receiver, _real_detectors(settings)).run_once()
+    docker.answer = services.ServiceHealth.MISSING
+    await _service(settings, receiver, _real_detectors(settings)).run_once()
+    assert len(receiver.posts) == 1
+    # The manager restarts: its memory is the state file.
+    assert (await _service(settings, receiver, _real_detectors(settings)).run_once()).notified == 0
+    assert len(receiver.posts) == 1
+
+
+async def test_a_pass_while_the_stack_is_busy_neither_reports_nor_forgets(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _subscribe(settings, "Chat", _HOOK, [Event.SERVICE_UNHEALTHY])
+    docker = _Docker(monkeypatch)
+    service = _service(settings, receiver, _real_detectors(settings))
+    await service.run_once()
+    docker.answer = services.ServiceHealth.MISSING
+    docker.busy = True  # the stop is still being carried out
+    assert (await service.run_once()).notified == 0
+    assert store.load_state(settings.papaia_config_dir).up == {"keycloak", "localai"}
+    docker.busy = False  # the job is over, the service is still gone
+    assert (await service.run_once()).notified == 1
+
+
+async def test_a_docker_that_does_not_answer_neither_reports_nor_forgets(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _subscribe(settings, "Chat", _HOOK, [Event.SERVICE_UNHEALTHY])
+    docker = _Docker(monkeypatch)
+    service = _service(settings, receiver, _real_detectors(settings))
+    await service.run_once()
+    docker.answer = None
+    assert (await service.run_once()).notified == 0
+    assert store.load_state(settings.papaia_config_dir).up == {"keycloak", "localai"}
+    docker.answer = services.ServiceHealth.MISSING
+    assert (await service.run_once()).notified == 1

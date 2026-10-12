@@ -274,12 +274,18 @@ class TestResult:
 class NotifyState:
     seen: dict[str, Seen] = field(default_factory=dict)
     tests: dict[str, TestResult] = field(default_factory=dict)
+    # The services a pass saw running: what makes one that is gone (stopped with "Clean up",
+    # removed) an outage and not a module that was never started. See `detect.service_findings`.
+    up: set[str] = field(default_factory=set)
 
 
 def _state_from(raw: Any) -> NotifyState:
     state = NotifyState()
     if not isinstance(raw, dict):
         return state
+    up = raw.get("up")
+    if isinstance(up, list):
+        state.up = {entry for entry in up if isinstance(entry, str) and entry}
     for key, entry in (raw.get("seen") or {}).items():
         if isinstance(entry, dict):
             state.seen[str(key)] = Seen(
@@ -318,6 +324,7 @@ def update_state[T](config_dir: str, change: Callable[[NotifyState], T]) -> T:
             "version": 1,
             "seen": {k: asdict(v) for k, v in state.seen.items()},
             "tests": {k: asdict(v) for k, v in state.tests.items()},
+            "up": sorted(state.up),
         }
         try:
             _write_private(state_path(config_dir), json.dumps(document, indent=1).encode("utf-8"))

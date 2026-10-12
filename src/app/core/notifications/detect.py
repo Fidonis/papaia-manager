@@ -36,7 +36,7 @@ from app.core import backups, host_health, runner, schedule, services, upgrade
 from app.core.catalogs import load_registry
 from app.core.jobs import JobQueue
 from app.core.notifications.model import Event, EventSettings
-from app.core.notifications.store import NotifyState, Seen
+from app.core.notifications.store import NotifyState, Seen, load_state, update_state
 from app.core.resolve import outdated_addons
 from app.core.snapshots import load_installed
 
@@ -197,37 +197,70 @@ def backup_overdue(config_dir: str, *, now: datetime) -> list[Finding]:
     ]
 
 
-def service_unhealthy(config_dir: str, workspace_dir: str) -> list[Finding]:
-    """Modules of the stack that are stopped or whose health check fails.
+def read_services(config_dir: str, workspace_dir: str) -> services.StackSnapshot | None:
+    """The stack as Docker reports it, or None when it cannot be told.
 
-    `missing` is left out (a module that is not deployed is a choice, and normal after a
-    clean-up) and so is `starting`. Blocking: it asks Docker."""
+    Blocking: it asks Docker. An empty snapshot is what `load_snapshot` returns when Docker did
+    not answer (and for a host with nothing deployed): neither says anything about a service, so
+    both are "unknown"."""
     snapshot = services.load_snapshot(config_dir, workspace_dir)
     if not snapshot.core and not snapshot.addons:
-        # Docker did not answer (the snapshot is empty then) or nothing is deployed.
-        return []
-    bad = (services.ServiceHealth.UNHEALTHY, services.ServiceHealth.STOPPED)
+        return None
+    return snapshot
+
+
+def service_findings(
+    snapshot: services.StackSnapshot, was_up: frozenset[str]
+) -> tuple[list[Finding], frozenset[str]]:
+    """The modules that are down now, and the modules that are known to have run.
+
+    A module is down when it is `stopped` or `unhealthy`, or when it is `missing` after a pass
+    saw it running: a stop with "Clean up" removes the containers while the profile stays
+    active, and so does `docker rm`, and either is an outage as much as a stopped container.
+    A module that was never seen running is not: a profile that was enabled and never started
+    is a choice, and one mail per such module on the first pass would be noise. `starting` is
+    neither: it is on its way.
+
+    `up` is what the next pass is told. A module that is healthy joins it; one that is down stays
+    in it, so it keeps being known while it is gone; one that is no longer in the snapshot at all
+    (its profile was switched off, the add-on removed) leaves it."""
+    modules = [*snapshot.core, *snapshot.addons]
+    labels = {_label(m): m for m in modules}
+    down = (services.ServiceHealth.UNHEALTHY, services.ServiceHealth.STOPPED)
     conditions: list[Condition] = []
-    for module in [*snapshot.core, *snapshot.addons]:
-        if module.health not in bad:
+    for label, module in labels.items():
+        health = module.health
+        if health in down:
+            message = f"{label} is {health.value}: {module.summary}."
+        elif health is services.ServiceHealth.MISSING and label in was_up:
+            if all(c.health is services.ServiceHealth.MISSING for c in module.containers):
+                message = f"{label} is not running: its containers are gone."
+            else:
+                message = f"{label} is not running ({module.summary})."
+        else:
             continue
-        label = f"{module.addon}/{module.name}" if module.addon else module.name
         conditions.append(
             Condition(
                 Event.SERVICE_UNHEALTHY,
                 label,
                 "",
                 label,
-                f"{label} is {module.health.value}: {module.summary}.",
+                message,
                 {
                     "service": module.name,
                     "add_on": module.addon or None,
-                    "state": module.health.value,
+                    "state": health.value,
                     "summary": module.summary,
                 },
             )
         )
-    return [Finding(Event.SERVICE_UNHEALTHY, tuple(conditions))]
+    healthy = {label for label, m in labels.items() if m.health is services.ServiceHealth.HEALTHY}
+    up_now = frozenset(healthy | {label for label in was_up if label in labels})
+    return [Finding(Event.SERVICE_UNHEALTHY, tuple(conditions))], up_now
+
+
+def _label(module: services.ServiceModule) -> str:
+    return f"{module.addon}/{module.name}" if module.addon else module.name
 
 
 def certificates(health: host_health.HostHealth, *, lead_days: int) -> list[Finding]:
@@ -343,9 +376,22 @@ def build_detectors(settings: Settings, queue: JobQueue | None) -> dict[Event, D
         return await asyncio.to_thread(backup_overdue, config_dir, now=datetime.now(tz=UTC))
 
     async def services_down(_: EventSettings) -> list[Finding]:
+        # While the stack is being worked on, or when Docker does not answer, nothing is
+        # concluded and nothing is forgotten: the services seen running stay as they were.
         if await stack_is_busy(queue):
             return []
-        return await asyncio.to_thread(service_unhealthy, config_dir, workspace_dir)
+        snapshot = await asyncio.to_thread(read_services, config_dir, workspace_dir)
+        if snapshot is None:
+            return []
+        was_up = frozenset(load_state(config_dir).up)
+        findings, up_now = service_findings(snapshot, was_up)
+        if up_now != was_up:
+
+            def remember(state: NotifyState) -> None:
+                state.up = set(up_now)
+
+            update_state(config_dir, remember)
+        return findings
 
     async def certs_expiring(event_settings: EventSettings) -> list[Finding]:
         health = await host_health.load_host_health(

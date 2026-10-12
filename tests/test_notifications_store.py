@@ -8,6 +8,7 @@ webhook URLs is private.
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 from pathlib import Path
@@ -361,3 +362,37 @@ def test_a_state_that_cannot_be_read_is_forgotten_not_raised(tmp_path: Path, con
     path.write_text(content, encoding="utf-8")
     state = store.load_state(str(tmp_path))
     assert state.seen == {} and state.tests == {}
+
+
+def test_the_services_seen_running_are_stored_sorted_and_read_back(tmp_path: Path) -> None:
+    def remember(state: store.NotifyState) -> None:
+        state.up = {"n8n/n8n", "keycloak", "localai"}
+
+    store.update_state(str(tmp_path), remember)
+    raw = json.loads(store.state_path(str(tmp_path)).read_text(encoding="utf-8"))
+    assert raw["up"] == ["keycloak", "localai", "n8n/n8n"]
+    assert store.load_state(str(tmp_path)).up == {"n8n/n8n", "keycloak", "localai"}
+
+
+def test_a_state_written_before_the_services_were_remembered_has_none(tmp_path: Path) -> None:
+    path = store.state_path(str(tmp_path))
+    path.parent.mkdir(parents=True)
+    path.write_text('{"version": 1, "seen": {}, "tests": {}}', encoding="utf-8")
+    assert store.load_state(str(tmp_path)).up == set()
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ('{"up": "keycloak"}', set()),
+        ('{"up": {"a": 1}}', set()),
+        ('{"up": ["keycloak", 3, null, "", ["x"], "localai"]}', {"keycloak", "localai"}),
+    ],
+)
+def test_what_is_not_a_list_of_names_is_ignored_in_the_remembered_services(
+    tmp_path: Path, content: str, expected: set[str]
+) -> None:
+    path = store.state_path(str(tmp_path))
+    path.parent.mkdir(parents=True)
+    path.write_text(content, encoding="utf-8")
+    assert store.load_state(str(tmp_path)).up == expected

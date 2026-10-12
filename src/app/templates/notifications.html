@@ -195,8 +195,10 @@
         <li>Each event is reported once per occurrence: a failed job, a backup that turns overdue, a
             service that turns unhealthy, a certificate and its expiry date, a release or add-on version.
             The manager remembers what it reported, so a restart does not send it again.</li>
-        <li>A service that was stopped on purpose counts as stopped. While a job, a restore, an upgrade or a stack
-            action is running, services are not checked.</li>
+        <li>A service counts as down when it was running at the last check and is now stopped, unhealthy or gone,
+            also when you stopped it here, with or without “Clean up”. One that was never seen running is not
+            reported, so a stop within the first check interval after a start is missed. While a job, a restore,
+            an upgrade or a stack action is running, services are not checked.</li>
         <li>An overdue backup needs a backup schedule. Add-on updates are compared with the catalogs on disk,
             so they show up after a catalog refresh.</li>
         <li>A webhook receives a JSON post with <span class="font-mono">event</span>,

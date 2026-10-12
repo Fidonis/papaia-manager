@@ -274,32 +274,130 @@ def _module(
     return services.ServiceModule(name=name, containers=[container], addon=addon)
 
 
-def test_stopped_and_unhealthy_modules_are_reported_and_the_rest_is_not(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    health = services.ServiceHealth
+_H = services.ServiceHealth
+
+
+def _findings(
+    snapshot: services.StackSnapshot, was_up: set[str] | None = None
+) -> tuple[dict[str, Condition], frozenset[str]]:
+    (finding,), up_now = detect.service_findings(snapshot, frozenset(was_up or ()))
+    return {c.key: c for c in finding.conditions}, up_now
+
+
+def test_stopped_and_unhealthy_modules_are_reported_and_the_rest_is_not() -> None:
     snapshot = services.StackSnapshot(
         core=[
-            _module("keycloak", health.HEALTHY),
-            _module("litellm", health.UNHEALTHY),
-            _module("rag", health.MISSING),
-            _module("localai", health.STARTING),
+            _module("keycloak", _H.HEALTHY),
+            _module("litellm", _H.UNHEALTHY),
+            _module("rag", _H.MISSING),
+            _module("localai", _H.STARTING),
         ],
-        addons=[_module("n8n", health.STOPPED, addon="n8n")],
+        addons=[_module("n8n", _H.STOPPED, addon="n8n")],
     )
-    monkeypatch.setattr(services, "load_snapshot", lambda *_: snapshot)
-    (finding,) = detect.service_unhealthy("cfg", "ws")
-    assert {c.key for c in finding.conditions} == {"litellm", "n8n/n8n"}
-    by_key = {c.key: c for c in finding.conditions}
-    assert by_key["litellm"].details["state"] == "unhealthy"
-    assert by_key["n8n/n8n"].details["add_on"] == "n8n"
+    found, _ = _findings(snapshot)
+    assert set(found) == {"litellm", "n8n/n8n"}
+    assert found["litellm"].details["state"] == "unhealthy"
+    assert found["n8n/n8n"].details["add_on"] == "n8n"
+    assert found["litellm"].message.startswith("litellm is unhealthy: ")
+
+
+def test_a_service_that_was_running_and_is_gone_is_an_outage() -> None:
+    """Stopped with "Clean up", or `docker rm`: the profile stays active, the containers are
+    gone, and the module is `missing` -- which is only an outage if it was running before."""
+    snapshot = services.StackSnapshot(core=[_module("localai", _H.MISSING)])
+    found, _ = _findings(snapshot, {"localai"})
+    assert set(found) == {"localai"}
+    assert found["localai"].message == "localai is not running: its containers are gone."
+    assert found["localai"].details["state"] == "missing"
+    assert found["localai"].details["service"] == "localai"
+
+
+def test_a_service_that_was_never_seen_running_is_not_an_outage_when_it_is_missing() -> None:
+    snapshot = services.StackSnapshot(core=[_module("rag", _H.MISSING)])
+    found, up_now = _findings(snapshot, {"keycloak"})
+    assert found == {}
+    assert "rag" not in up_now
+
+
+def test_an_add_on_that_was_running_and_is_gone_is_reported_under_its_own_label() -> None:
+    snapshot = services.StackSnapshot(addons=[_module("n8n", _H.MISSING, addon="n8n")])
+    found, _ = _findings(snapshot, {"n8n/n8n"})
+    assert set(found) == {"n8n/n8n"}
+    assert found["n8n/n8n"].details["add_on"] == "n8n"
+
+
+def test_what_is_healthy_is_remembered_and_what_is_down_is_not_forgotten() -> None:
+    snapshot = services.StackSnapshot(
+        core=[
+            _module("keycloak", _H.HEALTHY),
+            _module("litellm", _H.UNHEALTHY),
+            _module("localai", _H.MISSING),
+            _module("localai-extra", _H.STARTING),
+        ]
+    )
+    _, up_now = _findings(snapshot, {"litellm", "localai"})
+    # `keycloak` joins; `litellm` and `localai` are down but stay known, so a later `missing`
+    # is still an outage; `localai-extra` was never seen running and is only starting.
+    assert up_now == {"keycloak", "litellm", "localai"}
+
+
+def test_a_module_that_left_the_stack_is_forgotten() -> None:
+    """The profile was switched off or the add-on removed: it is no longer declared, so it is
+    in no snapshot, and coming back later as `missing` must not be reported."""
+    snapshot = services.StackSnapshot(core=[_module("keycloak", _H.HEALTHY)])
+    found, up_now = _findings(snapshot, {"keycloak", "localai", "n8n/n8n"})
+    assert found == {}
+    assert up_now == {"keycloak"}
+
+
+def test_a_service_that_comes_back_is_no_longer_a_condition() -> None:
+    snapshot = services.StackSnapshot(core=[_module("localai", _H.HEALTHY)])
+    found, up_now = _findings(snapshot, {"localai"})
+    assert found == {} and up_now == {"localai"}
+
+
+def test_the_message_of_a_partly_gone_module_says_how_much_is_gone() -> None:
+    running = services.ServiceContainer(
+        name="a-1", service="a", role="", state="x", status_text="x", health=_H.HEALTHY
+    )
+    gone = services.ServiceContainer(
+        name="", service="b", role="", state="missing", status_text="x", health=_H.MISSING
+    )
+    module = services.ServiceModule(name="localai", containers=[running, gone])
+    found, _ = _findings(services.StackSnapshot(core=[module]), {"localai"})
+    assert found["localai"].message == "localai is not running (1 of 2 containers not deployed)."
 
 
 def test_a_docker_that_does_not_answer_is_not_a_stack_without_problems(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(services, "load_snapshot", lambda *_: services.StackSnapshot())
-    assert detect.service_unhealthy("cfg", "ws") == []
+    assert detect.read_services("cfg", "ws") is None
+
+
+def test_the_stack_is_read_as_docker_reports_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    snapshot = services.StackSnapshot(core=[_module("keycloak", _H.HEALTHY)])
+    monkeypatch.setattr(services, "load_snapshot", lambda *_: snapshot)
+    assert detect.read_services("cfg", "ws") is snapshot
+
+
+def test_a_missing_service_that_was_running_is_reported_once_like_any_edge() -> None:
+    """The new condition goes through `decide` like the others: once, not again while it stays
+    gone, and the debounce window holds for one that keeps coming and going."""
+    state = NotifyState()
+    gone_snapshot = services.StackSnapshot(core=[_module("localai", _H.MISSING)])
+    up_snapshot = services.StackSnapshot(core=[_module("localai", _H.HEALTHY)])
+
+    def pass_(snapshot: services.StackSnapshot, minutes: float) -> list[str]:
+        findings, _ = detect.service_findings(snapshot, frozenset({"localai"}))
+        return _keys(_decide(findings, state, minutes=minutes))
+
+    assert pass_(gone_snapshot, 0) == ["localai"]
+    assert pass_(gone_snapshot, 5) == []
+    assert pass_(up_snapshot, 10) == []
+    assert pass_(gone_snapshot, 15) == []  # back inside the 30 minute window
+    assert pass_(up_snapshot, 20) == []
+    assert pass_(gone_snapshot, 40) == ["localai"]  # a new window
 
 
 def _cert(
