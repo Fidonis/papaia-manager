@@ -1,10 +1,13 @@
 {% extends "base.html" %}
+{% from "partials/_mail_tabs.html" import tabs %}
 {% block title %}Mail — {{ branding().name }}{% endblock %}
 
 {% block page_title %}Mail{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">The mail server this deployment sends its mail through</p>{% endblock %}
 
 {% block content %}
+{{ tabs('server') }}
+
 {% if not mail_supported %}
 {# The core predates the relay. Nothing below could work, so say what is missing and stop. #}
 <div class="max-w-3xl rounded-xl border border-warning bg-warning/10 px-5 py-4 text-sm">
@@ -33,7 +36,7 @@
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-5">
       <div>
-        <h2 class="font-brand text-lg font-bold">Mail server</h2>
+        <h2 class="font-brand text-lg font-bold">Mail Server</h2>
         <p class="text-sm opacity-60">
           The stack sends mail through one internal relay. It holds the credentials of your
           mail server and forwards to it, so no other service needs them. Keycloak uses it
@@ -44,7 +47,7 @@
       <form id="mail-form" class="space-y-4" onsubmit="saveMail(event)" novalidate>
         <div class="grid gap-4 sm:grid-cols-[1fr_9rem_7rem]">
           <div class="form-control w-full">
-            <label for="mail-host" class="label-text mb-1 text-sm font-medium">Mail server</label>
+            <label for="mail-host" class="label-text mb-1 text-sm font-medium">Mail Server</label>
             <input id="mail-host" type="text" class="input input-bordered w-full"
                    autocomplete="off" spellcheck="false" placeholder="smtp.example.org"
                    value="{{ mail.host }}">

@@ -776,3 +776,81 @@ def test_an_unrecognised_error_still_names_the_host_fetch() -> None:
     assert "does not recognise" in text
     assert f"git -C {_REPO} fetch --tags origin" in text
     assert "remote set-url" not in text
+
+
+# ---------------------------------------------------------------------------
+# The cheap check for a release ahead (used by the notifications)
+# ---------------------------------------------------------------------------
+
+
+def _checkout(tmp_path: Path, deployed: str) -> tuple[Path, Path, Path]:
+    """A remote with release tags, a clone of it, and a config dir that records `deployed`."""
+    remote = tmp_path / "remote.git"
+    seed = tmp_path / "seed"
+    workspace = tmp_path / "ws"
+    config = tmp_path / "config"
+    for path in (seed, workspace, config):
+        path.mkdir()
+    _run(tmp_path, "init", "--bare", "-b", "main", str(remote))
+    _run(seed, "init", "-b", "main")
+    (seed / "VERSION").write_text("1.1.0\n", encoding="utf-8")
+    _run(seed, "add", "VERSION")
+    _run(seed, "commit", "-m", "1.1.0")
+    _run(seed, "tag", "v1.1.0")
+    _run(seed, "push", str(remote), "main", "--tags")
+    _run(workspace, "clone", str(remote), "papaia")
+    (config / "deployment.yaml").write_text(f"platform_version: {deployed}\n", encoding="utf-8")
+    return remote, seed, workspace
+
+
+async def test_a_release_ahead_of_the_deployment_is_found_without_touching_the_cached_check(
+    tmp_path: Path,
+) -> None:
+    remote, seed, workspace = _checkout(tmp_path, "1.1.0")
+    (seed / "VERSION").write_text("1.2.0\n", encoding="utf-8")
+    _run(seed, "commit", "-am", "1.2.0")
+    _run(seed, "tag", "v1.2.0")
+    _run(seed, "push", str(remote), "main", "--tags")
+    upgrade.reset_cache()
+
+    ahead = await upgrade.newer_releases(
+        workspace_dir=str(workspace), config_dir=str(tmp_path / "config")
+    )
+
+    assert ahead == ["1.2.0"]
+    # That cache drives the nav marker and the target an upgrade starts: not this check's.
+    assert upgrade.cached_check() is None
+
+
+async def test_a_deployment_on_the_newest_release_has_nothing_ahead(tmp_path: Path) -> None:
+    _, _, workspace = _checkout(tmp_path, "1.1.0")
+    assert (
+        await upgrade.newer_releases(
+            workspace_dir=str(workspace), config_dir=str(tmp_path / "config")
+        )
+        == []
+    )
+
+
+async def test_a_workspace_that_is_not_a_checkout_cannot_say(tmp_path: Path) -> None:
+    (tmp_path / "ws" / "papaia").mkdir(parents=True)
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "deployment.yaml").write_text("platform_version: 1.1.0\n", encoding="utf-8")
+    assert (
+        await upgrade.newer_releases(workspace_dir=str(tmp_path / "ws"), config_dir=str(config))
+        is None
+    )
+
+
+async def test_a_deployment_without_a_release_version_cannot_say(tmp_path: Path) -> None:
+    _, _, workspace = _checkout(tmp_path, "1.1.0")
+    deployment = tmp_path / "config" / "deployment.yaml"
+    deployment.write_text("platform_version: main\n", encoding="utf-8")
+    (workspace / "papaia" / "VERSION").write_text("dev\n", encoding="utf-8")
+    assert (
+        await upgrade.newer_releases(
+            workspace_dir=str(workspace), config_dir=str(tmp_path / "config")
+        )
+        is None
+    )

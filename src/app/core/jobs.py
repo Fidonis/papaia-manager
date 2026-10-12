@@ -65,6 +65,7 @@ class JobQueue:
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._lock = asyncio.Lock()
         self._worker_task: asyncio.Task[None] | None = None
+        self._finished_listeners: list[Callable[[Job], None]] = []
 
     @property
     def jobs_dir(self) -> Path:
@@ -77,6 +78,22 @@ class JobQueue:
     def stop(self) -> None:
         if self._worker_task and not self._worker_task.done():
             self._worker_task.cancel()
+
+    def add_finished_listener(self, listener: Callable[[Job], None]) -> None:
+        """Call `listener(job)` when a job has ended, whether it succeeded or failed.
+
+        Synchronous and called from the worker, so it must return at once: anything slow is
+        for the listener to hand to a task of its own. An exception it raises is logged and
+        goes no further -- the worker is the queue, and one that dies stops every job after it.
+        """
+        self._finished_listeners.append(listener)
+
+    def _notify_finished(self, job: Job) -> None:
+        for listener in self._finished_listeners:
+            try:
+                listener(job)
+            except Exception:
+                logger.exception("a job listener failed for job %s", job.id)
 
     async def enqueue(
         self,
@@ -189,4 +206,7 @@ class JobQueue:
                     job.finished_at = datetime.now(tz=UTC)
                     self._append_index(job)
 
+            # After the lock is released and `finished_at` is set: the listener sees the job
+            # as `JobQueue.get_job` would show it.
+            self._notify_finished(job)
             self._queue.task_done()

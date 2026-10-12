@@ -1,4 +1,6 @@
-"""The Mail page: the mail relay's settings, its status and the job that applies a change.
+"""The Mail Server tab: the mail relay's settings, its status and the job that applies a change.
+
+(The other tab of Mail, Notifications, is `ui_notifications`; it is the first, at `/mail`.)
 
 The page is a form that is rendered once, from what the core stored, and two polled
 strips next to it: the relay's status and the job in flight. The form is never inside a
@@ -78,7 +80,7 @@ def _job_ctx(queue: JobQueue | None) -> dict[str, Any]:
     }
 
 
-@router.get("/mail", response_class=HTMLResponse)
+@router.get("/mail/server", response_class=HTMLResponse)
 async def mail_page(
     request: Request,
     user: AdminUser,

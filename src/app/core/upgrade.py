@@ -904,6 +904,33 @@ def cached_check() -> UpgradeCheck | None:
     return _cached
 
 
+async def newer_releases(*, workspace_dir: str, config_dir: str) -> list[str] | None:
+    """Release versions ahead of the deployed one, newest first, or None when that is unknown.
+
+    The cheap half of `run_check`, for a caller that only wants to know whether there is
+    something to upgrade to: it fetches the tags and compares, and leaves the rest alone. It
+    neither resolves a target nor evaluates one (a worktree and two subprocesses) and it does
+    not touch the cached check, which belongs to the Upgrade page: that cache drives the
+    marker in the navigation, and a target chosen there must still be the one it was checked
+    for when the upgrade starts.
+
+    Shares `run_check`'s lock, so two fetches never run over the same `.git`. A fetch that
+    fails is not an error here either: the tags already in the checkout still count.
+    """
+    async with _check_lock:
+        try:
+            await _git(repo_path(workspace_dir), "rev-parse", "--git-dir")
+        except UpgradeError:
+            return None
+        current = current_version(config_dir, workspace_dir).current
+        if not is_valid_target_version(current):
+            # A checkout of a branch, or a deployment too old to record a version: there is
+            # no release to be behind.
+            return None
+        await fetch_tags(workspace_dir)
+        return newer_than(await local_tags(workspace_dir), current)
+
+
 def reset_cache() -> None:
     """Drop the cached result, because the deployment moved under it."""
     global _cached  # noqa: PLW0603

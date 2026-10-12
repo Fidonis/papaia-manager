@@ -333,3 +333,35 @@ def test_a_header_cannot_be_smuggled_through_the_sender_name() -> None:
             from_address="noreply@example.org",
             from_name="x\nBcc: y@example.org",
         )
+
+
+# -- any message ---------------------------------------------------------------------
+
+
+def test_any_message_can_be_handed_to_the_relay(relay: _Relay) -> None:
+    message = build_test_message(
+        to="someone@example.org", from_address="noreply@example.org", from_name="Our Mail"
+    )
+    message.replace_header("Subject", "[papAIa] Job failed: backup")
+    host, port = relay.server_address[0], relay.server_address[1]
+    result = mail_probe.send_message(message, host=str(host), port=int(port), timeout=5.0)
+    assert result.ok
+    (raw,) = relay.messages
+    received = message_from_string(raw.replace("\r\n", "\n"))
+    assert received["Subject"] == "[papAIa] Job failed: backup"
+
+
+def test_the_test_mail_and_a_notification_are_refused_in_the_same_words() -> None:
+    server = _Relay(refuse_recipient=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        message = build_test_message(
+            to="someone@example.org", from_address="noreply@example.org", from_name="x"
+        )
+        host, port = server.server_address[0], server.server_address[1]
+        generic = mail_probe.send_message(message, host=str(host), port=int(port), timeout=5.0)
+        test_mail = _send(server)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert generic == test_mail and not generic.ok

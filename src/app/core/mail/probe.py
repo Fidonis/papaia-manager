@@ -142,8 +142,22 @@ def send_test_message(
     port: int = RELAY_PORT,
     timeout: float = SEND_TIMEOUT_SECONDS,
 ) -> SendResult:
-    """Hand one message to the relay. `ok` means the relay accepted it, not that it arrived."""
+    """Hand the test mail to the relay. `ok` means the relay accepted it, not that it arrived."""
     message = build_test_message(to=to, from_address=from_address, from_name=from_name)
+    return send_message(message, host=host, port=port, timeout=timeout)
+
+
+def send_message(
+    message: EmailMessage,
+    *,
+    host: str = RELAY_HOST,
+    port: int = RELAY_PORT,
+    timeout: float = SEND_TIMEOUT_SECONDS,
+) -> SendResult:
+    """Hand one message to the relay. `ok` means the relay accepted it, not that it arrived.
+
+    The one place that speaks to the relay: the test mail and the notifications both end here,
+    so a refusal reads the same wherever it is shown."""
     try:
         with smtplib.SMTP(host, port, timeout=timeout) as smtp:
             smtp.ehlo()
@@ -177,3 +191,7 @@ async def send(*, to: str, from_address: str, from_name: str) -> SendResult:
     return await asyncio.to_thread(
         send_test_message, to=to, from_address=from_address, from_name=from_name
     )
+
+
+async def send_async(message: EmailMessage) -> SendResult:
+    return await asyncio.to_thread(send_message, message)
