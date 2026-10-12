@@ -14,15 +14,20 @@ import pytest
 from app.core.ctl import (
     ALLOWED_CORE_VERBS,
     ALLOWED_PY_COMMANDS,
+    ALLOWED_PY_WRITE_COMMANDS,
     ALLOWED_VERBS,
     MAX_SELECTORS,
+    SMTP_PASSWORD_ENV,
     TIMEOUT_EXIT_CODE,
     CtlError,
+    SmtpSetup,
     profiles_flag,
     run_addon_verb,
     run_core_verb,
     run_py_cli,
+    run_smtp_setup,
     selection_flag,
+    smtp_setup_flags,
 )
 
 # The deployment's real profile set, as `inventory.core_groups` would report it.
@@ -49,12 +54,15 @@ def test_the_core_verbs_are_exactly_the_scoped_ones_plus_backup() -> None:
     # a snapshot directory -- and needs an explicit --restore-point per point.
     # Anything else added here runs unscoped against the project this container
     # is part of.
+    # `keycloak-role-sync` is the standalone last step of `start`: idempotent, and it
+    # runs no `docker compose` command.
     assert set(ALLOWED_CORE_VERBS) == {
         "backup",
         "backup-delete",
         "start",
         "stop",
         "restore-scoped",
+        "keycloak-role-sync",
     }
 
 
@@ -194,6 +202,21 @@ async def test_a_py_command_without_a_limit_is_not_bounded(
     result = await run_py_cli(command="addon-check", workspace_dir="/w", config_dir="/c")
 
     assert result == (0, "out", "err")
+
+
+def test_the_one_write_command_is_setup_and_it_is_kept_apart() -> None:
+    # `setup` writes the configuration. It is reachable only through `run_smtp_setup`,
+    # which passes the mail relay's options and nothing else, and it shares nothing with
+    # the read-only commands, so adding to either set is a decision of its own.
+    assert set(ALLOWED_PY_WRITE_COMMANDS) == {"setup"}
+    assert not (set(ALLOWED_PY_WRITE_COMMANDS) & set(ALLOWED_PY_COMMANDS))
+    assert not (set(ALLOWED_PY_WRITE_COMMANDS) & set(ALLOWED_CORE_VERBS))
+    assert not (set(ALLOWED_PY_WRITE_COMMANDS) & set(ALLOWED_VERBS))
+
+
+async def test_setup_is_not_reachable_through_the_read_only_runner() -> None:
+    with pytest.raises(ValueError, match="not in the allowed set"):
+        await run_py_cli(command="setup", workspace_dir="/w", config_dir="/c")
 
 
 def test_the_py_commands_share_nothing_with_the_verb_allowlists() -> None:
@@ -337,3 +360,142 @@ def test_too_many_selectors_are_refused() -> None:
     many = {f"module:m{i}" for i in range(MAX_SELECTORS + 1)}
     with pytest.raises(ValueError, match="at most"):
         selection_flag(many, allowed=SELECTORS | many)
+
+
+# ---------------------------------------------------------------------------
+# The mail relay's `setup`
+# ---------------------------------------------------------------------------
+
+_FULL = SmtpSetup(
+    enable=True,
+    host="smtp.example.org",
+    port=587,
+    security="starttls",
+    user="mailer",
+    sender="noreply@example.org",
+    sender_name="papAIa",
+    password="s3cret-value",
+)
+
+
+def test_a_full_request_names_every_value_and_no_password() -> None:
+    flags = smtp_setup_flags(_FULL)
+    assert flags == [
+        "--enable-smtp=true",
+        "--smtp-host=smtp.example.org",
+        "--smtp-port=587",
+        "--smtp-security=starttls",
+        "--smtp-user=mailer",
+        "--smtp-from=noreply@example.org",
+        "--smtp-from-name=papAIa",
+    ]
+    assert not any("s3cret" in flag for flag in flags)
+
+
+def test_no_login_is_a_flag_of_its_own_and_drops_the_user() -> None:
+    spec = SmtpSetup(
+        enable=True,
+        host="relay.lan",
+        port=25,
+        security="none",
+        no_auth=True,
+        sender="noreply@example.org",
+    )
+    flags = smtp_setup_flags(spec)
+    assert "--smtp-no-auth" in flags
+    assert not any(flag.startswith("--smtp-user") for flag in flags)
+
+
+def test_switching_off_takes_nothing_else() -> None:
+    assert smtp_setup_flags(SmtpSetup(enable=False)) == ["--enable-smtp=false"]
+    with pytest.raises(ValueError, match="takes no other setting"):
+        smtp_setup_flags(SmtpSetup(enable=False, host="x.example.org"))
+    with pytest.raises(ValueError, match="takes no other setting"):
+        smtp_setup_flags(SmtpSetup(enable=False, password="x"))
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"no_auth": True},  # a login together with "no login"
+        {"host": None},
+        {"sender": None},
+        {"security": "ssl"},
+        {"port": 0},
+        {"port": 70000},
+        {"host": "evil\n--force"},
+        {"user": "a\x00b"},
+    ],
+)
+def test_an_incoherent_request_is_refused_before_anything_forks(change: dict[str, Any]) -> None:
+    fields = {**_FULL.__dict__, **change}
+    with pytest.raises(ValueError):  # noqa: PT011
+        smtp_setup_flags(SmtpSetup(**fields))
+
+
+def test_no_value_can_become_an_option_of_its_own() -> None:
+    # Glued to its option, a value that looks like a flag is still one argv element.
+    spec = SmtpSetup(**{**_FULL.__dict__, "host": "--force"})
+    assert "--smtp-host=--force" in smtp_setup_flags(spec)
+
+
+async def test_the_password_goes_in_the_environment_of_the_child_and_nowhere_else(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    class _Done:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"Setup complete.", b""
+
+    async def spawn(*argv: str, **kwargs: Any) -> _Done:
+        seen["argv"] = argv
+        seen["env"] = kwargs["env"]
+        return _Done()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setenv(SMTP_PASSWORD_ENV, "inherited-from-the-manager")
+
+    code, out, _ = await run_smtp_setup(_FULL, workspace_dir="/w", config_dir="/c")
+
+    assert (code, out) == (0, "Setup complete.")
+    argv = list(seen["argv"])
+    assert argv[:3] == ["python3", "-m", "lib.cli"]
+    assert argv[argv.index("setup") - 1] == "/c"
+    assert "setup" in argv
+    assert not any("s3cret" in part for part in argv)
+    assert seen["env"][SMTP_PASSWORD_ENV] == "s3cret-value"
+    for forbidden in ("--force", "--env", "--app-host", "--enable-manager"):
+        assert not any(part.startswith(forbidden) for part in argv)
+
+
+async def test_a_request_without_a_password_keeps_the_stored_one_and_ignores_the_inherited_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    class _Done:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"", b""
+
+    async def spawn(*argv: str, **kwargs: Any) -> _Done:
+        seen["env"] = kwargs["env"]
+        return _Done()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setenv(SMTP_PASSWORD_ENV, "inherited-from-the-manager")
+
+    keep = SmtpSetup(**{**_FULL.__dict__, "password": None})
+    await run_smtp_setup(keep, workspace_dir="/w", config_dir="/c")
+
+    # Empty means "keep the stored password" to the core; the manager's own environment
+    # is not a password the operator typed.
+    assert seen["env"][SMTP_PASSWORD_ENV] == ""
+
+
+def test_the_password_is_not_in_the_repr_of_the_request() -> None:
+    assert "s3cret" not in repr(_FULL)

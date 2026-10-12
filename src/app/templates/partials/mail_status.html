@@ -1,0 +1,60 @@
+{# The Mail page's status strip: whether the relay is on, how it is doing, and what waits in
+   its queue. Expects: mail (settings_json), relay (RelayStatus, or none while the relay is
+   off). The mail server behind the relay is not probed from here (the core's check does
+   not do that inside a container); "Test connection" is how an operator asks. #}
+{% set on = mail.enabled %}
+{% set verdict = relay.verdict if (relay and relay.available) else "" %}
+<div class="rounded-xl border px-5 py-3
+            {% if not on %}border-base-300 bg-base-100
+            {% elif not (relay and relay.available) %}border-warning bg-warning/10
+            {% elif verdict == "pass" %}border-success bg-success/10
+            {% elif verdict == "fail" %}border-error bg-error/10
+            {% elif verdict == "warn" %}border-warning bg-warning/10
+            {% else %}border-base-300 bg-base-100{% endif %}">
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+    <span class="h-2.5 w-2.5 shrink-0 rounded-full
+                 {% if not on %}bg-base-content/30
+                 {% elif not (relay and relay.available) %}bg-warning
+                 {% elif verdict == "pass" %}bg-success
+                 {% elif verdict == "fail" %}bg-error
+                 {% elif verdict == "warn" %}bg-warning
+                 {% else %}bg-base-content/30{% endif %}"></span>
+    <p class="text-sm font-semibold">
+      {% if not on %}Mail relay is off{% else %}Mail relay is on{% endif %}
+    </p>
+
+    {% if on and relay and relay.available %}
+    <p class="text-xs opacity-70">
+      relay {{ relay.relay or "not created" }}
+      {% if relay.queued is not none %}
+        ·
+        {% if relay.queued == 0 %}queue empty{% else %}{{ relay.queued }} message{{ "" if relay.queued == 1 else "s" }} waiting{% endif %}
+      {% endif %}
+    </p>
+    {% endif %}
+
+    {% if on %}
+    <button type="button" class="btn btn-ghost btn-xs ml-auto"
+            hx-get="/partials/mail/status?fresh=true"
+            hx-target="#mail-status"
+            hx-swap="innerHTML"
+            hx-disabled-elt="this">
+      Re-check
+    </button>
+    {% endif %}
+  </div>
+
+  {% if not on %}
+  <p class="mt-1 text-xs opacity-60">
+    {% if mail.configured %}
+    The settings below are stored. Switch the relay on to use them.
+    {% else %}
+    Enter a mail server and a sender address below to switch the relay on.
+    {% endif %}
+  </p>
+  {% elif relay and relay.available %}
+    {% if relay.summary %}<p class="mt-1 text-xs opacity-70">{{ relay.summary }}</p>{% endif %}
+  {% elif relay %}
+  <p class="mt-1 text-xs opacity-70">The relay's state could not be read: {{ relay.reason }}</p>
+  {% endif %}
+</div>

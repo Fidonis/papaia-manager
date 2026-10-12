@@ -73,6 +73,11 @@ _WANTED_CHECKS = ("memory", "cpu", "gpu", "time_sync", "disk_space", "certs")
 # `_run`): it is measured on its own, at its own pace, by `app.core.docker_usage`.
 _SKIPPED_CHECKS = ("docker_version", "ports", "dns", "addon_compat", "container_health")
 
+# The mail relay's check (core 1.6.0 and newer); measured by the Mail page, see
+# `app.core.mail.status`. Not in the tuple above because `--skip` refuses a name the core
+# does not know.
+_MAIL_CHECK = "smtp"
+
 # Version of the JSON document `doctor --json` emits. A different one is
 # somebody else's contract, not an older spelling of this one.
 _SUPPORTED_SCHEMA = 1
@@ -690,12 +695,14 @@ def _skipped(workspace_dir: str) -> tuple[str, ...]:
     """What this run asks the core not to do.
 
     The five old checks always. `docker_usage` too, once the core has it: it costs
-    the daemon real work and has a run of its own. Naming it for a core that does
-    not know it would get the whole run refused, which is why it is looked up
-    first and not added unconditionally."""
-    if docker_usage.core_has_usage(workspace_dir):
-        return (*_SKIPPED_CHECKS, docker_usage.CHECK_NAME)
-    return _SKIPPED_CHECKS
+    the daemon real work and has a run of its own. So does `smtp`: it runs
+    `docker exec` into the mail relay, and only the Mail page has a use for the
+    answer. Naming either for a core that does not know it would get the whole run
+    refused, which is why the registry is read first and nothing is added
+    unconditionally."""
+    known = docker_usage.core_checks(workspace_dir)
+    extra = tuple(name for name in (docker_usage.CHECK_NAME, _MAIL_CHECK) if name in known)
+    return (*_SKIPPED_CHECKS, *extra)
 
 
 async def _run(config_dir: str, workspace_dir: str) -> HostHealth:

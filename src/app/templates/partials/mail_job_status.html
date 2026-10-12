@@ -1,0 +1,65 @@
+{# The Mail page's job strip. Which job appears is decided in ui_mail.py (`_job_ctx`): any job
+   in flight, because it holds this page's change behind itself, and otherwise a mail job
+   that finished within the last few minutes. The wrapper polls in every state, so a job
+   started in another tab shows up here too; the fast tick exists only while there is
+   something to follow. #}
+<div
+  id="mail-job-status"
+  hx-get="/partials/mail/job-status"
+  hx-trigger="{% if job_active %}every 2s{% else %}every 10s{% endif %}"
+  hx-swap="outerHTML"
+>
+{% if job and (job_active or job_is_mail) %}
+  {% set switching_off = job.action == "mail-disable" %}
+  <div class="rounded-xl border px-5 py-3
+              {% if job_active %}border-warning bg-warning/10
+              {% elif job.status.value == "succeeded" %}border-success bg-success/10
+              {% else %}border-error bg-error/10{% endif %}">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {% if job_active %}
+        <span class="loading loading-spinner loading-xs text-warning"></span>
+        <p class="text-sm font-semibold">
+          {% if job_is_mail %}
+            {% set what = "Switching the mail relay off" if switching_off else "Applying mail settings" %}
+            {% if job.status.value == "queued" %}{{ what }}: queued{% else %}{{ what }}{% endif %}
+          {% else %}
+            {{ job.action }} {{ "queued" if job.status.value == "queued" else "running" }}
+          {% endif %}
+        </p>
+      {% elif job.status.value == "succeeded" %}
+        <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
+        <p class="text-sm font-semibold">{{ "The mail relay is off" if switching_off else "Mail settings applied" }}</p>
+      {% else %}
+        <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-error"></span>
+        <p class="text-sm font-semibold">{{ "Switching the mail relay off failed" if switching_off else "Applying the mail settings failed" }}</p>
+      {% endif %}
+
+      {% if job.finished_at %}
+      <p class="text-xs opacity-50">finished {{ job.finished_at.strftime("%H:%M:%S") }}</p>
+      {% elif job.started_at %}
+      <p class="text-xs opacity-50">started {{ job.started_at.strftime("%H:%M:%S") }}</p>
+      {% endif %}
+
+      <a href="/jobs/{{ job.id }}" class="link link-hover ml-auto text-xs opacity-60">View log</a>
+    </div>
+
+    {% if job_active and not job_is_mail %}
+    <p class="mt-1 text-xs opacity-60">
+      The change is queued behind it and starts when that job is done.
+    </p>
+    {% endif %}
+
+    {% if job_log_tail %}
+    <pre class="mt-2 max-h-40 overflow-y-auto rounded bg-base-300 p-3 text-xs whitespace-pre-wrap">{{ job_log_tail }}</pre>
+    {% endif %}
+  </div>
+{% endif %}
+
+{# Announces the state instead of reloading from here: the page decides what a change of
+   it means (a job that ended in another tab changes what the form should show). #}
+<script>
+  window.dispatchEvent(new CustomEvent("papaia-mail-job", { detail: {
+    active: {{ "true" if (job_active and job_is_mail) else "false" }},
+  }}));
+</script>
+</div>

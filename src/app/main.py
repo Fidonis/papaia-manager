@@ -28,6 +28,7 @@ from app.routers import (
     api_ingest,
     api_ingest_jobs,
     api_jobs,
+    api_mail,
     api_maintenance,
     api_roles,
     api_settings,
@@ -39,6 +40,7 @@ from app.routers import (
     health,
     ui,
     ui_ingest,
+    ui_mail,
 )
 from app.templating import templates
 
@@ -72,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(ui.router)
     app.include_router(ui_ingest.router)
+    app.include_router(ui_mail.router)
     app.include_router(api_audit.router)
     app.include_router(api_catalogs.router)
     app.include_router(api_collections.router)
@@ -80,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(api_ingest_jobs.router)
     app.include_router(api_addons.router)
     app.include_router(api_jobs.router)
+    app.include_router(api_mail.router)
     app.include_router(api_maintenance.router)
     app.include_router(api_roles.router)
     app.include_router(api_settings.router)
