@@ -16,6 +16,7 @@ from app.auth.oidc import OIDCClaims
 from app.config import get_settings
 from app.core.ingest.watcher import IngestWatcher
 from app.core.jobs import JobQueue
+from app.core.notifications.service import NotificationService
 from app.core.papaia_lib import bootstrap
 from app.core.scheduler import BackupScheduler
 from app.core.vectordb.service import ConnectionService
@@ -30,6 +31,7 @@ from app.routers import (
     api_jobs,
     api_mail,
     api_maintenance,
+    api_notifications,
     api_roles,
     api_settings,
     api_stack,
@@ -41,12 +43,14 @@ from app.routers import (
     ui,
     ui_ingest,
     ui_mail,
+    ui_notifications,
 )
 from app.templating import templates
 
 _job_queue: JobQueue | None = None
 _backup_scheduler: BackupScheduler | None = None
 _ingest_watcher: IngestWatcher | None = None
+_notification_service: NotificationService | None = None
 
 
 def create_app() -> FastAPI:
@@ -75,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(ui.router)
     app.include_router(ui_ingest.router)
     app.include_router(ui_mail.router)
+    app.include_router(ui_notifications.router)
     app.include_router(api_audit.router)
     app.include_router(api_catalogs.router)
     app.include_router(api_collections.router)
@@ -85,6 +90,7 @@ def create_app() -> FastAPI:
     app.include_router(api_jobs.router)
     app.include_router(api_mail.router)
     app.include_router(api_maintenance.router)
+    app.include_router(api_notifications.router)
     app.include_router(api_roles.router)
     app.include_router(api_settings.router)
     app.include_router(api_stack.router)
@@ -138,7 +144,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def _startup() -> None:
-        global _job_queue, _backup_scheduler, _ingest_watcher  # noqa: PLW0603
+        global _job_queue, _backup_scheduler, _ingest_watcher, _notification_service  # noqa: PLW0603
 
         logger = logging.getLogger(__name__)
 
@@ -176,6 +182,18 @@ def create_app() -> FastAPI:
             logger.exception("the embedding clean-up failed to start; continuing without it")
             _ingest_watcher = None
 
+        # Tells the recipients of Mail > Notifications what happened. It listens to the job
+        # queue for failed jobs and looks for the rest every few minutes, so it needs the
+        # queue and the running event loop. A failure costs the notifications, not the manager.
+        try:
+            service = NotificationService(settings, _job_queue)
+            _job_queue.add_finished_listener(service.on_job_finished)
+            service.start()
+            _notification_service = service
+        except Exception:
+            logger.exception("notifications failed to start; continuing without them")
+            _notification_service = None
+
         # The ingester needs a connection before anybody opens a page of the manager.
         # `ensure_default` never raises and does nothing without the RAG profile.
         try:
@@ -187,6 +205,8 @@ def create_app() -> FastAPI:
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
+        if _notification_service is not None:
+            _notification_service.shutdown()
         if _ingest_watcher is not None:
             _ingest_watcher.shutdown()
         if _backup_scheduler is not None:

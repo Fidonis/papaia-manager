@@ -23,7 +23,7 @@ from app.core.ctl import CtlError, run_addon_verb
 from app.core.envforms import EnvField, build_form, field_to_dict
 from app.core.envvalidate import EnvValidationError, coerce_env_values
 from app.core.jobs import JobContext, JobQueue
-from app.core.resolve import resolve_catalog_addons
+from app.core.resolve import resolve_catalog_addons, update_available
 from app.core.services import load_snapshot
 from app.core.snapshots import (
     catalog_clone_path,
@@ -135,12 +135,7 @@ def _addon_summary(
         "installed_version": inst.manifest_version if inst else None,
         "shadowed_by": shadowed_by or [],
         "is_variant": is_variant,
-        "update_available": (
-            inst is not None
-            and inst.managed
-            and manifest.get("version") is not None
-            and inst.manifest_version != manifest.get("version")
-        ),
+        "update_available": update_available(inst, manifest.get("version")),
         "managed": inst.managed if inst else True,
     }
 

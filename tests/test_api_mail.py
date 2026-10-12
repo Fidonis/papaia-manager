@@ -200,7 +200,7 @@ def _put_body(client: TestClient, **changes: Any) -> dict[str, Any]:
 
 # -- who may call it -----------------------------------------------------------------
 
-_READS = [_BASE, "/mail", "/partials/mail/status", "/partials/mail/job-status"]
+_READS = [_BASE, "/mail/server", "/partials/mail/status", "/partials/mail/job-status"]
 _WRITES = [
     ("put", _BASE, {"revision": "x", "host": "h", "from_address": "a@example.org"}),
     ("post", f"{_BASE}/disable", {"revision": "x"}),
@@ -310,7 +310,7 @@ def test_a_core_without_the_relay_is_reported_not_failed(
     body = _admin(client).get(_BASE).json()
     assert body["supported"] is False
     assert body["status"] is None
-    page = _admin(client).get("/mail")
+    page = _admin(client).get("/mail/server")
     assert page.status_code == 200
     assert "no mail relay" in page.text
     assert 'id="mail-form"' not in page.text
@@ -662,7 +662,7 @@ def test_test_mails_are_not_sent_in_a_burst(client: TestClient, sent: list[dict[
 
 
 def test_the_page_has_the_form_the_test_mail_and_the_off_dialog(client: TestClient) -> None:
-    response = _admin(client).get("/mail")
+    response = _admin(client).get("/mail/server")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     text = response.text
@@ -686,7 +686,7 @@ def test_the_page_has_the_form_the_test_mail_and_the_off_dialog(client: TestClie
 
 
 def test_the_page_never_contains_the_stored_password(client: TestClient) -> None:
-    text = _admin(client).get("/mail").text
+    text = _admin(client).get("/mail/server").text
     assert _SECRET not in text
     assert "stored; leave empty to keep it" in text
     assert 'type="password"' in text
@@ -696,7 +696,7 @@ def test_a_relay_that_is_off_offers_to_switch_it_on_and_hides_the_off_button(
     config_dir: Path, workspace: Path, queue: JobQueue
 ) -> None:
     _configure(config_dir, on=False)
-    text = _admin(_make_client(config_dir, workspace)).get("/mail").text
+    text = _admin(_make_client(config_dir, workspace)).get("/mail/server").text
     assert "Switch on and apply" in text
     assert "Switch off" not in text
     assert 'id="mail-off-dialog"' not in text
@@ -708,7 +708,7 @@ def test_a_relay_never_set_up_starts_with_a_login_and_the_defaults(
 ) -> None:
     empty = tmp_path / "fresh-config"
     (empty / "manager").mkdir(parents=True)
-    text = _admin(_make_client(empty, workspace)).get("/mail").text
+    text = _admin(_make_client(empty, workspace)).get("/mail/server").text
     assert 'id="mail-login" type="checkbox"' in text
     assert "checked" in text.split('id="mail-login"')[1].split(">")[0]
     assert 'value="587"' in text

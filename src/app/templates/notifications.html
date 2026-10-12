@@ -1,0 +1,496 @@
+{% extends "base.html" %}
+{% from "partials/_mail_tabs.html" import tabs %}
+{% from "partials/_actions.html" import row_actions, overflow_menu %}
+{% block title %}Mail — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Mail{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Who is told when something needs attention, and what each of them receives</p>{% endblock %}
+
+{# Tier 1: one filled primary. The dialogs live on the page, not in a polled element, so a
+   status poll never tears down a form that is being filled in. #}
+{% block page_actions %}
+{% if not doc.error %}
+<button type="button"
+        class="btn btn-primary btn-sm"
+        onclick="window.dispatchEvent(new CustomEvent('recipient-new'))">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+  </svg>
+  Add recipient
+</button>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{{ tabs('notifications') }}
+
+<div class="max-w-5xl space-y-6">
+
+  <div id="notify-status"
+       hx-get="/partials/notifications/status"
+       hx-trigger="load, every 30s"
+       hx-swap="innerHTML">
+    {% include "partials/notifications_status.html" %}
+  </div>
+
+  {% if not doc.error %}
+  <section class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-4">
+      <div>
+        <h2 class="font-brand text-lg font-bold">Recipients</h2>
+        <p class="text-sm opacity-60">
+          Tick what each recipient should receive. A tick saves at once.
+          <span id="notify-saved" class="ml-1 text-success" role="status" aria-live="polite"></span>
+        </p>
+      </div>
+
+      {% if not doc.recipients %}
+      <div class="rounded-xl border border-base-300 px-5 py-10 text-center">
+        <p class="text-sm font-semibold">No recipients yet</p>
+        <p class="mt-1 text-sm opacity-60">
+          Add an email address or a webhook, and choose which events it should hear about.
+        </p>
+      </div>
+      {% else %}
+      <div class="overflow-x-auto rounded-xl border border-base-300">
+        <table class="table min-w-[46rem]">
+          <thead>
+            <tr>
+              <th>Recipient</th>
+              {% for ev in doc.events %}
+              <th class="px-3 text-center align-bottom text-xs font-normal leading-tight opacity-70" title="{{ ev.label }}: {{ ev.description }}">
+                {% for line in ev.short.split("\n") %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+              </th>
+              {% endfor %}
+              <th class="w-px"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in doc.recipients %}
+            <tr class="hover" data-recipient="{{ r.id }}">
+              <td>
+                <div class="flex items-start gap-2">
+                  {% if r.kind == "email" %}
+                  <svg xmlns="http://www.w3.org/2000/svg" class="mt-0.5 h-4 w-4 shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" role="img" aria-label="Email">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                  </svg>
+                  {% else %}
+                  <svg xmlns="http://www.w3.org/2000/svg" class="mt-0.5 h-4 w-4 shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" role="img" aria-label="Webhook">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                  </svg>
+                  {% endif %}
+                  <div class="min-w-0">
+                    <p class="text-sm font-semibold">{{ r.name }}</p>
+                    <p class="break-all text-xs opacity-60">{{ r.target }}</p>
+                    <div class="mt-1 flex flex-wrap items-center gap-1">
+                      {% if not r.enabled %}
+                      <span class="badge badge-ghost badge-sm">Paused</span>
+                      {% elif r.kind == "email" and not doc.mail.ready %}
+                      <span class="badge badge-warning badge-sm">Waiting for Mail Server</span>
+                      {% elif r.test.state == "passed" %}
+                      <span class="badge badge-success badge-sm">Test passed · {{ r.test.at | ingest_when }} UTC</span>
+                      {% elif r.test.state == "failed" %}
+                      <span class="badge badge-error badge-sm">Test failed</span>
+                      {% else %}
+                      <span class="badge badge-warning badge-outline badge-sm">Not tested yet</span>
+                      {% endif %}
+                      {% if r.enabled and not r.events %}
+                      <span class="badge badge-ghost badge-sm">Receives nothing</span>
+                      {% endif %}
+                    </div>
+                    {% if r.test.state == "failed" and r.test.reason %}
+                    <p class="mt-1 text-xs opacity-60">{{ r.test.reason }}</p>
+                    {% endif %}
+                  </div>
+                </div>
+              </td>
+              {% for ev in doc.events %}
+              <td class="px-3 text-center">
+                <input type="checkbox" class="checkbox checkbox-primary checkbox-sm"
+                       data-event="{{ ev.id }}"
+                       aria-label="{{ r.name }}: {{ ev.label }}"
+                       {% if ev.id in r.events %}checked{% endif %}
+                       onchange="toggleEvent(this)">
+              </td>
+              {% endfor %}
+              <td class="whitespace-nowrap">
+                {# Tier 2: two visible buttons; deleting confirms in a dialog behind the kebab. #}
+                {% call row_actions() %}
+                  <button type="button" class="btn btn-outline btn-xs"
+                          onclick='testRecipient({{ r.id|tojson }}, {{ r.name|tojson }}, this)'>Send test</button>
+                  <button type="button" class="btn btn-outline btn-xs"
+                          onclick='window.dispatchEvent(new CustomEvent("recipient-open", {detail: {{ {"id": r.id}|tojson }}}))'>Edit</button>
+                  {% call overflow_menu(size='xs', label='More actions for ' ~ r.name, float=True) %}
+                    <li><a class="text-error"
+                           onclick='window.dispatchEvent(new CustomEvent("recipient-delete", {detail: {{ {"id": r.id, "name": r.name}|tojson }}}))'>Delete…</a></li>
+                  {% endcall %}
+                {% endcall %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-4">
+      <div>
+        <h2 class="font-brand text-lg font-bold">Event settings</h2>
+        <p class="text-sm opacity-60">These apply to every recipient. A failed job is always reported at once.</p>
+      </div>
+      <form id="notify-settings" class="space-y-4" onsubmit="saveSettings(event)" novalidate>
+        <div class="grid items-center gap-x-6 gap-y-4 sm:grid-cols-[1fr_11rem]">
+          <div>
+            <label for="set-interval" class="text-sm font-medium">Check interval</label>
+            <p class="text-xs opacity-60">How often backups, services, certificates and updates are looked at. Release tags are fetched at most once an hour.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="set-interval" type="number" min="1" max="60" inputmode="numeric"
+                   class="input input-bordered input-sm w-24" value="{{ doc.settings.check_interval_minutes }}">
+            <span class="text-sm opacity-60">minutes</span>
+          </div>
+
+          <div>
+            <label for="set-debounce" class="text-sm font-medium">Service unhealthy</label>
+            <p class="text-xs opacity-60">Don't notify again about the same service within this time, so one that flaps does not page again and again.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="set-debounce" type="number" min="1" max="1440" inputmode="numeric"
+                   class="input input-bordered input-sm w-24" value="{{ doc.settings.debounce_minutes }}">
+            <span class="text-sm opacity-60">minutes</span>
+          </div>
+
+          <div>
+            <label for="set-lead" class="text-sm font-medium">Certificate expiring</label>
+            <p class="text-xs opacity-60">Notify this long before a certificate expires. Only the certificates the host check sees are covered.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="set-lead" type="number" min="1" max="90" inputmode="numeric"
+                   class="input input-bordered input-sm w-24" value="{{ doc.settings.cert_lead_days }}">
+            <span class="text-sm opacity-60">days</span>
+          </div>
+        </div>
+        <div>
+          <button id="set-save" type="submit" class="btn btn-outline btn-sm">Save settings</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="mb-2 font-brand text-lg font-bold">Recent notifications</h2>
+    <div id="notify-log"
+         hx-get="/partials/notifications/log"
+         hx-trigger="load, every 30s"
+         hx-swap="innerHTML"></div>
+  </section>
+
+  <section class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-2">
+      <h2 class="font-brand text-lg font-bold">Good to know</h2>
+      <ul class="list-disc space-y-1 pl-5 text-sm opacity-70">
+        <li>Each event is reported once per occurrence: a failed job, a backup that turns overdue, a
+            service that turns unhealthy, a certificate and its expiry date, a release or add-on version.
+            The manager remembers what it reported, so a restart does not send it again.</li>
+        <li>A service counts as down when a check saw it brought up (starting, running, unhealthy or stopped) and it
+            is now stopped, unhealthy or gone, also when you stopped it here, with or without “Clean up”. One that
+            no check ever saw is not reported. A check runs right after every job here ends, so a start and a stop
+            made in the manager are seen; one started and stopped elsewhere within a check interval can be missed.
+            While a job, a restore, an upgrade or a stack action is running, services are not checked.</li>
+        <li>An overdue backup needs a backup schedule. Add-on updates are compared with the catalogs on disk,
+            so they show up after a catalog refresh.</li>
+        <li>A webhook receives a JSON post with <span class="font-mono">event</span>,
+            <span class="font-mono">severity</span>, <span class="font-mono">message</span>,
+            <span class="font-mono">timestamp</span> and <span class="font-mono">details</span>. Its URL is
+            never shown again after it is saved, and redirects are not followed.</li>
+        <li>Notifications carry no job log and no error text, only what is needed to find the job.</li>
+      </ul>
+    </div>
+  </section>
+  {% endif %}
+</div>
+
+{% if not doc.error %}
+<!-- Add or change a recipient -->
+<dialog id="recipient-modal" class="modal" x-data="recipientDialog()"
+        @recipient-new.window="openNew()" @recipient-open.window="openRecipient($event.detail)">
+  <div class="modal-box max-w-lg">
+    <h3 class="text-lg font-bold" x-text="mode === 'create' ? 'Add recipient' : 'Edit recipient'"></h3>
+
+    <form @submit.prevent="submit()" class="mt-3">
+      <div class="join mb-3 w-full" x-show="mode === 'create'" style="display:none">
+        <button type="button" class="btn btn-outline btn-sm join-item flex-1"
+                :class="kind === 'email' ? 'btn-active' : ''"
+                :aria-pressed="kind === 'email'"
+                :disabled="!mailSupported" @click="kind = 'email'">Email</button>
+        <button type="button" class="btn btn-outline btn-sm join-item flex-1"
+                :class="kind === 'webhook' ? 'btn-active' : ''"
+                :aria-pressed="kind === 'webhook'"
+                @click="kind = 'webhook'">Webhook</button>
+      </div>
+      <p class="mb-3 text-xs opacity-60" x-show="mode === 'create' && !mailSupported" style="display:none">
+        This papAIa core has no mail relay, so there is no email. A webhook works.
+      </p>
+
+      <div class="form-control mb-3">
+        <label class="label py-1" for="recipient-name"><span class="label-text">Name</span></label>
+        <input id="recipient-name" type="text" class="input input-bordered" x-model="name"
+               maxlength="60" autocomplete="off" placeholder="Ops team">
+      </div>
+
+      <div class="form-control mb-1">
+        <label class="label py-1" for="recipient-target">
+          <span class="label-text" x-text="kind === 'email' ? 'Email address' : 'Webhook URL'"></span>
+        </label>
+        <input id="recipient-target" :type="kind === 'email' ? 'email' : 'text'" class="input input-bordered"
+               x-model="target" maxlength="2048" autocomplete="off" spellcheck="false"
+               :placeholder="kind === 'email' ? 'ops@customer.example' : (mode === 'edit' ? 'Leave empty to keep ' + maskedTarget : 'https://hooks.example.com/papaia')">
+      </div>
+      <p class="mb-3 text-xs opacity-60" x-show="kind === 'email'" style="display:none">
+        One address per recipient. Sent through the Mail Server.
+      </p>
+      <p class="mb-3 text-xs opacity-60" x-show="kind === 'webhook'" style="display:none">
+        Receives a JSON post with event, severity, message, timestamp and details. The URL is stored
+        and never shown again; leave the field empty when editing to keep it.
+      </p>
+
+      <fieldset class="mb-3">
+        <legend class="mb-1 flex w-full items-center">
+          <span class="label-text flex-1">Receives</span>
+          <button type="button" class="link text-xs" @click="toggleAll()"
+                  x-text="allChosen() ? 'Clear all' : 'Select all'"></button>
+        </legend>
+        <div class="space-y-2">
+          <template x-for="ev in events" :key="ev.id">
+            <label class="flex cursor-pointer items-start gap-3">
+              <input type="checkbox" class="checkbox checkbox-primary checkbox-sm mt-0.5"
+                     :checked="picked[ev.id]" @change="picked[ev.id] = $event.target.checked">
+              <span class="text-sm">
+                <span x-text="ev.label"></span>
+                <span class="opacity-60" x-text="' — ' + ev.description"></span>
+              </span>
+            </label>
+          </template>
+        </div>
+      </fieldset>
+
+      <label class="mb-3 flex cursor-pointer items-center gap-3">
+        <input type="checkbox" class="checkbox checkbox-sm" x-model="enabled">
+        <span class="text-sm">Active <span class="opacity-60">— untick to pause without losing the choices</span></span>
+      </label>
+
+      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" role="alert" x-text="error"></p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="submit" class="btn btn-primary" :disabled="busy">
+          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-text="mode === 'create' ? 'Add recipient' : 'Save changes'"></span>
+        </button>
+      </div>
+    </form>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Delete a recipient -->
+<dialog id="recipient-delete-modal" class="modal" x-data="deleteRecipient()"
+        @recipient-delete.window="open($event.detail)">
+  <div class="modal-box">
+    <h3 class="text-lg font-bold">Delete <span x-text="name"></span>?</h3>
+    <p class="mt-2 text-sm opacity-70">
+      It stops receiving notifications at once, and what you ticked for it is gone with it.
+      This cannot be undone.
+    </p>
+    <p style="display:none" x-show="error" class="mt-2 text-sm text-error" role="alert" x-text="error"></p>
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+      <button type="button" class="btn btn-error" :disabled="busy" @click="submit()">Delete</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+{% include "partials/_rag_js.html" %}
+<script>
+  const NOTIFY = {{ doc | tojson }};
+  const NOTIFY_API = '/api/v1/notifications';
+  let notifyRevision = NOTIFY.revision;
+
+  // One request at a time: each change carries the revision the one before it produced, so
+  // two ticks in a row must not be in flight together (the second would be refused as stale).
+  let notifyChain = Promise.resolve();
+  function notifySerial(task) {
+    const next = notifyChain.then(task);
+    notifyChain = next.catch(function () {});
+    return next;
+  }
+
+  function notifyReload(delay) {
+    setTimeout(function () { window.location.reload(); }, delay || 700);
+  }
+
+  let savedTimer = null;
+  function flashSaved() {
+    const el = document.getElementById('notify-saved');
+    if (!el) return;
+    el.textContent = 'Saved';
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(function () { el.textContent = ''; }, 1800);
+  }
+
+  function toggleEvent(box) {
+    const row = box.closest('tr');
+    const events = Array.prototype.map.call(
+      row.querySelectorAll('input[data-event]:checked'), function (b) { return b.dataset.event; });
+    return notifySerial(async function () {
+      box.disabled = true;
+      const res = await _ragRequest('PUT', NOTIFY_API + '/recipients/' + encodeURIComponent(row.dataset.recipient) + '/events',
+        { revision: notifyRevision, events: events });
+      box.disabled = false;
+      if (res.handled) return;
+      if (!res.ok) {
+        box.checked = !box.checked;
+        showToast('error', _ragEscape(res.error));
+        return;
+      }
+      notifyRevision = res.data.revision;
+      flashSaved();
+    });
+  }
+
+  async function testRecipient(id, name, button) {
+    button.disabled = true;
+    const res = await _ragRequest('POST', NOTIFY_API + '/recipients/' + encodeURIComponent(id) + '/test');
+    button.disabled = false;
+    if (res.handled) return;
+    if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
+    if (res.data.ok) {
+      showToast('success', 'Test sent to <b>' + _ragEscape(name) + '</b>.');
+    } else {
+      showToast('error', 'The test to <b>' + _ragEscape(name) + '</b> failed: ' + _ragEscape(res.data.reason) + '.');
+    }
+    notifyReload(1200);
+  }
+
+  function saveSettings(event) {
+    event.preventDefault();
+    const button = document.getElementById('set-save');
+    const number = function (id) { return Number(document.getElementById(id).value); };
+    return notifySerial(async function () {
+      button.disabled = true;
+      const res = await _ragRequest('PUT', NOTIFY_API + '/settings', {
+        revision: notifyRevision,
+        check_interval_minutes: number('set-interval'),
+        debounce_minutes: number('set-debounce'),
+        cert_lead_days: number('set-lead'),
+      });
+      button.disabled = false;
+      if (res.handled) return;
+      if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
+      notifyRevision = res.data.revision;
+      showToast('success', 'Settings saved.');
+    });
+  }
+
+  function recipientDialog() {
+    return {
+      mode: 'create', id: '', kind: NOTIFY.mail.supported ? 'email' : 'webhook',
+      name: '', target: '', maskedTarget: '', enabled: true, picked: {},
+      events: NOTIFY.events, mailSupported: NOTIFY.mail.supported,
+      busy: false, error: '',
+      reset() {
+        this.id = ''; this.name = ''; this.target = ''; this.maskedTarget = ''; this.enabled = true;
+        this.kind = NOTIFY.mail.supported ? 'email' : 'webhook'; this.picked = {};
+        this.error = ''; this.busy = false;
+      },
+      openNew() {
+        this.reset(); this.mode = 'create';
+        this.$root.showModal();
+      },
+      openRecipient(detail) {
+        const r = NOTIFY.recipients.find(function (x) { return x.id === detail.id; });
+        if (!r) return;
+        this.reset(); this.mode = 'edit';
+        this.id = r.id; this.kind = r.kind; this.name = r.name; this.enabled = r.enabled;
+        // An address is shown as it is; a webhook URL is not sent back, so the field stays empty.
+        this.target = r.kind === 'email' ? r.target : '';
+        this.maskedTarget = r.target;
+        const picked = {};
+        r.events.forEach(function (e) { picked[e] = true; });
+        this.picked = picked;
+        this.$root.showModal();
+      },
+      chosen() {
+        const self = this;
+        return this.events.map(function (e) { return e.id; }).filter(function (id) { return self.picked[id]; });
+      },
+      allChosen() { return this.chosen().length === this.events.length; },
+      toggleAll() {
+        const on = !this.allChosen();
+        const picked = {};
+        this.events.forEach(function (e) { picked[e.id] = on; });
+        this.picked = picked;
+      },
+      async submit() {
+        this.error = '';
+        if (!this.name.trim()) { this.error = 'Enter a name.'; return; }
+        if (this.mode === 'create' && !this.target.trim()) {
+          this.error = this.kind === 'email' ? 'Enter an email address.' : 'Enter the webhook URL.';
+          return;
+        }
+        this.busy = true;
+        const self = this;
+        const create = this.mode === 'create';
+        const res = await notifySerial(function () {
+          const body = { revision: notifyRevision, name: self.name.trim(), enabled: self.enabled, events: self.chosen() };
+          if (create) {
+            body.kind = self.kind;
+            body.target = self.target.trim();
+            return _ragRequest('POST', NOTIFY_API + '/recipients', body);
+          }
+          if (self.target.trim()) body.target = self.target.trim();
+          return _ragRequest('PUT', NOTIFY_API + '/recipients/' + encodeURIComponent(self.id), body);
+        });
+        this.busy = false;
+        if (res.handled) return;
+        if (!res.ok) { this.error = res.error; return; }
+        notifyRevision = res.data.revision;
+        this.$root.close();
+        showToast('success', 'Recipient <b>' + _ragEscape(this.name.trim()) + '</b> ' + (create ? 'added' : 'saved') +
+          '.' + (create ? ' Send a test to check that it arrives.' : ''));
+        notifyReload(900);
+      },
+    };
+  }
+
+  function deleteRecipient() {
+    return {
+      id: '', name: '', busy: false, error: '',
+      open(detail) {
+        this.id = detail.id; this.name = detail.name; this.error = ''; this.busy = false;
+        this.$root.showModal();
+      },
+      async submit() {
+        this.error = '';
+        this.busy = true;
+        const self = this;
+        const res = await notifySerial(function () {
+          return _ragRequest('DELETE', NOTIFY_API + '/recipients/' + encodeURIComponent(self.id),
+            { revision: notifyRevision });
+        });
+        this.busy = false;
+        if (res.handled) return;
+        if (!res.ok) { this.error = res.error; return; }
+        notifyRevision = res.data.revision;
+        this.$root.close();
+        showToast('success', 'Recipient <b>' + _ragEscape(this.name) + '</b> deleted.');
+        notifyReload(700);
+      },
+    };
+  }
+</script>
+{% endif %}
+{% endblock %}
