@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -586,3 +587,113 @@ async def test_a_docker_that_does_not_answer_neither_reports_nor_forgets(
     assert store.load_state(settings.papaia_config_dir).up == {"keycloak", "localai"}
     docker.answer = services.ServiceHealth.MISSING
     assert (await service.run_once()).notified == 1
+
+
+# -- the interval ----------------------------------------------------------------------
+
+
+def _interval(monkeypatch: pytest.MonkeyPatch, service: NotificationService, seconds: list[float]):
+    """The check interval as the page would change it: whatever `seconds[0]` is now."""
+    monkeypatch.setattr(service, "_interval_seconds", lambda: seconds[0])
+
+
+async def test_the_interval_is_the_one_in_the_configuration(
+    settings: Settings, receiver: _Receiver
+) -> None:
+    service = _service(settings, receiver, {})
+    assert service._interval_seconds() == 300  # noqa: SLF001 -- no file: the default
+    revision = store.load_config(settings.papaia_config_dir).revision
+    store.save_settings(
+        settings.papaia_config_dir, revision, EventSettings(check_interval_minutes=3)
+    )
+    assert service._interval_seconds() == 180  # noqa: SLF001
+
+
+async def test_a_file_nobody_can_read_leaves_the_default_interval(
+    settings: Settings, receiver: _Receiver
+) -> None:
+    path = store.config_path(settings.papaia_config_dir)
+    path.parent.mkdir(parents=True)
+    path.write_text("surprise: 1\n", encoding="utf-8")
+    assert _service(settings, receiver, {})._interval_seconds() == 300  # noqa: SLF001
+
+
+async def test_a_shorter_interval_takes_effect_while_the_loop_waits(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bug: the sleep was as long as the interval read before the pass, so lowering 5 to 3
+    minutes changed nothing until the five had run out."""
+    service = _service(settings, receiver, {}, settings_poll=0.01)
+    seconds = [3600.0]
+    _interval(monkeypatch, service, seconds)
+    waiting = asyncio.create_task(service._wait_for_next(time.monotonic()))  # noqa: SLF001
+    await asyncio.sleep(0.1)
+    assert not waiting.done()  # an hour is an hour
+    seconds[0] = 0.0  # "3 minutes" saved on the page, with more than that already gone
+    await asyncio.wait_for(waiting, timeout=2)
+
+
+async def test_a_longer_interval_takes_effect_while_the_loop_waits(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _service(settings, receiver, {}, settings_poll=0.01)
+    seconds = [0.15]
+    _interval(monkeypatch, service, seconds)
+    waiting = asyncio.create_task(service._wait_for_next(time.monotonic()))  # noqa: SLF001
+    await asyncio.sleep(0.05)
+    seconds[0] = 3600.0  # lengthened before the first one ran out
+    await asyncio.sleep(0.3)
+    assert not waiting.done()
+    waiting.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+
+
+async def test_the_next_pass_is_due_one_interval_after_the_last_began(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _service(settings, receiver, {}, settings_poll=0.01)
+    seconds = [10.0]
+    _interval(monkeypatch, service, seconds)
+    # The last pass began 4 seconds ago; with 3 seconds as the new interval it is overdue.
+    seconds[0] = 3.0
+    await asyncio.wait_for(service._wait_for_next(time.monotonic() - 4.0), timeout=1)  # noqa: SLF001
+
+
+async def test_the_running_loop_passes_again_when_the_interval_is_shortened(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _subscribe(settings, "Chat", _HOOK, [Event.SERVICE_UNHEALTHY])
+    looked: list[int] = []
+
+    def watched() -> list[Finding]:
+        looked.append(1)
+        return []
+
+    service = _service(
+        settings,
+        receiver,
+        {Event.SERVICE_UNHEALTHY: _detector(watched)},
+        first_pass_delay=0,
+        settings_poll=0.01,
+    )
+    seconds = [3600.0]
+    _interval(monkeypatch, service, seconds)
+    service.start()
+    try:
+        for _ in range(100):
+            if looked:
+                break
+            await asyncio.sleep(0.02)
+        assert len(looked) == 1
+        await asyncio.sleep(0.2)
+        assert len(looked) == 1  # an hour away
+        seconds[0] = 0.05
+        for _ in range(100):
+            if len(looked) >= 2:
+                break
+            await asyncio.sleep(0.02)
+        assert len(looked) >= 2
+    finally:
+        service.shutdown()
+        await service.stopped()

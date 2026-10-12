@@ -9,8 +9,9 @@ Two ways in, one way out:
   `git fetch` and no `doctor`;
 * both end in `deliver`, to the recipients that chose the event.
 
-The loop is one task that sleeps between passes, so a pass cannot overlap the next, and the
-configuration is read at the start of every pass, so a change on the page needs no rescheduling.
+The loop is one task that waits between passes, so a pass cannot overlap the next. The
+configuration is read at the start of every pass and again while waiting, so a change on the page
+needs no rescheduling and a new interval takes effect within seconds.
 It assumes one process, like the backup scheduler. What it has reported is remembered in the
 state file (`store.NotifyState`) before the delivery starts: a manager that restarts between
 the two loses a notification instead of repeating it.
@@ -37,7 +38,7 @@ from app.core.notifications.delivery import (
     Outcome,
     deliver,
 )
-from app.core.notifications.model import INFO_BY_EVENT, Event, EventSettings, Severity
+from app.core.notifications.model import INFO_BY_EVENT, Event, Severity
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,8 @@ log = logging.getLogger(__name__)
 FIRST_PASS_DELAY_SECONDS = 60.0
 # Release tags come from the network; a release is not a thing to look for every five minutes.
 UPDATE_CHECK_INTERVAL_SECONDS = 3600.0
+# How often the check interval is read again while the loop waits for the next pass.
+SETTINGS_POLL_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,7 @@ class NotificationService:
         retry_delay: float | None = None,
         first_pass_delay: float = FIRST_PASS_DELAY_SECONDS,
         update_interval: float = UPDATE_CHECK_INTERVAL_SECONDS,
+        settings_poll: float = SETTINGS_POLL_SECONDS,
     ) -> None:
         self._settings = settings
         self._detectors = (
@@ -78,6 +82,7 @@ class NotificationService:
             self._delivery_args["retry_delay"] = retry_delay
         self._first_delay = first_pass_delay
         self._update_interval = update_interval
+        self._settings_poll = settings_poll
         self._last_update_check: float | None = None
         self._task: asyncio.Task[None] | None = None
         self._stopping: asyncio.Task[None] | None = None
@@ -110,15 +115,32 @@ class NotificationService:
     async def _run(self) -> None:
         await asyncio.sleep(self._first_delay)
         while True:
-            interval = EventSettings().check_interval_minutes * 60.0
+            started = time.monotonic()
             try:
-                interval = (await self.run_once()).interval_seconds
+                await self.run_once()
             except asyncio.CancelledError:
                 raise
             except Exception:
                 # A failed pass costs this round of notifications, never the manager.
                 log.exception("a notification pass failed; it will be tried again")
-            await asyncio.sleep(interval)
+            await self._wait_for_next(started)
+
+    def _interval_seconds(self) -> float:
+        """The check interval as the configuration says now; the default when it is unusable."""
+        load = store.load_config(self._settings.papaia_config_dir)
+        return load.config.settings.check_interval_minutes * 60.0
+
+    async def _wait_for_next(self, started: float) -> None:
+        """Wait until one interval has passed since the last pass began.
+
+        The interval is read again while waiting, not once before the sleep: a change on the
+        page then takes effect within `settings_poll` seconds. Shortened below the time that has
+        already passed, the next pass is due at once; lengthened, it waits the rest."""
+        while True:
+            remaining = started + self._interval_seconds() - time.monotonic()
+            if remaining <= 0:
+                return
+            await asyncio.sleep(min(remaining, self._settings_poll))
 
     # -- the periodic pass -------------------------------------------------
 
