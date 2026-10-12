@@ -13,6 +13,7 @@ import os
 import tempfile
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +37,7 @@ for _key, _value in {
 from app.config import Settings  # noqa: E402
 from app.core import services  # noqa: E402
 from app.core.audit import audit_path  # noqa: E402
-from app.core.jobs import JobContext, JobQueue, JobStatus  # noqa: E402
+from app.core.jobs import Job, JobContext, JobQueue, JobStatus  # noqa: E402
 from app.core.notifications import detect, store  # noqa: E402
 from app.core.notifications.detect import Condition, Finding  # noqa: E402
 from app.core.notifications.model import Event, EventSettings, Kind  # noqa: E402
@@ -695,5 +696,106 @@ async def test_the_running_loop_passes_again_when_the_interval_is_shortened(
             await asyncio.sleep(0.02)
         assert len(looked) >= 2
     finally:
+        service.shutdown()
+        await service.stopped()
+
+
+# -- a job that ends -------------------------------------------------------------------
+
+
+def _finished(status: JobStatus = JobStatus.SUCCEEDED) -> Job:
+    return Job(
+        id="j-1",
+        action="group-start",
+        target="localai",
+        user="admin",
+        created_at=datetime.now(tz=UTC),
+        status=status,
+    )
+
+
+async def _until(condition: Callable[[], object], seconds: float = 3.0) -> None:
+    for _ in range(int(seconds / 0.02)):
+        if condition():
+            return
+        await asyncio.sleep(0.02)
+    raise AssertionError("did not happen in time")
+
+
+async def test_a_job_that_ends_cuts_the_wait_for_the_next_pass_short(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _service(settings, receiver, {}, settings_poll=0.01)
+    _interval(monkeypatch, service, [3600.0])
+    waiting = asyncio.create_task(service._wait_for_next(time.monotonic()))  # noqa: SLF001
+    await asyncio.sleep(0.1)
+    assert not waiting.done()
+    service.on_job_finished(_finished())  # a start that worked: nothing to report about it
+    await asyncio.wait_for(waiting, timeout=2)
+    assert receiver.posts == []
+
+
+async def test_a_job_that_ended_before_the_first_pass_does_not_ask_for_a_second_one(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _subscribe(settings, "Chat", _HOOK, [Event.SERVICE_UNHEALTHY])
+    looked: list[int] = []
+
+    def watched() -> list[Finding]:
+        looked.append(1)
+        return []
+
+    service = _service(
+        settings,
+        receiver,
+        {Event.SERVICE_UNHEALTHY: _detector(watched)},
+        first_pass_delay=0.2,
+        settings_poll=0.01,
+    )
+    _interval(monkeypatch, service, [3600.0])
+    service.start()
+    try:
+        service.on_job_finished(_finished())  # during the wait for the first pass
+        await _until(lambda: looked)
+        await asyncio.sleep(0.3)
+        assert len(looked) == 1
+    finally:
+        service.shutdown()
+        await service.stopped()
+
+
+async def test_a_service_started_and_stopped_in_the_manager_within_one_interval_is_reported(
+    settings: Settings, receiver: _Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The case that was missed: `localai` started with the Services page, stopped with "Clean
+    up" a minute later, an interval of minutes in between. The start job's end asks for a pass,
+    which sees the service deployed; the stop job's end asks for another, which finds it gone."""
+    _subscribe(settings, "Chat", _HOOK, [Event.SERVICE_UNHEALTHY])
+    docker = _Docker(monkeypatch)
+    docker.answer = services.ServiceHealth.MISSING
+    service = _service(
+        settings, receiver, _real_detectors(settings), first_pass_delay=0, settings_poll=0.01
+    )
+    _interval(monkeypatch, service, [3600.0])  # only a job that ends can ask for the next pass
+    queue = JobQueue(settings.papaia_config_dir)
+    queue.add_finished_listener(service.on_job_finished)
+    queue.start()
+    service.start()
+    try:
+        up = lambda: store.load_state(settings.papaia_config_dir).up  # noqa: E731
+        await _until(lambda: up() == {"keycloak"})  # the first pass: localai is not deployed
+
+        docker.answer = services.ServiceHealth.STARTING  # "Start": still starting at the end
+        await queue.enqueue(action="group-start", target="localai", user="admin", callback=_works)
+        await _until(lambda: "localai" in up())
+        assert receiver.posts == []
+
+        docker.answer = services.ServiceHealth.MISSING  # "Stop" with "Clean up"
+        await queue.enqueue(action="group-stop", target="localai", user="admin", callback=_works)
+        await _until(lambda: receiver.posts)
+        (body,) = receiver.to(_HOOK)
+        assert body["message"] == "localai is not running: its containers are gone."
+    finally:
+        queue.stop()
         service.shutdown()
         await service.stopped()

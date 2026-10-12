@@ -215,15 +215,19 @@ def service_findings(
     """The modules that are down now, and the modules that are known to have run.
 
     A module is down when it is `stopped` or `unhealthy`, or when it is `missing` after a pass
-    saw it running: a stop with "Clean up" removes the containers while the profile stays
+    saw it deployed: a stop with "Clean up" removes the containers while the profile stays
     active, and so does `docker rm`, and either is an outage as much as a stopped container.
-    A module that was never seen running is not: a profile that was enabled and never started
+    A module that was never seen deployed is not: a profile that was enabled and never started
     is a choice, and one mail per such module on the first pass would be noise. `starting` is
-    neither: it is on its way.
+    not down: it is on its way.
 
-    `up` is what the next pass is told. A module that is healthy joins it; one that is down stays
-    in it, so it keeps being known while it is gone; one that is no longer in the snapshot at all
-    (its profile was switched off, the add-on removed) leaves it."""
+    `up` is what the next pass is told. A module joins it as soon as it has containers in a
+    state that says it was meant to run (`healthy`, `starting`, `unhealthy`, `stopped`), not
+    only when it is `healthy`: a service that takes a minute to pass its health check and is
+    stopped before that was running all the same. A one-shot that has `completed` does not
+    join. A module that is down stays in it, so it keeps being known while it is gone; one that
+    is no longer in the snapshot at all (its profile was switched off, the add-on removed)
+    leaves it."""
     modules = [*snapshot.core, *snapshot.addons]
     labels = {_label(m): m for m in modules}
     down = (services.ServiceHealth.UNHEALTHY, services.ServiceHealth.STOPPED)
@@ -254,9 +258,19 @@ def service_findings(
                 },
             )
         )
-    healthy = {label for label, m in labels.items() if m.health is services.ServiceHealth.HEALTHY}
-    up_now = frozenset(healthy | {label for label in was_up if label in labels})
+    deployed = {label for label, m in labels.items() if m.health in _DEPLOYED}
+    up_now = frozenset(deployed | {label for label in was_up if label in labels})
     return [Finding(Event.SERVICE_UNHEALTHY, tuple(conditions))], up_now
+
+
+# The states of a module that say it has been brought up: `missing` is not one, and a one-shot
+# that has `completed` (or a module that is `unknown`) says nothing about a service.
+_DEPLOYED = (
+    services.ServiceHealth.HEALTHY,
+    services.ServiceHealth.STARTING,
+    services.ServiceHealth.UNHEALTHY,
+    services.ServiceHealth.STOPPED,
+)
 
 
 def _label(module: services.ServiceModule) -> str:

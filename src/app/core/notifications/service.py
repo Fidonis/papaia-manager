@@ -88,6 +88,8 @@ class NotificationService:
         self._stopping: asyncio.Task[None] | None = None
         self._pending: set[asyncio.Task[None]] = set()
         self._pass_lock = asyncio.Lock()
+        # Set when a job ends: the stack was just changed, so the next pass is not for later.
+        self._wake = asyncio.Event()
         self.last_pass_at: datetime | None = None
 
     # -- lifecycle ---------------------------------------------------------
@@ -116,6 +118,9 @@ class NotificationService:
         await asyncio.sleep(self._first_delay)
         while True:
             started = time.monotonic()
+            # Before the pass, not after: a job that ends while it runs may have changed what it
+            # already looked at, and asks for another.
+            self._wake.clear()
             try:
                 await self.run_once()
             except asyncio.CancelledError:
@@ -131,16 +136,26 @@ class NotificationService:
         return load.config.settings.check_interval_minutes * 60.0
 
     async def _wait_for_next(self, started: float) -> None:
-        """Wait until one interval has passed since the last pass began.
+        """Wait until one interval has passed since the last pass began, or a job has ended.
 
         The interval is read again while waiting, not once before the sleep: a change on the
         page then takes effect within `settings_poll` seconds. Shortened below the time that has
-        already passed, the next pass is due at once; lengthened, it waits the rest."""
+        already passed, the next pass is due at once; lengthened, it waits the rest.
+
+        A job that ends cuts the wait short. Starting or stopping something in the manager is the
+        change an administrator most wants to see reported (or not missed): a service that is
+        started and stopped again within one interval would otherwise never be seen running, and
+        a stop would be reported up to an interval late."""
         while True:
+            if self._wake.is_set():
+                return
             remaining = started + self._interval_seconds() - time.monotonic()
             if remaining <= 0:
                 return
-            await asyncio.sleep(min(remaining, self._settings_poll))
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(
+                    self._wake.wait(), timeout=min(remaining, self._settings_poll)
+                )
 
     # -- the periodic pass -------------------------------------------------
 
@@ -214,7 +229,9 @@ class NotificationService:
     # -- failed jobs -------------------------------------------------------
 
     def on_job_finished(self, job: Job) -> None:
-        """The job queue's listener. Hands a failed job to a task and returns at once."""
+        """The job queue's listener. Asks for a pass at once, and hands a failed job to a task of
+        its own for the report. Returns at once."""
+        self._wake.set()
         if job.status is not JobStatus.FAILED:
             return
         task = asyncio.get_running_loop().create_task(self._report_job(job))

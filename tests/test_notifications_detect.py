@@ -337,8 +337,36 @@ def test_what_is_healthy_is_remembered_and_what_is_down_is_not_forgotten() -> No
     )
     _, up_now = _findings(snapshot, {"litellm", "localai"})
     # `keycloak` joins; `litellm` and `localai` are down but stay known, so a later `missing`
-    # is still an outage; `localai-extra` was never seen running and is only starting.
-    assert up_now == {"keycloak", "litellm", "localai"}
+    # is still an outage; `localai-extra` is only starting, which is deployed all the same.
+    assert up_now == {"keycloak", "litellm", "localai", "localai-extra"}
+
+
+def test_a_service_that_was_only_starting_when_it_was_last_seen_is_known() -> None:
+    """The case of a service stopped before it passed its health check: a pass that saw it
+    `starting` has seen it brought up, and its loss is an outage."""
+    starting = services.StackSnapshot(core=[_module("localai", _H.STARTING)])
+    found, up_now = _findings(starting)
+    assert found == {} and up_now == {"localai"}
+    gone = services.StackSnapshot(core=[_module("localai", _H.MISSING)])
+    found, _ = _findings(gone, set(up_now))
+    assert set(found) == {"localai"}
+
+
+@pytest.mark.parametrize("health", [_H.COMPLETED, _H.UNKNOWN, _H.MISSING])
+def test_a_one_shot_that_completed_or_a_module_nobody_can_read_is_not_known(
+    health: services.ServiceHealth,
+) -> None:
+    """A job that ran and exited is not a service, and removing it later is no outage."""
+    _, up_now = _findings(services.StackSnapshot(core=[_module("init", health)]))
+    assert up_now == frozenset()
+
+
+@pytest.mark.parametrize("health", [_H.HEALTHY, _H.STARTING, _H.UNHEALTHY, _H.STOPPED])
+def test_a_module_in_a_state_that_says_it_was_brought_up_is_known(
+    health: services.ServiceHealth,
+) -> None:
+    _, up_now = _findings(services.StackSnapshot(core=[_module("localai", health)]))
+    assert up_now == {"localai"}
 
 
 def test_a_module_that_left_the_stack_is_forgotten() -> None:
