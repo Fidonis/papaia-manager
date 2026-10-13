@@ -2,8 +2,10 @@
 
 The dashboard is operator-configured through a YAML file under
 `$PAPAIA_CONFIG_DIR/manager/`, the same place and the same load/seed/atomic-save
-shape the catalog registry uses. Tiles are plain links -- there is no lifecycle
-attached to them -- so this module owns no state beyond the file itself.
+shape the catalog registry uses. A tile is either a link -- there is no lifecycle
+attached to it -- or a widget, a card that shows live state. A widget tile only
+*names* a registered widget type (see `app.core.widgets`); what it shows is not in
+this file, so this module owns no state beyond the file itself.
 
 Two rules here are load-bearing for access control:
 
@@ -24,10 +26,10 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Any, ClassVar, Literal, get_args
 
 import yaml
 
@@ -36,6 +38,16 @@ logger = logging.getLogger(__name__)
 Visibility = Literal["all", "admin"]
 
 _VISIBILITIES: frozenset[str] = frozenset(get_args(Visibility))
+
+# Width of a widget in the tile grid: one column, two, or the whole row.
+Size = Literal["s", "m", "l"]
+
+# A widget tile's identity. The browser polls one widget at a time and addresses
+# it by this id, so it ends up in a URL path: keep it to a path-safe alphabet.
+_WIDGET_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+
+# Shown on a card header; longer than this is a paragraph, not a title.
+MAX_WIDGET_TITLE = 80
 
 # `{{KEY}}` with optional inner whitespace. Keys are env-var shaped, which
 # keeps the pattern from matching Jinja or JavaScript braces by accident.
@@ -72,6 +84,8 @@ class TilesFileError(Exception):
 class Tile:
     """A single dashboard link."""
 
+    kind: ClassVar[str] = "link"
+
     name: str
     href: str
     description: str = ""
@@ -82,11 +96,37 @@ class Tile:
 
 
 @dataclass
+class WidgetTile:
+    """A dashboard card that shows live state, placed from the widget registry.
+
+    `widget` is the id of a registered type. Everything the card shows comes from
+    that type, never from this file: the tile carries only the placement.
+
+    `id` is the tile's identity. Link tiles have none and are addressed by position,
+    but the browser refreshes each widget through a request of its own, and that
+    request has to name one. A tile written without an id gets a stable one derived
+    from its type and its place among the tiles of that type (`_assign_widget_ids`).
+    """
+
+    kind: ClassVar[str] = "widget"
+
+    widget: str
+    id: str = ""
+    # Empty means "use the widget type's own name".
+    title: str = ""
+    size: Size = "s"
+    # Unlike a link, a widget written without a visibility is for administrators: a
+    # card is a reading of the installation, and the safe reading of "not said" is
+    # the restrictive one.
+    visibility: Visibility = "admin"
+
+
+@dataclass
 class TileGroup:
     """A named section of the dashboard."""
 
     name: str
-    tiles: list[Tile] = field(default_factory=list)
+    tiles: list[Tile | WidgetTile] = field(default_factory=list)
 
 
 @dataclass
@@ -301,9 +341,14 @@ def visible_groups(
     result: list[TileGroup] = []
 
     for group in config.groups:
-        tiles: list[Tile] = []
+        tiles: list[Tile | WidgetTile] = []
         for tile in group.tiles:
             if not _is_visible_to(tile, is_admin=is_admin):
+                continue
+            if isinstance(tile, WidgetTile):
+                # Nothing to resolve: the card is drawn from the registered type,
+                # by a request of its own that checks visibility again.
+                tiles.append(tile)
                 continue
             resolved = _resolve_tile(tile, resolved_env)
             if resolved is not None:
@@ -314,12 +359,31 @@ def visible_groups(
     return result
 
 
-def validate_config(config: TilesConfig, env: Mapping[str, str]) -> list[Problem]:
+def find_widget(config: TilesConfig, widget_id: str) -> WidgetTile | None:
+    """The widget tile with this id, wherever it sits, or None."""
+    for group in config.groups:
+        for tile in group.tiles:
+            if isinstance(tile, WidgetTile) and tile.id == widget_id:
+                return tile
+    return None
+
+
+def validate_config(
+    config: TilesConfig,
+    env: Mapping[str, str],
+    *,
+    known_widgets: Collection[str] | None = None,
+) -> list[Problem]:
     """Every reason the given draft would not survive a render, at once.
 
     Run server-side on save. The editor applies the same checks while typing,
     but that copy is a convenience: this one decides whether the file is
     written.
+
+    `known_widgets` is the set of registered widget ids. It is passed in rather
+    than looked up so this module stays free of the registry; without it the
+    widget ids are not checked, which is what the unit tests of the file format
+    want.
     """
     problems: list[Problem] = []
     seen: set[str] = set()
@@ -334,6 +398,10 @@ def validate_config(config: TilesConfig, env: Mapping[str, str]) -> list[Problem
             seen.add(name.casefold())
 
         for ti, tile in enumerate(group.tiles):
+            if isinstance(tile, WidgetTile):
+                problems.extend(_widget_problems(gi, ti, tile, known_widgets))
+                continue
+
             if not tile.name.strip():
                 problems.append(Problem(gi, ti, "name", "tile name must not be empty"))
 
@@ -352,7 +420,22 @@ def validate_config(config: TilesConfig, env: Mapping[str, str]) -> list[Problem
     return problems
 
 
-def _is_visible_to(tile: Tile, *, is_admin: bool) -> bool:
+def _widget_problems(
+    gi: int, ti: int, tile: WidgetTile, known_widgets: Collection[str] | None
+) -> list[Problem]:
+    problems: list[Problem] = []
+    if not tile.widget.strip():
+        problems.append(Problem(gi, ti, "widget", "choose a widget"))
+    elif known_widgets is not None and tile.widget not in known_widgets:
+        problems.append(Problem(gi, ti, "widget", f"unknown widget {tile.widget!r}"))
+    if len(tile.title) > MAX_WIDGET_TITLE:
+        problems.append(
+            Problem(gi, ti, "title", f"title must be at most {MAX_WIDGET_TITLE} characters")
+        )
+    return problems
+
+
+def _is_visible_to(tile: Tile | WidgetTile, *, is_admin: bool) -> bool:
     return is_admin or tile.visibility == "all"
 
 
@@ -394,26 +477,38 @@ def config_to_json(config: TilesConfig) -> dict[str, Any]:
     """The wire form shared by the tiles API and the editor template.
 
     Differs from the YAML form in one way on purpose: `icon` is always present,
-    as null when unset, so the editor binds to a field that exists.
+    as null when unset, so the editor binds to a field that exists. A link tile has
+    no `type` here, as before; a widget tile says `"type": "widget"`, which is how
+    the editor and the API tell the two apart.
     """
     return {
         "version": config.version,
         "groups": [
             {
                 "name": group.name,
-                "tiles": [
-                    {
-                        "name": tile.name,
-                        "href": tile.href,
-                        "description": tile.description,
-                        "icon": tile.icon,
-                        "visibility": tile.visibility,
-                    }
-                    for tile in group.tiles
-                ],
+                "tiles": [_tile_to_json(tile) for tile in group.tiles],
             }
             for group in config.groups
         ],
+    }
+
+
+def _tile_to_json(tile: Tile | WidgetTile) -> dict[str, Any]:
+    if isinstance(tile, WidgetTile):
+        return {
+            "type": "widget",
+            "id": tile.id,
+            "widget": tile.widget,
+            "title": tile.title,
+            "size": tile.size,
+            "visibility": tile.visibility,
+        }
+    return {
+        "name": tile.name,
+        "href": tile.href,
+        "description": tile.description,
+        "icon": tile.icon,
+        "visibility": tile.visibility,
     }
 
 
@@ -424,6 +519,7 @@ def config_from_json(raw: dict[str, Any]) -> TilesConfig:
 
 def _config_from_dict(raw: dict[str, Any]) -> TilesConfig:
     groups = [_group_from_dict(g) for g in raw.get("groups") or [] if isinstance(g, dict)]
+    _assign_widget_ids(groups)
     return TilesConfig(version=int(raw.get("version", 1)), groups=groups)
 
 
@@ -432,7 +528,9 @@ def _group_from_dict(raw: dict[str, Any]) -> TileGroup:
     return TileGroup(name=str(raw.get("name", "")), tiles=tiles)
 
 
-def _tile_from_dict(raw: dict[str, Any]) -> Tile:
+def _tile_from_dict(raw: dict[str, Any]) -> Tile | WidgetTile:
+    if raw.get("type") == "widget":
+        return _widget_from_dict(raw)
     icon = raw.get("icon")
     return Tile(
         name=str(raw.get("name", "")),
@@ -441,6 +539,66 @@ def _tile_from_dict(raw: dict[str, Any]) -> Tile:
         icon=str(icon) if icon else None,
         visibility=_visibility_from_raw(raw.get("visibility"), tile_name=raw.get("name")),
     )
+
+
+def _widget_from_dict(raw: dict[str, Any]) -> WidgetTile:
+    """A widget tile from its YAML or wire form, coercing what cannot be trusted.
+
+    A size that is not one of the three falls back to the narrowest, and an id that
+    is not path-safe is dropped so that `_assign_widget_ids` gives the tile a good
+    one. Visibility fails closed in the same way as for a link, and an absent one is
+    `admin` (see `WidgetTile`).
+    """
+    raw_id = raw.get("id")
+    size = raw.get("size")
+    title = raw.get("title")
+    visibility = raw.get("visibility")
+    return WidgetTile(
+        widget=str(raw.get("widget", "")),
+        id=raw_id if isinstance(raw_id, str) and _WIDGET_ID_RE.match(raw_id) else "",
+        title=str(title) if title else "",
+        size="l" if size == "l" else "m" if size == "m" else "s",
+        visibility=(
+            "admin"
+            if visibility is None
+            else _visibility_from_raw(visibility, tile_name=raw.get("widget"))
+        ),
+    )
+
+
+def _assign_widget_ids(groups: list[TileGroup]) -> None:
+    """Give every widget tile a unique id, keeping the ones it already has.
+
+    A tile that arrives without one (a hand-written file, or a widget the editor
+    has just added) gets an id derived from its type and its place among the
+    tiles of that type, not a random one. Loading the same file twice must give
+    the same ids, or a page that has rendered a widget would poll an id the next
+    load no longer knows. The first save from the editor writes them down, after
+    which they no longer depend on the order.
+
+    A second tile that repeats an id loses it and is treated like one without.
+    """
+    tiles = [t for g in groups for t in g.tiles if isinstance(t, WidgetTile)]
+    taken: set[str] = set()
+    for tile in tiles:
+        if tile.id in taken:
+            tile.id = ""
+        elif tile.id:
+            taken.add(tile.id)
+
+    counters: dict[str, int] = {}
+    for tile in tiles:
+        if tile.id:
+            continue
+        number = counters.get(tile.widget, 0)
+        while True:
+            digest = hashlib.sha256(f"{tile.widget}:{number}".encode()).hexdigest()[:8]
+            number += 1
+            if digest not in taken:
+                break
+        counters[tile.widget] = number
+        tile.id = digest
+        taken.add(digest)
 
 
 def _visibility_from_raw(value: Any, *, tile_name: Any = None) -> Visibility:
@@ -476,7 +634,14 @@ def _config_to_dict(config: TilesConfig) -> dict[str, Any]:
     }
 
 
-def _tile_to_dict(tile: Tile) -> dict[str, Any]:
+def _tile_to_dict(tile: Tile | WidgetTile) -> dict[str, Any]:
+    if isinstance(tile, WidgetTile):
+        widget: dict[str, Any] = {"type": "widget", "widget": tile.widget, "id": tile.id}
+        if tile.title:
+            widget["title"] = tile.title
+        widget["size"] = tile.size
+        widget["visibility"] = tile.visibility
+        return widget
     data: dict[str, Any] = {
         "name": tile.name,
         "href": tile.href,

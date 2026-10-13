@@ -44,6 +44,7 @@ from app.routers import (
     ui_ingest,
     ui_mail,
     ui_notifications,
+    ui_widgets,
 )
 from app.templating import templates
 
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(ui_ingest.router)
     app.include_router(ui_mail.router)
     app.include_router(ui_notifications.router)
+    app.include_router(ui_widgets.router)
     app.include_router(api_audit.router)
     app.include_router(api_catalogs.router)
     app.include_router(api_collections.router)
