@@ -55,17 +55,40 @@
    now carries exactly one meaning, and none of them is "next in the list". #}
 
 {% for group in groups %}
+{% set links = group.tiles | selectattr('kind', 'equalto', 'link') | list %}
+{% set widgets = group.tiles | selectattr('kind', 'equalto', 'widget') | list %}
 <section class="{% if not loop.first %}mt-10{% endif %}">
 
   <div class="flex items-center justify-between mb-4">
     <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">
-      {{ group.name }} &nbsp;·&nbsp; {{ group.tiles | length }}
-      {{ 'application' if group.tiles | length == 1 else 'applications' }}
+      {{ group.name }} &nbsp;·&nbsp;
+      {% if links %}{{ links | length }} {{ 'application' if links | length == 1 else 'applications' }}{% endif %}
+      {% if links and widgets %}&nbsp;·&nbsp;{% endif %}
+      {% if widgets %}{{ widgets | length }} {{ 'widget' if widgets | length == 1 else 'widgets' }}{% endif %}
     </p>
   </div>
 
   <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
     {% for tile in group.tiles %}
+    {% if tile.kind == 'widget' %}
+    {# The card is fetched by the browser on its own interval (`ui_widgets.py`), so a slow
+       widget never holds up the page and each one refreshes alone. Polling pauses while the
+       tab is hidden. The wrapper keeps the tile's width, so a swap never reflows the grid.
+       Width classes are spelled out in full because app.css is built by scanning templates. #}
+    {% set slot = widget_slot(tile) %}
+    <div id="widget-{{ slot.id }}"
+         class="{% if tile.size == 'm' %}sm:col-span-2{% elif tile.size == 'l' %}sm:col-span-2 xl:col-span-3 2xl:col-span-4{% endif %}"
+         hx-get="/partials/widgets/{{ slot.id }}"
+         hx-trigger="load, every {{ slot.interval }}s [document.visibilityState === 'visible']"
+         hx-swap="innerHTML">
+      <div class="card bg-base-100 border border-base-300 h-full" aria-busy="true">
+        <div class="card-body p-5 gap-3">
+          <p class="font-semibold leading-snug truncate">{{ slot.title }}</p>
+          <span class="loading loading-dots loading-sm opacity-50"></span>
+        </div>
+      </div>
+    </div>
+    {% else %}
     <a href="{{ tile.href }}"
        target="_blank"
        rel="noopener noreferrer"
@@ -103,6 +126,7 @@
 
       </div>
     </a>
+    {% endif %}
     {% endfor %}
   </div>
 

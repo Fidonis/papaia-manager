@@ -43,7 +43,7 @@
    than fetched, so the editor comes up populated instead of blank. #}
 <div
   x-data
-  x-init='$store.tiles.load({{ draft|tojson }}, {{ revision|tojson }}, {{ link_keys|tojson }})'
+  x-init='$store.tiles.load({{ draft|tojson }}, {{ revision|tojson }}, {{ link_keys|tojson }}, {{ widget_types|tojson }}, {{ widget_icons|tojson }})'
   x-effect="$store.tiles.groups.length; $store.tiles.preview; $nextTick(() => tilesInitSortable())"
 >
 
@@ -92,14 +92,14 @@
             <p class="text-sm font-semibold opacity-60 uppercase tracking-wide" x-text="group.name"></p>
           </template>
 
-          <p class="text-sm opacity-40"
-             x-text="group.tiles.length + (group.tiles.length === 1 ? ' application' : ' applications')"></p>
+          <p class="text-sm opacity-40" x-text="$store.tiles.groupCount(group)"></p>
 
           <span class="flex-1"></span>
 
           <div x-show="!$store.tiles.preview">
             {% call overflow_menu(size='xs', label='Group actions') %}
-            <li><a @click="$store.tiles.newTile(gi)">Add tile</a></li>
+            <li><a @click="$store.tiles.newTile(gi)">Add link</a></li>
+            <li><a @click="$store.tiles.newWidget(gi)">Add widget</a></li>
             <li><a @click="$store.tiles.moveGroup(gi, -1)">Move group up</a></li>
             <li><a @click="$store.tiles.moveGroup(gi, 1)">Move group down</a></li>
             <li>
@@ -118,33 +118,49 @@
           <template x-for="(tile, ti) in group.tiles" :key="tile._id">
             {# `overflow-visible` because daisyUI's card clips its content and
                the overflow menu is absolutely positioned inside it. #}
+            {# A widget spans columns as it will on the dashboard. The classes are spelled
+               out in full because app.css is built by scanning the templates. #}
             <div class="card bg-base-100 border border-base-300 overflow-visible relative"
-                 :class="$store.tiles.preview ? '' : 'cursor-pointer hover:border-base-content/25 transition-colors'"
+                 :class="[
+                   $store.tiles.preview ? '' : 'cursor-pointer hover:border-base-content/25 transition-colors',
+                   tile.type === 'widget' && tile.size === 'm' ? 'sm:col-span-2' : '',
+                   tile.type === 'widget' && tile.size === 'l' ? 'sm:col-span-2 xl:col-span-3 2xl:col-span-4' : '',
+                 ]"
                  :data-tile-id="tile._id"
                  x-show="$store.tiles.tileVisible(tile)"
                  @click="if (!$store.tiles.preview) $store.tiles.openTile(gi, ti)">
               <div class="card-body p-5 flex flex-col gap-3">
 
                 <div class="flex items-start gap-3">
-                  <template x-if="tile.icon">
+                  <template x-if="tile.type !== 'widget' && tile.icon">
                     <img :src="tile.icon" alt=""
                          class="h-11 w-11 shrink-0 rounded-xl object-contain bg-base-200 p-1">
                   </template>
-                  <template x-if="!tile.icon">
+                  <template x-if="tile.type !== 'widget' && !tile.icon">
                     <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-extrabold font-brand uppercase
                                  bg-base-300 text-base-content"
                           x-text="(tile.name || '?').charAt(0)"></span>
                   </template>
+                  {# A widget shows its type's icon, from the same closed set the dashboard draws. #}
+                  <template x-if="tile.type === 'widget'">
+                    <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-base-300 text-base-content">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              :d="$store.tiles.widgetIconPath(($store.tiles.widgetType(tile.widget) || {}).icon)"/>
+                      </svg>
+                    </span>
+                  </template>
 
                   <div class="flex-1 min-w-0">
                     <div class="flex items-start justify-between gap-2">
-                      <p class="font-semibold leading-snug truncate" x-text="tile.name || 'Untitled tile'"></p>
+                      <p class="font-semibold leading-snug truncate"
+                         x-text="tile.type === 'widget' ? $store.tiles.widgetName(tile) : (tile.name || 'Untitled tile')"></p>
                     </div>
                     {# Editing aid, not part of the card: hidden in preview so
                        what is on screen matches what the gallery renders. #}
                     <p class="mt-1 text-xs opacity-50 truncate"
                        x-show="!$store.tiles.preview"
-                       x-text="tile.href"></p>
+                       x-text="tile.type === 'widget' ? 'Widget' : tile.href"></p>
                   </div>
 
                   <div class="flex items-center gap-1 shrink-0"
@@ -159,7 +175,8 @@
                       </svg>
                     </span>
                     {% call overflow_menu(size='xs', label='Tile actions') %}
-                    <li><a @click="$store.tiles.openTile(gi, ti)">Edit tile</a></li>
+                    <li><a @click="$store.tiles.openTile(gi, ti)"
+                           x-text="tile.type === 'widget' ? 'Edit widget' : 'Edit tile'"></a></li>
                     <li><a @click="$store.tiles.duplicateTile(gi, ti)">Duplicate</a></li>
                     <li><a @click="$store.tiles.moveTile(gi, ti, -1)">Move left</a></li>
                     <li><a @click="$store.tiles.moveTile(gi, ti, 1)">Move right</a></li>
@@ -176,13 +193,17 @@
                       </details>
                     </li>
                     <li>
-                      <a class="text-error" @click="$store.tiles.removeTile(gi, ti)">Remove tile</a>
+                      <a class="text-error" @click="$store.tiles.removeTile(gi, ti)"
+                         x-text="tile.type === 'widget' ? 'Remove widget' : 'Remove tile'"></a>
                     </li>
                     {% endcall %}
                   </div>
                 </div>
 
-                <p class="text-sm opacity-70 line-clamp-2 min-h-[2.5rem]" x-text="tile.description"></p>
+                <p class="text-sm opacity-70 line-clamp-2 min-h-[2.5rem]"
+                   x-text="tile.type === 'widget'
+                             ? (($store.tiles.widgetType(tile.widget) || {}).description || 'No widget with this id exists.')
+                             : tile.description"></p>
 
                 <div x-show="!$store.tiles.preview && tile.visibility === 'admin'" style="display:none">
                   <span class="badge badge-sm badge-ghost gap-1">
@@ -198,12 +219,18 @@
           </template>
         </div>
 
-        <button type="button"
-                x-show="!$store.tiles.preview"
-                @click="$store.tiles.newTile(gi)"
-                class="mt-4 w-full rounded-2xl border border-dashed border-base-300 py-4 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
-          + Add tile to “<span x-text="group.name"></span>”
-        </button>
+        <div class="mt-4 flex gap-3" x-show="!$store.tiles.preview">
+          <button type="button"
+                  @click="$store.tiles.newTile(gi)"
+                  class="flex-1 rounded-2xl border border-dashed border-base-300 py-4 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
+            + Add link to “<span x-text="group.name"></span>”
+          </button>
+          <button type="button"
+                  @click="$store.tiles.newWidget(gi)"
+                  class="flex-1 rounded-2xl border border-dashed border-base-300 py-4 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
+            + Add widget
+          </button>
+        </div>
       </section>
     </template>
   </div>
@@ -227,6 +254,11 @@
       <span class="opacity-60">— everyone still sees the saved dashboard</span>
     </span>
     <span class="flex-1"></span>
+    <button type="button" class="btn btn-ghost btn-sm" style="display:none"
+            x-show="$store.tiles.removed"
+            @click="$store.tiles.undoRemove()">
+      Undo: removed “<span x-text="$store.tiles.removedName()"></span>”
+    </button>
     <button class="btn btn-outline btn-sm" @click="$store.tiles.discard()">Discard</button>
     <button class="btn btn-primary btn-sm" :disabled="$store.tiles.busy" @click="$store.tiles.save()">
       Save changes
@@ -369,6 +401,145 @@
                     :disabled="!!$store.tiles.dialog.problem"
                     @click="$store.tiles.applyTile()">Apply</button>
           </div>
+        </div>
+      </template>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  {# ── Widget dialog ───────────────────────────────────────────────────────
+     Two steps in one dialog: the gallery of widget types, then the placement. Opened and
+     closed by id for the reason given above. The preview in the second step is the real
+     card: the server renders it from live data, the way the dashboard does. A type the
+     installation cannot use is listed with its reason and cannot be chosen. #}
+  <dialog id="widget-modal" class="modal" @close="$store.tiles.widgetDialog = null">
+    <div class="modal-box max-w-3xl">
+      <template x-if="$store.tiles.widgetDialog">
+        <div>
+
+          <template x-if="$store.tiles.widgetDialog.step === 'pick'">
+            <div>
+              <h3 class="text-lg font-bold mb-1">Add a widget</h3>
+              <p class="text-sm opacity-60 mb-4">
+                A widget shows live state on the dashboard and links to the page that explains it.
+              </p>
+              <input type="text" class="input input-bordered w-full mb-4"
+                     placeholder="Search widgets" aria-label="Search widgets"
+                     x-model="$store.tiles.widgetDialog.query">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <template x-for="type in $store.tiles.widgetChoices()" :key="type.id">
+                  <button type="button"
+                          class="text-left rounded-xl border border-base-300 p-4 transition-colors"
+                          :class="type.available ? 'hover:border-primary' : 'opacity-60 cursor-not-allowed'"
+                          :aria-disabled="!type.available"
+                          @click="$store.tiles.pickWidget(type)">
+                    <span class="flex items-center gap-3">
+                      <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-base-300">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" :d="$store.tiles.widgetIconPath(type.icon)"/>
+                        </svg>
+                      </span>
+                      <span class="font-semibold" x-text="type.name"></span>
+                    </span>
+                    <span class="mt-2 block text-sm opacity-70"
+                          x-text="type.available ? type.description : type.reason"></span>
+                    <span class="mt-2 badge badge-sm badge-ghost" x-show="!type.available" style="display:none">
+                      Not available
+                    </span>
+                  </button>
+                </template>
+              </div>
+              <p class="text-sm opacity-60 mt-2"
+                 x-show="$store.tiles.widgetChoices().length === 0" style="display:none">
+                No widget matches.
+              </p>
+              <div class="modal-action">
+                <button type="button" class="btn btn-ghost" @click="$store.tiles.closeWidget()">Cancel</button>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="$store.tiles.widgetDialog.step === 'configure'">
+            <div>
+              <h3 class="text-lg font-bold mb-4"
+                  x-text="$store.tiles.widgetDialog.ti === null ? 'Add widget' : 'Edit widget'"></h3>
+
+              <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_15rem] gap-6">
+                <div>
+                  <div class="alert alert-warning mb-3 text-sm"
+                       x-show="!$store.tiles.widgetDialog.type" style="display:none">
+                    No widget with this id exists on this installation. Remove the tile instead.
+                  </div>
+
+                  <div class="form-control mb-3">
+                    <label class="label">
+                      <span class="label-text">Title</span>
+                      <span class="label-text-alt opacity-60">optional</span>
+                    </label>
+                    <input type="text" class="input input-bordered"
+                           x-model="$store.tiles.widgetDialog.tile.title"
+                           @input="$store.tiles.previewWidget()"
+                           :placeholder="$store.tiles.widgetDialog.type ? $store.tiles.widgetDialog.type.name : ''">
+                    <span class="label-text-alt opacity-60 mt-1">Left empty, the card is called after the widget.</span>
+                  </div>
+
+                  <div class="form-control mb-3">
+                    <label class="label"><span class="label-text">Width</span></label>
+                    <div class="join">
+                      <button type="button" class="btn btn-sm join-item"
+                              :class="$store.tiles.widgetDialog.tile.size === 's' ? 'btn-primary' : 'btn-outline'"
+                              @click="$store.tiles.widgetDialog.tile.size = 's'">Small</button>
+                      <button type="button" class="btn btn-sm join-item"
+                              :class="$store.tiles.widgetDialog.tile.size === 'm' ? 'btn-primary' : 'btn-outline'"
+                              @click="$store.tiles.widgetDialog.tile.size = 'm'">Medium</button>
+                      <button type="button" class="btn btn-sm join-item"
+                              :class="$store.tiles.widgetDialog.tile.size === 'l' ? 'btn-primary' : 'btn-outline'"
+                              @click="$store.tiles.widgetDialog.tile.size = 'l'">Full row</button>
+                    </div>
+                  </div>
+
+                  <div class="form-control">
+                    <label class="label"><span class="label-text">Who can see this widget</span></label>
+                    <div class="join">
+                      <button type="button" class="btn btn-sm join-item"
+                              :class="$store.tiles.widgetDialog.tile.visibility === 'all' ? 'btn-primary' : 'btn-outline'"
+                              @click="$store.tiles.widgetDialog.tile.visibility = 'all'">Everyone</button>
+                      <button type="button" class="btn btn-sm join-item"
+                              :class="$store.tiles.widgetDialog.tile.visibility === 'admin' ? 'btn-primary' : 'btn-outline'"
+                              @click="$store.tiles.widgetDialog.tile.visibility = 'admin'">Administrators only</button>
+                    </div>
+                    <span class="label-text-alt opacity-60 mt-1"
+                          x-show="$store.tiles.widgetDialog.tile.visibility === 'all'" style="display:none">
+                      Everyone who can sign in will see what this card shows.
+                    </span>
+                  </div>
+                </div>
+
+                <div class="rounded-xl bg-base-200 p-4">
+                  <p class="text-xs uppercase tracking-wide opacity-50 mb-3">Live preview</p>
+                  <div id="widget-preview" aria-live="polite">
+                    <span class="loading loading-dots loading-sm opacity-50"></span>
+                  </div>
+                  <p class="text-xs opacity-50 mt-3"
+                     x-show="$store.tiles.widgetDialog.type" style="display:none"
+                     x-text="'Refreshes about every ' + ($store.tiles.widgetDialog.type ? $store.tiles.widgetDialog.type.refresh : '') + ' s'"></p>
+                </div>
+              </div>
+
+              <div class="modal-action">
+                <span class="text-sm text-error mr-auto self-center"
+                      x-show="$store.tiles.widgetDialog.problem" style="display:none"
+                      x-text="$store.tiles.widgetDialog.problem"></span>
+                <button type="button" class="btn btn-ghost"
+                        x-show="$store.tiles.widgetDialog.ti === null" style="display:none"
+                        @click="$store.tiles.backToGallery()">Back</button>
+                <button type="button" class="btn btn-ghost" @click="$store.tiles.closeWidget()">Cancel</button>
+                <button type="button" class="btn btn-primary" @click="$store.tiles.applyWidget()"
+                        x-text="$store.tiles.widgetDialog.ti === null ? 'Add to dashboard' : 'Apply'"></button>
+              </div>
+            </div>
+          </template>
+
         </div>
       </template>
     </div>

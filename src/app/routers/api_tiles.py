@@ -39,6 +39,7 @@ from app.core.tiles import (
     tiles_revision,
     validate_config,
 )
+from app.core.widgets import registry as widget_registry
 
 router = APIRouter(prefix="/api/v1/tiles")
 
@@ -55,9 +56,22 @@ class TileBody(BaseModel):
     visibility: Literal["all", "admin"] = "all"
 
 
+class WidgetTileBody(BaseModel):
+    """A widget tile. Told apart from a link by `type`, which a link does not carry."""
+
+    type: Literal["widget"]
+    # Empty for a widget the editor has just added; the server gives it one.
+    id: str = ""
+    widget: str
+    title: str = ""
+    size: Literal["s", "m", "l"] = "s"
+    visibility: Literal["all", "admin"] = "admin"
+
+
 class GroupBody(BaseModel):
     name: str
-    tiles: list[TileBody] = Field(default_factory=list)
+    # The widget form first: a link has no `type`, so it can only match the second.
+    tiles: list[WidgetTileBody | TileBody] = Field(default_factory=list)
 
 
 class TilesBody(BaseModel):
@@ -219,7 +233,9 @@ def _require_current(settings: Settings, revision: str) -> None:
 
 
 def _reject_problems(settings: Settings, config: TilesConfig) -> None:
-    problems = validate_config(config, _env(settings))
+    problems = validate_config(
+        config, _env(settings), known_widgets=widget_registry.known_ids()
+    )
     if problems:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

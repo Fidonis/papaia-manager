@@ -23,6 +23,8 @@ from app.config import get_settings
 from app.core.ingest import display
 from app.core.rag import rag_active
 from app.core.settings_store import EffectiveBranding, effective_branding
+from app.core.widgets import registry as widget_registry
+from app.core.widgets import view as widget_view
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -137,3 +139,8 @@ templates.env.filters["ingest_ago"] = display.ago
 templates.env.filters["ingest_duration"] = display.duration
 templates.env.filters["filesize"] = display.size_text
 templates.env.filters["short_id"] = display.short_id
+
+# A widget tile's placeholder on the dashboard, and the paths of the closed icon set. Both live
+# with the widgets so the dashboard and the editor draw from one table.
+templates.env.globals["widget_slot"] = widget_view.slot
+templates.env.globals["widget_icon_path"] = widget_registry.ICON_PATHS.get

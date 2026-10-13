@@ -72,6 +72,43 @@ filtered server-side, so an admin-only tile is absent from a regular user's
 response rather than hidden by CSS. Authorization is enforced by the route
 dependencies, so the JSON API is restricted exactly like the pages.
 
+**Widgets.** Besides links, a group can hold widgets: cards that show live
+state and link to the page that explains it.
+
+| Widget | Shows |
+|---|---|
+| `backup-age` | how long ago the newest successful backup was taken, and whether the schedule says it is overdue |
+| `disk-space` | the disk that needs attention most, with what is free of it |
+| `services-health` | how many of the stack's services run |
+| `open-warnings` | the number of open findings of the notification checks, and their kinds |
+| `core-version` | the installed release, and whether the last upgrade check found a newer one |
+| `cert-expiry` | days until the nearest certificate the host check sees expires |
+
+In the editor, **Add widget** opens a gallery of what this installation can show
+(a widget whose requirement is not met, such as the host check on a core without
+`doctor`, is listed with the reason and cannot be added), then a step with a live
+preview where you choose a title, a width (small, medium or the full row) and who
+sees it. A widget is removed from its menu; **Undo** in the bar brings it back
+until you save. Each card refreshes on its own, every 30 to 60 seconds and not
+while the tab is hidden, so a slow source never holds up the rest of the
+dashboard. A card that cannot read its data says so: administrators are told why,
+everyone else gets a plain sentence. Visibility works as for links, a widget set
+to administrators is absent for the user role and its card answers 404, and the
+cards read what the manager already knows (the backup catalogue, the host check,
+the container snapshot and the last upgrade check) instead of starting
+measurements of their own. In `tiles.yaml` a widget looks like this; a tile
+without a `type` is a link, as before, and a widget without a `visibility` is for
+administrators:
+
+```yaml
+- type: widget
+  widget: backup-age   # one of the ids above
+  id: 3f9c1a0e         # assigned on save; names the card the browser fetches
+  title: Backups       # optional, defaults to the widget's name
+  size: m              # s | m | l: one column, two, the whole row
+  visibility: admin    # all | admin
+```
+
 **Users.** A third tier sits above the admin role: `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`, which already includes the admin role) opens **Users**, where accounts of the bundled Keycloak are managed without the Admin Console. The list shows each account's status and roles, with search and paging. From it an administrator creates an account (with the roles to start from, the dashboard role ticked, and a first password: a temporary one shown once, or a mailed link), enables or disables it (disabling also ends its sessions), changes its roles, resets its password, and views and ends its sessions. The **Roles** tab manages the roles themselves: it lists every realm role with what it contains, creates a role, changes its description and the roles it contains, and deletes it after showing which accounts hold it. The roles the stack ships (and the three the manager is configured with) are shown but not changed or deleted, because services refer to them by name; a role cannot be renamed, and cannot contain itself, directly or through another role. A temporary password makes Keycloak ask for a new one at the first sign-in. The mailed link needs a mail server on the realm and is offered only when there is one. Nobody can disable their own account, take the identity role from themselves or end all of their own sessions here, so the page cannot lock its last administrator out. There is no service account behind it: the manager calls Keycloak's Admin API with the access token of the signed-in account, obtained from the session's refresh token and kept in memory only, so Keycloak applies that account's own rights. The identity role therefore has to carry `manage-users`, `view-users`, `query-users`, `view-realm` and `manage-realm` of the realm's `realm-management` client (the last is what Keycloak asks for to create, change or delete a role); where it does not (yet), the page says so. A session ended in Keycloak stops working in the manager when its token is next renewed, within a few minutes. Every change is audited and no password is ever written to the log. The page does not exist where the accounts live in an external identity provider (`AUTH_PROVIDER=external_oidc`).
 
 **Mail.** Administrators open **Mail** (System), which has two tabs: **Notifications** (the page the menu entry opens) and **Mail Server**.
@@ -532,7 +569,8 @@ DELETE /api/v1/catalogs/{name}
 POST   /api/v1/catalogs/{name}/refresh     # → 202 {job_id}
 
 GET    /api/v1/tiles                       # the whole tile configuration, unfiltered, with its revision
-PUT    /api/v1/tiles                       # {revision, version?, groups}
+PUT    /api/v1/tiles                       # {revision, version?, groups}; a tile is a link or
+                                           #   {type: "widget", id?, widget, title?, size?, visibility?}
 GET    /api/v1/tiles/raw                   # tiles.yaml as text, with its revision
 PUT    /api/v1/tiles/raw                   # {revision, yaml}
 POST   /api/v1/tiles/resolve               # {values} resolve {{KEY}} links for the editor's preview
@@ -726,13 +764,15 @@ papaia-manager/
 │       │                   # mail/ (the mail relay: stored settings and their rules, SMTP probes,
 │       │                   # status from the core's doctor, the jobs that apply a change),
 │       │                   # notifications/ (recipients and what each receives, the checks that
-│       │                   # find what to report, delivery by email and webhook, the background task)
+│       │                   # find what to report, delivery by email and webhook, the background task),
+│       │                   # widgets/ (the dashboard's widgets: the payload they produce, the registry,
+│       │                   # reading and caching, the built-in types)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
 │       │                   # api_tiles, api_settings, api_collections, api_connections, api_ingest,
 │       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store),
 │       │                   # api_users, api_roles, users_deps (identity role, Keycloak client),
-│       │                   # api_mail, ui_mail, api_notifications, ui_notifications
+│       │                   # api_mail, ui_mail, api_notifications, ui_notifications, ui_widgets
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)

@@ -73,6 +73,7 @@ from app.core.tiles import (
 )
 from app.core.users_service import MAX_PAGE_SIZE, PAGE_SIZE
 from app.core.vectordb.service import DEFAULT_NAME as DEFAULT_CONNECTION
+from app.core.widgets import registry as widget_registry
 from app.routers.api_connections import state_payload
 from app.routers.rag_deps import (
     ConnectionServiceDep,
@@ -1611,6 +1612,12 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
     groups, and an editor that could not show a group it had just created
     would be unusable.
     """
+    # The widget types the gallery offers, and the closed icon set they are drawn with. The
+    # editor draws a widget's card from these; the live data comes from the preview route.
+    widgets = {
+        "widget_types": widget_registry.describe(settings),
+        "widget_icons": widget_registry.ICON_PATHS,
+    }
     try:
         config = load_tiles(settings.papaia_config_dir)
     except TilesFileError as exc:
@@ -1619,6 +1626,7 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
             "revision": "",
             "draft": {"version": 1, "groups": []},
             "link_keys": [],
+            **widgets,
         }
 
     core_env = load_env_file(Path(settings.papaia_config_dir) / ".env")
@@ -1627,6 +1635,7 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
         "revision": tiles_revision(settings.papaia_config_dir),
         "draft": config_to_json(config),
         "link_keys": link_placeholder_keys(core_env),
+        **widgets,
     }
 
 
