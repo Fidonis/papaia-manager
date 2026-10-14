@@ -190,6 +190,18 @@ def test_the_images_section_is_part_of_the_upgrade_page(client: TestClient) -> N
     assert "pruneImages: true" in html
 
 
+def test_the_install_button_names_an_undismissed_result_as_the_reason(
+    client: TestClient,
+) -> None:
+    html = _admin(client).get("/upgrade").text
+    # The button listens for what the runner partial announces ...
+    assert "runnerFinished = $event.detail.finished" in html
+    # ... and a finished run is told apart from one still in flight.
+    assert "Dismiss the previous upgrade first" in html
+    assert "The result of the previous upgrade has not been dismissed yet" in html
+    assert "An upgrade is already in flight" in html
+
+
 def test_the_menu_entry_and_the_heading_say_upgrade(client: TestClient) -> None:
     html = _admin(client).get("/upgrade").text
     assert '<span class="sidebar-label">Upgrade</span>' in html
@@ -484,3 +496,19 @@ def test_a_skipped_cleanup_shows_why() -> None:
     html = _render_runner(_status(running=False, prune=True), log)
     assert "skipped" in html
     assert "core: docker compose config failed: boom" in html
+
+
+def test_a_finished_runner_is_announced_as_finished() -> None:
+    # The header button tells a result nobody dismissed from a run that is still
+    # going: the first needs the operator to act, the second to wait.
+    html = _render_runner(_status(running=False, prune=False), _LOG)
+    assert "active: true" in html
+    assert "running: false" in html
+    assert "finished: true" in html
+
+
+def test_a_running_runner_is_not_announced_as_finished() -> None:
+    html = _render_runner(_status(running=True, prune=False), _LOG)
+    assert "active: true" in html
+    assert "running: true" in html
+    assert "finished: false" in html

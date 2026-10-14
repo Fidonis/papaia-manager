@@ -15,7 +15,7 @@
 <div class="flex items-center gap-2"
      x-data="{
        ready: false, target: null, checkFailed: false, forceable: false, gatePassed: true,
-       hasBackupDir: false, current: '', runnerActive: false,
+       hasBackupDir: false, current: '', runnerActive: false, runnerFinished: false,
        checking: true, starting: false,
        force: false, noBackup: false, pruneImages: true, confirmed: false,
        get blocked() { return this.runnerActive || this.checking || this.starting },
@@ -39,7 +39,8 @@
                                    hasBackupDir = $event.detail.hasBackupDir;
                                    current = $event.detail.current;
                                    checking = false"
-     @papaia-upgrade-runner.window="runnerActive = $event.detail.active">
+     @papaia-upgrade-runner.window="runnerActive = $event.detail.active;
+                                    runnerFinished = $event.detail.finished">
 
   <button class="btn btn-ghost btn-sm btn-square" aria-label="Check for upgrades"
           :disabled="checking || starting"
@@ -52,12 +53,15 @@
   </button>
 
   <button class="btn btn-primary btn-sm" :disabled="!ready || blocked"
-          :title="runnerActive ? 'An upgrade is already in flight'
+          :title="runnerFinished ? 'The result of the previous upgrade has not been dismissed yet. Dismiss it at the top of the page first'
+                  : (runnerActive ? 'An upgrade is already in flight'
                   : (checkFailed ? 'The remote could not be reached, so it is not known whether a newer release exists'
-                  : (!ready ? 'Nothing to install, or something in the list below has to be fixed first' : ''))"
+                  : (!ready ? 'Nothing to install, or something in the list below has to be fixed first' : '')))"
           @click="open()">
     <span style="display:none" x-show="starting" class="loading loading-spinner loading-xs"></span>
-    <span x-show="!starting" x-text="target ? ('Install ' + target) : (checkFailed ? 'Check failed' : 'Up to date')"></span>
+    <span x-show="!starting"
+          x-text="target ? (runnerFinished ? 'Dismiss the previous upgrade first' : 'Install ' + target)
+                         : (checkFailed ? 'Check failed' : 'Up to date')"></span>
   </button>
 
   {# The confirmation. Everything it says is what papaia-ctl is about to do, in
