@@ -549,9 +549,13 @@ def test_the_mail_row_carries_what_the_dialog_starts_from(
     assert (defaults["host"], defaults["security"], defaults["port"]) == ("", "starttls", 587)
     assert rows["rag"]["mail_defaults"] is None
     html = _admin(client).get("/settings/modules").text
-    assert 'id="module-on-dialog"' in html
+    # The questions open under the row, not in a dialog (it reads the same on a phone).
+    assert 'id="module-on-dialog"' not in html
+    for name in ("localai", "rag", "mail"):
+        assert f'id="panel-{name}"' in html
+    assert 'id="panel-web-search"' not in html
     assert 'id="om-host"' in html
-    assert "The same questions as" in html
+    assert "The relay forwards every mail to this server" in html
 
 
 # -- modules: what a switch-off may delete -------------------------------------------------

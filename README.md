@@ -63,8 +63,8 @@ LocalAI the accelerator variant, which is chosen on the page because GPU detecti
 cannot see the host from inside the container) and starts the module's profile; the
 RAG system also recreates LibreChat, whose configuration lists the RAG tools. The
 RAG pages and the Mail page hold those modules' settings and no longer switch
-anything. Switching a module on asks the questions `papaia-ctl setup` asks, but only
-when the answers are missing (the module is new to this installation, or its settings
+anything. Switching a module on asks the questions `papaia-ctl setup` asks, inline under
+its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings
 were deleted): the public URL of the RAG system and of LocalAI, prefilled with what the
 core derives from the stack's address, and for the mail relay the mail server (host,
 connection, port, login, password, sender). A module whose settings exist switches on
