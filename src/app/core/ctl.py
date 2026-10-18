@@ -19,6 +19,7 @@ import re
 from collections.abc import AsyncGenerator, Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from app.core.inventory import SELF_PROFILE
 from app.core.services import invalidate_snapshot
@@ -117,6 +118,15 @@ MODULE_SETUP_FLAGS: dict[str, str] = {
     "web-search": "--enable-web-search",
     "rag": "--enable-rag",
 }
+
+# The module whose `setup` asks for a public URL when it is switched on, and the option that
+# takes the answer.
+MODULE_URL_FLAGS: dict[str, str] = {
+    "localai": "--localai-host",
+    "rag": "--qdrant-host",
+}
+
+MAX_URL_LENGTH = 253
 
 # The modules `module-info` and `module-purge` know, by the core's names.
 PURGE_MODULES: frozenset[str] = frozenset({"localai", "web-search", "rag", "mail"})
@@ -469,6 +479,35 @@ class ModuleSetup:
     module: str
     enable: bool
     variant: str | None = None
+    # The answer to the question `setup` asks for the module's public URL; only for the
+    # modules in `MODULE_URL_FLAGS`, and only when the module is switched on. `None` leaves the
+    # stored value (or the one `setup` derives from the stack's host).
+    public_url: str | None = None
+
+
+def public_url(value: str) -> str:
+    """The URL as `setup` may be given it, or ValueError saying what is wrong.
+
+    http or https, a host, no login, query or fragment, nothing the `.env` file would read as
+    something else. `setup` takes the value as it is, so the check is here."""
+    text = value.strip()
+    if not text or len(text) > MAX_URL_LENGTH:
+        raise ValueError(f"the URL must have 1-{MAX_URL_LENGTH} characters")
+    if any(ord(ch) < 33 or ord(ch) == 127 or ch in "#$\"'\\`" for ch in text):
+        raise ValueError(
+            "the URL may not contain spaces, control characters or any of # $ \" ' \\ `"
+        )
+    try:
+        parts = urlsplit(text)
+        host = parts.hostname
+        parts.port  # noqa: B018 - raises ValueError for a port that is not a number
+    except ValueError as exc:
+        raise ValueError("this is not a valid URL (expected https://host:port)") from exc
+    if parts.scheme not in ("http", "https") or not host:
+        raise ValueError("the URL must start with http:// or https:// and name a host")
+    if parts.username is not None or parts.password is not None or parts.query or parts.fragment:
+        raise ValueError("the URL may not contain a login, a query or a fragment")
+    return text.rstrip("/") if parts.path in ("", "/") else text
 
 
 def module_setup_flags(spec: ModuleSetup) -> list[str]:
@@ -477,6 +516,13 @@ def module_setup_flags(spec: ModuleSetup) -> list[str]:
     if flag is None:
         raise ValueError(f"module {spec.module!r} cannot be switched from here")
     flags = [f"{flag}={'true' if spec.enable else 'false'}"]
+    if spec.public_url is not None:
+        url_flag = MODULE_URL_FLAGS.get(spec.module)
+        if url_flag is None:
+            raise ValueError(f"{spec.module} takes no public URL")
+        if not spec.enable:
+            raise ValueError("switching a module off takes no public URL")
+        flags.append(f"{url_flag}={public_url(spec.public_url)}")
     if spec.module != "localai":
         if spec.variant is not None:
             raise ValueError("only LocalAI takes an image variant")

@@ -63,8 +63,13 @@ LocalAI the accelerator variant, which is chosen on the page because GPU detecti
 cannot see the host from inside the container) and starts the module's profile; the
 RAG system also recreates LibreChat, whose configuration lists the RAG tools. The
 RAG pages and the Mail page hold those modules' settings and no longer switch
-anything; the mail server is saved there with the relay off, and the relay can only
-be switched on once one is set up. The manager itself cannot be switched off.
+anything. Switching a module on asks the questions `papaia-ctl setup` asks, but only
+when the answers are missing (the module is new to this installation, or its settings
+were deleted): the public URL of the RAG system and of LocalAI, prefilled with what the
+core derives from the stack's address, and for the mail relay the mail server (host,
+connection, port, login, password, sender). A module whose settings exist switches on
+without a dialog. The mail server can also be saved on the Mail page with the relay off.
+The manager itself cannot be switched off.
 
 Switching a module off removes its containers and asks what happens to what it
 leaves behind: **keep the data and the settings** (switching it on again brings
@@ -760,8 +765,10 @@ POST   /api/v1/mail/probe                    # {host?, port?, security?, user?, 
 POST   /api/v1/mail/test-message             # {to} hand one message to the relay
 
 GET    /api/v1/config/modules                # the optional modules, their state, the LocalAI variants, the revision
-GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | mail: the volumes and settings a switch-off could delete
-POST   /api/v1/config/modules/{name}/enable  # {revision, variant?} 202 with a job; the relay needs a mail server, the RAG system no clashing add-on
+GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | mail: the volumes and settings a switch-off could delete,
+                                             #   and the open setup questions (public URL) a switch-on asks
+POST   /api/v1/config/modules/{name}/enable  # {revision, variant?, public_url?, mail?} 202 with a job. public_url: rag | localai; mail: the mail
+                                             #   server when none is stored. The RAG system needs no clashing add-on
 POST   /api/v1/config/modules/{name}/disable # {revision, scope?: keep|data|all, confirm?}; 202 with a job. A deletion needs the module name in confirm
 GET    /api/v1/config/overlay                # the three editable overlay files and the other files under overlay/
 GET    /api/v1/config/overlay/{key}          # librechat | litellm | searxng: content, revision, versions

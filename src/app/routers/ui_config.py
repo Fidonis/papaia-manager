@@ -20,6 +20,7 @@ from app.config import Settings, get_settings
 from app.core.config import modules, overlay, preview, service
 from app.core.ctl import LOCALAI_VARIANTS
 from app.core.jobs import Job, JobQueue, JobStatus
+from app.core.mail.settings import DEFAULT_PORTS, SECURITY_MODES
 from app.routers.api_config import target_json
 from app.routers.ui import _ctx, _no_store
 from app.templating import templates as _templates
@@ -140,6 +141,8 @@ async def modules_page(
                 variants=[{"id": v, "label": modules.VARIANT_LABELS[v]} for v in LOCALAI_VARIANTS],
                 host_only_variants=list(modules.HOST_ONLY_VARIANTS),
                 stored_variant=modules.stored_variant(settings.papaia_config_dir),
+                security_modes=SECURITY_MODES,
+                default_ports=DEFAULT_PORTS,
             ),
         )
     )

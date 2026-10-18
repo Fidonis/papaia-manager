@@ -43,6 +43,7 @@ from app.core.ctl import (
 )
 from app.core.jobs import JobCallback, JobContext
 from app.core.mail import service as mail_service
+from app.core.mail.settings import MailInput, MailSettings
 
 ENABLE_ACTION = "config-module-enable"
 DISABLE_ACTION = "config-module-disable"
@@ -114,7 +115,9 @@ def last_problem(lines: list[str]) -> str:
 async def _setup(
     ctx: JobContext, spec: ModuleSetup | SmtpSetup, *, workspace_dir: str, config_dir: str
 ) -> None:
+    secret: str | None = None
     if isinstance(spec, SmtpSetup):
+        secret = spec.password
         ctx.log("[ctl] papaia-ctl setup (options of mail only)")
         code, out, err = await run_smtp_setup(
             spec, workspace_dir=workspace_dir, config_dir=config_dir
@@ -126,9 +129,9 @@ async def _setup(
         )
     for line in (*out.splitlines(), *err.splitlines()):
         if line.strip():
-            ctx.log(line.rstrip())
+            ctx.log(mail_service.scrub(line.rstrip(), secret))
     if code != 0:
-        raise SetupRefusedError(refusal(code, out, err))
+        raise SetupRefusedError(mail_service.scrub(refusal(code, out, err), secret))
 
 
 async def _verb(
@@ -190,13 +193,19 @@ async def wait_healthy(
 
 
 def _setup_spec(
-    module: str, *, enable: bool, variant: str | None = None
+    module: str,
+    *,
+    enable: bool,
+    variant: str | None = None,
+    public_url: str | None = None,
+    mail: MailInput | None = None,
 ) -> ModuleSetup | SmtpSetup:
-    """The `setup` options that switch `module`. The mail relay's come with its own spec; it is
-    switched on with the settings the core stored."""
+    """The `setup` options that switch `module`. The mail relay's come with its own spec: it is
+    switched on with the settings the core stored, or with the mail server the request carried
+    (every value named, as the Mail page does)."""
     if module == "mail":
-        return SmtpSetup(enable=enable)
-    return ModuleSetup(module=module, enable=enable, variant=variant)
+        return mail_service.setup_spec(mail) if mail is not None else SmtpSetup(enable=enable)
+    return ModuleSetup(module=module, enable=enable, variant=variant, public_url=public_url)
 
 
 async def _recreate(
@@ -226,13 +235,40 @@ async def _start(
 
 
 def enable_callback(
-    *, module: str, variant: str | None, user: str, workspace_dir: str, config_dir: str
+    *,
+    module: str,
+    variant: str | None,
+    user: str,
+    workspace_dir: str,
+    config_dir: str,
+    public_url: str | None = None,
+    mail: MailInput | None = None,
+    current_mail: MailSettings | None = None,
 ) -> JobCallback:
-    """The job that switches a module on."""
+    """The job that switches a module on.
+
+    `public_url` and `mail` are the answers to what `setup` asks for the module (its public
+    URL, the mail server); they are only given when the settings were missing."""
     definition = modules.SWITCHABLE[module]
-    spec = _setup_spec(module, enable=True, variant=variant)
+    spec = _setup_spec(
+        module, enable=True, variant=variant, public_url=public_url, mail=mail
+    )
     flag = f"--profiles={definition.profile}"
     params: dict[str, Any] = {"module": module, "variant": variant}
+    if public_url is not None:
+        params["public_url"] = public_url
+    if mail is not None:
+        params.update(
+            {
+                "host": mail.host,
+                "port": mail.port,
+                "security": mail.security,
+                "login": mail.login,
+                "from_address": mail.from_address,
+                # Not "password": the audit log masks a key that sounds like a credential.
+                "login_change": mail.password_action(current_mail or MailSettings(False)),
+            }
+        )
 
     async def _callback(ctx: JobContext) -> None:
         await _setup(ctx, spec, workspace_dir=workspace_dir, config_dir=config_dir)

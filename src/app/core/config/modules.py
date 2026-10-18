@@ -24,10 +24,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.core.ctl import LOCALAI_VARIANTS, PURGE_MODULES, CtlError, run_module_info
+from app.core import ctl
+from app.core.ctl import (
+    LOCALAI_VARIANTS,
+    MODULE_URL_FLAGS,
+    PURGE_MODULES,
+    CtlError,
+    run_module_info,
+)
 from app.core.envfile import load_env_file
 from app.core.inventory import core_inventory, profiles_in
-from app.core.mail.settings import load_mail_settings
+from app.core.mail.settings import load_mail_settings, settings_json
 from app.core.state import load_deployment_yaml
 
 KEY_VARIANT = "LOCALAI_IMAGE_VARIANT"
@@ -200,6 +207,17 @@ def mail_configured(config_dir: str) -> bool:
     return load_mail_settings(config_dir).configured
 
 
+def mail_defaults(config_dir: str) -> dict[str, object]:
+    """What the mail dialog starts from: whatever the core has stored of the mail server, with
+    only whether a password is stored (never the password)."""
+    stored = settings_json(load_mail_settings(config_dir))
+    return {
+        key: stored[key]
+        for key in ("host", "port", "security", "user", "login", "has_password")
+        + ("from_address", "from_name")
+    }
+
+
 def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
     """What the tab renders: one row per module, in the order of `MODULES`."""
     on = active(config_dir)
@@ -235,6 +253,7 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
                 "modules": modules,
                 "variant": variant if module.name == "localai" else None,
                 "configured": mail_configured(config_dir) if module.name == "mail" else None,
+                "mail_defaults": mail_defaults(config_dir) if module.name == "mail" else None,
                 "can_delete": manages and module.name in PURGE_MODULES,
             }
         )
@@ -264,9 +283,28 @@ def validate_enable(name: str, variant: str | None) -> str | None:
     return variant
 
 
-def check_enable(name: str, config_dir: str, workspace_dir: str) -> None:
+def validate_public_url(name: str, value: str | None) -> str | None:
+    """The answer to the public-URL question of `name`, or None when none was given.
+
+    Raises ModuleError for a module `setup` asks no URL for, or a URL it should not be given."""
+    if value is None or not value.strip():
+        return None
+    if name not in MODULE_URL_FLAGS:
+        raise ModuleError("This module takes no public URL.")
+    try:
+        return ctl.public_url(value)
+    except ValueError as exc:
+        raise ModuleError(f"The public URL is not valid: {exc}.") from exc
+
+
+def check_enable(
+    name: str, config_dir: str, workspace_dir: str, *, mail_given: bool = False
+) -> None:
     """Raises ModuleError when the core would refuse to switch `name` on, or the module has
-    nothing to start yet. The core checks again; this is the sentence before a job is queued."""
+    nothing to start yet. The core checks again; this is the sentence before a job is queued.
+
+    `mail_given` says the request carries the mail server (the dialog asks for it when none is
+    stored), so the relay is not refused for lacking one."""
     module = SWITCHABLE[name]
     if module.needs_core_modules and not core_manages_modules(workspace_dir):
         raise ModuleError("This papAIa core is too old to switch it from here (it needs 1.6.0).")
@@ -281,10 +319,10 @@ def check_enable(name: str, config_dir: str, workspace_dir: str) -> None:
                 "the same services and publish the same ports. Stop and remove the add-on "
                 "first (Add-ons page); its volumes are kept."
             )
-    if name == "mail" and not mail_configured(config_dir):
+    if name == "mail" and not mail_given and not mail_configured(config_dir):
         raise ModuleError(
-            "No mail server is set up yet. Enter it on the Mail page (Settings there are "
-            "saved with the relay off), then switch the relay on."
+            "No mail server is set up yet. Enter it when switching the relay on, or on the "
+            "Mail page (settings there are saved with the relay off)."
         )
 
 

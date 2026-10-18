@@ -29,14 +29,38 @@ from app.core.config import history, modules, overlay, preview, service
 from app.core.config.overlay import OverlayError
 from app.core.ctl import LOCALAI_VARIANTS
 from app.core.jobs import JobQueue
+from app.core.mail.settings import (
+    MailError,
+    MailInput,
+    MailSettings,
+    load_mail_settings,
+    validate_input,
+)
 from app.routers.stack_guard import require_idle_stack
 
 router = APIRouter(prefix="/api/v1/config")
 
 
+class MailValues(BaseModel):
+    """The mail server, as the dialog asks for it when none is stored. The password is
+    write-only, like on the Mail page."""
+
+    host: str
+    port: int | None = None
+    security: str = "starttls"
+    user: str | None = None
+    from_address: str
+    from_name: str | None = None
+    password: str | None = None
+
+
 class ModuleBody(BaseModel):
     revision: str
     variant: str | None = None
+    # The answers to what `setup` asks when the module is switched on and its settings are
+    # missing: the public URL (LocalAI, RAG), the mail server (mail).
+    public_url: str | None = None
+    mail: MailValues | None = None
 
 
 class DisableBody(BaseModel):
@@ -169,6 +193,26 @@ async def get_module_info(
     )
 
 
+def _mail_input(
+    name: str, values: MailValues | None, current: MailSettings
+) -> MailInput | None:
+    """The mail server of an enable request, validated like a save on the Mail page."""
+    if values is None:
+        return None
+    if name != "mail":
+        raise modules.ModuleError("Only the mail relay takes a mail server.")
+    return validate_input(
+        host=values.host,
+        port=values.port,
+        security=values.security,
+        user=values.user,
+        from_address=values.from_address,
+        from_name=values.from_name,
+        password=values.password,
+        current=current,
+    )
+
+
 @router.post("/modules/{name}/enable", status_code=status.HTTP_202_ACCEPTED)
 async def enable_module(
     name: str,
@@ -181,24 +225,36 @@ async def enable_module(
     body = await _body(request, ModuleBody)
     if _module_current(settings, name, body.revision):
         raise HTTPException(status_code=409, detail="This module is already switched on.")
+    current_mail = load_mail_settings(settings.papaia_config_dir)
     try:
         variant = modules.validate_enable(name, body.variant)
-        modules.check_enable(name, settings.papaia_config_dir, settings.papaia_workspace_dir)
-    except modules.ModuleError as exc:
+        public_url = modules.validate_public_url(name, body.public_url)
+        mail = _mail_input(name, body.mail, current_mail)
+        modules.check_enable(
+            name,
+            settings.papaia_config_dir,
+            settings.papaia_workspace_dir,
+            mail_given=mail is not None,
+        )
+    except (modules.ModuleError, MailError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await require_idle_stack()
     username = _user_id(user)
+    # The URL is a setting; the mail password never is. Neither value of a job is a secret.
     job = await _queue().enqueue(
         action=service.ENABLE_ACTION,
         target=f"module:{name}",
         user=username,
-        params={"module": name, "variant": variant},
+        params={"module": name, "variant": variant, "public_url": public_url},
         callback=service.enable_callback(
             module=name,
             variant=variant,
             user=username,
             workspace_dir=settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
+            public_url=public_url,
+            mail=mail,
+            current_mail=current_mail,
         ),
     )
     return {"job_id": job.id, "status": "queued"}

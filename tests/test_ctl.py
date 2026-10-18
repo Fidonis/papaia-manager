@@ -17,11 +17,14 @@ from app.core.ctl import (
     ALLOWED_PY_WRITE_COMMANDS,
     ALLOWED_VERBS,
     MAX_SELECTORS,
+    MODULE_URL_FLAGS,
     PURGE_MODULES,
     SMTP_PASSWORD_ENV,
     TIMEOUT_EXIT_CODE,
     CtlError,
+    ModuleSetup,
     SmtpSetup,
+    module_setup_flags,
     profiles_flag,
     run_addon_verb,
     run_core_verb,
@@ -604,3 +607,78 @@ async def test_module_purge_deleting_nothing_is_refused_before_anything_forks() 
         await run_module_purge(
             "rag", data=False, config=False, workspace_dir="/w", config_dir="/c"
         )
+
+
+# ---------------------------------------------------------------------------
+# The answers to what `setup` asks when a module is switched on
+# ---------------------------------------------------------------------------
+
+
+def test_only_localai_and_the_rag_system_take_a_public_url() -> None:
+    assert MODULE_URL_FLAGS == {"localai": "--localai-host", "rag": "--qdrant-host"}
+
+
+def test_the_rag_url_is_glued_to_the_option_the_core_names() -> None:
+    flags = module_setup_flags(ModuleSetup("rag", True, public_url="https://q.example.org:6333"))
+    assert flags == ["--enable-rag=true", "--qdrant-host=https://q.example.org:6333"]
+
+
+def test_the_localai_url_comes_with_the_variant() -> None:
+    spec = ModuleSetup("localai", True, "cpu", public_url="https://ai.example.org")
+    assert module_setup_flags(spec) == [
+        "--enable-local-ai=true",
+        "--localai-host=https://ai.example.org",
+        "--localai-variant=cpu",
+    ]
+
+
+@pytest.mark.parametrize("module", ["web-search", "mail"])
+def test_a_module_that_setup_asks_no_url_for_takes_none(module: str) -> None:
+    with pytest.raises(ValueError, match="takes no public URL|cannot be switched"):
+        module_setup_flags(ModuleSetup(module, True, public_url="https://x.example.org"))
+
+
+def test_switching_off_takes_no_url() -> None:
+    with pytest.raises(ValueError, match="switching a module off takes no public URL"):
+        module_setup_flags(ModuleSetup("rag", False, public_url="https://x.example.org"))
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "   ",
+        "qdrant.example.org",
+        "ftp://qdrant.example.org",
+        "https://",
+        "https://user:pw@qdrant.example.org",
+        "https://qdrant.example.org?x=1",
+        "https://qdrant.example.org#top",
+        "https://qdrant.example.org:notaport",
+        "https://qdrant example.org",
+        "https://qdrant.example.org\n--force",
+        "https://q.example.org/$HOME",
+        'https://q.example.org/"',
+        "https://" + "a" * 260 + ".org",
+    ],
+)
+def test_a_url_setup_should_not_be_given_is_refused_before_anything_forks(value: str) -> None:
+    with pytest.raises(ValueError):  # noqa: PT011
+        module_setup_flags(ModuleSetup("rag", True, public_url=value))
+
+
+@pytest.mark.parametrize(
+    ("given", "stored"),
+    [
+        ("https://q.example.org:6333", "https://q.example.org:6333"),
+        ("  http://localhost:6333/  ", "http://localhost:6333"),
+        ("https://q.example.org/qdrant", "https://q.example.org/qdrant"),
+        ("https://[::1]:6333", "https://[::1]:6333"),
+    ],
+)
+def test_a_good_url_is_kept_as_typed_but_for_the_surrounding_space_and_a_closing_slash(
+    given: str, stored: str
+) -> None:
+    from app.core.ctl import public_url  # noqa: PLC0415
+
+    assert public_url(given) == stored

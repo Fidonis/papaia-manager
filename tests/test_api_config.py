@@ -289,7 +289,7 @@ def test_switching_localai_on_queues_a_job(client: TestClient, queue: JobQueue) 
     assert response.status_code == 202
     [job] = queue.list_jobs()
     assert (job.action, job.target) == (service.ENABLE_ACTION, "module:localai")
-    assert job.params == {"module": "localai", "variant": "nvidia-cuda-12"}
+    assert job.params == {"module": "localai", "variant": "nvidia-cuda-12", "public_url": None}
 
 
 def test_switching_web_search_off_queues_a_job(
@@ -444,6 +444,114 @@ def test_a_core_that_cannot_manage_modules_cannot_switch_rag_or_mail(
         assert response.status_code == 422
         assert "too old" in response.json()["detail"]
     assert queue.list_jobs() == []
+
+
+# -- modules: the answers to what setup asks ----------------------------------------------
+
+
+def _enable(client: TestClient, name: str, **body: Any) -> Any:
+    return _admin(client).post(
+        f"{_BASE}/modules/{name}/enable",
+        json={"revision": _modules_revision(client), **body},
+        headers=_CSRF_HEADER,
+    )
+
+
+def test_the_public_url_is_part_of_the_job(client: TestClient, queue: JobQueue) -> None:
+    response = _enable(client, "rag", public_url=" https://q.example.org:6333/ ")
+    assert response.status_code == 202
+    [job] = queue.list_jobs()
+    assert job.params == {"module": "rag", "variant": None, "public_url": "https://q.example.org:6333"}
+
+
+@pytest.mark.parametrize("url", ["q.example.org", "ftp://q.example.org", "https://u:p@q.example.org"])
+def test_a_url_that_is_wrong_is_a_422_before_a_job(
+    client: TestClient, queue: JobQueue, url: str
+) -> None:
+    response = _enable(client, "rag", public_url=url)
+    assert response.status_code == 422
+    assert "public URL is not valid" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+@pytest.mark.parametrize("name", ["web-search", "mail"])
+def test_a_module_without_a_url_question_refuses_one(
+    client: TestClient, queue: JobQueue, config_dir: Path, name: str
+) -> None:
+    _mail_server(config_dir)
+    response = _enable(client, name, public_url="https://x.example.org")
+    assert response.status_code == 422
+    assert "takes no public URL" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+_MAIL_BODY = {
+    "host": "smtp.example.org",
+    "port": 587,
+    "security": "starttls",
+    "user": "mailer",
+    "password": "a-long-password-value",
+    "from_address": "noreply@example.org",
+    "from_name": "Our Mail",
+}
+
+
+def test_the_relay_is_switched_on_with_the_mail_server_the_dialog_brought(
+    client: TestClient, queue: JobQueue
+) -> None:
+    response = _enable(client, "mail", mail=_MAIL_BODY)
+    assert response.status_code == 202
+    [job] = queue.list_jobs()
+    assert job.target == "module:mail"
+    assert "a-long-password-value" not in json.dumps(job.params)
+    assert "a-long-password-value" not in response.text
+
+
+def test_a_mail_server_is_checked_like_on_the_mail_page(
+    client: TestClient, queue: JobQueue
+) -> None:
+    for change, message in (
+        ({"host": "smtp.example.org:587"}, "not a valid mail server host name"),
+        ({"from_address": "nobody"}, "not a valid sender address"),
+        ({"password": None}, "login needs its password"),
+        ({"security": "none"}, "sent unencrypted"),
+        ({"security": "ssl"}, "not a valid connection security"),
+    ):
+        response = _enable(client, "mail", mail={**_MAIL_BODY, **change})
+        assert response.status_code == 422, change
+        assert message in response.json()["detail"]
+        assert "a-long-password-value" not in response.text
+    assert queue.list_jobs() == []
+
+
+def test_a_mail_server_for_another_module_is_refused(
+    client: TestClient, queue: JobQueue
+) -> None:
+    response = _enable(client, "rag", mail=_MAIL_BODY)
+    assert response.status_code == 422
+    assert "Only the mail relay" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+def test_a_mail_body_that_cannot_be_read_is_refused_without_repeating_the_password(
+    client: TestClient,
+) -> None:
+    response = _enable(client, "mail", mail={"password": "a-long-password-value"})
+    assert response.status_code == 422
+    assert "a-long-password-value" not in response.text
+
+
+def test_the_mail_row_carries_what_the_dialog_starts_from(
+    client: TestClient, config_dir: Path
+) -> None:
+    rows = {m["name"]: m for m in _admin(client).get(f"{_BASE}/modules").json()["modules"]}
+    defaults = rows["mail"]["mail_defaults"]
+    assert (defaults["host"], defaults["security"], defaults["port"]) == ("", "starttls", 587)
+    assert rows["rag"]["mail_defaults"] is None
+    html = _admin(client).get("/settings/modules").text
+    assert 'id="module-on-dialog"' in html
+    assert 'id="om-host"' in html
+    assert "The same questions as" in html
 
 
 # -- modules: what a switch-off may delete -------------------------------------------------
@@ -963,12 +1071,12 @@ def test_the_page_links_the_mail_settings_and_hides_the_rag_link_while_it_is_off
     client: TestClient, config_dir: Path
 ) -> None:
     html = _admin(client).get("/settings/modules").text
-    assert "Set it up first" in html  # no mail server yet
+    assert "set it up first" in html  # no mail server yet
     assert ">Open the RAG pages</a>" not in html
     _mail_server(config_dir)
     _on(config_dir, "rag")
     html = _admin(client).get("/settings/modules").text
-    assert "Set it up first" not in html
+    assert "set it up first" not in html
     assert ">Mail server settings</a>" in html
     assert ">Open the RAG pages</a>" in html
 

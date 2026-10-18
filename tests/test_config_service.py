@@ -22,6 +22,7 @@ from app.core.config import service as svc
 from app.core.ctl import CtlError, ModuleSetup, SmtpSetup
 from app.core.jobs import Job, JobContext
 from app.core.mail import service as mail_service
+from app.core.mail.settings import MailInput, MailSettings
 from app.core.services import ServiceGroup, ServiceHealth, StackSnapshot
 
 SECRET = "sk-very-secret-api-key"
@@ -441,6 +442,114 @@ def test_switching_the_relay_off_with_its_data_and_settings(tmp_path: Path, run:
         ("keycloak-role-sync", []),
         ("purge", ("mail", True, True)),
     ]
+
+
+# -- modules: the answers to what setup asks -------------------------------------------------
+
+
+def test_the_public_url_the_dialog_asked_for_goes_to_setup(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="rag",
+            variant=None,
+            user="admin",
+            workspace_dir="/w",
+            config_dir=config,
+            public_url="https://qdrant.example.org:6333",
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps[0] == ("setup", ModuleSetup("rag", True, public_url="https://qdrant.example.org:6333"))
+    [entry] = _audit(config)
+    assert entry["params"]["public_url"] == "https://qdrant.example.org:6333"
+
+
+def test_without_an_answer_setup_is_not_told_a_url(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="rag", variant=None, user="admin", workspace_dir="/w", config_dir=config
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps[0] == ("setup", ModuleSetup("rag", True))
+    assert "public_url" not in _audit(config)[0]["params"]
+
+
+_MAIL_SECRET = "a-long-password-value"
+
+
+def _mail_input() -> MailInput:
+    return MailInput(
+        host="smtp.example.org",
+        port=587,
+        security="starttls",
+        user="mailer",
+        from_address="noreply@example.org",
+        from_name="Our Mail",
+        password=_MAIL_SECRET,
+    )
+
+
+def test_the_mail_server_the_dialog_asked_for_goes_to_setup_in_full_and_then_the_relay_starts(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    ctx = _context(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="mail",
+            variant=None,
+            user="admin",
+            workspace_dir="/w",
+            config_dir=config,
+            mail=_mail_input(),
+            current_mail=MailSettings(False),
+        ),
+        ctx,
+    )
+    setup_step, start_step = run.steps
+    spec = setup_step[1]
+    assert isinstance(spec, SmtpSetup)
+    assert (spec.enable, spec.host, spec.user, spec.sender) == (
+        True,
+        "smtp.example.org",
+        "mailer",
+        "noreply@example.org",
+    )
+    assert start_step == ("start", ["--profiles=smtp"])
+    [entry] = _audit(config)
+    assert entry["params"]["host"] == "smtp.example.org"
+    assert entry["params"]["login_change"] == "set"
+    assert _MAIL_SECRET not in json.dumps(entry)
+    assert _MAIL_SECRET not in _log(ctx)
+
+
+def test_the_mail_password_is_scrubbed_from_the_log_and_the_refusal(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.setup_result = (3, f"password {_MAIL_SECRET}\n", f"ERROR: login failed for {_MAIL_SECRET}")
+    ctx = _context(tmp_path)
+    with pytest.raises(svc.SetupRefusedError) as raised:
+        _go(
+            svc.enable_callback(
+                module="mail",
+                variant=None,
+                user="admin",
+                workspace_dir="/w",
+                config_dir=_config(tmp_path),
+                mail=_mail_input(),
+            ),
+            ctx,
+        )
+    assert _MAIL_SECRET not in str(raised.value)
+    assert _MAIL_SECRET not in _log(ctx)
+    assert "***" in _log(ctx)
 
 
 # -- overlay: apply ------------------------------------------------------------------------------

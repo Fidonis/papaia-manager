@@ -414,3 +414,91 @@ async def test_a_child_that_cannot_run_is_not_available(
 async def test_an_unknown_module_is_refused_before_the_core_is_asked() -> None:
     with pytest.raises(modules.ModuleError, match="can't be switched"):
         await modules.module_info("manager", workspace_dir="/w", config_dir="/c")
+
+
+# -- the answers to what `setup` asks -------------------------------------------------------
+
+
+def test_an_empty_answer_is_no_answer() -> None:
+    for value in (None, "", "   "):
+        assert modules.validate_public_url("rag", value) is None
+
+
+def test_a_url_is_checked_and_cleaned() -> None:
+    assert modules.validate_public_url("rag", " https://q.example.org:6333/ ") == (
+        "https://q.example.org:6333"
+    )
+    assert modules.validate_public_url("localai", "http://ai.lan:8080") == "http://ai.lan:8080"
+
+
+def test_a_url_that_is_wrong_says_what_is_wrong() -> None:
+    with pytest.raises(modules.ModuleError, match="public URL is not valid.*http://"):
+        modules.validate_public_url("rag", "qdrant.example.org")
+
+
+@pytest.mark.parametrize("name", ["web-search", "mail", "manager", "nope"])
+def test_a_module_without_a_url_question_takes_none(name: str) -> None:
+    with pytest.raises(modules.ModuleError, match="takes no public URL"):
+        modules.validate_public_url(name, "https://x.example.org")
+
+
+def test_the_relay_is_not_refused_for_lacking_a_server_when_the_request_brings_one(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "config"
+    _env(config, "COMPOSE_PROFILES=nginx\n")
+    _core(tmp_path / "w", profiles=("smtp",))
+    with pytest.raises(modules.ModuleError, match="No mail server"):
+        modules.check_enable("mail", str(config), str(tmp_path / "w"))
+    modules.check_enable("mail", str(config), str(tmp_path / "w"), mail_given=True)
+
+
+def test_the_mail_dialog_starts_from_what_the_core_stored_and_never_has_the_password(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "config"
+    _env(config, "COMPOSE_PROFILES=nginx\n")
+    module = config / "infra" / "smtp-relay"
+    module.mkdir(parents=True)
+    (module / ".env").write_text(
+        "SMTP_RELAY_UPSTREAM_HOST=smtp.example.org\nSMTP_RELAY_UPSTREAM_USER=mailer\n",
+        encoding="utf-8",
+    )
+    (module / "upstream-password").write_text("s3cret-value", encoding="utf-8")
+    defaults = modules.mail_defaults(str(config))
+    assert defaults["host"] == "smtp.example.org"
+    assert defaults["user"] == "mailer" and defaults["has_password"] is True
+    assert defaults["security"] == "starttls" and defaults["port"] == 587
+    assert "s3cret" not in str(defaults)
+    assert set(defaults) == {
+        "host",
+        "port",
+        "security",
+        "user",
+        "login",
+        "has_password",
+        "from_address",
+        "from_name",
+    }
+
+
+def test_a_module_that_was_never_set_up_starts_the_mail_dialog_empty(tmp_path: Path) -> None:
+    config = tmp_path / "config"
+    _env(config, "COMPOSE_PROFILES=nginx\n")
+    defaults = modules.mail_defaults(str(config))
+    assert (defaults["host"], defaults["user"], defaults["has_password"]) == ("", "", False)
+    assert defaults["security"] == "starttls"
+
+
+async def test_the_open_questions_come_with_the_info(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _core(tmp_path / "w")
+    document = (
+        '{"module": "rag", "questions": [{"key": "QDRANT_PUBLIC_URL", "option": "--qdrant-host",'
+        ' "label": "Public URL of Qdrant", "default": "https://h:6333", "value": "", "ask": true}]}'
+    )
+    _answer(monkeypatch, 0, document)
+    info = await modules.module_info("rag", workspace_dir=str(tmp_path / "w"), config_dir="/c")
+    assert info["questions"][0]["ask"] is True
+    assert info["questions"][0]["default"] == "https://h:6333"

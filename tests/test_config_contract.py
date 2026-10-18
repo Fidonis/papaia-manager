@@ -575,3 +575,78 @@ async def test_deleting_the_relays_settings_empties_what_the_page_calls_configur
     assert "upstream-password" in out
     assert modules.mail_configured(str(deployment.config)) is False
     assert load_mail_settings(str(deployment.config)).has_password is False
+
+
+# -- the answers to what `setup` asks -----------------------------------------------------------
+
+
+async def test_the_public_url_the_dialog_collects_is_what_setup_stores(
+    deployment: _Deployment,
+) -> None:
+    code, _, err = await _apply(
+        deployment, ModuleSetup("rag", True, public_url="https://qdrant.example.org:9001")
+    )
+    assert code == 0, err
+    assert deployment.env(".env")["QDRANT_PUBLIC_URL"] == "https://qdrant.example.org:9001"
+    code, _, err = await _apply(
+        deployment, ModuleSetup("localai", True, "cpu", public_url="https://ai.example.org")
+    )
+    assert code == 0, err
+    assert deployment.env(".env")["LOCALAI_PUBLIC_URL"] == "https://ai.example.org"
+
+
+async def test_a_stack_that_was_set_up_has_no_open_question_and_the_dialog_stays_away(
+    deployment: _Deployment,
+) -> None:
+    info = await modules.module_info(
+        "rag", workspace_dir=str(deployment.workspace), config_dir=str(deployment.config)
+    )
+    [question] = info["questions"]
+    assert question["ask"] is False
+    assert question["option"] == "--qdrant-host"
+    assert question["key"] == "QDRANT_PUBLIC_URL"
+
+
+async def test_deleting_the_settings_opens_the_question_the_dialog_then_asks(
+    deployment: _Deployment,
+) -> None:
+    # Only the settings: the data of a module is never deleted by a test on a machine with Docker.
+    await _apply(
+        deployment, ModuleSetup("localai", True, "cpu", public_url="https://ai.example.org")
+    )
+    await _apply(deployment, ModuleSetup("localai", False))
+    code, _, err = await run_module_purge(
+        "localai",
+        data=False,
+        config=True,
+        workspace_dir=str(deployment.workspace),
+        config_dir=str(deployment.config),
+    )
+    assert code == 0, err
+    info = await modules.module_info(
+        "localai", workspace_dir=str(deployment.workspace), config_dir=str(deployment.config)
+    )
+    [question] = info["questions"]
+    assert question["ask"] is True
+    assert question["default"].startswith("https://papaia.test:")
+    # The answer the dialog collects is accepted again.
+    code, _, err = await _apply(
+        deployment, ModuleSetup("localai", True, "cpu", public_url=question["default"])
+    )
+    assert code == 0, err
+    info = await modules.module_info(
+        "localai", workspace_dir=str(deployment.workspace), config_dir=str(deployment.config)
+    )
+    assert info["questions"][0]["ask"] is False
+
+
+async def test_the_relay_is_switched_on_with_a_full_mail_server_in_one_setup(
+    deployment: _Deployment,
+) -> None:
+    assert modules.mail_configured(str(deployment.config)) is False
+    spec = SmtpSetup(**{**_MAIL.__dict__, "enable": True})
+    code, _, err = await _mail(deployment, spec)
+    assert code == 0, err
+    assert "smtp" in deployment.profiles()
+    stored = load_mail_settings(str(deployment.config))
+    assert (stored.profile_on, stored.host, stored.has_password) == (True, "smtp.example.org", True)

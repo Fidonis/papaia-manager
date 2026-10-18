@@ -79,7 +79,8 @@ def refusal(code: int, out: str, err: str) -> str:
     return f"setup exited with status {code}"
 
 
-def _scrub(line: str, secret: str | None) -> str:
+def scrub(line: str, secret: str | None) -> str:
+    """`line` with the secret hidden."""
     return line.replace(secret, "***") if secret else line
 
 
@@ -88,9 +89,9 @@ async def _setup(ctx: JobContext, spec: SmtpSetup, *, workspace_dir: str, config
     code, out, err = await run_smtp_setup(spec, workspace_dir=workspace_dir, config_dir=config_dir)
     for line in (*out.splitlines(), *err.splitlines()):
         if line.strip():
-            ctx.log(_scrub(line.rstrip(), spec.password))
+            ctx.log(scrub(line.rstrip(), spec.password))
     if code != 0:
-        raise SetupRefusedError(_scrub(refusal(code, out, err), spec.password))
+        raise SetupRefusedError(scrub(refusal(code, out, err), spec.password))
 
 
 def realm_problem(line: str) -> str | None:
