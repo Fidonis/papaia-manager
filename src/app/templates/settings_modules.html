@@ -243,9 +243,8 @@
   // which questions are open (module-info) and what it would derive as the answer. Questions
   // that are answered already are not asked again. A core that can't say asks nothing.
   async function openQuestions(name) {
-    const reply = await _ragRequest("GET", "/api/v1/config/modules/" + name + "/info");
-    if (!reply.ok || !reply.data.available) return [];
-    return (reply.data.questions || []).filter((q) => q.ask);
+    const info = await loadInfo(name);
+    return info ? (info.questions || []).filter((q) => q.ask) : [];
   }
 
   function questionField(question) {
@@ -399,10 +398,43 @@
 
   // The dialog first shows the plain question, then asks the core what the module holds and
   // adds the choice. A core that can't say (or a failed request) leaves the plain switch-off.
+  // What the core says a module holds takes a moment to ask (it lists the Docker volumes), so it
+  // is asked before the page needs it: once for every module that is on when the page loads, and
+  // again when the answer is older than a minute. The dialog opens when it has the answer, so it
+  // never shows the plain question first and the choice a moment later.
+  const INFO_MAX_AGE_MS = 60000;
+  const infoCache = {};
+
+  function loadInfo(name) {
+    const hit = infoCache[name];
+    if (hit && Date.now() - hit.at < INFO_MAX_AGE_MS) return hit.promise;
+    const promise = _ragRequest("GET", "/api/v1/config/modules/" + name + "/info").then((reply) => {
+      if (!reply.ok || !reply.data.available) {
+        delete infoCache[name];
+        return null;
+      }
+      return reply.data;
+    });
+    infoCache[name] = { at: Date.now(), promise: promise };
+    return promise;
+  }
+
+  // The modules that are on may be switched off (volumes, settings); the ones that ask a
+  // question may be switched on.
+  MODULE_ROWS.filter((r) => r.can_delete && (r.enabled || r.name === "rag" || r.name === "localai"))
+    .forEach((r) => loadInfo(r.name));
+
   async function openOffDialog(name) {
+    const row = moduleRow(name);
+    let info = null;
+    if (row.can_delete) {
+      const box = moduleBox(name);
+      box.disabled = true;
+      info = await loadInfo(name);
+      box.disabled = false;
+    }
     offTarget = name;
     offScope = "keep";
-    const row = moduleRow(name);
     offEl("module-off-title").textContent = "Switch " + row.title + " off?";
     offEl("module-off-text").textContent =
       "Stops and removes its " + plural(row.services, "container") +
@@ -413,13 +445,9 @@
     const note = offEl("module-off-note");
     note.textContent = OFF_NOTES[name] || "";
     note.classList.toggle("hidden", !OFF_NOTES[name]);
+    if (info) renderScopes(name, info);
     syncOffButton();
     offEl("module-off-dialog").showModal();
-    if (!row.can_delete) return;
-    const reply = await _ragRequest("GET", "/api/v1/config/modules/" + name + "/info");
-    if (offTarget !== name) return;
-    if (!reply.ok || !reply.data.available) return;
-    renderScopes(name, reply.data);
   }
 
   function option(value, title, detail, checked) {
