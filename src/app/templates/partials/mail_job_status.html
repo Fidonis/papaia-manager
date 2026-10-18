@@ -10,7 +10,6 @@
   hx-swap="outerHTML"
 >
 {% if job and (job_active or job_is_mail) %}
-  {% set switching_off = job.action == "mail-disable" %}
   <div class="rounded-xl border px-5 py-3
               {% if job_active %}border-warning bg-warning/10
               {% elif job.status.value == "succeeded" %}border-success bg-success/10
@@ -20,18 +19,17 @@
         <span class="loading loading-spinner loading-xs text-warning"></span>
         <p class="text-sm font-semibold">
           {% if job_is_mail %}
-            {% set what = "Switching the mail relay off" if switching_off else "Applying mail settings" %}
-            {% if job.status.value == "queued" %}{{ what }}: queued{% else %}{{ what }}{% endif %}
+            {% if job.status.value == "queued" %}Applying mail settings: queued{% else %}Applying mail settings{% endif %}
           {% else %}
             {{ job.action }} {{ "queued" if job.status.value == "queued" else "running" }}
           {% endif %}
         </p>
       {% elif job.status.value == "succeeded" %}
         <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
-        <p class="text-sm font-semibold">{{ "The mail relay is off" if switching_off else "Mail settings applied" }}</p>
+        <p class="text-sm font-semibold">Mail settings applied</p>
       {% else %}
         <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-error"></span>
-        <p class="text-sm font-semibold">{{ "Switching the mail relay off failed" if switching_off else "Applying the mail settings failed" }}</p>
+        <p class="text-sm font-semibold">Applying the mail settings failed</p>
       {% endif %}
 
       {% if job.finished_at %}

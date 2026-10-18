@@ -54,6 +54,49 @@ Without a settings file nothing changes. A second card, **Host monitoring**, set
 how often the Host page re-measures the machine (10 seconds to 60 minutes,
 default 60 seconds); it applies to every administrator.
 
+**Modules and overlay.** Settings has three tabs: **Manager** (the cards above),
+**Modules** and **Overlay**. **Modules** is the one place that switches the
+optional parts of the stack on and off: LocalAI, web search, the RAG system and the
+mail relay. Switching a module on stores the choice with the core's own `setup`
+(`--enable-local-ai`, `--enable-web-search`, `--enable-rag`, `--enable-smtp`, and for
+LocalAI the accelerator variant, which is chosen on the page because GPU detection
+cannot see the host from inside the container) and starts the module's profile; the
+RAG system also recreates LibreChat, whose configuration lists the RAG tools. The
+RAG pages and the Mail page hold those modules' settings and no longer switch
+anything. Switching a module on asks the questions `papaia-ctl setup` asks, inline under
+its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings
+were deleted): the public URL of the RAG system and of LocalAI, prefilled with what the
+core derives from the stack's address, and for the mail relay the mail server (host,
+connection, port, login, password, sender), which **Test Connection** tries before the
+relay is switched on without sending a mail or saving anything. A module whose settings exist switches on
+without a dialog. The mail server can also be saved on the Mail page with the relay off.
+The manager itself cannot be switched off.
+
+Switching a module off removes its containers and asks what happens to what it
+leaves behind: **keep the data and the settings** (switching it on again brings
+everything back), **delete the data** (its Docker volumes) **and keep the settings**,
+or **delete the data and the settings** (they go back to what the release ships).
+Deleting asks you to type the module's name, and the dialog lists the volumes the
+core reports. Settings alone are not offered: the RAG system's stored credentials are
+encrypted with a secret that belongs to its data, and a module without its settings
+but with its data would be of no use to anyone. The RAG documents folder is never
+deleted. Deleting needs a core with the module operations (papAIa 1.6.0); an older
+core still switches modules off and keeps everything. **Overlay** edits the customer overlay, the files under
+`$PAPAIA_CONFIG_DIR/overlay/` that the core merges last into the LibreChat,
+LiteLLM and SearXNG configuration. The editor checks the YAML while you type,
+shows the effective result (the core merges the draft in memory and the page
+shows the difference to what the file renders to now; this needs a core with the
+`render-preview` command, otherwise only the syntax check is available), and
+**Apply** saves the file and recreates the services that read it, as a queued
+job. Before every Apply, Discard and Roll back the previous file is copied to
+`$PAPAIA_CONFIG_DIR/manager/overlay-history/` (the latest 20 per file, readable by
+the owner only, part of a backup); the **Versions** tab shows them, restores one
+as a draft or rolls back to it directly. If the services do not start with the
+new file, the previous one is put back automatically and the job fails with the
+reason. A file edited on the host between opening the page and Apply is detected
+by its revision and refused with a conflict instead of being overwritten.
+Overlay content is never written to the audit log.
+
 **Dashboard and access tiers.** Two Keycloak realm roles gate the UI.
 `MANAGER_ADMIN_ROLE` (default `manager-admin`) reaches every surface;
 `MANAGER_USER_ROLE` (default `user`) reaches the dashboard only. Accounts
@@ -115,7 +158,7 @@ administrators:
 
 **Notifications.** The first tab is where the manager tells people when something needs attention. A recipient is one email address or one webhook URL, and each recipient ticks which events it receives, in a matrix of recipients and events that saves at once. The events: a **job failed** (a job in the manager's queue ended with an error, reported when it ends); the **backup is overdue** (the newest good backup is older than the backup schedule allows, so it needs a schedule); a **service is unhealthy** (a service a check saw brought up is now stopped, unhealthy or gone, also after you stopped it in the manager, with or without “Clean up”; a check runs right after every job in the manager ends; at most once per debounce window for each service); an **update is available** (a newer papAIa release, or a newer version of an installed add-on in a catalog on disk; catalogs are refreshed by hand, so an add-on update shows up after the refresh); a **certificate is expiring** (within the lead time, among the certificates the host check sees). The check interval (default 5 minutes), the debounce (30 minutes) and the lead time (14 days) are the same for every recipient. Each event is reported once per occurrence, and the manager remembers what it reported (`manager/notifications-state.json`), so a restart sends nothing twice. Email goes through the mail relay: while the Mail Server is not set up, the tab says so and email recipients wait, and webhooks keep working. A webhook gets a JSON `POST` of `{event, severity, message, timestamp, details}`; redirects are not followed and a network error or a 5xx answer is tried once more. Its URL is kept in `manager/notifications.yaml` (mode 0600, part of the configuration directory's backups) and is never shown again after it is saved, only its host. **Send test** checks a recipient, and the tab lists what was sent lately. A notification carries no job log and no error text, only what is needed to find the job. Restores, upgrades and whole-stack actions run outside the job queue and are not reported.
 
-**Mail Server.** The second tab sets up the stack's outbound mail relay, the optional `smtp` profile of papAIa 1.6.0 and newer. One internal relay holds the credentials of your mail server and forwards to it, and Keycloak, and add-ons that attach it, send through it. The page switches the relay on or off and edits the mail server behind it: host, connection security (STARTTLS, TLS or none), port, login, password, sender address and sender name. The password is write-only: it is never shown, an empty field keeps the stored one, and a stored password is only used for the host, port and login it was stored with. **Save and apply** is a queued job: the core's own `setup` stores the values (so its validation, sticky values and password revision stay in one place), `papaia-ctl start --profiles=smtp` creates or recreates the relay, and Keycloak's realm gets the relay as its mail server, so the Users page offers "email a link" from then on. A job whose last step could not reach Keycloak fails with that reason instead of reporting success. **Test connection** talks to the mail server with the values in the form (greeting, STARTTLS or TLS, login) without sending a mail or saving anything, and **Send test mail** hands one message to the relay: "sent" means the relay took it, not that it arrived, because the relay queues and retries for a day. The page shows whether the relay runs and how many messages wait in its queue. Switching the relay off stops it, takes it out of the stack's profiles and removes the mail server it put into the realm; the settings and the password are kept. The page needs a core with the relay and tells you so otherwise.
+**Mail Server.** The second tab sets up the stack's outbound mail relay, the optional `smtp` profile of papAIa 1.6.0 and newer. One internal relay holds the credentials of your mail server and forwards to it, and Keycloak, and add-ons that attach it, send through it. The page edits the mail server behind the relay, with the relay on or off: host, connection security (STARTTLS, TLS or none), port, login, password, sender address and sender name. The password is write-only: it is never shown, an empty field keeps the stored one, and a stored password is only used for the host, port and login it was stored with. **Save and apply** is a queued job: the core's own `setup` stores the values (so its validation, sticky values and password revision stay in one place), and while the relay is on `papaia-ctl start --profiles=smtp` recreates it and Keycloak's realm gets the relay as its mail server, so the Users page offers "email a link" from then on. With the relay off the button is **Save settings** and only stores the values. The relay is switched on and off in Settings > Modules. A job whose last step could not reach Keycloak fails with that reason instead of reporting success. **Test connection** talks to the mail server with the values in the form (greeting, STARTTLS or TLS, login) without sending a mail or saving anything, and **Send test mail** hands one message to the relay: "sent" means the relay took it, not that it arrived, because the relay queues and retries for a day. The page shows whether the relay runs and how many messages wait in its queue. Switching the relay off (in Settings > Modules) stops it, takes it out of the stack's profiles and removes the mail server it put into the realm; the settings and the password are kept unless you choose to delete them there. The page needs a core with the relay and tells you so otherwise.
 
 **RAG system.** When the core runs its optional RAG system (the `rag` profile
 in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
@@ -716,10 +759,27 @@ DELETE /api/v1/roles/{name}                  # not a built-in role
 
 GET    /api/v1/mail                          # ?fresh: the stored settings (never the password) and the relay's status
 PUT    /api/v1/mail                          # {revision, host, port?, security, user?, password?, from_address, from_name?}
-                                             #   switch on or change; 202 with a job. An empty password keeps the stored one
-POST   /api/v1/mail/disable                  # {revision} stop the relay and take it out of the profiles; 202 with a job
+                                             #   store the mail server and, while the relay is on, apply it; 202 with a job.
+                                             #   An empty password keeps the stored one. Switching the relay on or off is
+                                             #   /api/v1/config/modules/mail/{enable,disable}
 POST   /api/v1/mail/probe                    # {host?, port?, security?, user?, password?} try the mail server, send nothing
 POST   /api/v1/mail/test-message             # {to} hand one message to the relay
+
+GET    /api/v1/config/modules                # the optional modules, their state, the LocalAI variants, the revision
+GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | mail: the volumes and settings a switch-off could delete,
+                                             #   and the open setup questions (public URL) a switch-on asks
+POST   /api/v1/config/modules/{name}/enable  # {revision, variant?, public_url?, mail?} 202 with a job. public_url: rag | localai; mail: the mail
+                                             #   server when none is stored. The RAG system needs no clashing add-on
+POST   /api/v1/config/modules/{name}/disable # {revision, scope?: keep|data|all, confirm?}; 202 with a job. A deletion needs the module name in confirm
+GET    /api/v1/config/overlay                # the three editable overlay files and the other files under overlay/
+GET    /api/v1/config/overlay/{key}          # librechat | litellm | searxng: content, revision, versions
+POST   /api/v1/config/overlay/{key}/check    # {content} syntax check, nothing is written
+POST   /api/v1/config/overlay/{key}/preview  # {content} the effective result as a diff (needs the core's render-preview)
+PUT    /api/v1/config/overlay/{key}          # {content, revision} save, back up and recreate; 202 with a job, 409 if stale
+DELETE /api/v1/config/overlay/{key}          # ?revision= remove the file (backed up first); 202 with a job
+GET    /api/v1/config/overlay/{key}/versions            # the saved versions, newest first
+GET    /api/v1/config/overlay/{key}/versions/{id}       # one version and its difference to the file now
+POST   /api/v1/config/overlay/{key}/rollback            # {version, revision} make a saved version the overlay; 202 with a job
 
 GET    /api/v1/notifications                 # the settings, the events, the recipients (a webhook URL is shown
                                              #   as https://host/…, never in full), and whether email can go out

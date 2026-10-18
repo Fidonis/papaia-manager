@@ -70,6 +70,7 @@ def workspace(tmp_path: Path) -> Path:
     lib = tmp_path / "workspace" / "papaia" / "tools" / "lib"
     lib.mkdir(parents=True)
     (lib / "smtp.py").write_text("", encoding="utf-8")
+    (lib / "modules.py").write_text("", encoding="utf-8")
     (lib / "doctor.py").write_text(_REGISTRY, encoding="utf-8")
     return tmp_path / "workspace"
 
@@ -203,7 +204,6 @@ def _put_body(client: TestClient, **changes: Any) -> dict[str, Any]:
 _READS = [_BASE, "/mail/server", "/partials/mail/status", "/partials/mail/job-status"]
 _WRITES = [
     ("put", _BASE, {"revision": "x", "host": "h", "from_address": "a@example.org"}),
-    ("post", f"{_BASE}/disable", {"revision": "x"}),
     ("post", f"{_BASE}/probe", {}),
     ("post", f"{_BASE}/test-message", {"to": "a@example.org"}),
 ]
@@ -446,35 +446,49 @@ def test_the_password_is_in_no_log_line(
     assert _SECRET not in caplog.text
 
 
-# -- switching off -------------------------------------------------------------------
+# -- the relay is switched on and off in Settings > Modules -----------------------------
 
 
-def test_switching_off_queues_the_disable_job(client: TestClient, queue: JobQueue) -> None:
+def test_this_api_has_no_switch_off_the_modules_tab_does_it(
+    client: TestClient, queue: JobQueue
+) -> None:
     response = _admin(client).post(
         f"{_BASE}/disable", json={"revision": _revision(client)}, headers=_CSRF_HEADER
     )
-    assert response.status_code == 202
-    (job,) = queue.list_jobs()
-    assert (job.action, job.target) == ("mail-disable", "smtp-relay")
+    assert response.status_code in (404, 405)
+    assert queue.list_jobs() == []
 
 
-def test_a_relay_that_is_off_cannot_be_switched_off_again(
+def test_settings_can_be_saved_with_the_relay_off(
     config_dir: Path, workspace: Path, queue: JobQueue
 ) -> None:
     _configure(config_dir, on=False)
     client = _admin(_make_client(config_dir, workspace))
-    revision = client.get(_BASE).json()["settings"]["revision"]
-    response = client.post(f"{_BASE}/disable", json={"revision": revision}, headers=_CSRF_HEADER)
+    response = client.put(_BASE, json=_put_body(client), headers=_CSRF_HEADER)
+    assert response.status_code == 202
+    (job,) = queue.list_jobs()
+    assert job.action == "mail-apply"
+
+
+def test_a_core_that_cannot_keep_settings_with_the_relay_off_refuses_the_save(
+    config_dir: Path, workspace: Path, queue: JobQueue
+) -> None:
+    # It would read the values as "switch it on".
+    _configure(config_dir, on=False)
+    (workspace / "papaia" / "tools" / "lib" / "modules.py").unlink()
+    client = _admin(_make_client(config_dir, workspace))
+    response = client.put(_BASE, json=_put_body(client), headers=_CSRF_HEADER)
     assert response.status_code == 409
+    assert "relay off" in response.json()["detail"]
     assert queue.list_jobs() == []
 
 
-def test_switching_off_from_a_stale_tab_is_refused(client: TestClient, queue: JobQueue) -> None:
-    response = _admin(client).post(
-        f"{_BASE}/disable", json={"revision": "old"}, headers=_CSRF_HEADER
-    )
-    assert response.status_code == 409
-    assert queue.list_jobs() == []
+def test_a_core_that_cannot_manage_modules_still_saves_for_a_relay_that_is_on(
+    client: TestClient, workspace: Path, queue: JobQueue
+) -> None:
+    (workspace / "papaia" / "tools" / "lib" / "modules.py").unlink()
+    response = _admin(client).put(_BASE, json=_put_body(client), headers=_CSRF_HEADER)
+    assert response.status_code == 202
 
 
 # -- testing the connection ----------------------------------------------------------
@@ -661,7 +675,7 @@ def test_test_mails_are_not_sent_in_a_burst(client: TestClient, sent: list[dict[
 # -- the pages -----------------------------------------------------------------------
 
 
-def test_the_page_has_the_form_the_test_mail_and_the_off_dialog(client: TestClient) -> None:
+def test_the_page_has_the_form_and_the_test_mail_but_no_switch_off(client: TestClient) -> None:
     response = _admin(client).get("/mail/server")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
@@ -675,12 +689,13 @@ def test_the_page_has_the_form_the_test_mail_and_the_off_dialog(client: TestClie
         'id="mail-password"',
         'id="mail-from"',
         'id="mail-test-to"',
-        'id="mail-off-dialog"',
-        "Test connection",
+        "Test Connection",
         "Save and apply",
-        "Switch off",
     ):
         assert element in text
+    assert 'id="mail-off-dialog"' not in text
+    assert "Switch off" not in text
+    assert "disableMail" not in text
     assert 'value="smtp.example.org"' in text
     assert 'value="noreply@example.org"' in text
 
@@ -692,15 +707,23 @@ def test_the_page_never_contains_the_stored_password(client: TestClient) -> None
     assert 'type="password"' in text
 
 
-def test_a_relay_that_is_off_offers_to_switch_it_on_and_hides_the_off_button(
+def test_a_relay_that_is_off_says_so_and_saves_without_applying(
     config_dir: Path, workspace: Path, queue: JobQueue
 ) -> None:
     _configure(config_dir, on=False)
     text = _admin(_make_client(config_dir, workspace)).get("/mail/server").text
-    assert "Switch on and apply" in text
-    assert "Switch off" not in text
-    assert 'id="mail-off-dialog"' not in text
-    assert "Switch the relay on to send a test mail." in text
+    assert "Save settings" in text
+    assert "Save and apply" not in text
+    assert 'href="/settings/modules"' in text
+    assert "relay is <strong>off</strong>" in text
+    assert "when you are ready" in text
+    assert "to send a test mail." in text
+
+
+def test_a_relay_that_is_on_applies_what_is_saved(client: TestClient) -> None:
+    text = _admin(client).get("/mail/server").text
+    assert "Save and apply" in text
+    assert "relay is <strong>off</strong>" not in text
 
 
 def test_a_relay_never_set_up_starts_with_a_login_and_the_defaults(
@@ -716,7 +739,7 @@ def test_a_relay_never_set_up_starts_with_a_login_and_the_defaults(
 
 def test_the_status_strip_says_what_the_doctor_found(client: TestClient) -> None:
     text = _admin(client).get("/partials/mail/status").text
-    assert "Mail relay is on" in text
+    assert "Mail Relay is on" in text
     assert "relay running" in text
     assert "queue empty" in text
 
@@ -755,7 +778,7 @@ def test_the_status_of_a_relay_that_is_off_is_a_sentence_without_asking_the_doct
 ) -> None:
     _configure(config_dir, on=False)
     text = _admin(_make_client(config_dir, workspace)).get("/partials/mail/status").text
-    assert "Mail relay is off" in text
+    assert "Mail Relay is off" in text
     assert "settings below are stored" in text
 
 

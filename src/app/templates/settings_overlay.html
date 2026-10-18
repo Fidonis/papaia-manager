@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+{% from "partials/_settings_tabs.html" import tabs %}
+{% block title %}Overlay — Settings — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Settings{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Your own settings on top of the stack's configuration. They survive every upgrade.</p>{% endblock %}
+
+{% block content %}
+{{ tabs('overlay') }}
+
+<script type="application/json" id="overlay-init">{{ init | tojson }}</script>
+
+<div class="max-w-3xl space-y-6" x-data="overlayEditor()" x-init="start()">
+
+  <div id="config-job-status"
+       hx-get="/partials/config/job-status"
+       hx-trigger="load"
+       hx-swap="outerHTML"></div>
+
+  <section class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-0 p-0">
+      <div class="px-6 pt-5 pb-3">
+        <h2 class="font-brand text-lg font-bold">Overlay Files</h2>
+        <p class="text-sm opacity-60">
+          An overlay is merged last: mappings are merged, lists are appended and scalars are
+          replaced. Applying one recreates the services that read the file.
+        </p>
+      </div>
+      <template x-for="t in targets" :key="t.key">
+        <button type="button"
+                class="flex w-full flex-wrap items-start gap-x-3 gap-y-1 border-t border-base-300 px-6 py-3 text-left hover:bg-base-300/40"
+                :class="t.key === key ? 'bg-secondary/10' : ''"
+                @click="select(t.key)">
+          <div class="min-w-0 flex-1 basis-40">
+            <p class="text-sm font-semibold" x-text="t.label"></p>
+            <p class="break-all font-mono text-xs opacity-60" x-text="t.path"></p>
+          </div>
+          <span class="badge badge-sm shrink-0" :class="t.exists ? 'badge-primary' : 'badge-ghost'"
+                x-text="t.exists ? 'Overlay active · ' + t.lines + ' line' + (t.lines === 1 ? '' : 's') : 'No overlay'"></span>
+        </button>
+      </template>
+      <template x-for="o in other" :key="o.path">
+        <div class="flex flex-wrap items-start gap-x-3 gap-y-1 border-t border-base-300 px-6 py-3">
+          <div class="min-w-0 flex-1 basis-40">
+            <p class="break-all font-mono text-xs" x-text="o.path"></p>
+          </div>
+          <span class="badge badge-sm badge-outline shrink-0" x-text="o.note"></span>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  <section class="card bg-base-100 border border-base-300" x-show="file" style="display:none">
+    <div class="card-body gap-4">
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 class="font-brand text-lg font-bold flex-1" x-text="'Edit ' + current.label + ' Overlay'"></h2>
+        <span class="badge badge-sm font-mono" x-show="file && file.revision" x-text="'rev ' + (file ? file.revision.slice(0, 7) : '')" title="Revision of the file you opened"></span>
+      </div>
+
+      {# A host-side edit between page load and Apply. The draft stays; nothing was written. #}
+      <div x-show="conflict" style="display:none" class="rounded-xl border border-warning bg-warning/10 px-5 py-3 text-sm" role="alert">
+        <p class="font-semibold">This file changed on the host after you opened it</p>
+        <p class="text-xs opacity-70">Your draft is kept and nothing was overwritten. Applying it saves the host's version to Versions first.</p>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button type="button" class="btn btn-outline btn-xs" @click="reloadFile()">Reload file</button>
+          <button type="button" class="btn btn-outline btn-xs" @click="askApplyAnyway()">Apply my draft anyway</button>
+        </div>
+      </div>
+
+      <div x-show="restoredFrom" style="display:none" class="rounded-xl border border-info bg-info/10 px-5 py-3 text-xs">
+        <span x-text="'Draft restored from the version of ' + restoredFrom + '. Review it, then apply it to make it live.'"></span>
+      </div>
+
+      <nav class="tabs tabs-bordered overflow-x-auto overflow-y-hidden" role="tablist" aria-label="Overlay">
+        <a role="tab" class="tab whitespace-nowrap" :class="tab === 'overlay' ? 'tab-active font-semibold' : ''" @click="tab = 'overlay'">Overlay</a>
+        <a role="tab" class="tab whitespace-nowrap" :class="tab === 'effective' ? 'tab-active font-semibold' : ''" @click="showEffective()">Effective Result</a>
+        <a role="tab" class="tab whitespace-nowrap" :class="tab === 'versions' ? 'tab-active font-semibold' : ''" @click="tab = 'versions'">
+          Versions <span class="badge badge-sm ml-1" x-text="versions.length"></span>
+        </a>
+      </nav>
+
+      {# --- Overlay ------------------------------------------------------------------ #}
+      <div x-show="tab === 'overlay'">
+        <div class="flex overflow-hidden rounded-lg border border-base-300 bg-base-200">
+          <pre class="select-none overflow-hidden border-r border-base-300 px-2 py-3 text-right font-mono text-xs leading-relaxed opacity-40" x-ref="gutter" x-text="lineNumbers()"></pre>
+          <textarea x-ref="editor" x-model="draft"
+                    class="h-72 w-full resize-y bg-transparent px-3 py-3 font-mono text-xs leading-relaxed outline-none"
+                    spellcheck="false" wrap="off" autocomplete="off"
+                    aria-label="Overlay file"
+                    placeholder="# Nothing here yet. Add the settings that should win over the stack&#39;s, for example:&#10;# webSearch:&#10;#   allowedAddresses:&#10;#     - 10.0.0.5:8080"
+                    @input.debounce.400ms="runCheck()"
+                    @scroll="$refs.gutter.scrollTop = $refs.editor.scrollTop"></textarea>
+        </div>
+
+        <ul class="mt-2 space-y-1 text-xs text-error" x-show="problems.length" style="display:none" role="alert">
+          <template x-for="p in problems" :key="p.message + p.line">
+            <li><span x-text="p.line ? 'Line ' + p.line + (p.column ? ', column ' + p.column : '') + ': ' : ''"></span><span x-text="p.message"></span></li>
+          </template>
+        </ul>
+        <p class="mt-2 text-xs text-success" x-show="!problems.length && summary" style="display:none" x-text="'YAML valid · ' + summary"></p>
+
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <button type="button" class="btn btn-primary btn-sm" :disabled="busy || problems.length > 0" @click="askApply()">Apply overlay</button>
+          <button type="button" class="btn btn-outline btn-sm" :disabled="problems.length > 0" @click="showEffective()">Preview effective result</button>
+          <span class="flex-1"></span>
+          <button type="button" class="btn btn-ghost btn-sm text-error" x-show="file && file.exists" style="display:none" @click="$refs.discard.showModal()">Discard overlay</button>
+        </div>
+        <p class="mt-2 text-xs opacity-60" x-text="applyNote()"></p>
+      </div>
+
+      {# --- Effective result --------------------------------------------------------- #}
+      <div x-show="tab === 'effective'" style="display:none">
+        <p class="mb-2 text-xs opacity-60">
+          What <span class="font-mono" x-text="current.path"></span> renders to with this draft, against what it renders to now.
+          The core merges the layers in memory; nothing is written.
+        </p>
+        <p class="text-sm opacity-60" x-show="previewing">Merging …</p>
+        <p class="text-sm text-error" x-show="previewError" style="display:none" x-text="previewError"></p>
+        <p class="text-sm opacity-60" x-show="previewUnavailable" style="display:none">
+          This papAIa core can't preview the effective result yet; the syntax check is all there is.
+        </p>
+        <div x-show="effective" style="display:none">
+          <p class="mb-1 text-xs">
+            <span class="badge badge-sm badge-success" x-text="'+' + (effective ? effective.added : 0) + ' lines'"></span>
+            <span class="badge badge-sm ml-1" x-text="(effective ? effective.removed : 0) + ' removed'"></span>
+          </p>
+          <p class="text-sm opacity-60" x-show="effective && !effective.changed">This draft doesn't change the rendered file.</p>
+          <div class="max-h-96 overflow-auto rounded-lg border border-base-300 bg-base-200 py-2 font-mono text-xs leading-relaxed" x-show="effective && effective.changed">
+            <template x-for="(line, i) in (effective ? effective.diff : [])" :key="i">
+              <div class="whitespace-pre px-3"
+                   :class="line.kind === 'add' ? 'bg-success/15 text-success' : (line.kind === 'del' ? 'bg-error/15 text-error' : (line.kind === 'hunk' ? 'opacity-50' : ''))"
+                   x-text="(line.kind === 'add' ? '+ ' : (line.kind === 'del' ? '- ' : '  ')) + line.text"></div>
+            </template>
+          </div>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button type="button" class="btn btn-primary btn-sm" :disabled="busy || problems.length > 0" @click="askApply()">Apply overlay</button>
+          <button type="button" class="btn btn-outline btn-sm" @click="tab = 'overlay'">Back to editor</button>
+        </div>
+      </div>
+
+      {# --- Versions ----------------------------------------------------------------- #}
+      <div x-show="tab === 'versions'" style="display:none">
+        <p class="mb-2 text-xs opacity-60">
+          The previous file is saved here before every Apply, Discard and Roll back. The latest 20 are kept, readable
+          by administrators only, and they are part of <code>papaia-ctl backup</code>.
+        </p>
+        <p class="text-sm opacity-60" x-show="!versions.length">Nothing saved yet.</p>
+        <div class="overflow-x-auto" x-show="versions.length">
+          <table class="table table-sm">
+            <tbody>
+              <template x-for="v in versions" :key="v.id">
+                <tr>
+                  <td>
+                    <p class="text-sm font-semibold" x-text="when(v.when)"></p>
+                    <p class="text-xs opacity-60" x-text="v.size + ' B · rev ' + v.revision"></p>
+                  </td>
+                  <td><span class="badge badge-sm" :class="v.event === 'discard' ? 'badge-warning' : 'badge-ghost'" x-text="v.event"></span></td>
+                  <td class="text-right whitespace-nowrap">
+                    <button type="button" class="btn btn-ghost btn-xs" @click="viewVersion(v)">View diff</button>
+                    <button type="button" class="btn btn-outline btn-xs" @click="restoreDraft(v)">Restore as draft</button>
+                    <button type="button" class="btn btn-outline btn-xs" @click="askRollback(v)">Roll back now</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-3" x-show="versionDiff" style="display:none">
+          <p class="mb-1 text-xs opacity-60" x-text="'Difference between ' + (versionDiffFor ? when(versionDiffFor.when) : '') + ' and the file now'"></p>
+          <div class="max-h-72 overflow-auto rounded-lg border border-base-300 bg-base-200 py-2 font-mono text-xs leading-relaxed">
+            <template x-for="(line, i) in (versionDiff || [])" :key="i">
+              <div class="whitespace-pre px-3"
+                   :class="line.kind === 'add' ? 'bg-success/15 text-success' : (line.kind === 'del' ? 'bg-error/15 text-error' : (line.kind === 'hunk' ? 'opacity-50' : ''))"
+                   x-text="(line.kind === 'add' ? '+ ' : (line.kind === 'del' ? '- ' : '  ')) + line.text"></div>
+            </template>
+          </div>
+          <p class="mt-1 text-xs opacity-60">Green lines are in the saved version and not in the file now.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# Apply and roll back share one dialog; what it says depends on what is being done. #}
+  <dialog x-ref="confirm" class="modal">
+    <div class="modal-box max-w-md">
+      <h3 class="text-base font-bold" x-text="confirmTitle"></h3>
+      <ul class="mt-3 list-disc space-y-1 pl-5 text-sm opacity-80">
+        <li x-show="anyway && confirmKind === 'apply'">The version now on the host is saved to Versions first, then replaced by your draft.</li>
+        <li x-show="!anyway && file && file.exists">The current overlay is saved to Versions first.</li>
+        <li x-show="current.group_active">
+          <span x-text="current.services + ' service' + (current.services === 1 ? '' : 's') + ' of ' + current.label + ' are recreated. They are unavailable for a short while.'"></span>
+        </li>
+        <li x-show="!current.group_active"><span x-text="current.label + ' is switched off, so the file applies the next time it starts.'"></span></li>
+        <li x-show="current.group_active">If the services don't start with the new file, the previous overlay is put back automatically.</li>
+      </ul>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost btn-sm" @click="$refs.confirm.close()">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" @click="confirmAction()" x-text="confirmButton"></button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <dialog x-ref="discard" class="modal">
+    <div class="modal-box max-w-md">
+      <h3 class="text-base font-bold" x-text="'Discard the ' + current.label + ' overlay?'"></h3>
+      <p class="mt-2 text-sm opacity-60">
+        The file is removed after a copy is saved to Versions. The services that read it are recreated
+        with the stack's own configuration.
+      </p>
+      <div class="modal-action">
+        <button type="button" class="btn btn-ghost btn-sm" @click="$refs.discard.close()">Cancel</button>
+        <button type="button" class="btn btn-error btn-sm" @click="discard()">Discard overlay</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+</div>
+
+{% include "partials/_rag_js.html" %}
+<script>
+  function overlayEditor() {
+    const init = JSON.parse(document.getElementById("overlay-init").textContent);
+    return {
+      targets: init.targets,
+      other: init.other,
+      key: init.selected,
+      previewAvailable: init.preview_available,
+      file: null,
+      draft: "",
+      saved: "",
+      tab: "overlay",
+      problems: [],
+      summary: "",
+      versions: [],
+      effective: null,
+      previewing: false,
+      previewError: "",
+      previewUnavailable: false,
+      versionDiff: null,
+      versionDiffFor: null,
+      restoredFrom: "",
+      conflict: false,
+      busy: false,
+      confirmKind: "apply",
+      confirmVersion: null,
+      anyway: false,
+      following: false,
+
+      get current() { return this.targets.find((t) => t.key === this.key); },
+      get confirmTitle() {
+        if (this.confirmKind === "rollback") return "Roll back to " + this.when(this.confirmVersion.when) + "?";
+        return "Apply overlay to " + this.current.label + "?";
+      },
+      get confirmButton() { return this.confirmKind === "rollback" ? "Roll back" : "Apply overlay"; },
+
+      async start() {
+        await this.select(this.key);
+        let wasActive = false;
+        window.addEventListener("papaia-config-job", (event) => {
+          if (this.following) return;
+          if (event.detail.active) wasActive = true;
+          else if (wasActive) window.location.reload();
+        });
+      },
+
+      async select(key) {
+        this.key = key;
+        this.tab = "overlay";
+        this.effective = null;
+        this.previewError = "";
+        this.versionDiff = null;
+        this.restoredFrom = "";
+        this.conflict = false;
+        const reply = await _ragRequest("GET", "/api/v1/config/overlay/" + key);
+        if (!reply.ok) {
+          if (!reply.handled) showToast("error", _ragEscape(reply.error));
+          this.file = null;
+          return;
+        }
+        this.file = reply.data;
+        this.draft = reply.data.content;
+        this.saved = reply.data.content;
+        this.versions = reply.data.versions;
+        this.previewAvailable = reply.data.preview_available;
+        const t = this.targets.findIndex((x) => x.key === key);
+        this.targets[t] = Object.assign({}, this.targets[t], {
+          exists: reply.data.exists, lines: reply.data.lines, revision: reply.data.revision,
+        });
+        await this.runCheck();
+      },
+
+      lineNumbers() {
+        const n = Math.max(1, this.draft.split("\n").length);
+        return Array.from({ length: n }, (_, i) => i + 1).join("\n");
+      },
+
+      async runCheck() {
+        const reply = await _ragRequest("POST", "/api/v1/config/overlay/" + this.key + "/check", { content: this.draft });
+        if (!reply.ok) return;
+        this.problems = reply.data.problems;
+        this.summary = reply.data.summary;
+        this.effective = null;
+      },
+
+      async showEffective() {
+        if (this.problems.length) return;
+        this.tab = "effective";
+        this.previewing = true;
+        this.previewError = "";
+        this.previewUnavailable = false;
+        this.effective = null;
+        const reply = await _ragRequest("POST", "/api/v1/config/overlay/" + this.key + "/preview", { content: this.draft });
+        this.previewing = false;
+        if (!reply.ok) {
+          if (!reply.handled) this.previewError = reply.error;
+          return;
+        }
+        const r = reply.data;
+        if (r.ok) this.effective = r;
+        else if (r.available === false) this.previewUnavailable = true;
+        else if (r.problems && r.problems.length) this.previewError = r.problems[0].message;
+        else this.previewError = r.error || "The draft can't be merged.";
+      },
+
+      applyNote() {
+        if (!this.current) return "";
+        return this.current.group_active
+          ? "Apply saves the current file to Versions first, then recreates " + this.current.label + " (" + this.current.services + " service" + (this.current.services === 1 ? "" : "s") + ")."
+          : "Apply saves the file. " + this.current.label + " is switched off, so it takes effect when it is switched on.";
+      },
+
+      when(iso) {
+        const d = new Date(iso);
+        return d.toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+      },
+
+      askApply() {
+        this.confirmKind = "apply";
+        this.anyway = false;
+        this.$refs.confirm.showModal();
+      },
+
+      // After a conflict: the same dialog, which says the host's version is saved first.
+      askApplyAnyway() {
+        this.confirmKind = "apply";
+        this.anyway = true;
+        this.$refs.confirm.showModal();
+      },
+
+      askRollback(version) {
+        this.confirmKind = "rollback";
+        this.confirmVersion = version;
+        this.$refs.confirm.showModal();
+      },
+
+      async confirmAction() {
+        this.$refs.confirm.close();
+        if (this.confirmKind === "rollback") await this.rollback(this.confirmVersion);
+        else if (this.anyway) await this.applyAnyway();
+        else await this.apply(this.file.revision);
+      },
+
+      async apply(revision) {
+        this.busy = true;
+        const reply = await _ragRequest("PUT", "/api/v1/config/overlay/" + this.key, { content: this.draft, revision: revision });
+        this.busy = false;
+        if (!reply.ok) {
+          if (reply.handled) return;
+          if (/changed after/.test(reply.error)) this.conflict = true;
+          else showToast("error", _ragEscape(reply.error));
+          return;
+        }
+        this.follow(reply.data.job_id, "Applying the overlay …");
+      },
+
+      async rollback(version) {
+        this.busy = true;
+        const reply = await _ragRequest("POST", "/api/v1/config/overlay/" + this.key + "/rollback", { version: version.id, revision: this.file.revision });
+        this.busy = false;
+        if (!reply.ok) {
+          if (reply.handled) return;
+          if (/changed after/.test(reply.error)) this.conflict = true;
+          else showToast("error", _ragEscape(reply.error));
+          return;
+        }
+        this.follow(reply.data.job_id, "Rolling back the overlay …");
+      },
+
+      async discard() {
+        this.$refs.discard.close();
+        const reply = await _ragRequest("DELETE", "/api/v1/config/overlay/" + this.key + "?revision=" + encodeURIComponent(this.file.revision));
+        if (!reply.ok) {
+          if (reply.handled) return;
+          if (/changed after/.test(reply.error)) this.conflict = true;
+          else showToast("error", _ragEscape(reply.error));
+          return;
+        }
+        this.follow(reply.data.job_id, "Discarding the overlay …");
+      },
+
+      // The host's file is read again for its revision only; the draft stays what it is.
+      async applyAnyway() {
+        const reply = await _ragRequest("GET", "/api/v1/config/overlay/" + this.key);
+        if (!reply.ok) {
+          if (!reply.handled) showToast("error", _ragEscape(reply.error));
+          return;
+        }
+        this.file = reply.data;
+        this.conflict = false;
+        await this.apply(reply.data.revision);
+      },
+
+      async reloadFile() { await this.select(this.key); },
+
+      async viewVersion(version) {
+        const reply = await _ragRequest("GET", "/api/v1/config/overlay/" + this.key + "/versions/" + version.id);
+        if (!reply.ok) {
+          if (!reply.handled) showToast("error", _ragEscape(reply.error));
+          return;
+        }
+        this.versionDiff = reply.data.diff;
+        this.versionDiffFor = version;
+      },
+
+      async restoreDraft(version) {
+        const reply = await _ragRequest("GET", "/api/v1/config/overlay/" + this.key + "/versions/" + version.id);
+        if (!reply.ok) {
+          if (!reply.handled) showToast("error", _ragEscape(reply.error));
+          return;
+        }
+        this.draft = reply.data.content;
+        this.restoredFrom = this.when(version.when);
+        this.tab = "overlay";
+        await this.runCheck();
+      },
+
+      follow(jobId, message) {
+        this.following = true;
+        showToast("info", message);
+        htmx.ajax("GET", "/partials/config/job-status", { target: "#config-job-status", swap: "outerHTML" });
+        _pollJob(jobId, (job) => {
+          if (job.status === "succeeded") showToast("success", "Done");
+          else showToast("error", "The change failed. The log is above.");
+          setTimeout(() => { window.location.href = "/settings/overlay?target=" + this.key; }, 900);
+        });
+      },
+    };
+  }
+</script>
+{% endblock %}

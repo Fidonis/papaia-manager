@@ -1,10 +1,12 @@
 """Whitelisted subprocess wrapper for papaia-ctl.
 
-Four entry points, four separate allowlists: `run_addon_verb` for
+Four kinds of entry point, separate allowlists: `run_addon_verb` for
 `papaia-ctl addon <verb> <name>`, `run_core_verb` for the stack-level verbs that
 take no target, `run_py_cli` for the core's own read-only Python
-sub-commands, and `run_smtp_setup` for the one that writes (the core's `setup`,
-restricted to the mail relay's options). Keeping the sets apart is what makes it
+sub-commands, and the writers of the core's Python entry point: `run_smtp_setup` /
+`run_module_setup` (the core's `setup`, restricted to the mail relay's or one optional
+module's options) and `run_module_purge` (delete one switched-off module's data or settings).
+Keeping the sets apart is what makes it
 impossible for an addon name to be dispatched as a stack operation, or the
 other way round.
 """
@@ -17,6 +19,7 @@ import re
 from collections.abc import AsyncGenerator, Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from app.core.inventory import SELF_PROFILE
 from app.core.services import invalidate_snapshot
@@ -80,19 +83,64 @@ ALLOWED_CORE_VERBS: frozenset[str] = frozenset(
 # appends to the migration ledger, and only the upgrade's own second phase may
 # do that. A ledger entry written by the manager would make a migration that
 # never ran look applied.
+# `render-preview` merges a draft overlay onto the rendered layers in memory and prints
+# the result as JSON. It reads the draft from a file the caller names and writes
+# nothing, so the overlay editor can show the effective configuration before anything
+# is saved.
+#
+# `module-info` lists, as JSON, what switching one optional module off could delete: the
+# named volumes it owns (and whether they exist) and what its settings consist of. The
+# Modules tab asks it for the dialog that offers to delete them. It writes nothing.
 ALLOWED_PY_COMMANDS: frozenset[str] = frozenset(
-    {"upgrade-resolve", "upgrade-plan", "addon-check", "doctor"}
+    {"upgrade-resolve", "upgrade-plan", "addon-check", "doctor", "render-preview", "module-info"}
 )
 
-# The one command that writes, kept apart from the read-only set so that adding to
-# either is a decision of its own. `setup` is the core's non-interactive
-# configuration engine; it is reachable only through `run_smtp_setup`, which builds
-# its arguments from a typed `SmtpSetup` and passes nothing but the mail relay's
-# options -- never `--force`, `--env`, a host name or any other part of the stack's
-# configuration. The core is what validates and stores the values, so the rules
-# (what is sticky, when the password revision rises, how `COMPOSE_PROFILES` changes)
-# stay in one place.
-ALLOWED_PY_WRITE_COMMANDS: frozenset[str] = frozenset({"setup"})
+# The commands that write, kept apart from the read-only set so that adding to either is a
+# decision of its own. `setup` is the core's non-interactive configuration engine; it is
+# reachable only through `run_smtp_setup` and `run_module_setup`, which build their
+# arguments from a typed spec (`SmtpSetup`, `ModuleSetup`) and pass nothing but the options
+# of the mail relay or of one optional module -- never `--force`, `--env`, a host name or any
+# other part of the stack's configuration. The core is what validates and stores the values,
+# so the rules (what is sticky, when the password revision rises, how `COMPOSE_PROFILES`
+# changes) stay in one place.
+#
+# `module-purge` deletes the named volumes of one optional module and/or puts its settings
+# back to what the release ships. It is reachable only through `run_module_purge`, takes
+# nothing but a module name from `PURGE_MODULES` and the two switches, and the core refuses
+# it while the module is still switched on and never touches another module's data.
+ALLOWED_PY_WRITE_COMMANDS: frozenset[str] = frozenset({"setup", "module-purge"})
+
+# The optional modules the Modules tab may switch, and the `setup` option for each. A
+# module is named by the profile the core adds to `COMPOSE_PROFILES`. The mail relay is
+# switched with `SmtpSetup`: its option also carries the server settings.
+MODULE_SETUP_FLAGS: dict[str, str] = {
+    "localai": "--enable-local-ai",
+    "web-search": "--enable-web-search",
+    "rag": "--enable-rag",
+}
+
+# The module whose `setup` asks for a public URL when it is switched on, and the option that
+# takes the answer.
+MODULE_URL_FLAGS: dict[str, str] = {
+    "localai": "--localai-host",
+    "rag": "--qdrant-host",
+}
+
+MAX_URL_LENGTH = 253
+
+# The modules `module-info` and `module-purge` know, by the core's names.
+PURGE_MODULES: frozenset[str] = frozenset({"localai", "web-search", "rag", "mail"})
+
+# LocalAI image variants the manager offers. `vulkan` is left out on purpose: the core
+# decides its device list by looking at /dev while it renders, and from inside this
+# container that says nothing about the host.
+LOCALAI_VARIANTS: tuple[str, ...] = (
+    "cpu",
+    "nvidia-cuda-12",
+    "nvidia-cuda-13",
+    "intel",
+    "hipblas",
+)
 
 SMTP_SECURITY_MODES: tuple[str, ...] = ("starttls", "tls", "none")
 
@@ -323,13 +371,15 @@ class SmtpSetup:
     """What the mail page asks the core's `setup` to do, and nothing else.
 
     `enable=False` switches the relay off and takes no other field: the core keeps
-    the settings and the password for a later opt-in. With `enable=True` the caller
-    names every value it wants stored, so what ends up in the configuration does
-    not depend on what happened to be sticky. `password` is the one field that
-    travels in the environment; `None` keeps the stored one.
+    the settings and the password for a later opt-in. `enable=True` with no value switches
+    it on with the settings the core stored; with values the caller names every one it wants
+    stored, so what ends up in the configuration does not depend on what happened to be
+    sticky. `enable=None` stores the values and leaves the relay as it is (on or off): the
+    settings can be prepared before the relay is switched on. `password` is the one field
+    that travels in the environment; `None` keeps the stored one.
     """
 
-    enable: bool
+    enable: bool | None
     host: str | None = None
     port: int | None = None
     security: str | None = None
@@ -354,7 +404,7 @@ def smtp_setup_flags(spec: SmtpSetup) -> list[str]:
     is the shape the manager promises: coherent combinations, no control characters,
     no password anywhere in the result.
     """
-    flags = [f"--enable-smtp={'true' if spec.enable else 'false'}"]
+    flags = [] if spec.enable is None else [f"--enable-smtp={'true' if spec.enable else 'false'}"]
     given = (
         spec.host,
         spec.port,
@@ -364,10 +414,14 @@ def smtp_setup_flags(spec: SmtpSetup) -> list[str]:
         spec.sender_name,
         spec.password,
     )
-    if not spec.enable:
+    if spec.enable is False:
         if spec.no_auth or any(value is not None for value in given):
             raise ValueError("switching the relay off takes no other setting")
         return flags
+    if not spec.no_auth and all(value is None for value in given):
+        if spec.enable is None:
+            raise ValueError("there is nothing to store")
+        return flags  # switch on with the settings the core stored
     if spec.no_auth and (spec.user or spec.password):
         raise ValueError("a mail server without login takes neither a login nor a password")
     if spec.host is None or spec.security is None or spec.port is None or spec.sender is None:
@@ -410,6 +464,148 @@ async def run_smtp_setup(
         extra_flags=smtp_setup_flags(spec),
         limit=limit,
         env_extra={SMTP_PASSWORD_ENV: spec.password or ""},
+    )
+
+
+@dataclass(frozen=True)
+class ModuleSetup:
+    """What the Modules tab asks the core's `setup` to do for one optional module.
+
+    `module` is a key of `MODULE_SETUP_FLAGS`. `variant` is the LocalAI image variant and
+    only makes sense when LocalAI is switched on; it is always named then, so what is stored
+    does not depend on what happened to be sticky.
+    """
+
+    module: str
+    enable: bool
+    variant: str | None = None
+    # The answer to the question `setup` asks for the module's public URL; only for the
+    # modules in `MODULE_URL_FLAGS`, and only when the module is switched on. `None` leaves the
+    # stored value (or the one `setup` derives from the stack's host).
+    public_url: str | None = None
+
+
+def public_url(value: str) -> str:
+    """The URL as `setup` may be given it, or ValueError saying what is wrong.
+
+    http or https, a host, no login, query or fragment, nothing the `.env` file would read as
+    something else. `setup` takes the value as it is, so the check is here."""
+    text = value.strip()
+    if not text or len(text) > MAX_URL_LENGTH:
+        raise ValueError(f"the URL must have 1-{MAX_URL_LENGTH} characters")
+    if any(ord(ch) < 33 or ord(ch) == 127 or ch in "#$\"'\\`" for ch in text):
+        raise ValueError(
+            "the URL may not contain spaces, control characters or any of # $ \" ' \\ `"
+        )
+    try:
+        parts = urlsplit(text)
+        host = parts.hostname
+        parts.port  # noqa: B018 - raises ValueError for a port that is not a number
+    except ValueError as exc:
+        raise ValueError("this is not a valid URL (expected https://host:port)") from exc
+    if parts.scheme not in ("http", "https") or not host:
+        raise ValueError("the URL must start with http:// or https:// and name a host")
+    if parts.username is not None or parts.password is not None or parts.query or parts.fragment:
+        raise ValueError("the URL may not contain a login, a query or a fragment")
+    return text.rstrip("/") if parts.path in ("", "/") else text
+
+
+def module_setup_flags(spec: ModuleSetup) -> list[str]:
+    """The `setup` options for `spec`. Raises ValueError for a spec that is not coherent."""
+    flag = MODULE_SETUP_FLAGS.get(spec.module)
+    if flag is None:
+        raise ValueError(f"module {spec.module!r} cannot be switched from here")
+    flags = [f"{flag}={'true' if spec.enable else 'false'}"]
+    if spec.public_url is not None:
+        url_flag = MODULE_URL_FLAGS.get(spec.module)
+        if url_flag is None:
+            raise ValueError(f"{spec.module} takes no public URL")
+        if not spec.enable:
+            raise ValueError("switching a module off takes no public URL")
+        flags.append(f"{url_flag}={public_url(spec.public_url)}")
+    if spec.module != "localai":
+        if spec.variant is not None:
+            raise ValueError("only LocalAI takes an image variant")
+        return flags
+    if not spec.enable:
+        if spec.variant is not None:
+            raise ValueError("switching LocalAI off takes no variant")
+        return flags
+    if spec.variant not in LOCALAI_VARIANTS:
+        raise ValueError(f"variant must be one of {', '.join(LOCALAI_VARIANTS)}")
+    flags.append(f"--localai-variant={spec.variant}")
+    return flags
+
+
+async def run_module_setup(
+    spec: ModuleSetup,
+    *,
+    workspace_dir: str,
+    config_dir: str,
+    limit: float | None = SETUP_TIMEOUT_SECONDS,
+) -> tuple[int, str, str]:
+    """Run the core's `setup` for one optional module's options only.
+
+    Exit 3 with `ERROR: ...` on stderr is the core refusing a value; nothing is written then.
+    """
+    if "setup" not in ALLOWED_PY_WRITE_COMMANDS:  # pragma: no cover - the set is a constant
+        raise ValueError("setup is not an allowed write command")
+    return await _run_py(
+        command="setup",
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        extra_flags=module_setup_flags(spec),
+        limit=limit,
+    )
+
+
+def _purge_module(name: str) -> str:
+    if name not in PURGE_MODULES:
+        raise ValueError(f"module {name!r} is not one of {', '.join(sorted(PURGE_MODULES))}")
+    return name
+
+
+async def run_module_info(
+    name: str, *, workspace_dir: str, config_dir: str, limit: float | None = SETUP_TIMEOUT_SECONDS
+) -> tuple[int, str, str]:
+    """Ask the core what switching `name` off could delete (JSON on stdout, nothing written)."""
+    return await run_py_cli(
+        command="module-info",
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        extra_flags=[f"--module={_purge_module(name)}"],
+        limit=limit,
+    )
+
+
+async def run_module_purge(
+    name: str,
+    *,
+    data: bool,
+    config: bool,
+    workspace_dir: str,
+    config_dir: str,
+    limit: float | None = SETUP_TIMEOUT_SECONDS,
+) -> tuple[int, str, str]:
+    """Delete the module's data and/or reset its settings. At least one of the two.
+
+    Exit 3 with `ERROR: ...` on stderr is the core refusing (the module is still on, or its
+    settings were asked for without its data); nothing is deleted then."""
+    if "module-purge" not in ALLOWED_PY_WRITE_COMMANDS:  # pragma: no cover - the set is a constant
+        raise ValueError("module-purge is not an allowed write command")
+    if not (data or config):
+        raise ValueError("name what to delete: the data, the settings or both")
+    flags = [f"--module={_purge_module(name)}"]
+    if data:
+        flags.append("--data")
+    if config:
+        flags.append("--config")
+    return await _run_py(
+        command="module-purge",
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        extra_flags=flags,
+        limit=limit,
     )
 
 

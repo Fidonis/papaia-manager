@@ -1,0 +1,11 @@
+{# The pages of Settings. Manager is what the menu entry opens (the manager's own branding and
+   monitoring); Modules and Overlay are the configuration of the stack it runs. Same bar as the
+   Mail and Users sections: the tabs do not wrap, because a label that broke into two lines
+   overflowed the fixed height of a tab on a narrow screen. #}
+{% macro tabs(active) %}
+<nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="Settings">
+  <a href="/settings" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'manager' else '' }}">Manager</a>
+  <a href="/settings/modules" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'modules' else '' }}">Modules</a>
+  <a href="/settings/overlay" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'overlay' else '' }}">Overlay</a>
+</nav>
+{% endmacro %}

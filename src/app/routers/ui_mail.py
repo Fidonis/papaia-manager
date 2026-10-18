@@ -37,7 +37,7 @@ router = APIRouter()
 # button, the outcome clears itself.
 _OUTCOME_GRACE = timedelta(minutes=5)
 
-_MAIL_ACTIONS = (mail_service.APPLY_ACTION, mail_service.DISABLE_ACTION)
+_MAIL_ACTIONS = (mail_service.APPLY_ACTION,)
 
 
 def _queue() -> JobQueue | None:

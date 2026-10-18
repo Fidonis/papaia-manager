@@ -44,6 +44,15 @@
         </p>
       </div>
 
+      {% if not mail.enabled %}
+      <div class="rounded-lg border border-base-300 bg-base-200 px-4 py-3 text-sm" role="note">
+        The relay is <strong>off</strong>. Saving stores these settings and changes nothing in
+        the running stack. Switch the relay on in
+        <a href="/settings/modules" class="link link-secondary">Settings › Modules</a>
+        {% if mail.configured %}when you are ready{% else %}once they are saved{% endif %}.
+      </div>
+      {% endif %}
+
       <form id="mail-form" class="space-y-4" onsubmit="saveMail(event)" novalidate>
         <div class="grid gap-4 sm:grid-cols-[1fr_9rem_7rem]">
           <div class="form-control w-full">
@@ -119,17 +128,11 @@
 
         <div class="flex flex-wrap gap-2">
           <button id="mail-save" type="submit" class="btn btn-primary btn-sm">
-            {% if mail.enabled %}Save and apply{% else %}Switch on and apply{% endif %}
+            {% if mail.enabled %}Save and apply{% else %}Save settings{% endif %}
           </button>
           <button id="mail-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeMail()">
-            Test connection
+            Test Connection
           </button>
-          {% if mail.enabled %}
-          <button type="button" class="btn btn-ghost btn-sm text-error ml-auto"
-                  onclick="document.getElementById('mail-off-dialog').showModal()">
-            Switch off
-          </button>
-          {% endif %}
         </div>
       </form>
     </div>
@@ -138,7 +141,7 @@
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-4">
       <div>
-        <h2 class="font-brand text-lg font-bold">Test mail</h2>
+        <h2 class="font-brand text-lg font-bold">Test Mail</h2>
         <p class="text-sm opacity-60">
           Sends one message through the relay. “Sent” means the relay took it; it is
           delivered, or retried for a day, from there.
@@ -153,11 +156,14 @@
         </div>
         <button id="mail-test-send" type="submit" class="btn btn-sm"
                 {% if not (mail.enabled and mail.configured) %}disabled{% endif %}>
-          Send test mail
+          Send Test Mail
         </button>
       </form>
       {% if not (mail.enabled and mail.configured) %}
-      <p class="text-xs opacity-60">Switch the relay on to send a test mail.</p>
+      <p class="text-xs opacity-60">
+        Switch the relay on in <a href="/settings/modules" class="link link-secondary">Settings › Modules</a>
+        {% if not mail.configured %}(after saving the mail server above) {% endif %}to send a test mail.
+      </p>
       {% endif %}
       <p id="mail-test-result" class="hidden text-sm" role="status" aria-live="polite"></p>
     </div>
@@ -165,7 +171,7 @@
 
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-2">
-      <h2 class="font-brand text-lg font-bold">Good to know</h2>
+      <h2 class="font-brand text-lg font-bold">Good To Know</h2>
       <ul class="list-disc space-y-1 pl-5 text-sm opacity-70">
         <li>The relay accepts and queues mail. If the mail server is down, messages wait and
             are retried for a day; the status above shows how many are waiting.</li>
@@ -173,29 +179,12 @@
             only used for the same server, port and login it was stored with.</li>
         <li>Any container on a network the relay is attached to can send mail from the sender
             domain without a login.</li>
-        <li>There is one sender domain. Switching the relay off keeps these settings.</li>
+        <li>There is one sender domain. The relay is switched on and off in
+            Settings › Modules, which also offers to delete these settings with it.</li>
       </ul>
     </div>
   </section>
 </div>
-
-{% if mail.enabled %}
-<dialog id="mail-off-dialog" class="modal">
-  <div class="modal-box">
-    <h3 class="font-brand text-lg font-bold">Switch the mail relay off?</h3>
-    <p class="mt-2 text-sm opacity-70">
-      The relay is stopped and leaves the stack, and Keycloak loses the mail server it set,
-      so password mails and “email a link” stop working. The settings and the password are
-      kept, and so are messages that are still waiting in its queue.
-    </p>
-    <div class="modal-action">
-      <form method="dialog"><button class="btn btn-ghost btn-sm">Cancel</button></form>
-      <button class="btn btn-error btn-sm" onclick="disableMail()">Switch off</button>
-    </div>
-  </div>
-  <form method="dialog" class="modal-backdrop"><button aria-label="Close">close</button></form>
-</dialog>
-{% endif %}
 
 {% include "partials/_rag_js.html" %}
 <script>
@@ -266,7 +255,7 @@
     }
     // The password has done its job; it does not stay in the field while the job runs.
     mailEl("mail-password").value = "";
-    showToast("info", "Applying the mail settings …");
+    showToast("info", MAIL.enabled ? "Applying the mail settings …" : "Saving the mail settings …");
     htmx.ajax("GET", "/partials/mail/job-status", { target: "#mail-job-status", swap: "outerHTML" });
     followMailJob(reply.data.job_id);
   }
@@ -276,9 +265,8 @@
   function followMailJob(jobId) {
     mailFollowing = true;
     _pollJob(jobId, (job) => {
-      const off = job.action === "mail-disable";
-      if (job.status === "succeeded") showToast("success", off ? "The mail relay is off" : "Mail settings applied");
-      else showToast("error", (off ? "Switching the mail relay off" : "Applying the mail settings") + " failed. The log is above.");
+      if (job.status === "succeeded") showToast("success", MAIL.enabled ? "Mail settings applied" : "Mail settings saved");
+      else showToast("error", "Applying the mail settings failed. The log is above.");
       setTimeout(() => window.location.reload(), 900);
     });
   }
@@ -315,18 +303,6 @@
     }
     if (reply.data.ok) showResult("mail-test-result", true, "The relay accepted the message. It may take a moment to arrive; the status above shows it while it waits.");
     else showResult("mail-test-result", false, reply.data.reason);
-  }
-
-  async function disableMail() {
-    mailEl("mail-off-dialog").close();
-    const reply = await _ragRequest("POST", "/api/v1/mail/disable", { revision: mailRevision });
-    if (!reply.ok) {
-      if (!reply.handled) showToast("error", _ragEscape(reply.error));
-      return;
-    }
-    showToast("info", "Switching the mail relay off …");
-    htmx.ajax("GET", "/partials/mail/job-status", { target: "#mail-job-status", swap: "outerHTML" });
-    followMailJob(reply.data.job_id);
   }
 
   // A job started in another tab, or before this page was opened, changes what the form

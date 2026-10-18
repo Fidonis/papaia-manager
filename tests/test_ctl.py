@@ -17,13 +17,19 @@ from app.core.ctl import (
     ALLOWED_PY_WRITE_COMMANDS,
     ALLOWED_VERBS,
     MAX_SELECTORS,
+    MODULE_URL_FLAGS,
+    PURGE_MODULES,
     SMTP_PASSWORD_ENV,
     TIMEOUT_EXIT_CODE,
     CtlError,
+    ModuleSetup,
     SmtpSetup,
+    module_setup_flags,
     profiles_flag,
     run_addon_verb,
     run_core_verb,
+    run_module_info,
+    run_module_purge,
     run_py_cli,
     run_smtp_setup,
     selection_flag,
@@ -118,12 +124,17 @@ def test_the_py_commands_are_exactly_the_read_only_ones() -> None:
     # Every one of these resolves, lists, evaluates or measures. None writes.
     # Adding a command that does would put a write path behind a read-shaped
     # helper. `doctor` is here for the host page: the core documents it as
-    # changing nothing, and the caller skips every check but two.
+    # changing nothing, and the caller skips every check but two. `render-preview`
+    # is here for the overlay editor: it merges a draft in memory, prints it and
+    # writes nothing. `module-info` is here for the Modules tab: it lists what a module
+    # owns, as JSON, and writes nothing.
     assert set(ALLOWED_PY_COMMANDS) == {
         "upgrade-resolve",
         "upgrade-plan",
         "addon-check",
         "doctor",
+        "render-preview",
+        "module-info",
     }
 
 
@@ -204,11 +215,13 @@ async def test_a_py_command_without_a_limit_is_not_bounded(
     assert result == (0, "out", "err")
 
 
-def test_the_one_write_command_is_setup_and_it_is_kept_apart() -> None:
-    # `setup` writes the configuration. It is reachable only through `run_smtp_setup`,
-    # which passes the mail relay's options and nothing else, and it shares nothing with
-    # the read-only commands, so adding to either set is a decision of its own.
-    assert set(ALLOWED_PY_WRITE_COMMANDS) == {"setup"}
+def test_the_write_commands_are_setup_and_module_purge_and_kept_apart() -> None:
+    # `setup` writes the configuration. It is reachable only through `run_smtp_setup` and
+    # `run_module_setup`, which pass the options of the mail relay or of one module and
+    # nothing else. `module-purge` deletes a switched-off module's volumes and settings and
+    # is reachable only through `run_module_purge`. Both share nothing with the read-only
+    # commands, so adding to either set is a decision of its own.
+    assert set(ALLOWED_PY_WRITE_COMMANDS) == {"setup", "module-purge"}
     assert not (set(ALLOWED_PY_WRITE_COMMANDS) & set(ALLOWED_PY_COMMANDS))
     assert not (set(ALLOWED_PY_WRITE_COMMANDS) & set(ALLOWED_CORE_VERBS))
     assert not (set(ALLOWED_PY_WRITE_COMMANDS) & set(ALLOWED_VERBS))
@@ -217,6 +230,11 @@ def test_the_one_write_command_is_setup_and_it_is_kept_apart() -> None:
 async def test_setup_is_not_reachable_through_the_read_only_runner() -> None:
     with pytest.raises(ValueError, match="not in the allowed set"):
         await run_py_cli(command="setup", workspace_dir="/w", config_dir="/c")
+
+
+async def test_module_purge_is_not_reachable_through_the_read_only_runner() -> None:
+    with pytest.raises(ValueError, match="not in the allowed set"):
+        await run_py_cli(command="module-purge", workspace_dir="/w", config_dir="/c")
 
 
 def test_the_py_commands_share_nothing_with_the_verb_allowlists() -> None:
@@ -406,6 +424,24 @@ def test_no_login_is_a_flag_of_its_own_and_drops_the_user() -> None:
     assert not any(flag.startswith("--smtp-user") for flag in flags)
 
 
+def test_switching_on_without_values_uses_what_the_core_stored() -> None:
+    # The Modules tab switches the relay on; the server was set up on the Mail page.
+    assert smtp_setup_flags(SmtpSetup(enable=True)) == ["--enable-smtp=true"]
+
+
+def test_settings_without_a_switch_leave_the_relay_as_it_is() -> None:
+    # Saved with the relay off: the values are stored, the profile is not touched.
+    spec = SmtpSetup(**{**_FULL.__dict__, "enable": None})
+    flags = smtp_setup_flags(spec)
+    assert not any(flag.startswith("--enable-smtp") for flag in flags)
+    assert "--smtp-host=smtp.example.org" in flags
+
+
+def test_neither_a_switch_nor_a_value_is_a_request_for_nothing() -> None:
+    with pytest.raises(ValueError, match="nothing to store"):
+        smtp_setup_flags(SmtpSetup(enable=None))
+
+
 def test_switching_off_takes_nothing_else() -> None:
     assert smtp_setup_flags(SmtpSetup(enable=False)) == ["--enable-smtp=false"]
     with pytest.raises(ValueError, match="takes no other setting"):
@@ -499,3 +535,150 @@ async def test_a_request_without_a_password_keeps_the_stored_one_and_ignores_the
 
 def test_the_password_is_not_in_the_repr_of_the_request() -> None:
     assert "s3cret" not in repr(_FULL)
+
+
+# ---------------------------------------------------------------------------
+# Module info and purge
+# ---------------------------------------------------------------------------
+
+
+def _spawn_recorder(monkeypatch: pytest.MonkeyPatch, seen: dict[str, Any]) -> None:
+    class _Done:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"{}", b""
+
+    async def spawn(*argv: str, **kwargs: Any) -> _Done:
+        seen["argv"] = list(argv)
+        seen["env"] = kwargs["env"]
+        return _Done()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+
+
+def test_the_purge_modules_are_the_four_optional_ones() -> None:
+    assert {"localai", "web-search", "rag", "mail"} == PURGE_MODULES
+
+
+async def test_module_info_asks_the_core_for_one_named_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+    _spawn_recorder(monkeypatch, seen)
+
+    code, out, _ = await run_module_info("rag", workspace_dir="/w", config_dir="/c")
+
+    assert (code, out) == (0, "{}")
+    argv = seen["argv"]
+    assert argv[argv.index("module-info") :] == ["module-info", "--module=rag"]
+
+
+@pytest.mark.parametrize("name", ["manager", "keycloak", "../rag", "rag,mail", "", "RAG"])
+async def test_module_info_and_purge_refuse_any_other_name(name: str) -> None:
+    with pytest.raises(ValueError, match="is not one of"):
+        await run_module_info(name, workspace_dir="/w", config_dir="/c")
+    with pytest.raises(ValueError, match="is not one of"):
+        await run_module_purge(name, data=True, config=False, workspace_dir="/w", config_dir="/c")
+
+
+@pytest.mark.parametrize(
+    ("data", "config", "flags"),
+    [
+        (True, False, ["--data"]),
+        (True, True, ["--data", "--config"]),
+        (False, True, ["--config"]),
+    ],
+)
+async def test_module_purge_passes_the_module_and_the_two_switches_and_nothing_else(
+    monkeypatch: pytest.MonkeyPatch, data: bool, config: bool, flags: list[str]
+) -> None:
+    seen: dict[str, Any] = {}
+    _spawn_recorder(monkeypatch, seen)
+
+    await run_module_purge("mail", data=data, config=config, workspace_dir="/w", config_dir="/c")
+
+    argv = seen["argv"]
+    assert argv[argv.index("module-purge") :] == ["module-purge", "--module=mail", *flags]
+
+
+async def test_module_purge_deleting_nothing_is_refused_before_anything_forks() -> None:
+    with pytest.raises(ValueError, match="name what to delete"):
+        await run_module_purge(
+            "rag", data=False, config=False, workspace_dir="/w", config_dir="/c"
+        )
+
+
+# ---------------------------------------------------------------------------
+# The answers to what `setup` asks when a module is switched on
+# ---------------------------------------------------------------------------
+
+
+def test_only_localai_and_the_rag_system_take_a_public_url() -> None:
+    assert MODULE_URL_FLAGS == {"localai": "--localai-host", "rag": "--qdrant-host"}
+
+
+def test_the_rag_url_is_glued_to_the_option_the_core_names() -> None:
+    flags = module_setup_flags(ModuleSetup("rag", True, public_url="https://q.example.org:6333"))
+    assert flags == ["--enable-rag=true", "--qdrant-host=https://q.example.org:6333"]
+
+
+def test_the_localai_url_comes_with_the_variant() -> None:
+    spec = ModuleSetup("localai", True, "cpu", public_url="https://ai.example.org")
+    assert module_setup_flags(spec) == [
+        "--enable-local-ai=true",
+        "--localai-host=https://ai.example.org",
+        "--localai-variant=cpu",
+    ]
+
+
+@pytest.mark.parametrize("module", ["web-search", "mail"])
+def test_a_module_that_setup_asks_no_url_for_takes_none(module: str) -> None:
+    with pytest.raises(ValueError, match="takes no public URL|cannot be switched"):
+        module_setup_flags(ModuleSetup(module, True, public_url="https://x.example.org"))
+
+
+def test_switching_off_takes_no_url() -> None:
+    with pytest.raises(ValueError, match="switching a module off takes no public URL"):
+        module_setup_flags(ModuleSetup("rag", False, public_url="https://x.example.org"))
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "   ",
+        "qdrant.example.org",
+        "ftp://qdrant.example.org",
+        "https://",
+        "https://user:pw@qdrant.example.org",
+        "https://qdrant.example.org?x=1",
+        "https://qdrant.example.org#top",
+        "https://qdrant.example.org:notaport",
+        "https://qdrant example.org",
+        "https://qdrant.example.org\n--force",
+        "https://q.example.org/$HOME",
+        'https://q.example.org/"',
+        "https://" + "a" * 260 + ".org",
+    ],
+)
+def test_a_url_setup_should_not_be_given_is_refused_before_anything_forks(value: str) -> None:
+    with pytest.raises(ValueError):  # noqa: PT011
+        module_setup_flags(ModuleSetup("rag", True, public_url=value))
+
+
+@pytest.mark.parametrize(
+    ("given", "stored"),
+    [
+        ("https://q.example.org:6333", "https://q.example.org:6333"),
+        ("  http://localhost:6333/  ", "http://localhost:6333"),
+        ("https://q.example.org/qdrant", "https://q.example.org/qdrant"),
+        ("https://[::1]:6333", "https://[::1]:6333"),
+    ],
+)
+def test_a_good_url_is_kept_as_typed_but_for_the_surrounding_space_and_a_closing_slash(
+    given: str, stored: str
+) -> None:
+    from app.core.ctl import public_url  # noqa: PLC0415
+
+    assert public_url(given) == stored
