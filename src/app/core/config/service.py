@@ -4,8 +4,14 @@ Every change is a queued job, so it is single-flight with everything else the ma
 the stack, streams a log and leaves an audit entry.
 
 * **Module on:** the core's `setup` stores the choice, then `start --profiles=<profile>`
-  brings the module up. **Module off:** the module is stopped and its containers removed while
-  its profile is still active, then `setup` takes the profile out.
+  brings the module up. The RAG system also recreates LibreChat (its configuration lists the
+  RAG system's MCP server and is read once, at start); the mail relay ends with the sync that
+  puts its mail server into Keycloak's realm.
+* **Module off:** the module is stopped and its containers removed while its profile is still
+  active (with `--volumes` when its data is to go), then `setup` takes the profile out, then
+  the core deletes what was asked for (`module-purge`): nothing, the data, or the data and
+  the settings. The RAG system recreates LibreChat again; the mail relay's mail server is
+  taken out of the realm.
 * **Overlay apply, discard and roll back** share one sequence: check that the file is still
   the one the page showed, copy the old bytes into the history, write (or remove) the file,
   then recreate the containers that read the rendered target (`stop --clean-up` and `start`
@@ -26,8 +32,17 @@ from typing import Any
 from app.core import services
 from app.core.audit import write_audit_entry
 from app.core.config import history, modules, overlay
-from app.core.ctl import CtlError, ModuleSetup, run_core_verb, run_module_setup
+from app.core.ctl import (
+    CtlError,
+    ModuleSetup,
+    SmtpSetup,
+    run_core_verb,
+    run_module_purge,
+    run_module_setup,
+    run_smtp_setup,
+)
 from app.core.jobs import JobCallback, JobContext
+from app.core.mail import service as mail_service
 
 ENABLE_ACTION = "config-module-enable"
 DISABLE_ACTION = "config-module-disable"
@@ -64,6 +79,15 @@ class NotHealthyError(Exception):
     """The change was made and the containers were recreated, but they are not all healthy."""
 
 
+class PurgeFailedError(Exception):
+    """The module is off, but the core could not delete what was asked for."""
+
+
+# The core's refusals are whole sentences (the RAG one names the add-on and the commands that
+# remove it); the job strip shows them as they are.
+SENTENCE_LIMIT = 700
+
+
 def refusal(code: int, out: str, err: str) -> str:
     """The sentence to show when `setup` exited with `code`: its `ERROR:` line, else the
     first line it wrote, else the status."""
@@ -71,11 +95,11 @@ def refusal(code: int, out: str, err: str) -> str:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         errors = [line for line in lines if line.startswith("ERROR")]
         if errors:
-            return errors[0].removeprefix("ERROR:").strip()[:300]
+            return errors[0].removeprefix("ERROR:").strip()[:SENTENCE_LIMIT]
     for text in (err, out):
         for line in text.splitlines():
             if line.strip():
-                return line.strip()[:300]
+                return line.strip()[:SENTENCE_LIMIT]
     return f"setup exited with status {code}"
 
 
@@ -84,16 +108,22 @@ def last_problem(lines: list[str]) -> str:
     cleaned = [ln.strip() for ln in lines if ln.strip()]
     errors = [ln for ln in cleaned if "ERROR" in ln]
     pick = errors[-1] if errors else (cleaned[-1] if cleaned else "the step failed")
-    return pick.removeprefix("ERROR:").strip()[:300]
+    return pick.removeprefix("ERROR:").strip()[:SENTENCE_LIMIT]
 
 
 async def _setup(
-    ctx: JobContext, spec: ModuleSetup, *, workspace_dir: str, config_dir: str
+    ctx: JobContext, spec: ModuleSetup | SmtpSetup, *, workspace_dir: str, config_dir: str
 ) -> None:
-    ctx.log(f"[ctl] papaia-ctl setup (options of {spec.module} only)")
-    code, out, err = await run_module_setup(
-        spec, workspace_dir=workspace_dir, config_dir=config_dir
-    )
+    if isinstance(spec, SmtpSetup):
+        ctx.log("[ctl] papaia-ctl setup (options of mail only)")
+        code, out, err = await run_smtp_setup(
+            spec, workspace_dir=workspace_dir, config_dir=config_dir
+        )
+    else:
+        ctx.log(f"[ctl] papaia-ctl setup (options of {spec.module} only)")
+        code, out, err = await run_module_setup(
+            spec, workspace_dir=workspace_dir, config_dir=config_dir
+        )
     for line in (*out.splitlines(), *err.splitlines()):
         if line.strip():
             ctx.log(line.rstrip())
@@ -159,18 +189,74 @@ async def wait_healthy(
 # ---------------------------------------------------------------------------
 
 
+def _setup_spec(
+    module: str, *, enable: bool, variant: str | None = None
+) -> ModuleSetup | SmtpSetup:
+    """The `setup` options that switch `module`. The mail relay's come with its own spec; it is
+    switched on with the settings the core stored."""
+    if module == "mail":
+        return SmtpSetup(enable=enable)
+    return ModuleSetup(module=module, enable=enable, variant=variant)
+
+
+async def _recreate(
+    ctx: JobContext, profiles: tuple[str, ...], *, workspace_dir: str, config_dir: str
+) -> None:
+    """Recreate the containers of `profiles`: render replaces the files they read, and a
+    running container keeps the old one (see the overlay jobs)."""
+    for profile in profiles:
+        flag = f"--profiles={profile}"
+        await _verb(
+            ctx, "stop", "--clean-up", flag, workspace_dir=workspace_dir, config_dir=config_dir
+        )
+        await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+
+
+async def _start(
+    ctx: JobContext, module: str, flag: str, *, workspace_dir: str, config_dir: str
+) -> str | None:
+    """`start` of the module's profile. For the mail relay, the sentence that says Keycloak
+    was not given its mail server (the last step of `start` only warns), else None."""
+    if module != "mail":
+        await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+        return None
+    return await mail_service.run_verb(
+        ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir
+    )
+
+
 def enable_callback(
     *, module: str, variant: str | None, user: str, workspace_dir: str, config_dir: str
 ) -> JobCallback:
     """The job that switches a module on."""
     definition = modules.SWITCHABLE[module]
-    spec = ModuleSetup(module=module, enable=True, variant=variant)
+    spec = _setup_spec(module, enable=True, variant=variant)
     flag = f"--profiles={definition.profile}"
     params: dict[str, Any] = {"module": module, "variant": variant}
 
     async def _callback(ctx: JobContext) -> None:
         await _setup(ctx, spec, workspace_dir=workspace_dir, config_dir=config_dir)
-        await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+        try:
+            realm = await _start(
+                ctx, module, flag, workspace_dir=workspace_dir, config_dir=config_dir
+            )
+            await _recreate(
+                ctx, definition.recreate, workspace_dir=workspace_dir, config_dir=config_dir
+            )
+        except StepFailedError as exc:
+            write_audit_entry(
+                config_dir,
+                user=user,
+                action="config.module.enable",
+                target=f"module:{module}",
+                params=params,
+                job_id=ctx.job.id,
+                result="partial",
+            )
+            raise StepFailedError(
+                f"{exc} {definition.title} is switched on in the configuration but did not "
+                "start. Fix the cause and start it from the Services page, or switch it off here."
+            ) from exc
         problem = await wait_healthy(
             ctx, definition.profile, config_dir=config_dir, workspace_dir=workspace_dir
         )
@@ -181,8 +267,13 @@ def enable_callback(
             target=f"module:{module}",
             params=params,
             job_id=ctx.job.id,
-            result="partial" if problem else "ok",
+            result="partial" if problem or realm else "ok",
         )
+        if realm:
+            raise mail_service.RealmNotUpdatedError(
+                f"The relay is running, but Keycloak was not given its mail server ({realm}). "
+                "Switch it off and on again once that is fixed."
+            )
         if problem:
             raise NotHealthyError(
                 f"{definition.title} is switched on, but {problem[0].lower()}{problem[1:]} "
@@ -193,35 +284,98 @@ def enable_callback(
     return _callback
 
 
-def disable_callback(*, module: str, user: str, workspace_dir: str, config_dir: str) -> JobCallback:
-    """The job that switches a module off: containers removed, volumes kept."""
+def disable_callback(
+    *, module: str, scope: str, user: str, workspace_dir: str, config_dir: str
+) -> JobCallback:
+    """The job that switches a module off: containers removed, then what `scope` says goes.
+
+    `keep` leaves the data and the settings, `data` deletes the module's volumes, `all` the
+    volumes and the settings too."""
     definition = modules.SWITCHABLE[module]
     flag = f"--profiles={definition.profile}"
+    delete_data = scope in (modules.SCOPE_DATA, modules.SCOPE_ALL)
+    delete_config = scope == modules.SCOPE_ALL
+    params: dict[str, Any] = {"module": module, "scope": scope}
 
     async def _callback(ctx: JobContext) -> None:
         # Stopped while the profile is still active: once `setup` has removed it, Compose no
-        # longer knows what to stop.
+        # longer knows what to stop. `--volumes` takes the anonymous volumes of the containers
+        # with them, which only the `down` that removes the containers can do.
         if definition.profile in modules.active(config_dir):
-            await _verb(
-                ctx, "stop", "--clean-up", flag, workspace_dir=workspace_dir, config_dir=config_dir
-            )
+            flags = ["--clean-up", *(["--volumes"] if delete_data else []), flag]
+            await _verb(ctx, "stop", *flags, workspace_dir=workspace_dir, config_dir=config_dir)
         await _setup(
             ctx,
-            ModuleSetup(module=module, enable=False),
+            _setup_spec(module, enable=False),
             workspace_dir=workspace_dir,
             config_dir=config_dir,
         )
+        if module == "mail":
+            await _verb(
+                ctx, "keycloak-role-sync", workspace_dir=workspace_dir, config_dir=config_dir
+            )
+        await _recreate(
+            ctx, definition.recreate, workspace_dir=workspace_dir, config_dir=config_dir
+        )
+        if delete_data:
+            await _purge(
+                ctx,
+                module,
+                data=True,
+                config=delete_config,
+                user=user,
+                params=params,
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+            )
         write_audit_entry(
             config_dir,
             user=user,
             action="config.module.disable",
             target=f"module:{module}",
-            params={"module": module},
+            params=params,
             job_id=ctx.job.id,
         )
         ctx.log("[info] done")
 
     return _callback
+
+
+async def _purge(
+    ctx: JobContext,
+    module: str,
+    *,
+    data: bool,
+    config: bool,
+    user: str,
+    params: dict[str, Any],
+    workspace_dir: str,
+    config_dir: str,
+) -> None:
+    """Delete what the operator asked for, now that the module is off. A failure leaves the
+    module off with whatever was not deleted still there, and says so."""
+    what = "data and settings" if config else "data"
+    ctx.log(f"[ctl] module-purge {module}: deleting its {what}")
+    code, out, err = await run_module_purge(
+        module, data=data, config=config, workspace_dir=workspace_dir, config_dir=config_dir
+    )
+    for line in (*out.splitlines(), *err.splitlines()):
+        if line.strip():
+            ctx.log(line.rstrip())
+    if code != 0:
+        write_audit_entry(
+            config_dir,
+            user=user,
+            action="config.module.disable",
+            target=f"module:{module}",
+            params=params,
+            job_id=ctx.job.id,
+            result="partial",
+        )
+        raise PurgeFailedError(
+            f"{modules.SWITCHABLE[module].title} is off, but its {what} could not be deleted: "
+            f"{refusal(code, out, err)}"
+        )
 
 
 # ---------------------------------------------------------------------------

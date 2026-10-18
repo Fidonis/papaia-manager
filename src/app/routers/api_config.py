@@ -25,11 +25,11 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core import runner
 from app.core.config import history, modules, overlay, preview, service
 from app.core.config.overlay import OverlayError
 from app.core.ctl import LOCALAI_VARIANTS
 from app.core.jobs import JobQueue
+from app.routers.stack_guard import require_idle_stack
 
 router = APIRouter(prefix="/api/v1/config")
 
@@ -37,6 +37,14 @@ router = APIRouter(prefix="/api/v1/config")
 class ModuleBody(BaseModel):
     revision: str
     variant: str | None = None
+
+
+class DisableBody(BaseModel):
+    revision: str
+    # What the switch-off deletes besides the containers: `keep`, `data` or `all`.
+    scope: str = "keep"
+    # The module's name, typed back to confirm a deletion.
+    confirm: str | None = None
 
 
 class DraftBody(BaseModel):
@@ -78,23 +86,6 @@ async def _body[T: BaseModel](request: Request, model: type[T]) -> T:
             f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}" for err in exc.errors()
         )
         raise HTTPException(status_code=422, detail=problems or "The body is not valid.") from exc
-
-
-async def _require_idle_stack() -> None:
-    """Refuse while a restore, an upgrade or a stack action owns the configuration."""
-    for kind, what in (
-        (runner.RESTORE_KIND, "a restore"),
-        (runner.UPGRADE_KIND, "an upgrade"),
-        (runner.STACK_KIND, "a stack action"),
-    ):
-        try:
-            found = await runner.find_runner(kind)
-        except runner.RunnerError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        if found is not None and found.is_running:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail=f"{what} is still running"
-            )
 
 
 def _overlay_error(exc: OverlayError, *, code: int = 422) -> HTTPException:
@@ -163,6 +154,21 @@ def _module_current(settings: Settings, name: str, revision: str) -> bool:
     return modules.SWITCHABLE[name].profile in modules.active(settings.papaia_config_dir)
 
 
+@router.get("/modules/{name}/info")
+async def get_module_info(
+    name: str, user: AdminUser, settings: Annotated[Settings, Depends(get_settings)]
+) -> dict[str, Any]:
+    """What switching the module off could delete: its volumes (and whether they exist) and
+    its settings, as the core reports them. `available` is false for a core that can't say."""
+    if name not in modules.SWITCHABLE:
+        raise HTTPException(status_code=404, detail="This module can't be switched from here.")
+    return await modules.module_info(
+        name,
+        workspace_dir=settings.papaia_workspace_dir,
+        config_dir=settings.papaia_config_dir,
+    )
+
+
 @router.post("/modules/{name}/enable", status_code=status.HTTP_202_ACCEPTED)
 async def enable_module(
     name: str,
@@ -177,9 +183,10 @@ async def enable_module(
         raise HTTPException(status_code=409, detail="This module is already switched on.")
     try:
         variant = modules.validate_enable(name, body.variant)
+        modules.check_enable(name, settings.papaia_config_dir, settings.papaia_workspace_dir)
     except modules.ModuleError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    await _require_idle_stack()
+    await require_idle_stack()
     username = _user_id(user)
     job = await _queue().enqueue(
         action=service.ENABLE_ACTION,
@@ -204,20 +211,29 @@ async def disable_module(
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
-    """Stop a module, remove its containers (volumes stay) and switch it off."""
+    """Stop a module, remove its containers and switch it off. The body says whether its data
+    and its settings are deleted too (`scope`: `keep`, `data`, `all`); a deletion needs the
+    module's name in `confirm`."""
     verify_csrf(request)
-    body = await _body(request, ModuleBody)
+    body = await _body(request, DisableBody)
     if not _module_current(settings, name, body.revision):
         raise HTTPException(status_code=409, detail="This module is not switched on.")
-    await _require_idle_stack()
+    try:
+        scope = modules.validate_scope(
+            name, body.scope, body.confirm, settings.papaia_workspace_dir
+        )
+    except modules.ModuleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await require_idle_stack()
     username = _user_id(user)
     job = await _queue().enqueue(
         action=service.DISABLE_ACTION,
         target=f"module:{name}",
         user=username,
-        params={"module": name},
+        params={"module": name, "scope": scope},
         callback=service.disable_callback(
             module=name,
+            scope=scope,
             user=username,
             workspace_dir=settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
@@ -431,7 +447,7 @@ async def apply_overlay(
     body = await _body(request, ApplyBody)
     _stale(_read(settings, key).revision, body.revision)
     data = await _validated(settings, target, body.content)
-    await _require_idle_stack()
+    await require_idle_stack()
     return await _enqueue_overlay(
         settings, user, key=key, content=data, revision=body.revision, event="apply"
     )
@@ -452,7 +468,7 @@ async def discard_overlay(
     _stale(file.revision, revision)
     if not file.exists:
         raise HTTPException(status_code=409, detail="There is no overlay file to discard.")
-    await _require_idle_stack()
+    await require_idle_stack()
     return await _enqueue_overlay(
         settings, user, key=key, content=None, revision=revision, event="discard"
     )
@@ -510,7 +526,7 @@ async def rollback_overlay(
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail="That version is not valid UTF-8.") from exc
     await _validated(settings, target, text)
-    await _require_idle_stack()
+    await require_idle_stack()
     return await _enqueue_overlay(
         settings,
         user,

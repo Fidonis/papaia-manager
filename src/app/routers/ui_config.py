@@ -48,10 +48,19 @@ def describe(job: Job) -> tuple[str, str, str]:
                 f"{title} is on",
                 f"Switching {title} on failed",
             )
+        scope = job.params.get("scope")
+        also = {
+            modules.SCOPE_DATA: " and deleting its data",
+            modules.SCOPE_ALL: " and deleting its data and settings",
+        }.get(str(scope), "")
+        done = {
+            modules.SCOPE_DATA: ", its data is deleted",
+            modules.SCOPE_ALL: ", its data and settings are deleted",
+        }.get(str(scope), "")
         return (
-            f"Switching {title} off",
-            f"{title} is off",
-            f"Switching {title} off failed",
+            f"Switching {title} off{also}",
+            f"{title} is off{done}",
+            f"Switching {title} off{also} failed",
         )
     label = next((t.label for t in overlay.TARGETS if t.key == name), name)
     if job.action == service.DISCARD_ACTION:

@@ -1,4 +1,4 @@
-"""The jobs that apply a change to the mail relay.
+"""The job that stores the mail server's settings and applies them to the relay.
 
 `setup` and `papaia-ctl` are replaced by recorders, so what is checked is the order of the steps,
 what is passed to each, what a refusal looks like, and that the password reaches nothing but the
@@ -98,7 +98,7 @@ def _data(**changes: Any) -> MailInput:
 
 
 def _current(**changes: Any) -> MailSettings:
-    fields: dict[str, Any] = {"profile_on": False, "has_password": False}
+    fields: dict[str, Any] = {"profile_on": True, "has_password": False}
     fields.update(changes)
     return MailSettings(**fields)
 
@@ -168,7 +168,7 @@ async def test_applying_stores_the_values_then_starts_the_relays_profile_and_aud
     assert [name for name, _ in run.steps] == ["setup", "start"]
     assert run.steps[1][1] == ["--profiles=smtp"]
     (entry,) = _audit(tmp_path)
-    assert entry["action"] == "mail.enable"
+    assert entry["action"] == "mail.update"
     assert entry["target"] == "smtp-relay"
     assert entry["job_id"] == "job-1"
     assert entry["params"] == {
@@ -179,6 +179,44 @@ async def test_applying_stores_the_values_then_starts_the_relays_profile_and_aud
         "from_address": "noreply@example.org",
         "login_change": "set",
     }
+
+
+async def test_settings_saved_with_the_relay_off_are_stored_and_nothing_starts(
+    tmp_path: Path, run: _Run
+) -> None:
+    ctx = _context(tmp_path)
+    await _apply(tmp_path, current=_current(profile_on=False))(ctx)
+
+    # Only `setup` runs, and without the switch: the profile stays as it is. No start, and no
+    # realm sync, because the relay is not there to be started.
+    assert run.steps == [("setup", setup_spec(_data(), relay_on=False))]
+    assert run.steps[0][1].enable is None
+    (entry,) = _audit(tmp_path)
+    assert (entry["action"], entry["result"]) == ("mail.settings", "ok")
+    assert "switched on" in _log(ctx)
+
+
+async def test_a_refusal_with_the_relay_off_stores_nothing_either(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.setup_result = (3, "", "ERROR: --smtp-host is required: no mail server is configured yet.")
+    with pytest.raises(SetupRefusedError, match="--smtp-host is required"):
+        await _apply(tmp_path, current=_current(profile_on=False))(_context(tmp_path))
+    assert _audit(tmp_path) == []
+
+
+async def test_the_password_stays_out_of_the_log_with_the_relay_off_too(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.setup_stdout_leak = f"\nmail server password: {_SECRET}\n"
+    ctx = _context(tmp_path)
+    await _apply(tmp_path, current=_current(profile_on=False))(ctx)
+    assert _SECRET not in _log(ctx)
+
+
+def test_the_relay_is_switched_in_the_modules_tab_so_this_module_has_no_switch_off() -> None:
+    assert not hasattr(mail_service, "disable_callback")
+    assert not hasattr(mail_service, "DISABLE_ACTION")
 
 
 async def test_a_change_to_a_relay_that_is_on_is_audited_as_an_update(
@@ -299,7 +337,7 @@ async def test_a_sync_that_was_skipped_is_recorded_as_a_partial_change(
     with pytest.raises(RealmNotUpdatedError):
         await _apply(tmp_path)(_context(tmp_path))
     (entry,) = _audit(tmp_path)
-    assert (entry["action"], entry["result"]) == ("mail.enable", "partial")
+    assert (entry["action"], entry["result"]) == ("mail.update", "partial")
     assert entry["params"]["realm"] == "not updated"
     assert entry["params"]["host"] == "smtp.example.org"
 
@@ -314,32 +352,3 @@ async def test_a_deployment_that_is_not_using_the_bundled_keycloak_is_not_a_fail
     await _apply(tmp_path)(_context(tmp_path))
     (entry,) = _audit(tmp_path)
     assert entry["result"] == "ok"
-
-
-# -- switching off -------------------------------------------------------------------
-
-
-async def test_switching_off_stops_the_relay_first_then_removes_the_profile_then_syncs_keycloak(
-    tmp_path: Path, run: _Run
-) -> None:
-    callback = mail_service.disable_callback(
-        user="admin", workspace_dir="/w", config_dir=str(tmp_path)
-    )
-    await callback(_context(tmp_path))
-
-    assert [name for name, _ in run.steps] == ["stop", "setup", "keycloak-role-sync"]
-    assert run.steps[0][1] == ["--profiles=smtp"]
-    assert run.steps[1][1] == SmtpSetup(enable=False)
-    assert run.steps[2][1] == []
-    (entry,) = _audit(tmp_path)
-    assert (entry["action"], entry["target"]) == ("mail.disable", "smtp-relay")
-
-
-async def test_a_stop_that_fails_leaves_the_profile_alone(tmp_path: Path, run: _Run) -> None:
-    run.verb_error = CtlError("papaia-ctl exited with code 1", exit_code=1)
-    callback = mail_service.disable_callback(
-        user="admin", workspace_dir="/w", config_dir=str(tmp_path)
-    )
-    with pytest.raises(CtlError):
-        await callback(_context(tmp_path))
-    assert [name for name, _ in run.steps] == ["stop"]

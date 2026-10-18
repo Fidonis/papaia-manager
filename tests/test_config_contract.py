@@ -1,23 +1,25 @@
 """The manager against the core's real code: what it asks of `setup` and `render-preview` is what
 they do.
 
-The Modules tab drives the core's `setup` with the options of one module, and the Overlay tab asks
-its `render-preview` command for the effective result of a draft. These tests load the core's own
-tables, run its real `setup` and its real `render-preview` in a throwaway copy of the checkout, and
-compare. A drift between the two is a switch that stores nothing, a variant the core refuses, a
-list of overlay targets that no longer matches what the render merges, or a preview the page can't
-read.
+The Modules tab drives the core's `setup` with the options of one module, asks `module-info`
+what a module holds and `module-purge` to delete it, and the Overlay tab asks its `render-preview`
+command for the effective result of a draft. These tests load the core's own tables, run its real
+commands in a throwaway copy of the checkout, and compare. A drift between the two is a switch that
+stores nothing, a variant the core refuses, a list of overlay targets that no longer matches what
+the render merges, a preview the page can't read, or a dialog that offers to delete what the core
+would refuse to.
 
 They need the core's checkout and are skipped without it. Point `PAPAIA_SRC` at a checkout of
-`Fidonis/papaia` that has `render-preview` (Fidonis/papaia#238), for example
-`C:\\Projects\\fidonis\\papaia`. Repeat them when either side's option names, targets or the
-document `render-preview` prints change.
+`Fidonis/papaia` that has `render-preview`, `module-info` and `module-purge` (Fidonis/papaia#238),
+for example `C:\\Projects\\fidonis\\papaia`. Repeat them when either side's option names, targets
+or the documents the commands print change.
 """
 
 from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import os
 import shutil
 import subprocess
@@ -33,16 +35,18 @@ import pytest
 _SRC = os.environ.get("PAPAIA_SRC", "")
 
 
-def _core_has_the_preview() -> bool:
+def _core_has_the_commands() -> bool:
     source = Path(_SRC) / "tools" / "lib" / "cli.py"
-    return (
-        bool(_SRC) and source.is_file() and "render-preview" in source.read_text(encoding="utf-8")
-    )
+    if not (_SRC and source.is_file()):
+        return False
+    text = source.read_text(encoding="utf-8")
+    return all(name in text for name in ("render-preview", "module-info", "module-purge"))
 
 
 pytestmark = pytest.mark.skipif(
-    not _core_has_the_preview(),
-    reason="PAPAIA_SRC does not point at a checkout of the core that has render-preview",
+    not _core_has_the_commands(),
+    reason="PAPAIA_SRC does not point at a checkout of the core that has render-preview "
+    "and the module commands",
 )
 
 for _key, _value in {
@@ -61,7 +65,15 @@ for _key, _value in {
 
 from app.core import ctl  # noqa: E402
 from app.core.config import modules, overlay, preview  # noqa: E402
-from app.core.ctl import ModuleSetup, run_module_setup  # noqa: E402
+from app.core.ctl import (  # noqa: E402
+    ModuleSetup,
+    SmtpSetup,
+    run_module_info,
+    run_module_purge,
+    run_module_setup,
+    run_smtp_setup,
+)
+from app.core.mail.settings import load_mail_settings  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -73,6 +85,8 @@ def core() -> Iterator[dict[str, ModuleType]]:
         yield {
             "gpu_detect": importlib.import_module("lib.gpu_detect"),
             "render_core": importlib.import_module("lib.render_core"),
+            "modules": importlib.import_module("lib.modules"),
+            "resolve": importlib.import_module("lib.resolve"),
         }
     finally:
         sys.path.remove(tools)
@@ -126,13 +140,44 @@ def test_the_profiles_of_the_overlay_targets_and_the_modules_exist_in_the_compos
 
 def test_the_flags_the_manager_passes_are_options_the_core_knows() -> None:
     text = (Path(_SRC) / "tools" / "lib" / "cli.py").read_text(encoding="utf-8")
-    for flag in ("--enable-local-ai", "--enable-web-search", "--localai-variant"):
+    for flag in (
+        "--enable-local-ai",
+        "--enable-web-search",
+        "--enable-rag",
+        "--enable-smtp",
+        "--localai-variant",
+        "--module",
+        "--data",
+        "--config",
+    ):
         assert f'"{flag}"' in text, flag
-    for spec in (ModuleSetup("localai", True, "cpu"), ModuleSetup("web-search", False)):
+    specs = (
+        ModuleSetup("localai", True, "cpu"),
+        ModuleSetup("web-search", False),
+        ModuleSetup("rag", True),
+    )
+    for spec in specs:
         for item in ctl.module_setup_flags(spec):
             assert f'"{item.split("=", 1)[0]}"' in text, item
+    for item in ctl.smtp_setup_flags(SmtpSetup(enable=True)):
+        assert f'"{item.split("=", 1)[0]}"' in text, item
     assert '"render-preview"' in text
+    assert '"module-info"' in text and '"module-purge"' in text
     assert preview.COMMAND == "render-preview"
+
+
+def test_the_modules_the_manager_can_delete_are_the_modules_the_core_knows(
+    core: dict[str, ModuleType],
+) -> None:
+    assert set(core["modules"].MODULES) == set(ctl.PURGE_MODULES)
+    for name, definition in modules.SWITCHABLE.items():
+        assert core["modules"].MODULES[name].profile == definition.profile, name
+
+
+def test_the_addons_that_block_the_rag_system_are_the_ones_the_core_names(
+    core: dict[str, ModuleType],
+) -> None:
+    assert set(modules.RAG_CONFLICTING_ADDONS) == set(core["resolve"]._RAG_CONFLICTING_ADDONS)  # noqa: SLF001
 
 
 # -- a real deployment -------------------------------------------------------------------------
@@ -367,3 +412,166 @@ def test_the_preview_is_refused_for_a_target_the_page_does_not_offer(
     )
     assert done.returncode == 2
     assert done.stdout == ""
+
+
+# -- the RAG system ----------------------------------------------------------------------------
+
+
+async def test_switching_the_rag_system_on_and_off_edits_one_profile(
+    deployment: _Deployment,
+) -> None:
+    before = deployment.profiles()
+    code, _, err = await _apply(deployment, ModuleSetup("rag", True))
+    assert code == 0, err
+    assert deployment.profiles() == before | {"rag"}
+    code, _, err = await _apply(deployment, ModuleSetup("rag", False))
+    assert code == 0, err
+    assert deployment.profiles() == before
+
+
+async def test_an_addon_with_the_same_services_is_refused_by_the_core_as_the_page_says(
+    deployment: _Deployment,
+) -> None:
+    (deployment.config / "deployment.yaml").write_text(
+        "addons:\n  - name: qdrant-ingest\n    active: true\n    path: /x\n", encoding="utf-8"
+    )
+    assert modules.conflicting_addons(str(deployment.config)) == ["qdrant-ingest"]
+    code, _, err = await _apply(deployment, ModuleSetup("rag", True))
+    assert code != 0
+    assert "qdrant-ingest" in err
+    assert "rag" not in deployment.profiles()
+
+
+# -- the mail relay ----------------------------------------------------------------------------
+
+_MAIL = SmtpSetup(
+    enable=None,
+    host="smtp.example.org",
+    port=587,
+    security="starttls",
+    user="mailer",
+    sender="noreply@example.org",
+    sender_name="Our Mail",
+    password="a-long-password-value",
+)
+
+
+async def _mail(made: _Deployment, spec: SmtpSetup) -> tuple[int, str, str]:
+    return await run_smtp_setup(
+        spec, workspace_dir=str(made.workspace), config_dir=str(made.config), limit=120
+    )
+
+
+async def test_the_mail_server_is_stored_with_the_relay_off_and_the_profile_stays_off(
+    deployment: _Deployment,
+) -> None:
+    before = deployment.profiles()
+    code, _, err = await _mail(deployment, _MAIL)
+    assert code == 0, err
+    assert deployment.profiles() == before
+    assert "smtp" not in deployment.profiles()
+    assert modules.mail_configured(str(deployment.config)) is True
+    stored = load_mail_settings(str(deployment.config))
+    assert (stored.profile_on, stored.host, stored.from_address, stored.has_password) == (
+        False,
+        "smtp.example.org",
+        "noreply@example.org",
+        True,
+    )
+
+
+async def test_the_relay_is_switched_on_with_the_stored_settings_and_off_keeping_them(
+    deployment: _Deployment,
+) -> None:
+    await _mail(deployment, _MAIL)
+    code, _, err = await _mail(deployment, SmtpSetup(enable=True))
+    assert code == 0, err
+    assert "smtp" in deployment.profiles()
+    code, _, err = await _mail(deployment, SmtpSetup(enable=False))
+    assert code == 0, err
+    assert "smtp" not in deployment.profiles()
+    stored = load_mail_settings(str(deployment.config))
+    assert stored.configured and stored.has_password
+
+
+async def test_the_relay_without_a_mail_server_is_refused_by_the_core_as_the_page_says(
+    deployment: _Deployment,
+) -> None:
+    assert modules.mail_configured(str(deployment.config)) is False
+    code, _, err = await _mail(deployment, SmtpSetup(enable=True))
+    assert code != 0
+    assert "smtp-host" in err
+    assert "smtp" not in deployment.profiles()
+
+
+# -- what a module holds and what deleting it does ----------------------------------------------
+
+
+async def test_the_info_names_the_volumes_the_dialog_lists(deployment: _Deployment) -> None:
+    info = await modules.module_info(
+        "rag", workspace_dir=str(deployment.workspace), config_dir=str(deployment.config)
+    )
+    assert info["available"] is True
+    assert info["module"] == "rag" and info["profile"] == "rag"
+    assert info["settings_need_data"] is True
+    assert info["volumes"], "the RAG system keeps its vectors in a volume"
+    for volume in info["volumes"]:
+        assert volume["name"].endswith("_" + volume["key"])
+        assert volume["exists"] in (True, False, None)
+    assert info["settings"]["dirs"]
+
+
+async def test_every_module_answers_the_info_the_dialog_reads(deployment: _Deployment) -> None:
+    for name in modules.SWITCHABLE:
+        code, out, err = await run_module_info(
+            name, workspace_dir=str(deployment.workspace), config_dir=str(deployment.config)
+        )
+        assert code == 0, (name, err)
+        document = json.loads(out)
+        assert {"module", "profile", "active", "volumes", "settings", "settings_need_data"} <= set(
+            document
+        )
+        assert {"dirs", "root_keys", "files", "regenerates_secrets"} <= set(document["settings"])
+
+
+async def test_a_module_that_is_still_on_is_not_purged(deployment: _Deployment) -> None:
+    await _apply(deployment, ModuleSetup("rag", True))
+    code, _, err = await run_module_purge(
+        "rag",
+        data=True,
+        config=True,
+        workspace_dir=str(deployment.workspace),
+        config_dir=str(deployment.config),
+    )
+    assert code == 3
+    assert "still switched on" in err
+
+
+async def test_the_rag_settings_are_not_deleted_without_the_data(deployment: _Deployment) -> None:
+    code, _, err = await run_module_purge(
+        "rag",
+        data=False,
+        config=True,
+        workspace_dir=str(deployment.workspace),
+        config_dir=str(deployment.config),
+    )
+    assert code == 3
+    assert "together with its data" in err
+
+
+async def test_deleting_the_relays_settings_empties_what_the_page_calls_configured(
+    deployment: _Deployment,
+) -> None:
+    await _mail(deployment, _MAIL)
+    assert modules.mail_configured(str(deployment.config)) is True
+    code, out, err = await run_module_purge(
+        "mail",
+        data=False,
+        config=True,
+        workspace_dir=str(deployment.workspace),
+        config_dir=str(deployment.config),
+    )
+    assert code == 0, err
+    assert "upstream-password" in out
+    assert modules.mail_configured(str(deployment.config)) is False
+    assert load_mail_settings(str(deployment.config)).has_password is False

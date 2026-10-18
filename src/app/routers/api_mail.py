@@ -1,9 +1,12 @@
 """REST API -- the mail relay (core profile `smtp`).
 
 Administrator-only and CSRF-checked like every other mutating route. A change is a queued
-job (the core's `setup`, then `start --profiles=smtp`), so it is single-flight with
-everything else the manager does to the stack and its log can be followed; testing the
-connection and sending a test mail are answered at once.
+job (the core's `setup`, then `start --profiles=smtp` while the relay is on), so it is
+single-flight with everything else the manager does to the stack and its log can be
+followed; testing the connection and sending a test mail are answered at once.
+
+The relay is switched on and off in Settings > Modules, not here: this API stores the mail
+server's settings, whether the relay is on or off, and applies them when it is on.
 
 The password is write-only. It is read from the body by hand, not through a Pydantic
 model: a validation error of a model echoes the offending input, and for a missing field
@@ -23,8 +26,8 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core import runner
 from app.core.audit import write_audit_entry
+from app.core.config.modules import core_manages_modules
 from app.core.jobs import JobQueue
 from app.core.mail import probe as mail_probe
 from app.core.mail import service as mail_service
@@ -45,6 +48,7 @@ from app.core.mail.settings import (
     validate_security,
     validate_user,
 )
+from app.routers.stack_guard import require_idle_stack
 
 router = APIRouter(prefix="/api/v1/mail")
 
@@ -64,10 +68,6 @@ class MailBody(BaseModel):
     from_name: str | None = None
     # Declared so the schema documents it; read from the raw body, see `_body`.
     password: str | None = None
-
-
-class DisableBody(BaseModel):
-    revision: str
 
 
 class ProbeBody(BaseModel):
@@ -125,27 +125,6 @@ def _require_current(current: MailSettings, revision: str) -> None:
         )
 
 
-async def _require_idle_stack() -> None:
-    """Refuse while a restore, an upgrade or a stack action owns the configuration.
-
-    They replace or migrate the directory a change would be written to, and a change
-    made meanwhile would be undone with it. An ordinary job needs no such refusal: the
-    queue runs one at a time."""
-    for kind, what in (
-        (runner.RESTORE_KIND, "a restore"),
-        (runner.UPGRADE_KIND, "an upgrade"),
-        (runner.STACK_KIND, "a stack action"),
-    ):
-        try:
-            found = await runner.find_runner(kind)
-        except runner.RunnerError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        if found is not None and found.is_running:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail=f"{what} is still running"
-            )
-
-
 def _refused(exc: MailError) -> HTTPException:
     return HTTPException(status_code=422, detail=str(exc))
 
@@ -184,12 +163,22 @@ async def put_mail(
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
-    """Switch the relay on, or change it, and apply that. Answers with the job to follow."""
+    """Store the mail server's settings and, when the relay is on, apply them to it. Answers
+    with the job to follow."""
     verify_csrf(request)
     body = await _body(request, MailBody)
     _require_supported(settings)
     current = load_mail_settings(settings.papaia_config_dir)
     _require_current(current, body.revision)
+    if not current.profile_on and not core_manages_modules(settings.papaia_workspace_dir):
+        # An older core would read the values as "switch it on".
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This papAIa core can't store the settings with the relay off (it needs 1.6.0)."
+                " Switch the relay on with papaia-ctl, or upgrade the core."
+            ),
+        )
     try:
         data = validate_input(
             host=body.host,
@@ -203,7 +192,7 @@ async def put_mail(
         )
     except MailError as exc:
         raise _refused(exc) from exc
-    await _require_idle_stack()
+    await require_idle_stack()
 
     username = _user_id(user)
     job = await _queue().enqueue(
@@ -215,37 +204,6 @@ async def put_mail(
             data=data,
             current=current,
             user=username,
-            workspace_dir=settings.papaia_workspace_dir,
-            config_dir=settings.papaia_config_dir,
-        ),
-    )
-    return {"job_id": job.id, "status": "queued"}
-
-
-@router.post("/disable", status_code=status.HTTP_202_ACCEPTED)
-async def disable_mail(
-    request: Request,
-    user: AdminUser,
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> dict[str, str]:
-    """Stop the relay and take it out of the stack's profiles. The settings stay."""
-    verify_csrf(request)
-    body = await _body(request, DisableBody)
-    _require_supported(settings)
-    current = load_mail_settings(settings.papaia_config_dir)
-    _require_current(current, body.revision)
-    if not current.profile_on:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="The mail relay is not switched on."
-        )
-    await _require_idle_stack()
-
-    job = await _queue().enqueue(
-        action=mail_service.DISABLE_ACTION,
-        target=mail_service.TARGET,
-        user=_user_id(user),
-        callback=mail_service.disable_callback(
-            user=_user_id(user),
             workspace_dir=settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
         ),

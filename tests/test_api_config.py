@@ -39,7 +39,7 @@ from itsdangerous import TimestampSigner  # noqa: E402
 import app.main as app_main  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.core import runner  # noqa: E402
-from app.core.config import history, overlay, preview, service  # noqa: E402
+from app.core.config import history, modules, overlay, preview, service  # noqa: E402
 from app.core.jobs import JobQueue  # noqa: E402
 from app.main import create_app  # noqa: E402
 
@@ -63,6 +63,18 @@ services:
     profiles: [librechat]
     labels:
       de.fidonis.module: papaia-librechat
+  searxng:
+    profiles: [librechat-websearch]
+    labels:
+      de.fidonis.module: papaia-searxng
+  qdrant:
+    profiles: [rag]
+    labels:
+      de.fidonis.module: papaia-qdrant
+  smtp-relay:
+    profiles: [smtp]
+    labels:
+      de.fidonis.module: papaia-smtp-relay
 """
 
 
@@ -77,6 +89,7 @@ def workspace(tmp_path: Path) -> Path:
     (root / "src" / "svc" / "docker-compose.yml").write_text(_COMPOSE, encoding="utf-8")
     (root / "tools" / "lib").mkdir(parents=True)
     (root / "tools" / "lib" / "cli.py").write_text("'render-preview'\n", encoding="utf-8")
+    (root / "tools" / "lib" / "modules.py").write_text("", encoding="utf-8")
     return tmp_path / "workspace"
 
 
@@ -173,6 +186,7 @@ def _seed(config_dir: Path, data: bytes = b"a: 1\n", key: str = "librechat") -> 
 
 _READS = [
     f"{_BASE}/modules",
+    f"{_BASE}/modules/localai/info",
     f"{_BASE}/overlay",
     f"{_BASE}/overlay/librechat",
     f"{_BASE}/overlay/librechat/versions",
@@ -183,7 +197,7 @@ _READS = [
 ]
 _WRITES = [
     ("post", f"{_BASE}/modules/localai/enable", {"revision": "x", "variant": "cpu"}),
-    ("post", f"{_BASE}/modules/localai/disable", {"revision": "x"}),
+    ("post", f"{_BASE}/modules/localai/disable", {"revision": "x", "scope": "keep"}),
     ("post", f"{_BASE}/overlay/librechat/check", {"content": ""}),
     ("post", f"{_BASE}/overlay/librechat/preview", {"content": ""}),
     ("put", f"{_BASE}/overlay/librechat", {"content": "", "revision": "x"}),
@@ -301,7 +315,6 @@ def test_switching_web_search_off_queues_a_job(
         ("localai", {"variant": "bogus"}, 422, "Unknown"),
         ("web-search", {"variant": "cpu"}, 422, "Only LocalAI"),
         ("manager", {}, 404, "can't be switched"),
-        ("rag", {}, 404, "can't be switched"),
         ("nope", {}, 404, "can't be switched"),
     ],
 )
@@ -338,6 +351,181 @@ def test_a_module_that_is_already_on_cannot_be_switched_on(
     )
     assert response.status_code == 409
     assert "already" in response.json()["detail"]
+
+
+def _on(config_dir: Path, *profiles: str) -> None:
+    (config_dir / ".env").write_text(
+        "COMPOSE_PROFILES=" + ",".join(["nginx", "librechat", *profiles]) + "\n", encoding="utf-8"
+    )
+
+
+def _mail_server(config_dir: Path) -> None:
+    module_env = config_dir / "infra" / "smtp-relay" / ".env"
+    module_env.parent.mkdir(parents=True)
+    module_env.write_text(
+        "SMTP_RELAY_UPSTREAM_HOST=smtp.example.org\nSMTP_RELAY_FROM_ADDRESS=a@example.org\n",
+        encoding="utf-8",
+    )
+
+
+def test_the_modules_document_marks_what_can_be_deleted(client: TestClient) -> None:
+    rows = {m["name"]: m for m in _admin(client).get(f"{_BASE}/modules").json()["modules"]}
+    for name in ("localai", "web-search", "rag", "mail"):
+        assert rows[name]["switchable"] is True
+        assert rows[name]["can_delete"] is True
+    assert rows["manager"]["switchable"] is False
+    assert rows["mail"]["configured"] is False
+
+
+def test_switching_the_rag_system_on_queues_a_job(client: TestClient, queue: JobQueue) -> None:
+    response = _admin(client).post(
+        f"{_BASE}/modules/rag/enable",
+        json={"revision": _modules_revision(client)},
+        headers=_CSRF_HEADER,
+    )
+    assert response.status_code == 202
+    [job] = queue.list_jobs()
+    assert (job.action, job.target) == (service.ENABLE_ACTION, "module:rag")
+
+
+def test_an_addon_with_the_same_services_refuses_the_rag_system_before_a_job(
+    client: TestClient, queue: JobQueue, config_dir: Path
+) -> None:
+    (config_dir / "deployment.yaml").write_text(
+        "addons:\n  - name: qdrant-ingest\n    active: true\n", encoding="utf-8"
+    )
+    response = _admin(client).post(
+        f"{_BASE}/modules/rag/enable",
+        json={"revision": _modules_revision(client)},
+        headers=_CSRF_HEADER,
+    )
+    assert response.status_code == 422
+    assert "qdrant-ingest" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+def test_the_relay_without_a_mail_server_is_refused_before_a_job(
+    client: TestClient, queue: JobQueue
+) -> None:
+    response = _admin(client).post(
+        f"{_BASE}/modules/mail/enable",
+        json={"revision": _modules_revision(client)},
+        headers=_CSRF_HEADER,
+    )
+    assert response.status_code == 422
+    assert "No mail server" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+def test_the_relay_with_a_mail_server_is_switched_on_by_a_job(
+    client: TestClient, queue: JobQueue, config_dir: Path
+) -> None:
+    _mail_server(config_dir)
+    response = _admin(client).post(
+        f"{_BASE}/modules/mail/enable",
+        json={"revision": _modules_revision(client)},
+        headers=_CSRF_HEADER,
+    )
+    assert response.status_code == 202
+    assert [j.target for j in queue.list_jobs()] == ["module:mail"]
+
+
+def test_a_core_that_cannot_manage_modules_cannot_switch_rag_or_mail(
+    client: TestClient, queue: JobQueue, workspace: Path, config_dir: Path
+) -> None:
+    _mail_server(config_dir)
+    (workspace / "papaia" / "tools" / "lib" / "modules.py").unlink()
+    for name in ("rag", "mail"):
+        response = _admin(client).post(
+            f"{_BASE}/modules/{name}/enable",
+            json={"revision": _modules_revision(client)},
+            headers=_CSRF_HEADER,
+        )
+        assert response.status_code == 422
+        assert "too old" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+# -- modules: what a switch-off may delete -------------------------------------------------
+
+
+def _off(client: TestClient, name: str, **body: Any) -> Any:
+    return _admin(client).post(
+        f"{_BASE}/modules/{name}/disable",
+        json={"revision": _modules_revision(client), **body},
+        headers=_CSRF_HEADER,
+    )
+
+
+def test_switching_off_without_a_scope_keeps_the_data_and_the_settings(
+    client: TestClient, queue: JobQueue, config_dir: Path
+) -> None:
+    _on(config_dir, "rag")
+    assert _off(client, "rag").status_code == 202
+    [job] = queue.list_jobs()
+    assert job.params == {"module": "rag", "scope": "keep"}
+
+
+@pytest.mark.parametrize("scope", ["data", "all"])
+def test_a_deletion_is_confirmed_with_the_modules_name(
+    client: TestClient, queue: JobQueue, config_dir: Path, scope: str
+) -> None:
+    _on(config_dir, "rag")
+    for confirm in (None, "", "mail", "RAG"):
+        body: dict[str, Any] = {"scope": scope}
+        if confirm is not None:
+            body["confirm"] = confirm
+        response = _off(client, "rag", **body)
+        assert response.status_code == 422
+        assert "Type the module name (rag)" in response.json()["detail"]
+    assert queue.list_jobs() == []
+    assert _off(client, "rag", scope=scope, confirm="rag").status_code == 202
+    [job] = queue.list_jobs()
+    assert job.params["scope"] == scope
+
+
+@pytest.mark.parametrize("scope", ["config", "settings", "both", ""])
+def test_there_is_no_settings_only_state(
+    client: TestClient, queue: JobQueue, config_dir: Path, scope: str
+) -> None:
+    _on(config_dir, "rag")
+    response = _off(client, "rag", scope=scope, confirm="rag")
+    assert response.status_code == 422
+    assert queue.list_jobs() == []
+
+
+def test_a_core_that_cannot_delete_refuses_a_deletion_but_not_a_plain_switch_off(
+    client: TestClient, queue: JobQueue, workspace: Path, config_dir: Path
+) -> None:
+    _on(config_dir, "localai")
+    (workspace / "papaia" / "tools" / "lib" / "modules.py").unlink()
+    response = _off(client, "localai", scope="data", confirm="localai")
+    assert response.status_code == 422
+    assert "can't delete" in response.json()["detail"]
+    assert _off(client, "localai").status_code == 202
+
+
+def test_the_info_is_what_the_core_reports(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+
+    async def fake(name: str, **kwargs: Any) -> tuple[int, str, str]:
+        asked.append(name)
+        return 0, '{"module": "rag", "volumes": [], "settings": {"dirs": []}}', ""
+
+    monkeypatch.setattr(modules, "run_module_info", fake)
+    body = _admin(client).get(f"{_BASE}/modules/rag/info").json()
+    assert body["available"] is True
+    assert body["module"] == "rag"
+    assert asked == ["rag"]
+
+
+@pytest.mark.parametrize("name", ["manager", "nope", "keycloak"])
+def test_the_info_of_a_module_that_cannot_be_switched_is_a_404(
+    client: TestClient, name: str
+) -> None:
+    assert _admin(client).get(f"{_BASE}/modules/{name}/info").status_code == 404
 
 
 def test_a_module_that_is_off_cannot_be_switched_off(client: TestClient) -> None:
@@ -762,12 +950,36 @@ def test_settings_has_three_tabs_and_the_menu_has_no_new_entry(client: TestClien
     assert 'aria-label="Configuration"' not in sidebar
 
 
-def test_the_modules_page_has_a_switch_for_two_modules_only(client: TestClient) -> None:
+def test_the_modules_page_has_a_switch_for_the_four_optional_modules(client: TestClient) -> None:
     html = _admin(client).get("/settings/modules").text
-    assert html.count('onchange="moduleToggled(this)"') == 2
+    assert html.count('onchange="moduleToggled(this)"') == 4
     assert "Optional modules" in html
     assert 'data-module="manager"' in html and 'data-module="rag"' in html
-    assert "Open</a>" in html
+    # The manager is shown and locked.
+    assert "disabled>" in html.split('data-module="manager"')[1][:200]
+
+
+def test_the_page_links_the_mail_settings_and_hides_the_rag_link_while_it_is_off(
+    client: TestClient, config_dir: Path
+) -> None:
+    html = _admin(client).get("/settings/modules").text
+    assert "Set it up first" in html  # no mail server yet
+    assert ">Open the RAG pages</a>" not in html
+    _mail_server(config_dir)
+    _on(config_dir, "rag")
+    html = _admin(client).get("/settings/modules").text
+    assert "Set it up first" not in html
+    assert ">Mail server settings</a>" in html
+    assert ">Open the RAG pages</a>" in html
+
+
+def test_the_dialog_offers_the_three_states_and_asks_for_the_name(client: TestClient) -> None:
+    html = _admin(client).get("/settings/modules").text
+    assert 'id="module-off-dialog"' in html
+    assert "Keep data and settings" in html
+    assert "Delete the data, keep the settings" in html
+    assert "Delete the data and the settings" in html
+    assert "to confirm the deletion" in html
 
 
 def test_the_overlay_page_carries_no_overlay_content(client: TestClient, config_dir: Path) -> None:

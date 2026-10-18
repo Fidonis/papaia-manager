@@ -19,8 +19,9 @@ from app.core import services
 from app.core.audit import audit_path
 from app.core.config import history, overlay
 from app.core.config import service as svc
-from app.core.ctl import CtlError, ModuleSetup
+from app.core.ctl import CtlError, ModuleSetup, SmtpSetup
 from app.core.jobs import Job, JobContext
+from app.core.mail import service as mail_service
 from app.core.services import ServiceGroup, ServiceHealth, StackSnapshot
 
 SECRET = "sk-very-secret-api-key"
@@ -34,13 +35,18 @@ class _Run:
     def __init__(self) -> None:
         self.steps: list[tuple[str, Any]] = []
         self.setup_result: tuple[int, str, str] = (0, "Setup complete.", "")
+        self.purge_result: tuple[int, str, str] = (0, "removed volume papaia_x", "")
         # verb name -> how many of its first calls fail
         self.fail: dict[str, int] = {}
         self.lines: dict[str, list[str]] = {}
 
-    async def setup(self, spec: ModuleSetup, **kwargs: Any) -> tuple[int, str, str]:
+    async def setup(self, spec: ModuleSetup | SmtpSetup, **kwargs: Any) -> tuple[int, str, str]:
         self.steps.append(("setup", spec))
         return self.setup_result
+
+    async def purge(self, name: str, **kwargs: Any) -> tuple[int, str, str]:
+        self.steps.append(("purge", (name, kwargs["data"], kwargs["config"])))
+        return self.purge_result
 
     async def verb(self, **kwargs: Any) -> AsyncGenerator[str, None]:
         verb = kwargs["verb"]
@@ -66,7 +72,10 @@ class _Run:
 def run(monkeypatch: pytest.MonkeyPatch) -> _Run:
     recorder = _Run()
     monkeypatch.setattr(svc, "run_module_setup", recorder.setup)
+    monkeypatch.setattr(svc, "run_smtp_setup", recorder.setup)
+    monkeypatch.setattr(svc, "run_module_purge", recorder.purge)
     monkeypatch.setattr(svc, "run_core_verb", recorder.verb)
+    monkeypatch.setattr(mail_service, "run_core_verb", recorder.verb)
     return recorder
 
 
@@ -81,7 +90,7 @@ def health(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         return StackSnapshot(
             groups=[
                 ServiceGroup(name=name, modules=(name,), containers=1, health=state["health"])
-                for name in ("librechat", "localai", "librechat-websearch")
+                for name in ("librechat", "localai", "librechat-websearch", "rag", "smtp")
             ]
         )
 
@@ -207,29 +216,31 @@ def test_a_module_that_does_not_become_healthy_is_said_so_and_recorded_as_partia
     assert [e["result"] for e in _audit(config)] == ["partial"]
 
 
+def _off(
+    config: str, module: str = "localai", scope: str = "keep", user: str = "admin"
+) -> Any:
+    return svc.disable_callback(
+        module=module, scope=scope, user=user, workspace_dir="/w", config_dir=config
+    )
+
+
 def test_switching_a_module_off_stops_it_while_its_profile_is_still_active(
     tmp_path: Path, run: _Run
 ) -> None:
     config = _config(tmp_path, "nginx,localai")
-    _go(
-        svc.disable_callback(module="localai", user="admin", workspace_dir="/w", config_dir=config),
-        _context(tmp_path),
-    )
+    _go(_off(config), _context(tmp_path))
     assert run.steps == [
         ("stop", ["--clean-up", "--profiles=localai"]),
         ("setup", ModuleSetup("localai", False)),
     ]
-    assert [e["action"] for e in _audit(config)] == ["config.module.disable"]
+    [entry] = _audit(config)
+    assert entry["action"] == "config.module.disable"
+    assert entry["params"] == {"module": "localai", "scope": "keep"}
 
 
 def test_switching_off_a_module_that_is_not_active_stops_nothing(tmp_path: Path, run: _Run) -> None:
     config = _config(tmp_path, "nginx")
-    _go(
-        svc.disable_callback(
-            module="web-search", user="admin", workspace_dir="/w", config_dir=config
-        ),
-        _context(tmp_path),
-    )
+    _go(_off(config, "web-search"), _context(tmp_path))
     assert run.names() == ["setup"]
 
 
@@ -238,13 +249,198 @@ def test_a_step_that_fails_names_what_it_complained_about(tmp_path: Path, run: _
     run.lines["stop"] = ["noise", "ERROR: no such container", "more noise"]
     config = _config(tmp_path, "nginx,localai")
     with pytest.raises(svc.StepFailedError, match="no such container"):
+        _go(_off(config), _context(tmp_path))
+    assert run.names() == ["stop"]
+
+
+def test_the_cores_whole_refusal_is_shown_not_cut_at_a_sentence_and_a_half() -> None:
+    sentence = "The rag profile cannot run next to the add-on(s) qdrant. " * 8
+    assert len(sentence) > 300
+    assert svc.refusal(3, "", f"ERROR: {sentence}") == sentence.strip()
+
+
+# -- modules: off, with the data and the settings that go --------------------------------------
+
+
+def test_deleting_the_data_removes_the_volumes_with_the_containers_and_then_by_name(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="data"), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--volumes", "--profiles=localai"]),
+        ("setup", ModuleSetup("localai", False)),
+        ("purge", ("localai", True, False)),
+    ]
+    [entry] = _audit(config)
+    assert entry["params"]["scope"] == "data"
+    assert entry["result"] == "ok"
+
+
+def test_deleting_the_data_and_the_settings_asks_the_core_for_both(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="all"), _context(tmp_path))
+    assert run.steps[-1] == ("purge", ("localai", True, True))
+    assert run.steps[0] == ("stop", ["--clean-up", "--volumes", "--profiles=localai"])
+
+
+def test_keeping_everything_deletes_nothing(tmp_path: Path, run: _Run) -> None:
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="keep"), _context(tmp_path))
+    assert "purge" not in run.names()
+    assert not any("--volumes" in flags for name, flags in run.steps if name == "stop")
+
+
+def test_the_purge_runs_after_the_profile_is_gone(tmp_path: Path, run: _Run) -> None:
+    # The core refuses to delete a module's data while its profile is still on.
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="all"), _context(tmp_path))
+    assert run.names().index("setup") < run.names().index("purge")
+
+
+def test_a_purge_the_core_refuses_leaves_the_module_off_and_says_so(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.purge_result = (3, "", "ERROR: could not remove papaia_x: volume is in use\n")
+    config = _config(tmp_path, "nginx,localai")
+    with pytest.raises(svc.PurgeFailedError, match="LocalAI is off, but its data could not"):
+        _go(_off(config, scope="data"), _context(tmp_path))
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_what_the_purge_printed_is_in_the_log(tmp_path: Path, run: _Run) -> None:
+    ctx = _context(tmp_path)
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="data"), ctx)
+    assert "removed volume papaia_x" in _log(ctx)
+
+
+# -- modules: the RAG system -------------------------------------------------------------------
+
+
+def test_switching_the_rag_system_on_recreates_librechat_after_it_started(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="rag", variant=None, user="admin", workspace_dir="/w", config_dir=config
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps == [
+        ("setup", ModuleSetup("rag", True)),
+        ("start", ["--profiles=rag"]),
+        ("stop", ["--clean-up", "--profiles=librechat"]),
+        ("start", ["--profiles=librechat"]),
+    ]
+    assert [e["target"] for e in _audit(config)] == ["module:rag"]
+
+
+def test_switching_the_rag_system_off_recreates_librechat_without_it(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,librechat,rag")
+    _go(_off(config, "rag", "all"), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--volumes", "--profiles=rag"]),
+        ("setup", ModuleSetup("rag", False)),
+        ("stop", ["--clean-up", "--profiles=librechat"]),
+        ("start", ["--profiles=librechat"]),
+        ("purge", ("rag", True, True)),
+    ]
+
+
+def test_a_core_that_refuses_the_rag_system_stops_before_anything_starts(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.setup_result = (3, "", "ERROR: The rag profile cannot run next to the add-on(s) qdrant\n")
+    config = _config(tmp_path)
+    with pytest.raises(svc.SetupRefusedError, match="next to the add-on"):
         _go(
-            svc.disable_callback(
-                module="localai", user="admin", workspace_dir="/w", config_dir=config
+            svc.enable_callback(
+                module="rag", variant=None, user="admin", workspace_dir="/w", config_dir=config
             ),
             _context(tmp_path),
         )
-    assert run.names() == ["stop"]
+    assert run.names() == ["setup"]
+
+
+def test_a_start_that_fails_says_the_module_stays_on_in_the_configuration(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.fail["start"] = 1
+    config = _config(tmp_path)
+    with pytest.raises(svc.StepFailedError, match="switched on in the configuration"):
+        _go(
+            svc.enable_callback(
+                module="rag", variant=None, user="admin", workspace_dir="/w", config_dir=config
+            ),
+            _context(tmp_path),
+        )
+    assert run.names() == ["setup", "start"]
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+# -- modules: the mail relay -------------------------------------------------------------------
+
+
+def test_switching_the_relay_on_uses_the_settings_the_core_stored(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="mail", variant=None, user="admin", workspace_dir="/w", config_dir=config
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps == [
+        ("setup", SmtpSetup(enable=True)),
+        ("start", ["--profiles=smtp"]),
+    ]
+
+
+def test_a_relay_whose_realm_was_not_updated_is_said_so_and_recorded_as_partial(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    run.lines["start"] = [
+        "[!] Keycloak role sync failed: realm not reachable. Once Keycloak is healthy, x"
+    ]
+    config = _config(tmp_path)
+    with pytest.raises(mail_service.RealmNotUpdatedError, match="Keycloak was not given"):
+        _go(
+            svc.enable_callback(
+                module="mail", variant=None, user="admin", workspace_dir="/w", config_dir=config
+            ),
+            _context(tmp_path),
+        )
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_switching_the_relay_off_takes_its_mail_server_out_of_the_realm(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,smtp")
+    _go(_off(config, "mail"), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--profiles=smtp"]),
+        ("setup", SmtpSetup(enable=False)),
+        ("keycloak-role-sync", []),
+    ]
+
+
+def test_switching_the_relay_off_with_its_data_and_settings(tmp_path: Path, run: _Run) -> None:
+    config = _config(tmp_path, "nginx,smtp")
+    _go(_off(config, "mail", "all"), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--volumes", "--profiles=smtp"]),
+        ("setup", SmtpSetup(enable=False)),
+        ("keycloak-role-sync", []),
+        ("purge", ("mail", True, True)),
+    ]
 
 
 # -- overlay: apply ------------------------------------------------------------------------------

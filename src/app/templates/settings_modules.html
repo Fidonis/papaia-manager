@@ -22,8 +22,9 @@
       <div class="px-6 pt-5 pb-3">
         <h2 class="font-brand text-lg font-bold">Optional modules</h2>
         <p class="text-sm opacity-60">
-          Switch parts of the stack on or off. Switching a module off removes its containers and
-          keeps its data, so switching it on again brings it back.
+          Switch parts of the stack on or off. Switching a module off removes its containers.
+          You choose whether its data and settings stay, so switching it on again can bring
+          everything back.
         </p>
       </div>
 
@@ -52,11 +53,17 @@
             {% if row.name == "localai" and row.enabled %} · variant {{ row.variant }}{% endif %}
           </p>
           {% endif %}
-          {% if not row.switchable %}
-          <p class="mt-1 text-xs opacity-60">
-            {{ row.note }}
-            {% if row.link %}<a href="{{ row.link }}" class="link link-secondary">Open</a>{% endif %}
+          {% if row.note or row.problem %}
+          <p class="mt-1 text-xs opacity-60">{{ row.problem or row.note }}</p>
+          {% endif %}
+          {% if row.name == "mail" and not row.configured %}
+          <p class="mt-1 text-xs text-warning" data-mail-hint>
+            No mail server is set up yet.
+            <a href="{{ row.link }}" class="link link-secondary">Set it up first</a>; the settings
+            are saved with the relay off.
           </p>
+          {% elif row.link %}
+          <p class="mt-1 text-xs"><a href="{{ row.link }}" class="link link-secondary">{{ row.link_label }}</a></p>
           {% endif %}
 
           {% if row.name == "localai" %}
@@ -94,13 +101,29 @@
   </p>
 </div>
 
-<dialog id="module-off-dialog" class="modal">
-  <div class="modal-box max-w-md">
+<dialog id="module-off-dialog" class="modal" onclose="if (offTarget) cancelOff()">
+  <div class="modal-box max-w-lg">
     <h3 id="module-off-title" class="text-base font-bold"></h3>
     <p id="module-off-text" class="mt-2 text-sm opacity-60"></p>
+
+    <fieldset id="module-off-scopes" class="mt-4 hidden space-y-2">
+      <legend class="mb-1 text-sm font-medium">What happens to its data and settings?</legend>
+    </fieldset>
+
+    <div id="module-off-confirm" class="form-control mt-4 hidden">
+      <label for="module-off-confirm-input" class="label-text mb-1 text-sm font-medium">
+        Type <code id="module-off-name"></code> to confirm the deletion
+      </label>
+      <input id="module-off-confirm-input" type="text" class="input input-bordered input-sm w-full"
+             autocomplete="off" spellcheck="false" oninput="syncOffButton()">
+      <p class="mt-1 text-xs text-error">Deleted data can't be brought back.</p>
+    </div>
+
+    <p id="module-off-note" class="mt-3 hidden text-xs opacity-60"></p>
+
     <div class="modal-action">
       <button type="button" class="btn btn-ghost btn-sm" onclick="cancelOff()">Cancel</button>
-      <button type="button" class="btn btn-primary btn-sm" onclick="confirmOff()">Switch off</button>
+      <button type="button" id="module-off-go" class="btn btn-primary btn-sm" onclick="confirmOff()">Switch off</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button onclick="cancelOff()">close</button></form>
@@ -111,36 +134,144 @@
   let modulesRevision = {{ revision | tojson }};
   const MODULE_ROWS = {{ module_rows | tojson }};
   let offTarget = null;
+  let offScope = "keep";
+
+  // What a switch-off adds to the generic sentence, per module.
+  const OFF_NOTES = {
+    rag: "LibreChat is recreated without the RAG tools. The documents folder is never deleted.",
+    mail: "Keycloak loses the mail server it was given, so password mails and “email a link” stop working. The server settings can stay for later.",
+  };
 
   function moduleRow(name) { return MODULE_ROWS.find((r) => r.name === name); }
   function moduleBox(name) { return document.querySelector('[data-module="' + name + '"]'); }
+  function offEl(id) { return document.getElementById(id); }
 
   function moduleToggled(box) {
     const name = box.dataset.module;
+    const row = moduleRow(name);
     if (box.checked) {
-      if (name === "localai") document.getElementById("localai-panel").classList.remove("hidden");
-      else enableModule(name);
+      if (name === "localai") offEl("localai-panel").classList.remove("hidden");
+      else if (name === "mail" && !row.configured) {
+        // The relay needs a mail server to forward to; the Mail page stores it with the relay off.
+        box.checked = false;
+        showToast("error", "Set up the mail server first. The Mail page saves it with the relay off.");
+        const hint = document.querySelector("[data-mail-hint]");
+        if (hint) hint.scrollIntoView({ block: "center", behavior: "smooth" });
+      } else enableModule(name);
     } else {
-      offTarget = name;
-      const row = moduleRow(name);
-      document.getElementById("module-off-title").textContent = "Switch " + row.title + " off?";
-      document.getElementById("module-off-text").textContent =
-        "Stops and removes its " + row.services + " container" + (row.services === 1 ? "" : "s") +
-        (row.modules > 1 ? " in " + row.modules + " modules" : "") +
-        ". Data volumes are kept, so switching it on again restores them.";
-      document.getElementById("module-off-dialog").showModal();
+      openOffDialog(name);
     }
   }
 
   function cancelLocalai() {
     moduleBox("localai").checked = false;
-    document.getElementById("localai-panel").classList.add("hidden");
+    offEl("localai-panel").classList.add("hidden");
   }
 
+  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+
+  // The dialog first shows the plain question, then asks the core what the module holds and
+  // adds the choice. A core that can't say (or a failed request) leaves the plain switch-off.
+  async function openOffDialog(name) {
+    offTarget = name;
+    offScope = "keep";
+    const row = moduleRow(name);
+    offEl("module-off-title").textContent = "Switch " + row.title + " off?";
+    offEl("module-off-text").textContent =
+      "Stops and removes its " + plural(row.services, "container") +
+      (row.modules > 1 ? " in " + row.modules + " modules" : "") + ".";
+    offEl("module-off-scopes").classList.add("hidden");
+    offEl("module-off-confirm").classList.add("hidden");
+    offEl("module-off-confirm-input").value = "";
+    const note = offEl("module-off-note");
+    note.textContent = OFF_NOTES[name] || "";
+    note.classList.toggle("hidden", !OFF_NOTES[name]);
+    syncOffButton();
+    offEl("module-off-dialog").showModal();
+    if (!row.can_delete) return;
+    const reply = await _ragRequest("GET", "/api/v1/config/modules/" + name + "/info");
+    if (offTarget !== name) return;
+    if (!reply.ok || !reply.data.available) return;
+    renderScopes(name, reply.data);
+  }
+
+  function option(value, title, detail, checked) {
+    const label = document.createElement("label");
+    label.className = "flex cursor-pointer items-start gap-3 rounded-lg border border-base-300 p-3";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "module-off-scope";
+    input.value = value;
+    input.className = "radio radio-sm mt-0.5";
+    input.checked = checked;
+    input.addEventListener("change", () => { offScope = value; syncOffScope(); });
+    const text = document.createElement("span");
+    text.className = "min-w-0 text-sm";
+    const head = document.createElement("span");
+    head.className = "block font-medium";
+    head.textContent = title;
+    const body = document.createElement("span");
+    body.className = "block break-words text-xs opacity-60";
+    body.textContent = detail;
+    text.append(head, body);
+    label.append(input, text);
+    return label;
+  }
+
+  function renderScopes(name, info) {
+    const row = moduleRow(name);
+    const box = offEl("module-off-scopes");
+    box.querySelectorAll("label").forEach((n) => n.remove());
+    const volumes = info.volumes || [];
+    const present = volumes.filter((v) => v.exists !== false);
+    const unknown = volumes.some((v) => v.exists === null);
+    const names = present.map((v) => v.name).join(", ");
+    const settings = (info.settings.dirs || []).map((d) => d + "/.env")
+      .concat(info.settings.root_keys && info.settings.root_keys.length ? [".env (" + info.settings.root_keys.join(", ") + ")"] : [])
+      .concat(info.settings.files || []).join(", ");
+
+    box.append(option("keep", "Keep data and settings",
+      "Switching it on again brings everything back.", true));
+    if (present.length) {
+      box.append(option("data", "Delete the data, keep the settings",
+        "Removes " + plural(present.length, "volume") + ": " + names +
+        (unknown ? " (Docker could not be asked, so this list may be incomplete)" : "") + ".", false));
+      box.append(option("all", "Delete the data and the settings",
+        "Also puts " + settings + " back to the defaults" +
+        (info.settings.regenerates_secrets ? " and renews its generated secrets" : "") + ".", false));
+    } else {
+      box.append(option("all", "Delete the settings",
+        "It holds no data. Puts " + settings + " back to the defaults.", false));
+    }
+    box.classList.remove("hidden");
+    offEl("module-off-name").textContent = name;
+    syncOffScope();
+  }
+
+  function syncOffScope() {
+    const deleting = offScope !== "keep";
+    offEl("module-off-confirm").classList.toggle("hidden", !deleting);
+    const go = offEl("module-off-go");
+    go.classList.toggle("btn-error", deleting);
+    go.classList.toggle("btn-primary", !deleting);
+    go.textContent = deleting ? "Switch off and delete" : "Switch off";
+    if (deleting) offEl("module-off-confirm-input").focus();
+    syncOffButton();
+  }
+
+  function syncOffButton() {
+    const deleting = offScope !== "keep";
+    offEl("module-off-go").disabled =
+      deleting && offEl("module-off-confirm-input").value.trim() !== offTarget;
+  }
+
+  // Also runs when the dialog is closed with Escape (its close event).
   function cancelOff() {
-    document.getElementById("module-off-dialog").close();
-    if (offTarget) moduleBox(offTarget).checked = true;
+    const name = offTarget;
     offTarget = null;
+    if (name) moduleBox(name).checked = true;
+    const dialog = offEl("module-off-dialog");
+    if (dialog.open) dialog.close();
   }
 
   async function startModuleJob(path, body, started) {
@@ -158,18 +289,22 @@
   async function enableModule(name) {
     const row = moduleRow(name);
     const body = { revision: modulesRevision };
-    if (name === "localai") body.variant = document.getElementById("localai-variant").value;
+    if (name === "localai") body.variant = offEl("localai-variant").value;
     const ok = await startModuleJob(name + "/enable", body, "Switching " + row.title + " on …");
     if (!ok) moduleBox(name).checked = false;
-    if (name === "localai") document.getElementById("localai-panel").classList.add("hidden");
+    if (name === "localai") offEl("localai-panel").classList.add("hidden");
   }
 
   async function confirmOff() {
     const name = offTarget;
-    document.getElementById("module-off-dialog").close();
+    const scope = offScope;
+    const confirm = offEl("module-off-confirm-input").value.trim();
+    offEl("module-off-dialog").close();
     offTarget = null;
     const row = moduleRow(name);
-    const ok = await startModuleJob(name + "/disable", { revision: modulesRevision }, "Switching " + row.title + " off …");
+    const body = { revision: modulesRevision, scope: scope };
+    if (scope !== "keep") body.confirm = confirm;
+    const ok = await startModuleJob(name + "/disable", body, "Switching " + row.title + " off …");
     if (!ok) moduleBox(name).checked = true;
   }
 
