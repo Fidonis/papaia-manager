@@ -104,6 +104,10 @@ papaia-manager/
 │       │   │                   #   a run), client (the ingester's REST), runs (start, follow, clean up),
 │       │   │                   #   watcher (the background clean-up), errors
 │       │   ├── settings_store.py # settings.yaml (one section per topic: branding, host) + logo files
+│       │   ├── config/         # Settings > Modules and Overlay: modules (the optional modules and their
+│       │   │                   #   state), overlay (the three editable files, compare-and-swap writes),
+│       │   │                   #   history (the saved versions), preview (the core's render-preview),
+│       │   │                   #   service (the jobs: switch a module, apply, discard, roll back)
 │       │   ├── mail/           # The mail relay (core profile `smtp`): settings (what the core stored,
 │       │   │                   #   the rules, the revision), probe (SMTP to the mail server and to the
 │       │   │                   #   relay), status (its state and queue via the core's `doctor`),
@@ -147,6 +151,8 @@ papaia-manager/
 │       │   ├── api_settings.py # /api/v1/settings — branding, host monitoring; GET /brand/logo
 │       │   ├── api_users.py    # /api/v1/users — accounts, roles, passwords and sessions of the realm
 │       │   ├── api_roles.py    # /api/v1/roles — list, create, change and delete realm roles
+│       │   ├── api_config.py   # /api/v1/config — optional modules and the overlay: check, preview, apply, versions
+│       │   ├── ui_config.py    # /settings/modules and /settings/overlay pages and the job strip they share
 │       │   ├── api_mail.py     # /api/v1/mail — the mail relay: settings, apply, switch off, probe, test mail
 │       │   ├── ui_mail.py      # /mail/server page (the Mail Server tab) and its status and job partials
 │       │   ├── api_notifications.py # /api/v1/notifications — recipients, their events, settings, test
@@ -183,6 +189,10 @@ papaia-manager/
 │       │       ├── mail_status.html          # Mail Server tab: the relay's state and queue
 │       │       ├── mail_job_status.html      # Mail Server tab: the job in flight or just finished
 │       │       ├── _mail_tabs.html           # The two tabs of Mail: Notifications, Mail Server
+│       │       ├── settings_modules.html     # Settings > Modules: the switches
+│       │       ├── settings_overlay.html     # Settings > Overlay: the files, the editor, the versions
+│       │       ├── _settings_tabs.html       # The three tabs of Settings: Manager, Modules, Overlay
+│       │       ├── config_job_status.html    # Modules and Overlay tabs: the job in flight or just finished
 │       │       ├── notifications_status.html # Notifications tab: whether notifications can go out
 │       │       ├── notifications_log.html    # Notifications tab: what was sent lately
 │       │       ├── user_list.html            # Users page body: accounts with roles and actions, or why there are none
@@ -397,6 +407,22 @@ Consequences worth remembering when touching this area:
 - **The logo type is decided by its bytes.** `save_logo` looks at magic bytes (PNG, JPEG, WebP, SVG) and ignores the client's filename and `Content-Type`. At most 512 KB are read, one byte past the cap so an oversized body is refused without being buffered. An SVG that contains a script, `foreignObject`, an event handler, `javascript:`, an entity declaration or an `iframe` is refused at upload.
 - **The logo is served defensively.** `GET /brand/logo` is open to every signed-in role, since the sidebar shows it to all of them, and answers with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, so an SVG opened directly by URL cannot run anything. The URL carries the stored filename (`?v=`), which changes with the content, so the one-day private cache cannot show a stale logo.
 - **Every change is audited** as `settings.branding.update`, `settings.branding.logo.upload`, `settings.branding.logo.delete`, `settings.branding.reset` or `settings.host.update`, with target `settings`.
+
+### Modules and overlay
+
+Settings has three tabs: Manager (`/settings`, the branding and host monitoring cards), Modules (`/settings/modules`) and Overlay (`/settings/overlay`). The last two and their API (`/api/v1/config`) change how the stack is configured, not how the manager is. `core/config/` holds all of it (`modules` the optional modules and their state, `overlay` the three editable files and their writes, `history` the saved versions, `preview` the core's `render-preview`, `service` the jobs), `routers/api_config.py` and `routers/ui_config.py` the surface, and `tests/test_config_*.py` and `tests/test_api_config.py` pin it.
+
+Consequences worth remembering when touching this area:
+
+- **The core stores the choice, the manager asks it to.** A module is on when its profile is in `COMPOSE_PROFILES` of `$PAPAIA_CONFIG_DIR/.env`; the one writer is the core's `setup` (`--enable-local-ai`, `--enable-web-search`, `--localai-variant`), run through `run_module_setup` with a typed `ModuleSetup` and nothing else (no `--force`, `--env`, host name). Only `localai` and `web-search` can be switched; `rag` and `mail` have pages of their own and `manager` cannot switch itself off. On: `setup`, then `start --profiles=<profile>`, then a wait for the group to be healthy. Off: `stop --clean-up --profiles=<profile>` while the profile is still active, then `setup --enable-...=false`. The page's `revision` (profiles plus LocalAI variant) makes a stale tab a 409.
+- **The LocalAI variant is chosen, never detected.** The core's detection looks at the host from the host; from inside this container it would report nothing. `vulkan` is left out because the core decides its devices by looking at `/dev` while it renders. `tests/test_config_contract.py` compares the offered variants with the core's.
+- **Overlay targets are keys, not paths.** `librechat`, `litellm` and `searxng` map to the core's render targets; a request never contributes a path. `keycloak.conf` and `models.txt` are replaced as a whole by an overlay instead of merged, so they are not offered. Other files under `overlay/` are listed as "not editable here" or "ignored by the render" (the render only looks at the exact paths of its target list).
+- **A write is compare-and-swap, and the file is the job's to write.** The revision is the SHA-256 of the bytes (empty when there is no file). The route checks it for a quick 409, the job checks it again, and `overlay.write` checks it a third time under a lock immediately before the rename. A symbolic link is refused, a new file is created 0600, an existing mode is kept.
+- **Applying means recreating.** The core's render replaces each target with a new file and the containers bind-mount single files, so a restart would keep the old file. The job runs `stop --clean-up` and `start` for the profile (a group that is not switched on only gets the file). If either fails the previous bytes are written back (unless the file was edited meanwhile), the group is started again, and the job fails with the reason (`config.overlay.rollback.auto`). If the group starts but is not healthy within 90 seconds the file stays, the job fails and the audit result is `partial`: the previous version may be no better, so the page offers the roll back and does not take it.
+- **The history is written before anything changes.** `history.save` copies the old bytes to `manager/overlay-history/<key>/<UTC stamp>-<apply|discard|rollback>.bak` (0600 in a 0700 directory, latest 20); if it cannot, nothing is changed. A version id is checked against a fixed pattern before it is joined to a path. Restore as draft only fills the editor; Roll back now is a job like Apply and saves the current file first.
+- **The core is asked, not copied.** The effective result is the core's `render-preview` (`ALLOWED_PY_COMMANDS`): the draft goes in a 0600 file under `manager/tmp/` that is removed whatever happens, never in an argument. Whether the core has the command is read from its source (`preview.available`), not from a version. Without it the editor still checks the syntax and applies; the job's automatic roll back is the net. A core that cannot be asked is not a reason to refuse an Apply.
+- **No content in logs.** Overlay content can hold an API key. Request bodies are read by hand so a validation error never echoes them, the job log and the audit entries carry target, size and revisions only (`config.module.enable|disable`, `config.overlay.apply|discard|rollback|rollback.auto`), and the overlay page embeds no file content (the editor loads it through the API).
+- **Stale tabs and busy stacks are 409s.** A restore, an upgrade or a stack action that is running refuses a change (it replaces or migrates the directory the change is written to); an ordinary job does not, the queue runs one at a time.
 
 ### User management
 

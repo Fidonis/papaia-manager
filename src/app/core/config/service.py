@@ -1,0 +1,391 @@
+"""The jobs behind the Modules and Overlay tabs.
+
+Every change is a queued job, so it is single-flight with everything else the manager does to
+the stack, streams a log and leaves an audit entry.
+
+* **Module on:** the core's `setup` stores the choice, then `start --profiles=<profile>`
+  brings the module up. **Module off:** the module is stopped and its containers removed while
+  its profile is still active, then `setup` takes the profile out.
+* **Overlay apply, discard and roll back** share one sequence: check that the file is still
+  the one the page showed, copy the old bytes into the history, write (or remove) the file,
+  then recreate the containers that read the rendered target (`stop --clean-up` and `start`
+  of its profile: render replaces the target file, and a running container keeps the old one).
+  If the stop or the start fails, the previous file is put back and the group is started again.
+  If the group starts but does not become healthy, the file stays and the job says so: the
+  page then offers the roll back, because the previous version may be no better.
+
+Only the options of one optional module reach `setup` (`app.core.ctl.ModuleSetup`). Overlay
+content is never written to the job log or the audit log.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+from app.core import services
+from app.core.audit import write_audit_entry
+from app.core.config import history, modules, overlay
+from app.core.ctl import CtlError, ModuleSetup, run_core_verb, run_module_setup
+from app.core.jobs import JobCallback, JobContext
+
+ENABLE_ACTION = "config-module-enable"
+DISABLE_ACTION = "config-module-disable"
+APPLY_ACTION = "config-overlay-apply"
+DISCARD_ACTION = "config-overlay-discard"
+ROLLBACK_ACTION = "config-overlay-rollback"
+
+CONFIG_ACTIONS = (ENABLE_ACTION, DISABLE_ACTION, APPLY_ACTION, DISCARD_ACTION, ROLLBACK_ACTION)
+
+# How long a recreated group gets to report healthy, and how often it is looked at.
+HEALTH_TIMEOUT_SECONDS = 90.0
+HEALTH_INTERVAL_SECONDS = 3.0
+
+_GOOD = {services.ServiceHealth.HEALTHY, services.ServiceHealth.COMPLETED}
+
+
+class SetupRefusedError(Exception):
+    """The core's `setup` did not store the choice. The message is its own sentence."""
+
+
+class ConflictError(Exception):
+    """The overlay file changed after the page loaded it. Nothing was changed."""
+
+
+class StepFailedError(Exception):
+    """A papaia-ctl step exited non-zero. The message is the last thing it complained about."""
+
+
+class RolledBackError(Exception):
+    """The new overlay broke the start, and the previous one was put back."""
+
+
+class NotHealthyError(Exception):
+    """The change was made and the containers were recreated, but they are not all healthy."""
+
+
+def refusal(code: int, out: str, err: str) -> str:
+    """The sentence to show when `setup` exited with `code`: its `ERROR:` line, else the
+    first line it wrote, else the status."""
+    for text in (err, out):
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        errors = [line for line in lines if line.startswith("ERROR")]
+        if errors:
+            return errors[0].removeprefix("ERROR:").strip()[:300]
+    for text in (err, out):
+        for line in text.splitlines():
+            if line.strip():
+                return line.strip()[:300]
+    return f"setup exited with status {code}"
+
+
+def last_problem(lines: list[str]) -> str:
+    """The line to blame for a failed step: the last `ERROR` line, else the last line."""
+    cleaned = [ln.strip() for ln in lines if ln.strip()]
+    errors = [ln for ln in cleaned if "ERROR" in ln]
+    pick = errors[-1] if errors else (cleaned[-1] if cleaned else "the step failed")
+    return pick.removeprefix("ERROR:").strip()[:300]
+
+
+async def _setup(
+    ctx: JobContext, spec: ModuleSetup, *, workspace_dir: str, config_dir: str
+) -> None:
+    ctx.log(f"[ctl] papaia-ctl setup (options of {spec.module} only)")
+    code, out, err = await run_module_setup(
+        spec, workspace_dir=workspace_dir, config_dir=config_dir
+    )
+    for line in (*out.splitlines(), *err.splitlines()):
+        if line.strip():
+            ctx.log(line.rstrip())
+    if code != 0:
+        raise SetupRefusedError(refusal(code, out, err))
+
+
+async def _verb(
+    ctx: JobContext, verb: str, *flags: str, workspace_dir: str, config_dir: str
+) -> None:
+    """Run a verb and stream its output into the log. A failure becomes StepFailedError."""
+    ctx.log(f"[ctl] papaia-ctl {verb} {' '.join(flags)}".rstrip())
+    lines: list[str] = []
+    try:
+        gen = await run_core_verb(
+            verb=verb, workspace_dir=workspace_dir, config_dir=config_dir, extra_flags=list(flags)
+        )
+        async for line in gen:
+            ctx.log(line)
+            lines.append(line)
+    except CtlError as exc:
+        raise StepFailedError(f"papaia-ctl {verb}: {last_problem(lines) or exc}") from exc
+
+
+async def wait_healthy(
+    ctx: JobContext,
+    profile: str,
+    *,
+    config_dir: str,
+    workspace_dir: str,
+    limit: float | None = None,
+    interval: float | None = None,
+) -> str | None:
+    """None once the profile's containers are healthy, else the sentence that says what isn't.
+
+    An unreadable Docker (no groups reported at all) is not a verdict: the check is skipped
+    and the log says so."""
+    deadline = asyncio.get_running_loop().time() + (
+        HEALTH_TIMEOUT_SECONDS if limit is None else limit
+    )
+    pause = HEALTH_INTERVAL_SECONDS if interval is None else interval
+    while True:
+        services.invalidate_snapshot()
+        snapshot = await asyncio.get_running_loop().run_in_executor(
+            None, services.load_snapshot, config_dir, workspace_dir
+        )
+        if not snapshot.groups:
+            ctx.log("[info] health not checked: Docker did not report any containers")
+            return None
+        group = next((g for g in snapshot.groups if g.name == profile), None)
+        if group is not None and group.health in _GOOD:
+            ctx.log(f"[info] {profile}: healthy")
+            return None
+        state = group.health.value if group is not None else "not reported"
+        if asyncio.get_running_loop().time() >= deadline:
+            return f"The {profile} containers are {state}."
+        ctx.log(f"[info] {profile}: {state}, waiting")
+        await asyncio.sleep(pause)
+
+
+# ---------------------------------------------------------------------------
+# Modules
+# ---------------------------------------------------------------------------
+
+
+def enable_callback(
+    *, module: str, variant: str | None, user: str, workspace_dir: str, config_dir: str
+) -> JobCallback:
+    """The job that switches a module on."""
+    definition = modules.SWITCHABLE[module]
+    spec = ModuleSetup(module=module, enable=True, variant=variant)
+    flag = f"--profiles={definition.profile}"
+    params: dict[str, Any] = {"module": module, "variant": variant}
+
+    async def _callback(ctx: JobContext) -> None:
+        await _setup(ctx, spec, workspace_dir=workspace_dir, config_dir=config_dir)
+        await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+        problem = await wait_healthy(
+            ctx, definition.profile, config_dir=config_dir, workspace_dir=workspace_dir
+        )
+        write_audit_entry(
+            config_dir,
+            user=user,
+            action="config.module.enable",
+            target=f"module:{module}",
+            params=params,
+            job_id=ctx.job.id,
+            result="partial" if problem else "ok",
+        )
+        if problem:
+            raise NotHealthyError(
+                f"{definition.title} is switched on, but {problem[0].lower()}{problem[1:]} "
+                "Check the service log, or switch it off again."
+            )
+        ctx.log("[info] done")
+
+    return _callback
+
+
+def disable_callback(*, module: str, user: str, workspace_dir: str, config_dir: str) -> JobCallback:
+    """The job that switches a module off: containers removed, volumes kept."""
+    definition = modules.SWITCHABLE[module]
+    flag = f"--profiles={definition.profile}"
+
+    async def _callback(ctx: JobContext) -> None:
+        # Stopped while the profile is still active: once `setup` has removed it, Compose no
+        # longer knows what to stop.
+        if definition.profile in modules.active(config_dir):
+            await _verb(
+                ctx, "stop", "--clean-up", flag, workspace_dir=workspace_dir, config_dir=config_dir
+            )
+        await _setup(
+            ctx,
+            ModuleSetup(module=module, enable=False),
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+        )
+        write_audit_entry(
+            config_dir,
+            user=user,
+            action="config.module.disable",
+            target=f"module:{module}",
+            params={"module": module},
+            job_id=ctx.job.id,
+        )
+        ctx.log("[info] done")
+
+    return _callback
+
+
+# ---------------------------------------------------------------------------
+# Overlay
+# ---------------------------------------------------------------------------
+
+_EVENT_ACTION = {
+    "apply": "config.overlay.apply",
+    "discard": "config.overlay.discard",
+    "rollback": "config.overlay.rollback",
+}
+
+
+def overlay_callback(
+    *,
+    key: str,
+    content: bytes | None,
+    expected_revision: str,
+    event: str,
+    user: str,
+    workspace_dir: str,
+    config_dir: str,
+    version: str | None = None,
+) -> JobCallback:
+    """The job that replaces (`content`) or removes (`None`) an overlay file and recreates the
+    containers that read it. `event` is `apply`, `discard` or `rollback`; `version` is the id a
+    roll back restores, for the audit entry."""
+    target = overlay.target(key)
+    flag = f"--profiles={target.profile}"
+    action = _EVENT_ACTION[event]
+    subject = f"overlay:{key}"
+
+    async def _callback(ctx: JobContext) -> None:
+        current = overlay.read(config_dir, key)
+        if current.revision != expected_revision:
+            raise ConflictError(
+                "The overlay file changed after the page loaded it. Nothing was changed."
+            )
+        saved: str | None = None
+        if current.raw is not None:
+            saved = history.save(config_dir, key, current.raw, event)
+            ctx.log(f"[backup] previous version saved as {saved}")
+        else:
+            ctx.log("[backup] there was no overlay file; nothing to save")
+
+        if content is None:
+            written_ok = overlay.delete(config_dir, key, expected_revision=current.revision)
+            new_revision = ""
+        else:
+            written = overlay.write(config_dir, key, content, expected_revision=current.revision)
+            written_ok = written is not None
+            new_revision = written.revision if written is not None else ""
+        if not written_ok:
+            raise ConflictError("The overlay file changed while the job ran. Nothing was changed.")
+        ctx.log("[info] overlay file removed" if content is None else "[info] overlay file written")
+
+        params: dict[str, Any] = {
+            "bytes": 0 if content is None else len(content),
+            "revision_before": current.revision[:7],
+            "revision_after": new_revision[:7],
+            "version_saved": saved,
+        }
+        if version is not None:
+            params["version_restored"] = version
+
+        if target.profile not in modules.active(config_dir):
+            ctx.log(
+                f"[info] {target.label} is not switched on; "
+                "the file applies the next time it starts"
+            )
+            params["restarted"] = False
+            write_audit_entry(
+                config_dir,
+                user=user,
+                action=action,
+                target=subject,
+                params=params,
+                job_id=ctx.job.id,
+            )
+            return
+
+        params["restarted"] = True
+        try:
+            await _verb(
+                ctx, "stop", "--clean-up", flag, workspace_dir=workspace_dir, config_dir=config_dir
+            )
+            await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+        except StepFailedError as exc:
+            await _restore(
+                ctx,
+                key=key,
+                previous=current.raw,
+                written_revision=new_revision,
+                flag=flag,
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+            )
+            write_audit_entry(
+                config_dir,
+                user=user,
+                action="config.overlay.rollback.auto",
+                target=subject,
+                params={**params, "failed_event": event},
+                job_id=ctx.job.id,
+                result="error",
+            )
+            raise RolledBackError(
+                f"{target.label} did not start with the new overlay, so the previous version "
+                f"was put back. ({exc})"
+            ) from exc
+
+        problem = await wait_healthy(
+            ctx, target.profile, config_dir=config_dir, workspace_dir=workspace_dir
+        )
+        write_audit_entry(
+            config_dir,
+            user=user,
+            action=action,
+            target=subject,
+            params=params,
+            job_id=ctx.job.id,
+            result="partial" if problem else "ok",
+        )
+        if problem:
+            raise NotHealthyError(
+                f"The overlay is in place, but {problem[0].lower()}{problem[1:]} "
+                "The previous version is in Versions if you want to go back."
+            )
+        ctx.log("[info] done")
+
+    return _callback
+
+
+async def _restore(
+    ctx: JobContext,
+    *,
+    key: str,
+    previous: bytes | None,
+    written_revision: str,
+    flag: str,
+    workspace_dir: str,
+    config_dir: str,
+) -> None:
+    """Put the previous file back and start the group again, as far as that works.
+
+    Never raises: it runs on the way out of a failure, and the failure is what gets reported.
+    A file edited on the host since the job wrote it is left alone."""
+    ctx.log("[rollback] putting the previous overlay back")
+    try:
+        if previous is None:
+            restored = overlay.delete(config_dir, key, expected_revision=written_revision)
+        else:
+            restored = (
+                overlay.write(config_dir, key, previous, expected_revision=written_revision)
+                is not None
+            )
+    except overlay.OverlayError as exc:
+        ctx.log(f"[rollback] the previous file could not be restored: {exc}")
+        return
+    if not restored:
+        ctx.log("[rollback] the file changed meanwhile; left as it is")
+        return
+    try:
+        await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+        ctx.log("[rollback] the group was started with the previous overlay")
+    except StepFailedError as exc:
+        ctx.log(f"[rollback] the group did not start again either: {exc}")

@@ -54,6 +54,30 @@ Without a settings file nothing changes. A second card, **Host monitoring**, set
 how often the Host page re-measures the machine (10 seconds to 60 minutes,
 default 60 seconds); it applies to every administrator.
 
+**Modules and overlay.** Settings has three tabs: **Manager** (the cards above),
+**Modules** and **Overlay**. **Modules** switches the optional parts of the
+stack: LocalAI and web search. Switching a module on stores the choice with the
+core's own `setup` (`--enable-local-ai`, `--enable-web-search`, and for LocalAI the
+accelerator variant, which is chosen on the page because GPU detection cannot see
+the host from inside the container) and starts the module's profile; switching it
+off removes its containers and keeps its data. The RAG system and the mail relay
+are listed with a link to their own pages, and the manager itself cannot be
+switched off here. **Overlay** edits the customer overlay, the files under
+`$PAPAIA_CONFIG_DIR/overlay/` that the core merges last into the LibreChat,
+LiteLLM and SearXNG configuration. The editor checks the YAML while you type,
+shows the effective result (the core merges the draft in memory and the page
+shows the difference to what the file renders to now; this needs a core with the
+`render-preview` command, otherwise only the syntax check is available), and
+**Apply** saves the file and recreates the services that read it, as a queued
+job. Before every Apply, Discard and Roll back the previous file is copied to
+`$PAPAIA_CONFIG_DIR/manager/overlay-history/` (the latest 20 per file, readable by
+the owner only, part of a backup); the **Versions** tab shows them, restores one
+as a draft or rolls back to it directly. If the services do not start with the
+new file, the previous one is put back automatically and the job fails with the
+reason. A file edited on the host between opening the page and Apply is detected
+by its revision and refused with a conflict instead of being overwritten.
+Overlay content is never written to the audit log.
+
 **Dashboard and access tiers.** Two Keycloak realm roles gate the UI.
 `MANAGER_ADMIN_ROLE` (default `manager-admin`) reaches every surface;
 `MANAGER_USER_ROLE` (default `user`) reaches the dashboard only. Accounts
@@ -720,6 +744,19 @@ PUT    /api/v1/mail                          # {revision, host, port?, security,
 POST   /api/v1/mail/disable                  # {revision} stop the relay and take it out of the profiles; 202 with a job
 POST   /api/v1/mail/probe                    # {host?, port?, security?, user?, password?} try the mail server, send nothing
 POST   /api/v1/mail/test-message             # {to} hand one message to the relay
+
+GET    /api/v1/config/modules                # the optional modules, their state, the LocalAI variants, the revision
+POST   /api/v1/config/modules/{name}/enable  # {revision, variant?} localai | web-search; 202 with a job
+POST   /api/v1/config/modules/{name}/disable # {revision}; 202 with a job
+GET    /api/v1/config/overlay                # the three editable overlay files and the other files under overlay/
+GET    /api/v1/config/overlay/{key}          # librechat | litellm | searxng: content, revision, versions
+POST   /api/v1/config/overlay/{key}/check    # {content} syntax check, nothing is written
+POST   /api/v1/config/overlay/{key}/preview  # {content} the effective result as a diff (needs the core's render-preview)
+PUT    /api/v1/config/overlay/{key}          # {content, revision} save, back up and recreate; 202 with a job, 409 if stale
+DELETE /api/v1/config/overlay/{key}          # ?revision= remove the file (backed up first); 202 with a job
+GET    /api/v1/config/overlay/{key}/versions            # the saved versions, newest first
+GET    /api/v1/config/overlay/{key}/versions/{id}       # one version and its difference to the file now
+POST   /api/v1/config/overlay/{key}/rollback            # {version, revision} make a saved version the overlay; 202 with a job
 
 GET    /api/v1/notifications                 # the settings, the events, the recipients (a webhook URL is shown
                                              #   as https://host/…, never in full), and whether email can go out

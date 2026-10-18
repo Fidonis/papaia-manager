@@ -1,10 +1,11 @@
 """Whitelisted subprocess wrapper for papaia-ctl.
 
-Four entry points, four separate allowlists: `run_addon_verb` for
+Four kinds of entry point, separate allowlists: `run_addon_verb` for
 `papaia-ctl addon <verb> <name>`, `run_core_verb` for the stack-level verbs that
 take no target, `run_py_cli` for the core's own read-only Python
-sub-commands, and `run_smtp_setup` for the one that writes (the core's `setup`,
-restricted to the mail relay's options). Keeping the sets apart is what makes it
+sub-commands, and `run_smtp_setup` / `run_module_setup` for the one that writes (the
+core's `setup`, restricted to the mail relay's or one optional module's options).
+Keeping the sets apart is what makes it
 impossible for an addon name to be dispatched as a stack operation, or the
 other way round.
 """
@@ -80,19 +81,42 @@ ALLOWED_CORE_VERBS: frozenset[str] = frozenset(
 # appends to the migration ledger, and only the upgrade's own second phase may
 # do that. A ledger entry written by the manager would make a migration that
 # never ran look applied.
+# `render-preview` merges a draft overlay onto the rendered layers in memory and prints
+# the result as JSON. It reads the draft from a file the caller names and writes
+# nothing, so the overlay editor can show the effective configuration before anything
+# is saved.
 ALLOWED_PY_COMMANDS: frozenset[str] = frozenset(
-    {"upgrade-resolve", "upgrade-plan", "addon-check", "doctor"}
+    {"upgrade-resolve", "upgrade-plan", "addon-check", "doctor", "render-preview"}
 )
 
 # The one command that writes, kept apart from the read-only set so that adding to
 # either is a decision of its own. `setup` is the core's non-interactive
-# configuration engine; it is reachable only through `run_smtp_setup`, which builds
-# its arguments from a typed `SmtpSetup` and passes nothing but the mail relay's
-# options -- never `--force`, `--env`, a host name or any other part of the stack's
+# configuration engine; it is reachable only through `run_smtp_setup` and
+# `run_module_setup`, which build their arguments from a typed spec (`SmtpSetup`,
+# `ModuleSetup`) and pass nothing but the options of the mail relay or of one optional
+# module -- never `--force`, `--env`, a host name or any other part of the stack's
 # configuration. The core is what validates and stores the values, so the rules
 # (what is sticky, when the password revision rises, how `COMPOSE_PROFILES` changes)
 # stay in one place.
 ALLOWED_PY_WRITE_COMMANDS: frozenset[str] = frozenset({"setup"})
+
+# The optional modules the Modules tab may switch, and the `setup` option for each. A
+# module is named by the profile the core adds to `COMPOSE_PROFILES`.
+MODULE_SETUP_FLAGS: dict[str, str] = {
+    "localai": "--enable-local-ai",
+    "web-search": "--enable-web-search",
+}
+
+# LocalAI image variants the manager offers. `vulkan` is left out on purpose: the core
+# decides its device list by looking at /dev while it renders, and from inside this
+# container that says nothing about the host.
+LOCALAI_VARIANTS: tuple[str, ...] = (
+    "cpu",
+    "nvidia-cuda-12",
+    "nvidia-cuda-13",
+    "intel",
+    "hipblas",
+)
 
 SMTP_SECURITY_MODES: tuple[str, ...] = ("starttls", "tls", "none")
 
@@ -410,6 +434,62 @@ async def run_smtp_setup(
         extra_flags=smtp_setup_flags(spec),
         limit=limit,
         env_extra={SMTP_PASSWORD_ENV: spec.password or ""},
+    )
+
+
+@dataclass(frozen=True)
+class ModuleSetup:
+    """What the Modules tab asks the core's `setup` to do for one optional module.
+
+    `module` is a key of `MODULE_SETUP_FLAGS`. `variant` is the LocalAI image variant and
+    only makes sense when LocalAI is switched on; it is always named then, so what is stored
+    does not depend on what happened to be sticky.
+    """
+
+    module: str
+    enable: bool
+    variant: str | None = None
+
+
+def module_setup_flags(spec: ModuleSetup) -> list[str]:
+    """The `setup` options for `spec`. Raises ValueError for a spec that is not coherent."""
+    flag = MODULE_SETUP_FLAGS.get(spec.module)
+    if flag is None:
+        raise ValueError(f"module {spec.module!r} cannot be switched from here")
+    flags = [f"{flag}={'true' if spec.enable else 'false'}"]
+    if spec.module != "localai":
+        if spec.variant is not None:
+            raise ValueError("only LocalAI takes an image variant")
+        return flags
+    if not spec.enable:
+        if spec.variant is not None:
+            raise ValueError("switching LocalAI off takes no variant")
+        return flags
+    if spec.variant not in LOCALAI_VARIANTS:
+        raise ValueError(f"variant must be one of {', '.join(LOCALAI_VARIANTS)}")
+    flags.append(f"--localai-variant={spec.variant}")
+    return flags
+
+
+async def run_module_setup(
+    spec: ModuleSetup,
+    *,
+    workspace_dir: str,
+    config_dir: str,
+    limit: float | None = SETUP_TIMEOUT_SECONDS,
+) -> tuple[int, str, str]:
+    """Run the core's `setup` for one optional module's options only.
+
+    Exit 3 with `ERROR: ...` on stderr is the core refusing a value; nothing is written then.
+    """
+    if "setup" not in ALLOWED_PY_WRITE_COMMANDS:  # pragma: no cover - the set is a constant
+        raise ValueError("setup is not an allowed write command")
+    return await _run_py(
+        command="setup",
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        extra_flags=module_setup_flags(spec),
+        limit=limit,
     )
 
 

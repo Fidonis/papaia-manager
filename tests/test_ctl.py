@@ -118,12 +118,15 @@ def test_the_py_commands_are_exactly_the_read_only_ones() -> None:
     # Every one of these resolves, lists, evaluates or measures. None writes.
     # Adding a command that does would put a write path behind a read-shaped
     # helper. `doctor` is here for the host page: the core documents it as
-    # changing nothing, and the caller skips every check but two.
+    # changing nothing, and the caller skips every check but two. `render-preview`
+    # is here for the overlay editor: it merges a draft in memory, prints it and
+    # writes nothing.
     assert set(ALLOWED_PY_COMMANDS) == {
         "upgrade-resolve",
         "upgrade-plan",
         "addon-check",
         "doctor",
+        "render-preview",
     }
 
 
