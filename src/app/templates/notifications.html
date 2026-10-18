@@ -138,7 +138,7 @@
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-4">
       <div>
-        <h2 class="font-brand text-lg font-bold">Event settings</h2>
+        <h2 class="font-brand text-lg font-bold">Event Settings</h2>
         <p class="text-sm opacity-60">These apply to every recipient. A failed job is always reported at once.</p>
       </div>
       <form id="notify-settings" class="space-y-4" onsubmit="saveSettings(event)" novalidate>
@@ -181,7 +181,7 @@
   </section>
 
   <section>
-    <h2 class="mb-2 font-brand text-lg font-bold">Recent notifications</h2>
+    <h2 class="mb-2 font-brand text-lg font-bold">Recent Notifications</h2>
     <div id="notify-log"
          hx-get="/partials/notifications/log"
          hx-trigger="load, every 30s"
@@ -190,7 +190,7 @@
 
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-2">
-      <h2 class="font-brand text-lg font-bold">Good to know</h2>
+      <h2 class="font-brand text-lg font-bold">Good To Know</h2>
       <ul class="list-disc space-y-1 pl-5 text-sm opacity-70">
         <li>Each event is reported once per occurrence: a failed job, a backup that turns overdue, a
             service that turns unhealthy, a certificate and its expiry date, a release or add-on version.

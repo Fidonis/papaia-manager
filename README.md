@@ -67,7 +67,8 @@ anything. Switching a module on asks the questions `papaia-ctl setup` asks, inli
 its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings
 were deleted): the public URL of the RAG system and of LocalAI, prefilled with what the
 core derives from the stack's address, and for the mail relay the mail server (host,
-connection, port, login, password, sender). A module whose settings exist switches on
+connection, port, login, password, sender), which **Test Connection** tries before the
+relay is switched on without sending a mail or saving anything. A module whose settings exist switches on
 without a dialog. The mail server can also be saved on the Mail page with the relay off.
 The manager itself cannot be switched off.
 

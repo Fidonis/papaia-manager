@@ -105,14 +105,14 @@ MODULES: tuple[ModuleDef, ...] = (
     ModuleDef(
         name="web-search",
         profile="librechat-websearch",
-        title="Web search",
+        title="Web Search",
         description="Lets LibreChat search the web and read pages.",
         switchable=True,
     ),
     ModuleDef(
         name="rag",
         profile="rag",
-        title="RAG system",
+        title="RAG System",
         description="Vector database, its MCP server and the ingest service.",
         switchable=True,
         link="/connections",
@@ -126,7 +126,7 @@ MODULES: tuple[ModuleDef, ...] = (
     ModuleDef(
         name="mail",
         profile="smtp",
-        title="Mail relay",
+        title="Mail Relay",
         description=(
             "One internal relay that holds the credentials of the real mail server. "
             "The server is set up on the Mail page, with the relay on or off."

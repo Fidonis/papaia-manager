@@ -689,7 +689,7 @@ def test_the_page_has_the_form_and_the_test_mail_but_no_switch_off(client: TestC
         'id="mail-password"',
         'id="mail-from"',
         'id="mail-test-to"',
-        "Test connection",
+        "Test Connection",
         "Save and apply",
     ):
         assert element in text
@@ -739,7 +739,7 @@ def test_a_relay_never_set_up_starts_with_a_login_and_the_defaults(
 
 def test_the_status_strip_says_what_the_doctor_found(client: TestClient) -> None:
     text = _admin(client).get("/partials/mail/status").text
-    assert "Mail relay is on" in text
+    assert "Mail Relay is on" in text
     assert "relay running" in text
     assert "queue empty" in text
 
@@ -778,7 +778,7 @@ def test_the_status_of_a_relay_that_is_off_is_a_sentence_without_asking_the_doct
 ) -> None:
     _configure(config_dir, on=False)
     text = _admin(_make_client(config_dir, workspace)).get("/partials/mail/status").text
-    assert "Mail relay is off" in text
+    assert "Mail Relay is off" in text
     assert "settings below are stored" in text
 
 

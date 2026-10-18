@@ -20,7 +20,7 @@
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-0 p-0">
       <div class="px-6 pt-5 pb-3">
-        <h2 class="font-brand text-lg font-bold">Overlay files</h2>
+        <h2 class="font-brand text-lg font-bold">Overlay Files</h2>
         <p class="text-sm opacity-60">
           An overlay is merged last: mappings are merged, lists are appended and scalars are
           replaced. Applying one recreates the services that read the file.
@@ -53,7 +53,7 @@
   <section class="card bg-base-100 border border-base-300" x-show="file" style="display:none">
     <div class="card-body gap-4">
       <div class="flex flex-wrap items-center gap-2">
-        <h2 class="font-brand text-lg font-bold flex-1" x-text="'Edit ' + current.label + ' overlay'"></h2>
+        <h2 class="font-brand text-lg font-bold flex-1" x-text="'Edit ' + current.label + ' Overlay'"></h2>
         <span class="badge badge-sm font-mono" x-show="file && file.revision" x-text="'rev ' + (file ? file.revision.slice(0, 7) : '')" title="Revision of the file you opened"></span>
       </div>
 
@@ -73,7 +73,7 @@
 
       <nav class="tabs tabs-bordered overflow-x-auto overflow-y-hidden" role="tablist" aria-label="Overlay">
         <a role="tab" class="tab whitespace-nowrap" :class="tab === 'overlay' ? 'tab-active font-semibold' : ''" @click="tab = 'overlay'">Overlay</a>
-        <a role="tab" class="tab whitespace-nowrap" :class="tab === 'effective' ? 'tab-active font-semibold' : ''" @click="showEffective()">Effective result</a>
+        <a role="tab" class="tab whitespace-nowrap" :class="tab === 'effective' ? 'tab-active font-semibold' : ''" @click="showEffective()">Effective Result</a>
         <a role="tab" class="tab whitespace-nowrap" :class="tab === 'versions' ? 'tab-active font-semibold' : ''" @click="tab = 'versions'">
           Versions <span class="badge badge-sm ml-1" x-text="versions.length"></span>
         </a>

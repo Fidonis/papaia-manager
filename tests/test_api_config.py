@@ -555,6 +555,12 @@ def test_the_mail_row_carries_what_the_dialog_starts_from(
         assert f'id="panel-{name}"' in html
     assert 'id="panel-web-search"' not in html
     assert 'id="om-host"' in html
+    # The mail server can be tried before the relay is switched on, with what is in the form.
+    assert 'id="om-probe"' in html and ">Test Connection</button>" in html
+    assert 'id="om-probe-result"' in html
+    assert "/api/v1/mail/probe" in html
+    for title in ("Web Search", "RAG System", "Mail Relay", "Optional Modules"):
+        assert title in html
     assert "The relay forwards every mail to this server" in html
 
 
@@ -1065,7 +1071,7 @@ def test_settings_has_three_tabs_and_the_menu_has_no_new_entry(client: TestClien
 def test_the_modules_page_has_a_switch_for_the_four_optional_modules(client: TestClient) -> None:
     html = _admin(client).get("/settings/modules").text
     assert html.count('onchange="moduleToggled(this)"') == 4
-    assert "Optional modules" in html
+    assert "Optional Modules" in html
     assert 'data-module="manager"' in html and 'data-module="rag"' in html
     # The manager is shown and locked.
     assert "disabled>" in html.split('data-module="manager"')[1][:200]

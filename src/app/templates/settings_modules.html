@@ -20,7 +20,7 @@
   <section id="modules" class="card bg-base-100 border border-base-300">
     <div class="card-body gap-0 p-0">
       <div class="px-6 pt-5 pb-3">
-        <h2 class="font-brand text-lg font-bold">Optional modules</h2>
+        <h2 class="font-brand text-lg font-bold">Optional Modules</h2>
         <p class="text-sm opacity-60">
           Switch parts of the stack on or off. Switching a module off removes its containers.
           You choose whether its data and settings stay, so switching it on again can bring
@@ -148,9 +148,16 @@
               </div>
             </form>
             {% endif %}
+            {% if row.name == "mail" %}
+            <div id="om-probe-result" class="hidden rounded-lg border px-4 py-2 text-sm"
+                 role="status" aria-live="polite"></div>
+            {% endif %}
             <p data-panel-error class="hidden text-sm text-error" role="alert"></p>
             <div class="flex flex-wrap gap-2">
               <button type="button" class="btn btn-primary btn-sm" data-panel-go onclick="enableModule('{{ row.name }}')">Enable {{ row.title }}</button>
+              {% if row.name == "mail" %}
+              <button id="om-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeOnMail()">Test Connection</button>
+              {% endif %}
               <button type="button" class="btn btn-ghost btn-sm" onclick="cancelPanel('{{ row.name }}')">Cancel</button>
             </div>
           </div>
@@ -270,6 +277,8 @@
     if (!p) return;
     p.classList.add("hidden");
     panelError(name, "");
+    const probe = p.querySelector("#om-probe-result");
+    if (probe) probe.classList.add("hidden");
     const questions = p.querySelector("[data-questions]");
     if (questions) questions.replaceChildren();
     p.querySelectorAll('input[type="password"]').forEach((el) => { el.value = ""; });
@@ -305,6 +314,51 @@
     p.classList.remove("hidden");
     const first = p.querySelector("input, select");
     if (first) first.focus();
+  }
+
+  // The mail server's values as the form holds them. The password is only sent when there is a
+  // login and one was typed.
+  function mailForm() {
+    const login = offEl("om-login").checked;
+    const port = offEl("om-port").value.trim();
+    const values = {
+      host: offEl("om-host").value.trim(),
+      port: port === "" ? null : Number(port),
+      security: offEl("om-security").value,
+      user: login ? offEl("om-user").value.trim() : "",
+    };
+    const password = offEl("om-password").value;
+    if (login && password) values.password = password;
+    return values;
+  }
+
+  function probeResult(ok, text) {
+    const el = offEl("om-probe-result");
+    el.textContent = text;
+    el.classList.remove("hidden", "border-success", "bg-success/10", "border-error", "bg-error/10");
+    el.classList.add(ok ? "border-success" : "border-error", ok ? "bg-success/10" : "bg-error/10");
+  }
+
+  // Talks to the mail server with what is in the form: greeting, encryption, login. Nothing is
+  // sent and nothing is saved (the same check as on the Mail page).
+  async function probeOnMail() {
+    const button = offEl("om-probe");
+    button.disabled = true;
+    panelError("mail", "");
+    probeResult(true, "Connecting …");
+    const reply = await _ragRequest("POST", "/api/v1/mail/probe", mailForm());
+    button.disabled = false;
+    if (!reply.ok) {
+      if (!reply.handled) probeResult(false, reply.error);
+      return;
+    }
+    const r = reply.data;
+    if (r.ok) {
+      const login = r.login === "ok" ? "login accepted" : "no login needed";
+      probeResult(true, "The mail server answered (" + login + "). No mail was sent.");
+    } else {
+      probeResult(false, "Stopped at " + r.stage + ": " + r.reason);
+    }
   }
 
   function fillMail(d) {
@@ -505,18 +559,10 @@
       const url = p.querySelector("[data-option]");
       if (url) body.public_url = url.value.trim();
       if (name === "mail") {
-        const login = offEl("om-login").checked;
-        const port = offEl("om-port").value.trim();
-        body.mail = {
-          host: offEl("om-host").value.trim(),
-          port: port === "" ? null : Number(port),
-          security: offEl("om-security").value,
-          user: login ? offEl("om-user").value.trim() : "",
+        body.mail = Object.assign(mailForm(), {
           from_address: offEl("om-from").value.trim(),
           from_name: offEl("om-from-name").value.trim(),
-        };
-        const password = offEl("om-password").value;
-        if (login && password) body.mail.password = password;
+        });
       }
     }
     const go = open ? panel(name).querySelector("[data-panel-go]") : null;

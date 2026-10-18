@@ -131,7 +131,7 @@
             {% if mail.enabled %}Save and apply{% else %}Save settings{% endif %}
           </button>
           <button id="mail-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeMail()">
-            Test connection
+            Test Connection
           </button>
         </div>
       </form>
@@ -141,7 +141,7 @@
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-4">
       <div>
-        <h2 class="font-brand text-lg font-bold">Test mail</h2>
+        <h2 class="font-brand text-lg font-bold">Test Mail</h2>
         <p class="text-sm opacity-60">
           Sends one message through the relay. “Sent” means the relay took it; it is
           delivered, or retried for a day, from there.
@@ -156,7 +156,7 @@
         </div>
         <button id="mail-test-send" type="submit" class="btn btn-sm"
                 {% if not (mail.enabled and mail.configured) %}disabled{% endif %}>
-          Send test mail
+          Send Test Mail
         </button>
       </form>
       {% if not (mail.enabled and mail.configured) %}
@@ -171,7 +171,7 @@
 
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-2">
-      <h2 class="font-brand text-lg font-bold">Good to know</h2>
+      <h2 class="font-brand text-lg font-bold">Good To Know</h2>
       <ul class="list-disc space-y-1 pl-5 text-sm opacity-70">
         <li>The relay accepts and queues mail. If the mail server is down, messages wait and
             are retried for a day; the status above shows how many are waiting.</li>

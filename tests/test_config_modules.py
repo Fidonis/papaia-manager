@@ -308,7 +308,7 @@ def test_a_module_the_core_has_no_services_for_is_refused(tmp_path: Path) -> Non
     config = tmp_path / "config"
     _env(config, "COMPOSE_PROFILES=nginx\n")
     _core(tmp_path / "w", profiles=("localai",))
-    with pytest.raises(modules.ModuleError, match="has no Web search"):
+    with pytest.raises(modules.ModuleError, match="has no Web Search"):
         modules.check_enable("web-search", str(config), str(tmp_path / "w"))
 
 

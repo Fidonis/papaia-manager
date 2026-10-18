@@ -598,7 +598,7 @@ def test_the_page_has_the_tabs_in_order_the_matrix_and_the_dialogs(client: TestC
         'id="notify-settings"',
         'id="notify-log"',
         "Add recipient",
-        "Event settings",
+        "Event Settings",
     ):
         assert element in text
     # One checkbox per recipient and event, the two chosen ones ticked.
