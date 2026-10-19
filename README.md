@@ -97,11 +97,12 @@ reason. A file edited on the host between opening the page and Apply is detected
 by its revision and refused with a conflict instead of being overwritten.
 Overlay content is never written to the audit log.
 
-**Dashboard and access tiers.** Two Keycloak realm roles gate the UI.
-`MANAGER_ADMIN_ROLE` (default `manager-admin`) reaches every surface;
-`MANAGER_USER_ROLE` (default `user`) reaches the dashboard only. Accounts
-holding neither role are rejected at login. The dashboard at `/` is a tile
-overview of the deployed applications, held in
+**Dashboard and access tiers.** Keycloak realm roles gate the UI in three tiers.
+`MANAGER_ADMIN_ROLE` (default `manager-admin`) reaches every surface except
+Users; `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`) sits above it and
+also opens Users (see below); `MANAGER_USER_ROLE` (default `user`) reaches the
+dashboard only. Accounts holding none of the roles are rejected at login. The
+dashboard at `/` is a tile overview of the deployed applications, held in
 `$PAPAIA_CONFIG_DIR/manager/tiles.yaml` and seeded with the applications the
 stack ships today on first run. Administrators edit it in place: **Edit
 dashboard** turns the page into an editor for groups and tiles, with drag and
@@ -178,7 +179,7 @@ neither lists nor saves it; the price is that it cannot be reordered or removed
 there. A tile of your own with the same name or link wins, and a group you call
 *RAG* receives it.
 
-The RAG pages need a core that ships the `rag` profile (newer than 1.4.0). Their
+The RAG pages need a core that ships the `rag` profile (papAIa 1.5.0 or newer). Their
 ingest features need `qdrant-ingest` 1.0.0 or newer, the first release that reports
 the features the Embedding and Ingest Jobs pages adapt to (see the end of *Ingest
 jobs*); an older ingester keeps working, with the parts it lacks left out.
@@ -821,6 +822,8 @@ papaia-manager/
 │       │                   # job editor and schedules, runs, the Embedding page's managed
 │       │                   # jobs, jailed browsing, staged uploads, background clean-up),
 │       │                   # settings_store (settings.yaml and the logo),
+│       │                   # config/ (Settings > Modules and Overlay: the optional modules, the
+│       │                   # overlay files, their saved versions, the jobs that apply a change),
 │       │                   # mail/ (the mail relay: stored settings and their rules, SMTP probes,
 │       │                   # status from the core's doctor, the jobs that apply a change),
 │       │                   # notifications/ (recipients and what each receives, the checks that
@@ -832,7 +835,8 @@ papaia-manager/
 │       │                   # api_tiles, api_settings, api_collections, api_connections, api_ingest,
 │       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store),
 │       │                   # api_users, api_roles, users_deps (identity role, Keycloak client),
-│       │                   # api_mail, ui_mail, api_notifications, ui_notifications, ui_widgets
+│       │                   # api_config, ui_config, api_mail, ui_mail, api_notifications,
+│       │                   # ui_notifications, ui_widgets
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)
