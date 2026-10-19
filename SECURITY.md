@@ -58,12 +58,14 @@ and uses arg arrays rather than shell string interpolation.
 
 **Core stack lifecycle:** Two allowlists are kept apart, so an add-on name can
 never be dispatched as a stack operation or the other way round. The stack-level
-set holds `backup`, `backup-delete`, `start`, `stop` and `restore-scoped`.
-`restore` is deliberately absent: it tears the core stack down unconditionally,
-and the manager is a service of that same project. `restore-scoped` is a different
-verb that requires a selection and refuses the option that clears volumes in
-`papaia-ctl` itself, so it cannot replace `$PAPAIA_CONFIG_DIR`; `backup-delete`
-runs no `docker compose` command and needs an explicit restore point. `start` and
+set holds `backup`, `backup-delete`, `start`, `stop`, `restore-scoped` and
+`keycloak-role-sync`. `restore` is deliberately absent: it tears the core stack
+down unconditionally, and the manager is a service of that same project.
+`restore-scoped` is a different verb that requires a selection and refuses the
+option that clears volumes in `papaia-ctl` itself, so it cannot replace
+`$PAPAIA_CONFIG_DIR`; `backup-delete` runs no `docker compose` command and needs
+an explicit restore point; `keycloak-role-sync` runs none either and only applies
+what the realm template says to the running Keycloak. `start` and
 `stop` are reachable only because every caller scopes
 them to Compose profiles, and the profile names are validated against the set
 read out of the deployment's own Compose fragments — not against a pattern
@@ -73,9 +75,54 @@ a separate container rather than as a child of this process. Every one of these
 routes requires the admin role and a session-bound CSRF token, and writes an
 audit entry to `$PAPAIA_CONFIG_DIR/manager/audit.log`.
 
+**Configuration writers:** The core's own commands that write, `setup` and
+`module-purge`, have an allowlist of their own and are reachable only through
+typed requests. They pass nothing but the options of the mail relay or of one
+optional module (never `--force`, `--env`, a host name or any other part of the
+stack's configuration); the core validates and stores the values, and refuses
+`module-purge` while the module is switched on. The mail server's password reaches
+the core in the environment of the child process only, never in an argument. A
+change is refused with a 409 while a restore, an upgrade or a stack action runs.
+
 **Token handling:** OIDC client secrets and catalog tokens never appear
-in logs, process arguments, or HTTP responses. The same holds for the secrets of
+in logs, process arguments, or HTTP responses. The same holds for the mail
+server's password, the webhook URLs of notification recipients and the secrets of
 the RAG system described next.
+
+**Sign-out:** `POST /auth/logout` requires the session-bound CSRF token and ends
+the Keycloak session with the session's refresh token before the manager's own
+cookie is cleared; there is no `GET` variant that a link could trigger. A session
+ended in Keycloak stops working in the manager when its access token is next
+renewed.
+
+**Users and roles:** The Users page and its API are reserved for
+`MANAGER_IDENTITY_ADMIN_ROLE`, a tier above the admin role, and exist only where
+the accounts live in the bundled Keycloak. The manager has no credential of its
+own for them: Keycloak's Admin API is called with the access token of the
+signed-in account, obtained from the session's refresh token and kept in memory
+only (never in the session cookie, a response, an audit entry or a log line), so
+Keycloak applies that account's rights. Nobody can disable their own account, take
+the identity role from themselves or end all of their own sessions there. A
+temporary password is returned once, with `Cache-Control: no-store`, and appears
+in no audit entry or log line. The roles the stack ships are never changed or
+deleted from there.
+
+**Mail and notifications:** The mail server's password is write-only: it is never
+shown or returned, it is used only for the host, port and login it was stored with,
+and it is kept out of the job log, the audit log and the responses. A webhook URL
+of a notification recipient authorises whoever posts to it, so it is stored in
+`manager/notifications.yaml` with mode 0600 (part of the configuration directory's
+backups), shown only as `https://host/…` after it is saved, and absent from every
+response, audit entry, log line and failure reason. Redirects are not followed. A
+notification carries no job log and no error text. The test mail is limited to
+administrators and rate limited.
+
+**Overlay editing:** The overlay files can hold API keys, so their content is never
+written to a log or an audit entry, and request bodies are read by hand so that a
+validation error does not echo them. Targets are fixed keys, never paths. A write
+is compare-and-swap on the file's SHA-256 revision, refuses a symbolic link, and
+is preceded by a copy of the previous file in
+`manager/overlay-history/` (owner-only, the latest 20 per file).
 
 **RAG system:** The RAG pages and `/api/v1/rag/` exist only while the core's
 optional `rag` profile is active (they answer 404 otherwise, after the role check),

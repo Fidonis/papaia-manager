@@ -10,7 +10,7 @@ papaia-manager is a web-based control plane for the papAIa stack's addon lifecyc
 
 It also serves the stack dashboard: a tile overview of the deployed applications, held in `manager/tiles.yaml` in the papAIa config directory and editable in place by administrators. Next to the links a group can hold **widgets**, cards that show live state (the age of the last backup, the fullest disk, how many services run, the number of open warnings, the installed release, the nearest certificate); each refreshes on its own and a card that cannot read its data says so (see the Dashboard widgets section below).
 
-When the core's optional RAG system is active (profile `rag` in the core `.env`'s `COMPOSE_PROFILES`), administrators also get a computed "RAG" tile group on the dashboard (Qdrant) and a "RAG" category in the sidebar (pages of the manager only, no link out). `core/rag.py` owns this: it reads the profile and `QDRANT_PUBLIC_URL` and never tests whether the URL key exists, because the core keeps it while the profile is off. The tile is added in `_gather_tiles` at render time and is not persisted to `tiles.yaml`; the sidebar gates the whole category wrapper on the profile alone (`rag_enabled`, `templating.py`), so no empty caption remains and a missing URL key does not hide a page. The ingester's own web interface (removed in `qdrant-ingest` 1.0.0) has no tile and no entry: its jobs, runs and credentials are the Ingest Jobs pages. The RAG pages need a core that ships the `rag` profile (newer than 1.4.0) and, for their ingest features, `qdrant-ingest` 1.0.0 or newer (see the RAG ingest jobs section below).
+When the core's optional RAG system is active (profile `rag` in the core `.env`'s `COMPOSE_PROFILES`), administrators also get a computed "RAG" tile group on the dashboard (Qdrant) and a "RAG" category in the sidebar (pages of the manager only, no link out). `core/rag.py` owns this: it reads the profile and `QDRANT_PUBLIC_URL` and never tests whether the URL key exists, because the core keeps it while the profile is off. The tile is added in `_gather_tiles` at render time and is not persisted to `tiles.yaml`; the sidebar gates the whole category wrapper on the profile alone (`rag_enabled`, `templating.py`), so no empty caption remains and a missing URL key does not hide a page. The ingester's own web interface (removed in `qdrant-ingest` 1.0.0) has no tile and no entry: its jobs, runs and credentials are the Ingest Jobs pages. The RAG pages need a core that ships the `rag` profile (papAIa 1.5.0 or newer) and, for their ingest features, `qdrant-ingest` 1.0.0 or newer (see the RAG ingest jobs section below).
 
 Another surface, Connections (`/connections`), is listed before Collections and manages the vector database connections of the RAG system: create, edit, test and delete them, with the connection `default` (the integrated Qdrant) created automatically, editable and marked as the default. They are stored in the ingester's own store, `ai/rag/catalog/connections.yaml`, so the ingest service uses them unchanged (see the RAG connections section below). Collections (`/collections`), the next surface, manages the Qdrant collections of the selected connection (the default one unless another is chosen) of the RAG system and the Keycloak roles that may use them: list, create and delete collections, and keep any number of role names with the access level `r` or `rw` per collection. It is admin-only and exists only while the `rag` profile is active (a 404 otherwise, after the role check). The roles are stored in the format `qdrant-mcp-rbac` defines, so the MCP server enforces them unchanged (see the RAG collections section below).
 
@@ -36,7 +36,7 @@ Services (`/services`) reports the declared state of the deployment against the 
 
 That snapshot is also the single Docker reading behind the add-on surfaces: `state.compute_status` takes its set of running Compose projects from `StackSnapshot.running_projects` rather than issuing a `docker ps` of its own, so `/addons` and `/services` cannot disagree about whether an add-on is up.
 
-Authentication is handled natively via OIDC Authorization Code Flow with PKCE against Keycloak. Two configurable realm roles gate access: the admin role reaches every surface, while the user role reaches the dashboard only. Authorization is enforced by the route dependencies, so the JSON API is restricted exactly like the pages.
+Authentication is handled natively via OIDC Authorization Code Flow with PKCE against Keycloak. Three configurable realm roles gate access in tiers: the identity role (`MANAGER_IDENTITY_ADMIN_ROLE`) opens Users and holds the admin role as well, the admin role reaches every other surface, and the user role reaches the dashboard only. Authorization is enforced by the route dependencies, so the JSON API is restricted exactly like the pages.
 
 ---
 
@@ -61,8 +61,9 @@ papaia-manager/
 │       ├── core/
 │       │   ├── papaia_lib.py   # sys.path bootstrap + core version handshake
 │       │   ├── ctl.py          # Whitelisted subprocess wrapper for papaia-ctl
-│       │   │                   #   (separate allowlists for addon verbs, core verbs
-│       │   │                   #    and the core's read-only python sub-commands)
+│       │   │                   #   (separate allowlists for addon verbs, core verbs,
+│       │   │                   #    the core's read-only python sub-commands and the two
+│       │   │                   #    that write: setup, module-purge)
 │       │   ├── backups.py      # Read-only backup.yaml / manifest.yaml catalogue access
 │       │   ├── restore_scope.py # What a restore point offers to restore in part, and what that would stop
 │       │   ├── backup_run.py   # Starting a backup: the enqueue path the button and the schedule share
@@ -164,9 +165,9 @@ papaia-manager/
 │       │   ├── api_ingest.py   # /api/v1/rag/ingest — uploads, the tree, embedding runs
 │       │   ├── api_ingest_jobs.py # /api/v1/rag/ingest — jobs, their runs, credentials, the catalog file
 │       │   ├── ui_ingest.py    # /ingest/... pages and their partials
-│       │   └── rag_deps.py     # RagAdmin (admin + `rag` profile), the connection service and the
+│       │   ├── rag_deps.py     # RagAdmin (admin + `rag` profile), the connection service and the
+│       │   │                   #   per-request CollectionStore on the selected connection
 │       │   └── users_deps.py   # UsersAdmin (identity role, bundled Keycloak), the Keycloak client and its error mapping
-│       │                       #   per-request CollectionStore on the selected connection
 │       ├── templates/          # Jinja2 HTML templates
 │       │   └── partials/           # HTMX fragments returned by mutating/polling routes
 │       │       ├── _addon_controls.html      # Per-addon action buttons (install/start/stop/...)
@@ -192,6 +193,7 @@ papaia-manager/
 │       │       ├── settings_modules.html     # Settings > Modules: the switches
 │       │       ├── settings_overlay.html     # Settings > Overlay: the files, the editor, the versions
 │       │       ├── _settings_tabs.html       # The three tabs of Settings: Manager, Modules, Overlay
+│       │       ├── _users_tabs.html          # The two tabs of Users: Users, Roles
 │       │       ├── config_job_status.html    # Modules and Overlay tabs: the job in flight or just finished
 │       │       ├── notifications_status.html # Notifications tab: whether notifications can go out
 │       │       ├── notifications_log.html    # Notifications tab: what was sent lately
@@ -298,7 +300,7 @@ State lives in Docker. The runner is started without `--rm` and with `--restart 
 
 Consequences worth remembering when touching this area:
 
-- `ALLOWED_CORE_VERBS` in `core/ctl.py` contains `backup`, `backup-delete`, `start`, `stop` and `restore-scoped`, and deliberately **not** `restore`: `restore-scoped` requires a selection and refuses `--restart-clean` in papaia-ctl itself, so it cannot replace `$PAPAIA_CONFIG_DIR`, and `backup-delete` runs no `docker compose` command and needs an explicit restore point.
+- `ALLOWED_CORE_VERBS` in `core/ctl.py` contains `backup`, `backup-delete`, `start`, `stop`, `restore-scoped` and `keycloak-role-sync`, and deliberately **not** `restore`: `restore-scoped` requires a selection and refuses `--restart-clean` in papaia-ctl itself, so it cannot replace `$PAPAIA_CONFIG_DIR`, and `backup-delete` and `keycloak-role-sync` run no `docker compose` command (the first needs an explicit restore point, the second applies what the realm template says to the running Keycloak and is idempotent).
 - Backup and restore are mutually exclusive, enforced in `routers/api_maintenance.py` with 409s.
 - The restore-point id is validated against an exact timestamp pattern before it reaches a path join or an argv.
 - `PAPAIA_BACKUP_DIR` must be mounted at its host path, or the catalogue is invisible to the container.
@@ -311,7 +313,7 @@ The read half and the execute half are deliberately separate.
 
 **The check** (`core/upgrade.py`) never changes anything and is split by cost. `current_version`, `checkout_state` and `read_upgrade_log` are file reads plus three local `git` calls, cheap enough to render on page load. `run_check` fetches from the remote and materialises a `git worktree` of the target tag, because the add-on gate has no honest answer without one — only the target's tree carries its own `ADDON_API` window and its Compose service names. It is an explicit operator action, serialised behind an `asyncio.Lock`, and its result is cached for the process. The fetch runs in the manager container, which has no SSH client or key, so an SSH `origin` is fetched through its HTTPS equivalent (`https_equivalent`, passed as a URL — the checkout's configuration is never written). A fetch that still fails is a warning carrying the commands from `fetch_hint`, never "the newest release": the page and the header button say "Could not check" / "Check failed" instead.
 
-The arithmetic itself is delegated straight back to the core: `ALLOWED_PY_COMMANDS` in `core/ctl.py` allows `upgrade-resolve`, `upgrade-plan` and `addon-check`, invoked through `run_py_cli` as `python3 -m lib.cli` with the workspace on `PYTHONPATH` — the same shape `papaia-ctl` uses for itself. Parsing four lines of TSV is the price of the manager and a shell on the host never reaching different verdicts about the same checkout. `upgrade-record` is deliberately absent: it writes the migration ledger, and only the upgrade's own second phase may do that.
+The arithmetic itself is delegated straight back to the core: `ALLOWED_PY_COMMANDS` in `core/ctl.py` allows `upgrade-resolve`, `upgrade-plan` and `addon-check` (and, for other pages, `doctor`, `render-preview` and `module-info`), invoked through `run_py_cli` as `python3 -m lib.cli` with the workspace on `PYTHONPATH` — the same shape `papaia-ctl` uses for itself. Parsing four lines of TSV is the price of the manager and a shell on the host never reaching different verdicts about the same checkout. `upgrade-record` is deliberately absent: it writes the migration ledger, and only the upgrade's own second phase may do that.
 
 **The upgrade** goes through `core/runner.py` as a third `RunnerKind`, next to restore and stack. `--version` is always pinned, never omitted: without it papaia-ctl means "go to whatever is newest", and a tag published between the operator reading the migration list and clicking the button would move the deployment somewhere nobody reviewed. It also makes the runner name deterministic, which is the real mutual exclusion — `docker run` refuses a duplicate name.
 
@@ -467,7 +469,7 @@ Known limits: no unlock for an account that brute-force protection has locked, n
 
 ### Mail relay
 
-The page and its API (`/mail`, `/api/v1/mail`) set up the stack's outbound mail relay, the core's optional `smtp` profile (papAIa 1.6.0 and newer): one internal Postfix relay that holds the credentials of the real mail server and that Keycloak, and add-ons that attach it, send through. `core/mail/` holds all of it (`settings` what the core stored and the rules, `probe` the SMTP conversations, `status` the relay's state from `doctor`, `service` the jobs that apply a change), `routers/api_mail.py` and `routers/ui_mail.py` the surface, and `tests/test_mail_*.py` and `tests/test_api_mail.py` pin it.
+The page and its API (`/mail/server`, `/api/v1/mail`) set up the stack's outbound mail relay, the core's optional `smtp` profile (papAIa 1.6.0 and newer): one internal Postfix relay that holds the credentials of the real mail server and that Keycloak, and add-ons that attach it, send through. `core/mail/` holds all of it (`settings` what the core stored and the rules, `probe` the SMTP conversations, `status` the relay's state from `doctor`, `service` the jobs that apply a change), `routers/api_mail.py` and `routers/ui_mail.py` the surface, and `tests/test_mail_*.py` and `tests/test_api_mail.py` pin it.
 
 Consequences worth remembering when touching this area:
 
@@ -679,6 +681,11 @@ uv run pytest -q
 - **Import style**: absolute imports (`from app.config import get_settings`)
 - **YAML**: yamllint with the project `.yamllint` config
 - **Python version**: 3.12 minimum
+- **Tests that need another checkout** are skipped without it: `tests/test_ingester_contract.py` needs
+  `QDRANT_INGEST_SRC` (the `src` directory of a `qdrant-ingest` checkout), `tests/test_mail_contract.py` and
+  `tests/test_config_contract.py` need `PAPAIA_SRC` (a checkout of the papAIa core that has the mail relay and the
+  module operations). Run them with the latest release of the other repository whenever either side changes. The
+  tests that need a symbolic link or read a file mode are skipped on Windows; run them on Linux.
 
 ---
 
@@ -729,7 +736,7 @@ mount.
 
 ## Security boundaries
 
-- **Never log** session secrets, OIDC client secrets, the mail relay's upstream password, catalog tokens, Qdrant api-keys (`QDRANT_JWT_SECRET` and the keys stored in connections), `QI_API_TOKEN`, `QI_CONNECTIONS_SECRET` or the values of ingest credentials. They are never part of a response or an audit entry either.
+- **Never log** session secrets, OIDC client secrets, the mail relay's upstream password, catalog tokens, Qdrant api-keys (`QDRANT_JWT_SECRET` and the keys stored in connections), `QI_API_TOKEN`, `QI_CONNECTIONS_SECRET`, the values of ingest credentials, the webhook URLs of notification recipients or the content of overlay files (it can hold an API key). They are never part of a response or an audit entry either.
 - **The signed-in user's access token** (used by the Users page) lives in memory only: never in the session cookie, a response, an audit entry or a log line. Temporary passwords are returned once and are never part of an audit entry or a log line.
 - **docker.sock access is root-equivalent.** The manager container mounts `/var/run/docker.sock`. This is required for Compose operations and is intentional — the manager profile is off by default.
 - **Subprocess inputs are whitelisted.** All calls to `papaia-ctl` go through `core/ctl.py` which validates the verb against an allowlist and uses arg arrays (never `shell=True`). The commands that write, the core's `setup` and `module-purge`, have an allowlist of their own and are reachable only through `run_smtp_setup` and `run_module_setup` (the options of the mail relay or of one optional module) and `run_module_purge` (one module's volumes and settings, never while it is on).
