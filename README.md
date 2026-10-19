@@ -54,11 +54,55 @@ Without a settings file nothing changes. A second card, **Host monitoring**, set
 how often the Host page re-measures the machine (10 seconds to 60 minutes,
 default 60 seconds); it applies to every administrator.
 
-**Dashboard and access tiers.** Two Keycloak realm roles gate the UI.
-`MANAGER_ADMIN_ROLE` (default `manager-admin`) reaches every surface;
-`MANAGER_USER_ROLE` (default `user`) reaches the dashboard only. Accounts
-holding neither role are rejected at login. The dashboard at `/` is a tile
-overview of the deployed applications, held in
+**Modules and overlay.** Settings has three tabs: **Manager** (the cards above),
+**Modules** and **Overlay**. **Modules** is the one place that switches the
+optional parts of the stack on and off: LocalAI, web search, the RAG system and the
+mail relay. Switching a module on stores the choice with the core's own `setup`
+(`--enable-local-ai`, `--enable-web-search`, `--enable-rag`, `--enable-smtp`, and for
+LocalAI the accelerator variant, which is chosen on the page because GPU detection
+cannot see the host from inside the container) and starts the module's profile; the
+RAG system also recreates LibreChat, whose configuration lists the RAG tools. The
+RAG pages and the Mail page hold those modules' settings and no longer switch
+anything. Switching a module on asks the questions `papaia-ctl setup` asks, inline under
+its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings
+were deleted): the public URL of the RAG system and of LocalAI, prefilled with what the
+core derives from the stack's address, and for the mail relay the mail server (host,
+connection, port, login, password, sender), which **Test Connection** tries before the
+relay is switched on without sending a mail or saving anything. A module whose settings exist switches on
+without a dialog. The mail server can also be saved on the Mail page with the relay off.
+The manager itself cannot be switched off.
+
+Switching a module off removes its containers and asks what happens to what it
+leaves behind: **keep the data and the settings** (switching it on again brings
+everything back), **delete the data** (its Docker volumes) **and keep the settings**,
+or **delete the data and the settings** (they go back to what the release ships).
+Deleting asks you to type the module's name, and the dialog lists the volumes the
+core reports. Settings alone are not offered: the RAG system's stored credentials are
+encrypted with a secret that belongs to its data, and a module without its settings
+but with its data would be of no use to anyone. The RAG documents folder is never
+deleted. Deleting needs a core with the module operations (papAIa 1.6.0); an older
+core still switches modules off and keeps everything. **Overlay** edits the customer overlay, the files under
+`$PAPAIA_CONFIG_DIR/overlay/` that the core merges last into the LibreChat,
+LiteLLM and SearXNG configuration. The editor checks the YAML while you type,
+shows the effective result (the core merges the draft in memory and the page
+shows the difference to what the file renders to now; this needs a core with the
+`render-preview` command, otherwise only the syntax check is available), and
+**Apply** saves the file and recreates the services that read it, as a queued
+job. Before every Apply, Discard and Roll back the previous file is copied to
+`$PAPAIA_CONFIG_DIR/manager/overlay-history/` (the latest 20 per file, readable by
+the owner only, part of a backup); the **Versions** tab shows them, restores one
+as a draft or rolls back to it directly. If the services do not start with the
+new file, the previous one is put back automatically and the job fails with the
+reason. A file edited on the host between opening the page and Apply is detected
+by its revision and refused with a conflict instead of being overwritten.
+Overlay content is never written to the audit log.
+
+**Dashboard and access tiers.** Keycloak realm roles gate the UI in three tiers.
+`MANAGER_ADMIN_ROLE` (default `manager-admin`) reaches every surface except
+Users; `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`) sits above it and
+also opens Users (see below); `MANAGER_USER_ROLE` (default `user`) reaches the
+dashboard only. Accounts holding none of the roles are rejected at login. The
+dashboard at `/` is a tile overview of the deployed applications, held in
 `$PAPAIA_CONFIG_DIR/manager/tiles.yaml` and seeded with the applications the
 stack ships today on first run. Administrators edit it in place: **Edit
 dashboard** turns the page into an editor for groups and tiles, with drag and
@@ -71,6 +115,51 @@ resolve against the core `.env`, and each tile's `visibility: all | admin` is
 filtered server-side, so an admin-only tile is absent from a regular user's
 response rather than hidden by CSS. Authorization is enforced by the route
 dependencies, so the JSON API is restricted exactly like the pages.
+
+**Widgets.** Besides links, a group can hold widgets: cards that show live
+state and link to the page that explains it.
+
+| Widget | Shows |
+|---|---|
+| `backup-age` | how long ago the newest successful backup was taken, and whether the schedule says it is overdue |
+| `disk-space` | the disk that needs attention most, with what is free of it |
+| `services-health` | how many of the stack's services run |
+| `open-warnings` | the number of open findings of the notification checks, and their kinds |
+| `core-version` | the installed release, and whether the last upgrade check found a newer one |
+| `cert-expiry` | days until the nearest certificate the host check sees expires |
+
+In the editor, **Add widget** opens a gallery of what this installation can show
+(a widget whose requirement is not met, such as the host check on a core without
+`doctor`, is listed with the reason and cannot be added), then a step with a live
+preview where you choose a title, a width (small, medium or the full row) and who
+sees it. A widget is removed from its menu; **Undo** in the bar brings it back
+until you save. Each card refreshes on its own, every 30 to 60 seconds and not
+while the tab is hidden, so a slow source never holds up the rest of the
+dashboard. A card that cannot read its data says so: administrators are told why,
+everyone else gets a plain sentence. Visibility works as for links, a widget set
+to administrators is absent for the user role and its card answers 404, and the
+cards read what the manager already knows (the backup catalogue, the host check,
+the container snapshot and the last upgrade check) instead of starting
+measurements of their own. In `tiles.yaml` a widget looks like this; a tile
+without a `type` is a link, as before, and a widget without a `visibility` is for
+administrators:
+
+```yaml
+- type: widget
+  widget: backup-age   # one of the ids above
+  id: 3f9c1a0e         # assigned on save; names the card the browser fetches
+  title: Backups       # optional, defaults to the widget's name
+  size: m              # s | m | l: one column, two, the whole row
+  visibility: admin    # all | admin
+```
+
+**Users.** A third tier sits above the admin role: `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`, which already includes the admin role) opens **Users**, where accounts of the bundled Keycloak are managed without the Admin Console. The list shows each account's status and roles, with search and paging. From it an administrator creates an account (with the roles to start from, the dashboard role ticked, and a first password: a temporary one shown once, or a mailed link), enables or disables it (disabling also ends its sessions), changes its roles, resets its password, and views and ends its sessions. The **Roles** tab manages the roles themselves: it lists every realm role with what it contains, creates a role, changes its description and the roles it contains, and deletes it after showing which accounts hold it. The roles the stack ships (and the three the manager is configured with) are shown but not changed or deleted, because services refer to them by name; a role cannot be renamed, and cannot contain itself, directly or through another role. A temporary password makes Keycloak ask for a new one at the first sign-in. The mailed link needs a mail server on the realm and is offered only when there is one. Nobody can disable their own account, take the identity role from themselves or end all of their own sessions here, so the page cannot lock its last administrator out. There is no service account behind it: the manager calls Keycloak's Admin API with the access token of the signed-in account, obtained from the session's refresh token and kept in memory only, so Keycloak applies that account's own rights. The identity role therefore has to carry `manage-users`, `view-users`, `query-users`, `view-realm` and `manage-realm` of the realm's `realm-management` client (the last is what Keycloak asks for to create, change or delete a role); where it does not (yet), the page says so. A session ended in Keycloak stops working in the manager when its token is next renewed, within a few minutes. Every change is audited and no password is ever written to the log. The page does not exist where the accounts live in an external identity provider (`AUTH_PROVIDER=external_oidc`).
+
+**Mail.** Administrators open **Mail** (System), which has two tabs: **Notifications** (the page the menu entry opens) and **Mail Server**.
+
+**Notifications.** The first tab is where the manager tells people when something needs attention. A recipient is one email address or one webhook URL, and each recipient ticks which events it receives, in a matrix of recipients and events that saves at once. The events: a **job failed** (a job in the manager's queue ended with an error, reported when it ends); the **backup is overdue** (the newest good backup is older than the backup schedule allows, so it needs a schedule); a **service is unhealthy** (a service a check saw brought up is now stopped, unhealthy or gone, also after you stopped it in the manager, with or without “Clean up”; a check runs right after every job in the manager ends; at most once per debounce window for each service); an **update is available** (a newer papAIa release, or a newer version of an installed add-on in a catalog on disk; catalogs are refreshed by hand, so an add-on update shows up after the refresh); a **certificate is expiring** (within the lead time, among the certificates the host check sees). The check interval (default 5 minutes), the debounce (30 minutes) and the lead time (14 days) are the same for every recipient. Each event is reported once per occurrence, and the manager remembers what it reported (`manager/notifications-state.json`), so a restart sends nothing twice. Email goes through the mail relay: while the Mail Server is not set up, the tab says so and email recipients wait, and webhooks keep working. A webhook gets a JSON `POST` of `{event, severity, message, timestamp, details}`; redirects are not followed and a network error or a 5xx answer is tried once more. Its URL is kept in `manager/notifications.yaml` (mode 0600, part of the configuration directory's backups) and is never shown again after it is saved, only its host. **Send test** checks a recipient, and the tab lists what was sent lately. A notification carries no job log and no error text, only what is needed to find the job. Restores, upgrades and whole-stack actions run outside the job queue and are not reported.
+
+**Mail Server.** The second tab sets up the stack's outbound mail relay, the optional `smtp` profile of papAIa 1.6.0 and newer. One internal relay holds the credentials of your mail server and forwards to it, and Keycloak, and add-ons that attach it, send through it. The page edits the mail server behind the relay, with the relay on or off: host, connection security (STARTTLS, TLS or none), port, login, password, sender address and sender name. The password is write-only: it is never shown, an empty field keeps the stored one, and a stored password is only used for the host, port and login it was stored with. **Save and apply** is a queued job: the core's own `setup` stores the values (so its validation, sticky values and password revision stay in one place), and while the relay is on `papaia-ctl start --profiles=smtp` recreates it and Keycloak's realm gets the relay as its mail server, so the Users page offers "email a link" from then on. With the relay off the button is **Save settings** and only stores the values. The relay is switched on and off in Settings > Modules. A job whose last step could not reach Keycloak fails with that reason instead of reporting success. **Test connection** talks to the mail server with the values in the form (greeting, STARTTLS or TLS, login) without sending a mail or saving anything, and **Send test mail** hands one message to the relay: "sent" means the relay took it, not that it arrived, because the relay queues and retries for a day. The page shows whether the relay runs and how many messages wait in its queue. Switching the relay off (in Settings > Modules) stops it, takes it out of the stack's profiles and removes the mail server it put into the realm; the settings and the password are kept unless you choose to delete them there. The page needs a core with the relay and tells you so otherwise.
 
 **RAG system.** When the core runs its optional RAG system (the `rag` profile
 in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
@@ -90,7 +179,7 @@ neither lists nor saves it; the price is that it cannot be reordered or removed
 there. A tile of your own with the same name or link wins, and a group you call
 *RAG* receives it.
 
-The RAG pages need a core that ships the `rag` profile (newer than 1.4.0). Their
+The RAG pages need a core that ships the `rag` profile (papAIa 1.5.0 or newer). Their
 ingest features need `qdrant-ingest` 1.0.0 or newer, the first release that reports
 the features the Embedding and Ingest Jobs pages adapt to (see the end of *Ingest
 jobs*); an older ingester keeps working, with the parts it lacks left out.
@@ -509,7 +598,7 @@ dry-run preview; the prune itself is recorded as its own audit entry.
 
 ## REST API
 
-All mutating routes require the `MANAGER_ADMIN_ROLE` and a CSRF header.
+All mutating routes require the `MANAGER_ADMIN_ROLE` and a CSRF header, except those of the Users page (`/api/v1/users`, `/api/v1/roles`), which require the `MANAGER_IDENTITY_ADMIN_ROLE` instead.
 Long-running operations return `202` with a job id. The RAG routes
 (`/api/v1/rag/`) are admin-only too and, after the role check, answer 404 while the
 `rag` profile is not active.
@@ -524,7 +613,8 @@ DELETE /api/v1/catalogs/{name}
 POST   /api/v1/catalogs/{name}/refresh     # → 202 {job_id}
 
 GET    /api/v1/tiles                       # the whole tile configuration, unfiltered, with its revision
-PUT    /api/v1/tiles                       # {revision, version?, groups}
+PUT    /api/v1/tiles                       # {revision, version?, groups}; a tile is a link or
+                                           #   {type: "widget", id?, widget, title?, size?, visibility?}
 GET    /api/v1/tiles/raw                   # tiles.yaml as text, with its revision
 PUT    /api/v1/tiles/raw                   # {revision, yaml}
 POST   /api/v1/tiles/resolve               # {values} resolve {{KEY}} links for the editor's preview
@@ -647,6 +737,59 @@ DELETE /api/v1/settings/branding/logo        # remove the logo
 POST   /api/v1/settings/branding/reset       # {revision} back to the defaults, logo removed
 PUT    /api/v1/settings/host                 # {revision, refresh_seconds} 10 to 3600
 GET    /brand/logo                           # the stored logo, for any signed-in user
+
+GET    /api/v1/users                         # ?search&first&limit: a page of accounts with their roles
+GET    /api/v1/users/roles                   # the roles a new account can be given
+POST   /api/v1/users                         # {username, email?, first_name?, last_name?, credential?, roles?}
+                                             #   credential: temporary | email | none; a temporary password
+                                             #   is in this one response only
+PUT    /api/v1/users/{id}/enabled            # {enabled}; disabling also ends the sessions
+GET    /api/v1/users/{id}/roles              # the roles, marked with what the account holds
+PUT    /api/v1/users/{id}/roles              # {roles} the account's own realm roles
+POST   /api/v1/users/{id}/password/temporary # a new temporary password, in this response only
+POST   /api/v1/users/{id}/password/email     # mail the account Keycloak's update-password link
+GET    /api/v1/users/{id}/sessions           # where the account is signed in
+DELETE /api/v1/users/{id}/sessions/{sid}     # end one session
+DELETE /api/v1/users/{id}/sessions           # end all of them
+
+GET    /api/v1/roles                         # every realm role with what it contains
+GET    /api/v1/roles/{name}                  # one role, with the accounts that hold it
+POST   /api/v1/roles                         # {name, description?, members?}
+PUT    /api/v1/roles/{name}                  # {description, members}: the realm roles it contains
+DELETE /api/v1/roles/{name}                  # not a built-in role
+
+GET    /api/v1/mail                          # ?fresh: the stored settings (never the password) and the relay's status
+PUT    /api/v1/mail                          # {revision, host, port?, security, user?, password?, from_address, from_name?}
+                                             #   store the mail server and, while the relay is on, apply it; 202 with a job.
+                                             #   An empty password keeps the stored one. Switching the relay on or off is
+                                             #   /api/v1/config/modules/mail/{enable,disable}
+POST   /api/v1/mail/probe                    # {host?, port?, security?, user?, password?} try the mail server, send nothing
+POST   /api/v1/mail/test-message             # {to} hand one message to the relay
+
+GET    /api/v1/config/modules                # the optional modules, their state, the LocalAI variants, the revision
+GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | mail: the volumes and settings a switch-off could delete,
+                                             #   and the open setup questions (public URL) a switch-on asks
+POST   /api/v1/config/modules/{name}/enable  # {revision, variant?, public_url?, mail?} 202 with a job. public_url: rag | localai; mail: the mail
+                                             #   server when none is stored. The RAG system needs no clashing add-on
+POST   /api/v1/config/modules/{name}/disable # {revision, scope?: keep|data|all, confirm?}; 202 with a job. A deletion needs the module name in confirm
+GET    /api/v1/config/overlay                # the three editable overlay files and the other files under overlay/
+GET    /api/v1/config/overlay/{key}          # librechat | litellm | searxng: content, revision, versions
+POST   /api/v1/config/overlay/{key}/check    # {content} syntax check, nothing is written
+POST   /api/v1/config/overlay/{key}/preview  # {content} the effective result as a diff (needs the core's render-preview)
+PUT    /api/v1/config/overlay/{key}          # {content, revision} save, back up and recreate; 202 with a job, 409 if stale
+DELETE /api/v1/config/overlay/{key}          # ?revision= remove the file (backed up first); 202 with a job
+GET    /api/v1/config/overlay/{key}/versions            # the saved versions, newest first
+GET    /api/v1/config/overlay/{key}/versions/{id}       # one version and its difference to the file now
+POST   /api/v1/config/overlay/{key}/rollback            # {version, revision} make a saved version the overlay; 202 with a job
+
+GET    /api/v1/notifications                 # the settings, the events, the recipients (a webhook URL is shown
+                                             #   as https://host/…, never in full), and whether email can go out
+POST   /api/v1/notifications/recipients      # {revision, name, kind: email|webhook, target, enabled?, events?}
+PUT    /api/v1/notifications/recipients/{id} # {revision, name?, target?, enabled?, events?}; no target keeps the stored one
+PUT    /api/v1/notifications/recipients/{id}/events  # {revision, events}: what one recipient receives
+DELETE /api/v1/notifications/recipients/{id} # {revision}; its subscriptions go with it
+PUT    /api/v1/notifications/settings        # {revision, check_interval_minutes, debounce_minutes, cert_lead_days}
+POST   /api/v1/notifications/recipients/{id}/test  # send a test notification to one recipient
 ```
 
 ## Layout
@@ -660,10 +803,11 @@ papaia-manager/
 │   └── app/
 │       ├── main.py         # FastAPI application factory
 │       ├── config.py       # Pydantic Settings
-│       ├── auth/           # OIDC + PKCE login, CSRF, admin-role dependency
+│       ├── auth/           # OIDC + PKCE login, CSRF, role dependencies, the user's own token
 │       ├── core/           # ctl (whitelisted papaia-ctl calls), papaia_lib (core handshake),
 │       │                   # catalogs, snapshots, status, env-forms, jobs, audit, tiles,
-│       │                   # keycloak, resolve (cross-catalog add-on dedup),
+│       │                   # keycloak, keycloak_users + users_service + roles_service (the Users page),
+│       │                   # resolve (cross-catalog add-on dedup),
 │       │                   # services (container status), inventory (declared state),
 │       │                   # backups (restore-point catalogue), restore_scope (partial restore),
 │       │                   # runner (detached restore, stack and upgrade runs),
@@ -677,11 +821,22 @@ papaia-manager/
 │       │                   # ingest/ (the ingester's jobs.yaml and secrets.yaml, its REST API,
 │       │                   # job editor and schedules, runs, the Embedding page's managed
 │       │                   # jobs, jailed browsing, staged uploads, background clean-up),
-│       │                   # settings_store (settings.yaml and the logo)
+│       │                   # settings_store (settings.yaml and the logo),
+│       │                   # config/ (Settings > Modules and Overlay: the optional modules, the
+│       │                   # overlay files, their saved versions, the jobs that apply a change),
+│       │                   # mail/ (the mail relay: stored settings and their rules, SMTP probes,
+│       │                   # status from the core's doctor, the jobs that apply a change),
+│       │                   # notifications/ (recipients and what each receives, the checks that
+│       │                   # find what to report, delivery by email and webhook, the background task),
+│       │                   # widgets/ (the dashboard's widgets: the payload they produce, the registry,
+│       │                   # reading and caching, the built-in types)
 │       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
 │       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
 │       │                   # api_tiles, api_settings, api_collections, api_connections, api_ingest,
-│       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store)
+│       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store),
+│       │                   # api_users, api_roles, users_deps (identity role, Keycloak client),
+│       │                   # api_config, ui_config, api_mail, ui_mail, api_notifications,
+│       │                   # ui_notifications, ui_widgets
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build)
 ├── tests/                  # pytest suite (sibling to src/)

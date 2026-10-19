@@ -85,11 +85,15 @@ uv run mypy .
 uv run pytest -q
 ```
 
-Two groups of tests depend on where they run. `tests/test_ingester_contract.py` compares the manager's
+Some tests depend on where they run. `tests/test_ingester_contract.py` compares the manager's
 mirror of the ingester's job schema with the ingester's own modules and is skipped unless
 `QDRANT_INGEST_SRC` points at the `src` directory of a `qdrant-ingest` checkout; run it with the ingester's
-latest release whenever either schema changes. The tests that need a symbolic link are skipped where the
-platform cannot create one (run them on Linux).
+latest release whenever either schema changes. `tests/test_mail_contract.py` and
+`tests/test_config_contract.py` do the same for the mail relay and the optional modules against the papAIa
+core (the real `setup` and `render-preview` run in a copy of the checkout): they are skipped unless
+`PAPAIA_SRC` points at a checkout of the core that has them (papAIa 1.6.0 or newer), so run them when
+either side's options or rules change. The tests that need a symbolic link or read a file mode are skipped
+where the platform cannot provide one (run them on Linux).
 
 Run `ruff` from the repository root, not from `src/`: `tests/` sits next to `src/`, and
 `ruff check .` inside `src/` does not see it, so a line in a test that CI rejects would pass

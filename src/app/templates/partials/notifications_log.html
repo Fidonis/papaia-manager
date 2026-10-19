@@ -1,0 +1,44 @@
+{# What was sent lately, newest first. Expects `rows` and `total`. The recipient is shown by name:
+   an address or a webhook URL is never written to the log. A badge spells its classes out,
+   because app.css is built by scanning these templates. #}
+{% if not rows %}
+<div class="rounded-xl border border-base-300 px-5 py-8 text-center">
+  <p class="text-sm font-semibold">Nothing sent yet</p>
+  <p class="mt-1 text-sm opacity-60">Deliveries show up here, test notifications included.</p>
+</div>
+{% else %}
+<div class="overflow-x-auto rounded-xl border border-base-300">
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>When (UTC)</th>
+        <th>Event</th>
+        <th>Recipient</th>
+        <th>Result</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="whitespace-nowrap text-xs opacity-60">{{ row.ts | ingest_when }}</td>
+        <td class="text-xs">
+          {{ row.event }}{% if row.subject %} <span class="opacity-60">· {{ row.subject }}</span>{% endif %}
+        </td>
+        <td class="text-xs">{{ row.recipient }}</td>
+        <td>
+          {% if row.ok %}
+          <span class="badge badge-success badge-sm">Sent</span>
+          {% else %}
+          <span class="badge badge-error badge-sm">Failed</span>
+          {% if row.reason %}<span class="block text-xs opacity-60">{{ row.reason }}</span>{% endif %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if total > rows | length %}
+<p class="mt-2 text-xs opacity-60">The last {{ rows | length }} of {{ total }}. The audit log has the rest (action “notify.”).</p>
+{% endif %}
+{% endif %}

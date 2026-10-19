@@ -8,7 +8,7 @@ import logging
 import os
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from typing import Any
 from urllib.parse import urlencode
@@ -72,10 +72,18 @@ class OIDCClaims:
 
 @dataclass(frozen=True, slots=True)
 class TokenSet:
-    """Validated claims together with the refresh token that produced them."""
+    """Validated claims together with the refresh token that produced them.
+
+    The access token of the same response travels along for the calls that act with the
+    user's own rights (see `app.auth.user_token`). It is kept out of `repr`, and it never
+    goes into the session cookie: only the refresh token does.
+    """
 
     claims: OIDCClaims
     refresh_token: str | None
+    access_token: str | None = field(default=None, repr=False)
+    # Epoch seconds at which `access_token` stops being valid; 0 when the response did not say.
+    access_expires_at: float = 0.0
 
 
 class OIDCClient:
@@ -99,9 +107,11 @@ class OIDCClient:
         jwks_cache_ttl: int = 300,
         http_timeout: float = 10.0,
         ssl_cert_file: str | None = None,
+        logout_endpoint: str | None = None,
     ) -> None:
         self._auth_endpoint = auth_endpoint
         self._token_endpoint = token_endpoint
+        self._logout_endpoint = logout_endpoint
         self._jwks_endpoint = jwks_endpoint
         self._client_id = client_id
         self._client_secret = client_secret
@@ -179,7 +189,44 @@ class OIDCClient:
         if token_set.refresh_token is not None:
             return token_set
         # Keycloak normally rotates the token; keep the current one if it did not.
-        return TokenSet(claims=token_set.claims, refresh_token=refresh_token)
+        return replace(token_set, refresh_token=refresh_token)
+
+    async def end_session(self, *, refresh_token: str) -> bool:
+        """End the provider's SSO session behind a refresh token.
+
+        Without this, signing out of the manager only drops its own cookie, and the next
+        visit to the login page is answered by the still-open SSO session: the user is signed
+        in again without being asked for anything. The call is made by the manager itself
+        (the logout endpoint accepts a refresh token from its confidential client), so it
+        needs no redirect URI registered with the provider.
+
+        Returns False when no logout endpoint is known (a provider that is not a Keycloak
+        realm) and True once the session is over. A session that was already over (the
+        provider answers 400 `invalid_grant`) counts as over. Any other answer, or an
+        unreachable provider, raises OIDCError; its text carries no token.
+        """
+        if self._logout_endpoint is None:
+            return False
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._http_timeout, verify=self._ssl_verify
+            ) as client:
+                response = await client.post(
+                    self._logout_endpoint,
+                    data={
+                        "client_id": self._client_id,
+                        "client_secret": self._client_secret,
+                        "refresh_token": refresh_token,
+                    },
+                )
+        except httpx.HTTPError as exc:
+            raise OIDCError(f"logout request failed: {exc.__class__.__name__}") from exc
+        if response.status_code in (200, 204):
+            return True
+        if response.status_code == 400 and _error_code(response) == "invalid_grant":
+            return True
+        logger.warning("logout endpoint returned HTTP %d", response.status_code)
+        raise OIDCError(f"logout request failed with HTTP {response.status_code}")
 
     async def _token_request(self, data: dict[str, str]) -> dict[str, Any]:
         async with httpx.AsyncClient(
@@ -200,11 +247,18 @@ class OIDCClient:
         claims = await self._validate_id_token(id_token, access_token=access_token)
         claims = self._apply_role_fallback(claims, access_token)
         refresh_token = token_response.get("refresh_token")
+        expires_in = token_response.get("expires_in")
         return TokenSet(
             claims=claims,
             refresh_token=refresh_token
             if isinstance(refresh_token, str) and refresh_token
             else None,
+            access_token=access_token,
+            access_expires_at=(
+                time.time() + float(expires_in)
+                if isinstance(expires_in, int | float) and not isinstance(expires_in, bool)
+                else 0.0
+            ),
         )
 
     def _apply_role_fallback(
@@ -310,6 +364,16 @@ class OIDCClient:
         return self._jwks
 
 
+def _error_code(response: httpx.Response) -> str | None:
+    """The OAuth `error` of a JSON error response, or None when there is none to read."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    error = body.get("error") if isinstance(body, dict) else None
+    return error if isinstance(error, str) else None
+
+
 def _pkce_pair() -> tuple[str, str]:
     """Return (code_verifier, code_challenge) for PKCE S256."""
     raw = base64.urlsafe_b64encode(os.urandom(32)).rstrip(b"=")
@@ -400,11 +464,13 @@ def get_oidc_client() -> OIDCClient:
     the signing keys) per request.
     """
     from app.config import get_settings
+    from app.core.keycloak_users import logout_url
 
     settings = get_settings()
     return OIDCClient(
         auth_endpoint=settings.oidc_issuer_kc_auth,
         token_endpoint=settings.oidc_issuer_kc_token,
+        logout_endpoint=logout_url(settings.oidc_issuer_kc_token),
         jwks_endpoint=settings.oidc_issuer_kc_certs,
         client_id=settings.manager_oidc_client_id,
         client_secret=settings.manager_oidc_client_secret,

@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     manager_admin_role: str = "manager-admin"
     # Realm role granting dashboard-only access. Admins implicitly have it too.
     manager_user_role: str = "user"
+    # Realm role that may manage the accounts and roles of the realm (the Users page). It is
+    # not the admin role: the manager calls Keycloak's Admin API with the token of the
+    # signed-in user, so this role is also the one that has to carry Keycloak's own
+    # user-administration rights (`realm-management`: manage-users and friends).
+    manager_identity_admin_role: str = "papaia-admin"
     manager_host: str
     manager_oidc_client_id: str = "papaia-manager"
     manager_oidc_client_secret: str

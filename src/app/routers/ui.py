@@ -71,7 +71,9 @@ from app.core.tiles import (
     tiles_revision,
     visible_groups,
 )
+from app.core.users_service import MAX_PAGE_SIZE, PAGE_SIZE
 from app.core.vectordb.service import DEFAULT_NAME as DEFAULT_CONNECTION
+from app.core.widgets import registry as widget_registry
 from app.routers.api_connections import state_payload
 from app.routers.rag_deps import (
     ConnectionServiceDep,
@@ -80,6 +82,7 @@ from app.routers.rag_deps import (
     RagAdmin,
     get_store,
 )
+from app.routers.users_deps import RolesServiceDep, UsersAdmin, UsersServiceDep, translated
 from app.templating import templates as _templates
 
 router = APIRouter()
@@ -662,6 +665,67 @@ async def partial_connections(
             types=state_payload(state)["types"],
             default_connection=DEFAULT_CONNECTION,
         ),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/users", response_class=HTMLResponse)
+async def users_page(request: Request, user: UsersAdmin) -> HTMLResponse:
+    """The accounts of the realm: who can sign in, with which roles and from where.
+
+    The page itself asks Keycloak for nothing; its list is a partial, so a Keycloak that is
+    down or a missing right is a message in the page rather than an error instead of it.
+    """
+    return _templates.TemplateResponse(request, "users.html", _ctx(request, user))
+
+
+@router.get("/partials/users", response_class=HTMLResponse)
+async def partial_users(
+    request: Request,
+    user: UsersAdmin,
+    service: UsersServiceDep,
+    search: Annotated[str, Query(max_length=100)] = "",
+    first: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = PAGE_SIZE,
+) -> HTMLResponse:
+    """The Users page's body: a page of accounts, or why there is none.
+
+    Read on every load and never cached: the list is what an administrator just changed.
+    """
+    with translated():
+        view = await service.snapshot(search=search, first=first, limit=limit)
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/user_list.html",
+        _ctx(request, user, view=view),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/users/roles", response_class=HTMLResponse)
+async def roles_page(request: Request, user: UsersAdmin) -> HTMLResponse:
+    """The realm's roles: what an account may use, and the roles an operator adds to that."""
+    return _templates.TemplateResponse(request, "roles.html", _ctx(request, user))
+
+
+@router.get("/partials/roles", response_class=HTMLResponse)
+async def partial_roles(
+    request: Request,
+    user: UsersAdmin,
+    service: RolesServiceDep,
+) -> HTMLResponse:
+    """The Roles page's body: every role with what it contains, or why there is none.
+
+    Read on every load and never cached: the list is what an administrator just changed.
+    """
+    with translated():
+        view = await service.snapshot()
+    resp = _templates.TemplateResponse(
+        request,
+        "partials/role_list.html",
+        _ctx(request, user, view=view, identity_role=get_settings().manager_identity_admin_role),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -1548,6 +1612,12 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
     groups, and an editor that could not show a group it had just created
     would be unusable.
     """
+    # The widget types the gallery offers, and the closed icon set they are drawn with. The
+    # editor draws a widget's card from these; the live data comes from the preview route.
+    widgets = {
+        "widget_types": widget_registry.describe(settings),
+        "widget_icons": widget_registry.ICON_PATHS,
+    }
     try:
         config = load_tiles(settings.papaia_config_dir)
     except TilesFileError as exc:
@@ -1556,6 +1626,7 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
             "revision": "",
             "draft": {"version": 1, "groups": []},
             "link_keys": [],
+            **widgets,
         }
 
     core_env = load_env_file(Path(settings.papaia_config_dir) / ".env")
@@ -1564,6 +1635,7 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
         "revision": tiles_revision(settings.papaia_config_dir),
         "draft": config_to_json(config),
         "link_keys": link_placeholder_keys(core_env),
+        **widgets,
     }
 
 

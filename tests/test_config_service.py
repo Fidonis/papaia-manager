@@ -1,0 +1,811 @@
+"""The jobs behind the Modules and Overlay tabs.
+
+`setup` and `papaia-ctl` are replaced by recorders, so what is checked is the order of the steps,
+what is passed to each, what a failure leaves behind, and that no overlay content reaches the job
+log or the audit log. The real `setup` is run by `test_config_contract.py`.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from collections.abc import AsyncGenerator
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from app.core import services
+from app.core.audit import audit_path
+from app.core.config import history, overlay
+from app.core.config import service as svc
+from app.core.ctl import CtlError, ModuleSetup, SmtpSetup
+from app.core.jobs import Job, JobContext
+from app.core.mail import service as mail_service
+from app.core.mail.settings import MailInput, MailSettings
+from app.core.services import ServiceGroup, ServiceHealth, StackSnapshot
+
+SECRET = "sk-very-secret-api-key"
+OLD = f"endpoints:\n  custom:\n    - apiKey: {SECRET}\n".encode()
+NEW = b"memory:\n  personalize: true\n"
+
+
+class _Run:
+    """The two ways out of this module, recorded in order."""
+
+    def __init__(self) -> None:
+        self.steps: list[tuple[str, Any]] = []
+        self.setup_result: tuple[int, str, str] = (0, "Setup complete.", "")
+        self.purge_result: tuple[int, str, str] = (0, "removed volume papaia_x", "")
+        # verb name -> how many of its first calls fail
+        self.fail: dict[str, int] = {}
+        self.lines: dict[str, list[str]] = {}
+
+    async def setup(self, spec: ModuleSetup | SmtpSetup, **kwargs: Any) -> tuple[int, str, str]:
+        self.steps.append(("setup", spec))
+        return self.setup_result
+
+    async def purge(self, name: str, **kwargs: Any) -> tuple[int, str, str]:
+        self.steps.append(("purge", (name, kwargs["data"], kwargs["config"])))
+        return self.purge_result
+
+    async def verb(self, **kwargs: Any) -> AsyncGenerator[str, None]:
+        verb = kwargs["verb"]
+        self.steps.append((verb, list(kwargs["extra_flags"])))
+        failing = self.fail.get(verb, 0) > 0
+        if failing:
+            self.fail[verb] -= 1
+
+        async def lines() -> AsyncGenerator[str, None]:
+            yield f"running {verb}"
+            for line in self.lines.get(verb, []):
+                yield line
+            if failing:
+                raise CtlError(f"{verb} failed", exit_code=3)
+
+        return lines()
+
+    def names(self) -> list[str]:
+        return [name for name, _ in self.steps]
+
+
+@pytest.fixture
+def run(monkeypatch: pytest.MonkeyPatch) -> _Run:
+    recorder = _Run()
+    monkeypatch.setattr(svc, "run_module_setup", recorder.setup)
+    monkeypatch.setattr(svc, "run_smtp_setup", recorder.setup)
+    monkeypatch.setattr(svc, "run_module_purge", recorder.purge)
+    monkeypatch.setattr(svc, "run_core_verb", recorder.verb)
+    monkeypatch.setattr(mail_service, "run_core_verb", recorder.verb)
+    return recorder
+
+
+@pytest.fixture
+def health(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """What the snapshot says about the group: tests change `state["health"]`."""
+    state: dict[str, Any] = {"health": ServiceHealth.HEALTHY, "empty": False}
+
+    def load(config_dir: str, workspace_dir: str) -> StackSnapshot:
+        if state["empty"]:
+            return StackSnapshot()
+        return StackSnapshot(
+            groups=[
+                ServiceGroup(name=name, modules=(name,), containers=1, health=state["health"])
+                for name in ("librechat", "localai", "librechat-websearch", "rag", "smtp")
+            ]
+        )
+
+    monkeypatch.setattr(services, "load_snapshot", load)
+    monkeypatch.setattr(svc, "HEALTH_TIMEOUT_SECONDS", 0.0)
+    monkeypatch.setattr(svc, "HEALTH_INTERVAL_SECONDS", 0.0)
+    return state
+
+
+def _config(tmp_path: Path, profiles: str = "nginx,librechat") -> str:
+    config = tmp_path / "config"
+    config.mkdir(parents=True, exist_ok=True)
+    (config / ".env").write_text(f"COMPOSE_PROFILES={profiles}\n", encoding="utf-8")
+    return str(config)
+
+
+def _context(tmp_path: Path, action: str = "x") -> JobContext:
+    job = Job(id="job-1", action=action, target="t", user="admin", created_at=None)  # type: ignore[arg-type]
+    return JobContext(job=job, log_path=tmp_path / "job.log")
+
+
+def _log(ctx: JobContext) -> str:
+    return ctx.log_path.read_text(encoding="utf-8") if ctx.log_path.exists() else ""
+
+
+def _audit(config: str) -> list[dict[str, Any]]:
+    path = audit_path(config)
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _go(callback: Any, ctx: JobContext) -> None:
+    asyncio.run(callback(ctx))
+
+
+def _overlay_job(
+    config: str,
+    *,
+    content: bytes | None = NEW,
+    expected: str | None = None,
+    event: str = "apply",
+    key: str = "librechat",
+    version: str | None = None,
+) -> Any:
+    if expected is None:
+        expected = overlay.read(config, key).revision
+    return svc.overlay_callback(
+        key=key,
+        content=content,
+        expected_revision=expected,
+        event=event,
+        user="admin",
+        workspace_dir="/w",
+        config_dir=config,
+        version=version,
+    )
+
+
+def _seed(config: str, data: bytes = OLD, key: str = "librechat") -> None:
+    assert overlay.write(config, key, data, expected_revision="") is not None
+
+
+# -- modules -----------------------------------------------------------------------------------
+
+
+def test_switching_localai_on_stores_the_choice_and_then_starts_it(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    ctx = _context(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="localai", variant="intel", user="admin", workspace_dir="/w", config_dir=config
+        ),
+        ctx,
+    )
+    assert run.steps == [
+        ("setup", ModuleSetup("localai", True, "intel")),
+        ("start", ["--profiles=localai"]),
+    ]
+    [entry] = _audit(config)
+    assert (entry["action"], entry["target"], entry["result"]) == (
+        "config.module.enable",
+        "module:localai",
+        "ok",
+    )
+    assert entry["params"]["variant"] == "intel"
+
+
+def test_a_refusal_by_the_core_stops_before_anything_starts(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    run.setup_result = (3, "", "ERROR: variant 'x' is not known\n")
+    config = _config(tmp_path)
+    with pytest.raises(svc.SetupRefusedError, match="variant 'x' is not known"):
+        _go(
+            svc.enable_callback(
+                module="web-search",
+                variant=None,
+                user="admin",
+                workspace_dir="/w",
+                config_dir=config,
+            ),
+            _context(tmp_path),
+        )
+    assert run.names() == ["setup"]
+    assert _audit(config) == []
+
+
+def test_a_module_that_does_not_become_healthy_is_said_so_and_recorded_as_partial(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    health["health"] = ServiceHealth.UNHEALTHY
+    config = _config(tmp_path)
+    with pytest.raises(svc.NotHealthyError, match="switched on, but the localai containers"):
+        _go(
+            svc.enable_callback(
+                module="localai", variant="cpu", user="admin", workspace_dir="/w", config_dir=config
+            ),
+            _context(tmp_path),
+        )
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def _off(
+    config: str, module: str = "localai", scope: str = "keep", user: str = "admin"
+) -> Any:
+    return svc.disable_callback(
+        module=module, scope=scope, user=user, workspace_dir="/w", config_dir=config
+    )
+
+
+def test_switching_a_module_off_stops_it_while_its_profile_is_still_active(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--profiles=localai"]),
+        ("setup", ModuleSetup("localai", False)),
+    ]
+    [entry] = _audit(config)
+    assert entry["action"] == "config.module.disable"
+    assert entry["params"] == {"module": "localai", "scope": "keep"}
+
+
+def test_switching_off_a_module_that_is_not_active_stops_nothing(tmp_path: Path, run: _Run) -> None:
+    config = _config(tmp_path, "nginx")
+    _go(_off(config, "web-search"), _context(tmp_path))
+    assert run.names() == ["setup"]
+
+
+def test_a_step_that_fails_names_what_it_complained_about(tmp_path: Path, run: _Run) -> None:
+    run.fail["stop"] = 1
+    run.lines["stop"] = ["noise", "ERROR: no such container", "more noise"]
+    config = _config(tmp_path, "nginx,localai")
+    with pytest.raises(svc.StepFailedError, match="no such container"):
+        _go(_off(config), _context(tmp_path))
+    assert run.names() == ["stop"]
+
+
+def test_the_cores_whole_refusal_is_shown_not_cut_at_a_sentence_and_a_half() -> None:
+    sentence = "The rag profile cannot run next to the add-on(s) qdrant. " * 8
+    assert len(sentence) > 300
+    assert svc.refusal(3, "", f"ERROR: {sentence}") == sentence.strip()
+
+
+# -- modules: off, with the data and the settings that go --------------------------------------
+
+
+def test_deleting_the_data_removes_the_volumes_with_the_containers_and_then_by_name(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="data"), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--volumes", "--profiles=localai"]),
+        ("setup", ModuleSetup("localai", False)),
+        ("purge", ("localai", True, False)),
+    ]
+    [entry] = _audit(config)
+    assert entry["params"]["scope"] == "data"
+    assert entry["result"] == "ok"
+
+
+def test_deleting_the_data_and_the_settings_asks_the_core_for_both(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="all"), _context(tmp_path))
+    assert run.steps[-1] == ("purge", ("localai", True, True))
+    assert run.steps[0] == ("stop", ["--clean-up", "--volumes", "--profiles=localai"])
+
+
+def test_keeping_everything_deletes_nothing(tmp_path: Path, run: _Run) -> None:
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="keep"), _context(tmp_path))
+    assert "purge" not in run.names()
+    assert not any("--volumes" in flags for name, flags in run.steps if name == "stop")
+
+
+def test_the_purge_runs_after_the_profile_is_gone(tmp_path: Path, run: _Run) -> None:
+    # The core refuses to delete a module's data while its profile is still on.
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="all"), _context(tmp_path))
+    assert run.names().index("setup") < run.names().index("purge")
+
+
+def test_a_purge_the_core_refuses_leaves_the_module_off_and_says_so(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.purge_result = (3, "", "ERROR: could not remove papaia_x: volume is in use\n")
+    config = _config(tmp_path, "nginx,localai")
+    with pytest.raises(svc.PurgeFailedError, match="LocalAI is off, but its data could not"):
+        _go(_off(config, scope="data"), _context(tmp_path))
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_what_the_purge_printed_is_in_the_log(tmp_path: Path, run: _Run) -> None:
+    ctx = _context(tmp_path)
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="data"), ctx)
+    assert "removed volume papaia_x" in _log(ctx)
+
+
+# -- modules: the RAG system -------------------------------------------------------------------
+
+
+def test_switching_the_rag_system_on_recreates_librechat_after_it_started(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="rag", variant=None, user="admin", workspace_dir="/w", config_dir=config
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps == [
+        ("setup", ModuleSetup("rag", True)),
+        ("start", ["--profiles=rag"]),
+        ("stop", ["--clean-up", "--profiles=librechat"]),
+        ("start", ["--profiles=librechat"]),
+    ]
+    assert [e["target"] for e in _audit(config)] == ["module:rag"]
+
+
+def test_switching_the_rag_system_off_recreates_librechat_without_it(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,librechat,rag")
+    _go(_off(config, "rag", "all"), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--volumes", "--profiles=rag"]),
+        ("setup", ModuleSetup("rag", False)),
+        ("stop", ["--clean-up", "--profiles=librechat"]),
+        ("start", ["--profiles=librechat"]),
+        ("purge", ("rag", True, True)),
+    ]
+
+
+def test_a_core_that_refuses_the_rag_system_stops_before_anything_starts(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.setup_result = (3, "", "ERROR: The rag profile cannot run next to the add-on(s) qdrant\n")
+    config = _config(tmp_path)
+    with pytest.raises(svc.SetupRefusedError, match="next to the add-on"):
+        _go(
+            svc.enable_callback(
+                module="rag", variant=None, user="admin", workspace_dir="/w", config_dir=config
+            ),
+            _context(tmp_path),
+        )
+    assert run.names() == ["setup"]
+
+
+def test_a_start_that_fails_says_the_module_stays_on_in_the_configuration(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.fail["start"] = 1
+    config = _config(tmp_path)
+    with pytest.raises(svc.StepFailedError, match="switched on in the configuration"):
+        _go(
+            svc.enable_callback(
+                module="rag", variant=None, user="admin", workspace_dir="/w", config_dir=config
+            ),
+            _context(tmp_path),
+        )
+    assert run.names() == ["setup", "start"]
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+# -- modules: the mail relay -------------------------------------------------------------------
+
+
+def test_switching_the_relay_on_uses_the_settings_the_core_stored(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="mail", variant=None, user="admin", workspace_dir="/w", config_dir=config
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps == [
+        ("setup", SmtpSetup(enable=True)),
+        ("start", ["--profiles=smtp"]),
+    ]
+
+
+def test_a_relay_whose_realm_was_not_updated_is_said_so_and_recorded_as_partial(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    run.lines["start"] = [
+        "[!] Keycloak role sync failed: realm not reachable. Once Keycloak is healthy, x"
+    ]
+    config = _config(tmp_path)
+    with pytest.raises(mail_service.RealmNotUpdatedError, match="Keycloak was not given"):
+        _go(
+            svc.enable_callback(
+                module="mail", variant=None, user="admin", workspace_dir="/w", config_dir=config
+            ),
+            _context(tmp_path),
+        )
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_switching_the_relay_off_takes_its_mail_server_out_of_the_realm(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,smtp")
+    _go(_off(config, "mail"), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--profiles=smtp"]),
+        ("setup", SmtpSetup(enable=False)),
+        ("keycloak-role-sync", []),
+    ]
+
+
+def test_switching_the_relay_off_with_its_data_and_settings(tmp_path: Path, run: _Run) -> None:
+    config = _config(tmp_path, "nginx,smtp")
+    _go(_off(config, "mail", "all"), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--volumes", "--profiles=smtp"]),
+        ("setup", SmtpSetup(enable=False)),
+        ("keycloak-role-sync", []),
+        ("purge", ("mail", True, True)),
+    ]
+
+
+# -- modules: the answers to what setup asks -------------------------------------------------
+
+
+def test_the_public_url_the_dialog_asked_for_goes_to_setup(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="rag",
+            variant=None,
+            user="admin",
+            workspace_dir="/w",
+            config_dir=config,
+            public_url="https://qdrant.example.org:6333",
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps[0] == ("setup", ModuleSetup("rag", True, public_url="https://qdrant.example.org:6333"))
+    [entry] = _audit(config)
+    assert entry["params"]["public_url"] == "https://qdrant.example.org:6333"
+
+
+def test_without_an_answer_setup_is_not_told_a_url(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="rag", variant=None, user="admin", workspace_dir="/w", config_dir=config
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps[0] == ("setup", ModuleSetup("rag", True))
+    assert "public_url" not in _audit(config)[0]["params"]
+
+
+_MAIL_SECRET = "a-long-password-value"
+
+
+def _mail_input() -> MailInput:
+    return MailInput(
+        host="smtp.example.org",
+        port=587,
+        security="starttls",
+        user="mailer",
+        from_address="noreply@example.org",
+        from_name="Our Mail",
+        password=_MAIL_SECRET,
+    )
+
+
+def test_the_mail_server_the_dialog_asked_for_goes_to_setup_in_full_and_then_the_relay_starts(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    ctx = _context(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="mail",
+            variant=None,
+            user="admin",
+            workspace_dir="/w",
+            config_dir=config,
+            mail=_mail_input(),
+            current_mail=MailSettings(False),
+        ),
+        ctx,
+    )
+    setup_step, start_step = run.steps
+    spec = setup_step[1]
+    assert isinstance(spec, SmtpSetup)
+    assert (spec.enable, spec.host, spec.user, spec.sender) == (
+        True,
+        "smtp.example.org",
+        "mailer",
+        "noreply@example.org",
+    )
+    assert start_step == ("start", ["--profiles=smtp"])
+    [entry] = _audit(config)
+    assert entry["params"]["host"] == "smtp.example.org"
+    assert entry["params"]["login_change"] == "set"
+    assert _MAIL_SECRET not in json.dumps(entry)
+    assert _MAIL_SECRET not in _log(ctx)
+
+
+def test_the_mail_password_is_scrubbed_from_the_log_and_the_refusal(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.setup_result = (3, f"password {_MAIL_SECRET}\n", f"ERROR: login failed for {_MAIL_SECRET}")
+    ctx = _context(tmp_path)
+    with pytest.raises(svc.SetupRefusedError) as raised:
+        _go(
+            svc.enable_callback(
+                module="mail",
+                variant=None,
+                user="admin",
+                workspace_dir="/w",
+                config_dir=_config(tmp_path),
+                mail=_mail_input(),
+            ),
+            ctx,
+        )
+    assert _MAIL_SECRET not in str(raised.value)
+    assert _MAIL_SECRET not in _log(ctx)
+    assert "***" in _log(ctx)
+
+
+# -- overlay: apply ------------------------------------------------------------------------------
+
+
+def test_apply_saves_the_old_file_writes_the_new_one_and_recreates_the_group(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _seed(config)
+    ctx = _context(tmp_path)
+    _go(_overlay_job(config), ctx)
+
+    assert overlay.read(config, "librechat").raw == NEW
+    [version] = history.versions(config, "librechat")
+    assert version.event == "apply"
+    assert history.read(config, "librechat", version.id) == OLD
+    assert run.steps == [
+        ("stop", ["--clean-up", "--profiles=librechat"]),
+        ("start", ["--profiles=librechat"]),
+    ]
+    [entry] = _audit(config)
+    assert (entry["action"], entry["target"], entry["result"]) == (
+        "config.overlay.apply",
+        "overlay:librechat",
+        "ok",
+    )
+    assert entry["params"]["restarted"] is True
+    assert entry["params"]["version_saved"] == version.id
+
+
+def test_the_first_overlay_has_nothing_to_save(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    ctx = _context(tmp_path)
+    _go(_overlay_job(config), ctx)
+    assert history.versions(config, "librechat") == []
+    assert "there was no overlay file" in _log(ctx)
+    assert overlay.read(config, "librechat").raw == NEW
+
+
+def test_the_content_is_in_no_log_and_no_audit_entry(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _seed(config)
+    ctx = _context(tmp_path)
+    _go(_overlay_job(config, content=f"apiKey: {SECRET}-new\n".encode()), ctx)
+    assert SECRET not in _log(ctx)
+    assert SECRET not in audit_path(config).read_text(encoding="utf-8")
+
+
+def test_a_file_changed_on_the_host_stops_the_job_before_it_touches_anything(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _seed(config)
+    stale = overlay.read(config, "librechat").revision
+    overlay.path_of(config, "librechat").write_bytes(b"edited: on-the-host\n")
+    with pytest.raises(svc.ConflictError, match="changed after the page loaded it"):
+        _go(_overlay_job(config, expected=stale), _context(tmp_path))
+    assert overlay.read(config, "librechat").raw == b"edited: on-the-host\n"
+    assert history.versions(config, "librechat") == []
+    assert run.steps == []
+
+
+def test_a_group_that_is_not_switched_on_gets_the_file_and_no_restart(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path, "nginx")
+    ctx = _context(tmp_path)
+    _go(_overlay_job(config, key="searxng"), ctx)
+    assert overlay.read(config, "searxng").raw == NEW
+    assert run.steps == []
+    assert "applies the next time it starts" in _log(ctx)
+    [entry] = _audit(config)
+    assert entry["params"]["restarted"] is False
+
+
+def test_a_start_that_fails_puts_the_previous_file_back_and_starts_the_group_again(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _seed(config)
+    run.fail["start"] = 1
+    run.lines["start"] = ["ERROR: render failed"]
+    ctx = _context(tmp_path)
+    with pytest.raises(svc.RolledBackError, match="previous version was put back"):
+        _go(_overlay_job(config), ctx)
+    assert overlay.read(config, "librechat").raw == OLD
+    assert run.names() == ["stop", "start", "start"]
+    assert "the group was started with the previous overlay" in _log(ctx)
+    actions = [(e["action"], e["result"]) for e in _audit(config)]
+    assert actions == [("config.overlay.rollback.auto", "error")]
+    # The failed attempt is in the history too: the new file is what was lost.
+    assert len(history.versions(config, "librechat")) == 1
+
+
+def test_a_start_that_fails_after_a_first_overlay_removes_it_again(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    run.fail["start"] = 1
+    with pytest.raises(svc.RolledBackError):
+        _go(_overlay_job(config), _context(tmp_path))
+    assert not overlay.path_of(config, "librechat").exists()
+
+
+def test_a_stop_that_fails_is_rolled_back_as_well(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _seed(config)
+    run.fail["stop"] = 1
+    with pytest.raises(svc.RolledBackError):
+        _go(_overlay_job(config), _context(tmp_path))
+    assert overlay.read(config, "librechat").raw == OLD
+    assert run.names() == ["stop", "start"]
+
+
+def test_a_second_start_that_fails_too_is_reported_and_the_file_is_still_restored(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _seed(config)
+    run.fail["start"] = 2
+    ctx = _context(tmp_path)
+    with pytest.raises(svc.RolledBackError):
+        _go(_overlay_job(config), ctx)
+    assert overlay.read(config, "librechat").raw == OLD
+    assert "did not start again either" in _log(ctx)
+
+
+def test_a_file_edited_during_the_rollback_window_is_left_alone(
+    tmp_path: Path, run: _Run, health: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path)
+    _seed(config)
+    run.fail["start"] = 1
+    original = run.verb
+
+    async def edit_then_run(**kwargs: Any) -> AsyncGenerator[str, None]:
+        if kwargs["verb"] == "start" and run.fail["start"] == 1:
+            overlay.path_of(config, "librechat").write_bytes(b"hand: edit\n")
+        return await original(**kwargs)
+
+    monkeypatch.setattr(svc, "run_core_verb", edit_then_run)
+    ctx = _context(tmp_path)
+    with pytest.raises(svc.RolledBackError):
+        _go(_overlay_job(config), ctx)
+    assert overlay.read(config, "librechat").raw == b"hand: edit\n"
+    assert "left as it is" in _log(ctx)
+
+
+def test_a_group_that_starts_but_is_not_healthy_keeps_the_file_and_says_so(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    health["health"] = ServiceHealth.STOPPED
+    config = _config(tmp_path)
+    _seed(config)
+    with pytest.raises(svc.NotHealthyError, match="Versions"):
+        _go(_overlay_job(config), _context(tmp_path))
+    assert overlay.read(config, "librechat").raw == NEW
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_an_unreadable_docker_does_not_fail_the_job(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    health["empty"] = True
+    config = _config(tmp_path)
+    ctx = _context(tmp_path)
+    _go(_overlay_job(config), ctx)
+    assert "health not checked" in _log(ctx)
+
+
+# -- overlay: discard and rollback ---------------------------------------------------------------
+
+
+def test_discard_removes_the_file_after_saving_it(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _seed(config)
+    _go(_overlay_job(config, content=None, event="discard"), _context(tmp_path))
+    assert not overlay.path_of(config, "librechat").exists()
+    [version] = history.versions(config, "librechat")
+    assert version.event == "discard"
+    assert history.read(config, "librechat", version.id) == OLD
+    assert run.names() == ["stop", "start"]
+    assert [e["action"] for e in _audit(config)] == ["config.overlay.discard"]
+
+
+def test_a_rollback_saves_the_current_file_and_names_the_version_it_restored(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _seed(config, NEW)
+    old_id = history.save(config, "librechat", OLD, "apply")
+    _go(
+        _overlay_job(config, content=OLD, event="rollback", version=old_id),
+        _context(tmp_path),
+    )
+    assert overlay.read(config, "librechat").raw == OLD
+    events = sorted(v.event for v in history.versions(config, "librechat"))
+    assert events == ["apply", "rollback"]
+    [entry] = _audit(config)
+    assert entry["action"] == "config.overlay.rollback"
+    assert entry["params"]["version_restored"] == old_id
+
+
+# -- the health check -----------------------------------------------------------------------------
+
+
+def test_a_group_that_is_starting_is_waited_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    states = iter([ServiceHealth.STARTING, ServiceHealth.STARTING, ServiceHealth.HEALTHY])
+
+    def load(config_dir: str, workspace_dir: str) -> StackSnapshot:
+        return StackSnapshot(groups=[ServiceGroup("librechat", ("librechat",), 1, next(states))])
+
+    monkeypatch.setattr(services, "load_snapshot", load)
+    ctx = _context(tmp_path)
+    problem = asyncio.run(
+        svc.wait_healthy(
+            ctx, "librechat", config_dir="/c", workspace_dir="/w", limit=5.0, interval=0.0
+        )
+    )
+    assert problem is None
+    assert _log(ctx).count("waiting") == 2
+
+
+def test_a_group_that_never_shows_up_is_not_healthy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        services,
+        "load_snapshot",
+        lambda c, w: StackSnapshot(
+            groups=[ServiceGroup("other", ("o",), 1, ServiceHealth.HEALTHY)]
+        ),
+    )
+    problem = asyncio.run(
+        svc.wait_healthy(
+            _context(tmp_path), "librechat", config_dir="/c", workspace_dir="/w", limit=0.0
+        )
+    )
+    assert problem == "The librechat containers are not reported."
+
+
+def test_the_core_sentence_is_picked_out_of_setups_output() -> None:
+    assert svc.refusal(3, "ok\n", "noise\nERROR: nope\n") == "nope"
+    assert svc.refusal(1, "first line\n", "") == "first line"
+    assert svc.refusal(2, "", "") == "setup exited with status 2"
+    assert svc.last_problem(["a", "", "ERROR: boom", "tail"]) == "boom"
+    assert svc.last_problem(["a", "tail"]) == "tail"
+    assert svc.last_problem([]) == "the step failed"

@@ -170,11 +170,18 @@
 
 {# The header button has to disappear while an upgrade is in flight, and stay
    gone until its outcome is acknowledged. Announced the same way the readiness
-   strip announces its own state. #}
+   strip announces its own state.
+
+   `finished` tells the two reasons apart: a run that is still going, and a
+   result nobody has dismissed yet. The button says which one it is -- an
+   operator who upgraded further with papaia-ctl is otherwise left with a
+   disabled button and a card at the top of the page they have no reason to
+   touch. #}
 <script>
   window.dispatchEvent(new CustomEvent("papaia-upgrade-runner", { detail: {
     active: {{ "true" if upgrade_runner is not none else "false" }},
     running: {{ "true" if (upgrade_runner is not none and upgrade_runner.is_running) else "false" }},
+    finished: {{ "true" if (upgrade_runner is not none and not upgrade_runner.is_running) else "false" }},
   }}));
 </script>
 </div>

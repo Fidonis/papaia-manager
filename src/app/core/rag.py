@@ -35,7 +35,7 @@ from pathlib import Path
 
 from app.core.envfile import load_env_file
 from app.core.inventory import profiles_in
-from app.core.tiles import Tile, TileGroup, check_value
+from app.core.tiles import Tile, TileGroup, WidgetTile, check_value
 
 RAG_PROFILE = "rag"
 
@@ -312,9 +312,10 @@ def with_rag_tiles(groups: list[TileGroup], env: Mapping[str, str]) -> list[Tile
     if not offered:
         return groups
 
-    shown = [tile for group in groups for tile in group.tiles]
+    # Links only: a widget is not another way to reach Qdrant, so it never stands in for the tile.
+    shown = [tile for group in groups for tile in group.tiles if isinstance(tile, Tile)]
     names = {tile.name.casefold() for tile in shown}
-    tiles = [
+    tiles: list[Tile | WidgetTile] = [
         Tile(name=item.tile_name, href=item.href, description=item.description, visibility="admin")
         for item in offered
         if item.tile_name.casefold() not in names

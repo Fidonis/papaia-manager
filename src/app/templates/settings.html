@@ -1,11 +1,13 @@
 {% extends "base.html" %}
+{% from "partials/_settings_tabs.html" import tabs %}
 {% block title %}Settings — {{ branding().name }}{% endblock %}
 
 {% block page_title %}Settings{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Configure this manager. Each section is saved on its own.</p>{% endblock %}
 
 {% block content %}
-{# One card per section. A new section (SMTP, ...) is another include here, its
+{{ tabs('manager') }}
+{# One card per section. A new section is another include here, its
    own partial, its own model in core/settings_store.py and its own PUT route
    in routers/api_settings.py -- nothing below depends on there being only one. #}
 <div class="space-y-6 max-w-3xl">

@@ -787,8 +787,9 @@ def test_the_admin_nav_is_grouped_by_what_an_entry_acts_on(client: TestClient) -
     assert groups[""] == ["Dashboard"]
     assert groups["Monitor"] == ["Services", "Host", "Jobs"]
     assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
-    # Backup and upgrade are stack-level commands, so they sit with the system.
-    assert groups["System"] == ["Backup / Restore", "Upgrade", "Audit log", "Settings"]
+    # Backup and upgrade are stack-level commands, so they sit with the system, and so does
+    # the mail relay: it is the stack's, not a setting of the manager.
+    assert groups["System"] == ["Backup / Restore", "Upgrade", "Mail", "Audit log", "Settings"]
 
 
 def test_a_user_without_the_admin_role_sees_the_dashboard_and_no_groups(

@@ -1,0 +1,619 @@
+{% extends "base.html" %}
+{% from "partials/_settings_tabs.html" import tabs %}
+{% block title %}Modules — Settings — {{ branding().name }}{% endblock %}
+
+{% block page_title %}Settings{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Optional parts of the stack. A change recreates the affected containers and runs as a job.</p>{% endblock %}
+
+{% block content %}
+{{ tabs('modules') }}
+
+<div class="max-w-3xl space-y-6">
+
+  {# Filled by its own partial, which keeps itself current: any job in flight (it holds this
+     page's change behind itself) and the outcome of a configuration job for a few minutes. #}
+  <div id="config-job-status"
+       hx-get="/partials/config/job-status"
+       hx-trigger="load"
+       hx-swap="outerHTML"></div>
+
+  <section id="modules" class="card bg-base-100 border border-base-300">
+    <div class="card-body gap-0 p-0">
+      <div class="px-6 pt-5 pb-3">
+        <h2 class="font-brand text-lg font-bold">Optional Modules</h2>
+        <p class="text-sm opacity-60">
+          Switch parts of the stack on or off. Switching a module off removes its containers.
+          You choose whether its data and settings stay, so switching it on again can bring
+          everything back.
+        </p>
+      </div>
+
+      {% for row in module_rows %}
+      <div class="flex items-start gap-3 border-t border-base-300 px-6 py-4" data-module-row="{{ row.name }}">
+        <input type="checkbox"
+               class="toggle toggle-sm mt-1"
+               aria-label="{{ row.title }}"
+               data-module="{{ row.name }}"
+               {% if row.enabled %}checked{% endif %}
+               {% if row.switchable %}onchange="moduleToggled(this)"{% else %}disabled{% endif %}>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-semibold">
+            {{ row.title }}
+            {% if row.enabled %}
+            <span class="badge badge-sm badge-success ml-1">On</span>
+            {% else %}
+            <span class="badge badge-sm badge-ghost ml-1">Off</span>
+            {% endif %}
+            {% if row.name == "manager" %}<span class="ml-1 text-xs opacity-60" aria-hidden="true">locked</span>{% endif %}
+          </p>
+          <p class="text-xs opacity-60">{{ row.description }}</p>
+          {% if row.services %}
+          <p class="mt-1 text-xs opacity-50">
+            {{ row.services }} service{{ "s" if row.services != 1 else "" }}{% if row.modules > 1 %} in {{ row.modules }} modules{% endif %}
+            {% if row.name == "localai" and row.enabled %} · variant {{ row.variant }}{% endif %}
+          </p>
+          {% endif %}
+          {% if row.note or row.problem %}
+          <p class="mt-1 text-xs opacity-60">{{ row.problem or row.note }}</p>
+          {% endif %}
+          {% if row.name == "mail" and not row.configured %}
+          <p class="mt-1 text-xs text-warning" data-mail-hint>
+            No mail server is stored yet. Switching the relay on asks for it, or
+            <a href="{{ row.link }}" class="link link-secondary">set it up first</a> on the Mail page
+            (it is saved with the relay off).
+          </p>
+          {% elif row.link %}
+          <p class="mt-1 text-xs"><a href="{{ row.link }}" class="link link-secondary">{{ row.link_label }}</a></p>
+          {% endif %}
+
+          {% if row.name in ("localai", "rag", "mail") %}
+          {# What `setup` asks when the module is switched on and its settings are missing. Inline
+             under the row, not in a dialog: it reads the same on a phone as on a desktop. #}
+          <div id="panel-{{ row.name }}" class="mt-3 hidden space-y-3 border-t border-dashed border-base-300 pt-3">
+            {% if row.name == "localai" %}
+            <div class="form-control w-full max-w-xs">
+              <label for="localai-variant" class="label-text mb-1 text-sm font-medium">Accelerator</label>
+              <select id="localai-variant" class="select select-bordered select-sm">
+                {% for v in variants %}
+                <option value="{{ v.id }}" {% if v.id == stored_variant %}selected{% endif %}>{{ v.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
+            {% if row.name != "mail" %}
+            <div data-questions class="space-y-3"></div>
+            {% endif %}
+            {% if row.name == "localai" %}
+            <p class="text-xs opacity-60">
+              The manager can't detect GPUs from inside its container. Pick the variant that
+              matches this host, or start with CPU.
+              {% for v in host_only_variants %}The {{ v }} variant is set on the host with
+              <code>papaia-ctl setup --localai-variant={{ v }}</code>.{% endfor %}
+              The image download can be several GB.
+            </p>
+            {% elif row.name == "mail" %}
+            <form id="om-form" class="space-y-3" onsubmit="event.preventDefault(); enableModule('mail')" novalidate>
+              <p class="text-xs opacity-60">
+                The relay forwards every mail to this server. Enter it as
+                <code>papaia-ctl setup</code> asks for it. The password is only used for this host,
+                port and login and is never shown again.
+              </p>
+              <div class="grid gap-3 sm:grid-cols-[1fr_8rem_6rem]">
+                <div class="form-control w-full">
+                  <label for="om-host" class="label-text mb-1 text-sm font-medium">Mail Server</label>
+                  <input id="om-host" type="text" class="input input-bordered input-sm w-full"
+                         autocomplete="off" spellcheck="false" placeholder="smtp.example.org">
+                </div>
+                <div class="form-control w-full">
+                  <label for="om-security" class="label-text mb-1 text-sm font-medium">Connection</label>
+                  <select id="om-security" class="select select-bordered select-sm w-full">
+                    {% for mode in security_modes %}
+                    <option value="{{ mode }}">{{ {"starttls": "STARTTLS", "tls": "TLS", "none": "No encryption"}[mode] }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="form-control w-full">
+                  <label for="om-port" class="label-text mb-1 text-sm font-medium">Port</label>
+                  <input id="om-port" type="number" min="1" max="65535" inputmode="numeric"
+                         class="input input-bordered input-sm w-full">
+                </div>
+              </div>
+              <label class="flex cursor-pointer items-center gap-3">
+                <input id="om-login" type="checkbox" class="checkbox checkbox-sm" onchange="syncOnMail()">
+                <span class="text-sm font-medium">The mail server needs a login</span>
+              </label>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div class="form-control w-full">
+                  <label for="om-user" class="label-text mb-1 text-sm font-medium">Login</label>
+                  <input id="om-user" type="text" class="input input-bordered input-sm w-full"
+                         autocomplete="off" spellcheck="false">
+                </div>
+                <div class="form-control w-full">
+                  <label for="om-password" class="label-text mb-1 text-sm font-medium">Password</label>
+                  <input id="om-password" type="password" class="input input-bordered input-sm w-full"
+                         autocomplete="new-password">
+                </div>
+              </div>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div class="form-control w-full">
+                  <label for="om-from" class="label-text mb-1 text-sm font-medium">Sender address</label>
+                  <input id="om-from" type="email" class="input input-bordered input-sm w-full"
+                         autocomplete="off" spellcheck="false" placeholder="noreply@example.org">
+                </div>
+                <div class="form-control w-full">
+                  <label for="om-from-name" class="label-text mb-1 text-sm font-medium">Sender name</label>
+                  <input id="om-from-name" type="text" class="input input-bordered input-sm w-full"
+                         autocomplete="off">
+                </div>
+              </div>
+            </form>
+            {% endif %}
+            {% if row.name == "mail" %}
+            <div id="om-probe-result" class="hidden rounded-lg border px-4 py-2 text-sm"
+                 role="status" aria-live="polite"></div>
+            {% endif %}
+            <p data-panel-error class="hidden text-sm text-error" role="alert"></p>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" class="btn btn-primary btn-sm" data-panel-go onclick="enableModule('{{ row.name }}')">Enable {{ row.title }}</button>
+              {% if row.name == "mail" %}
+              <button id="om-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeOnMail()">Test Connection</button>
+              {% endif %}
+              <button type="button" class="btn btn-ghost btn-sm" onclick="cancelPanel('{{ row.name }}')">Cancel</button>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <p class="text-xs opacity-50">
+    Keycloak, Nginx Proxy Manager, oauth2-proxy, LibreChat and LiteLLM are part of every
+    installation and can't be switched off.
+  </p>
+</div>
+
+<dialog id="module-off-dialog" class="modal" onclose="if (offTarget) cancelOff()">
+  <div class="modal-box max-w-lg">
+    <h3 id="module-off-title" class="text-base font-bold"></h3>
+    <p id="module-off-text" class="mt-2 text-sm opacity-60"></p>
+
+    <fieldset id="module-off-scopes" class="mt-4 hidden space-y-2">
+      <legend class="mb-1 text-sm font-medium">What happens to its data and settings?</legend>
+    </fieldset>
+
+    <div id="module-off-confirm" class="form-control mt-4 hidden">
+      <label for="module-off-confirm-input" class="label-text mb-1 text-sm font-medium">
+        Type <code id="module-off-name"></code> to confirm the deletion
+      </label>
+      <input id="module-off-confirm-input" type="text" class="input input-bordered input-sm w-full"
+             autocomplete="off" spellcheck="false" oninput="syncOffButton()">
+      <p class="mt-1 text-xs text-error">Deleted data can't be brought back.</p>
+    </div>
+
+    <p id="module-off-note" class="mt-3 hidden text-xs opacity-60"></p>
+
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="cancelOff()">Cancel</button>
+      <button type="button" id="module-off-go" class="btn btn-primary btn-sm" onclick="confirmOff()">Switch off</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button onclick="cancelOff()">close</button></form>
+</dialog>
+
+{% include "partials/_rag_js.html" %}
+<script>
+  let modulesRevision = {{ revision | tojson }};
+  const MODULE_ROWS = {{ module_rows | tojson }};
+  const MAIL_DEFAULT_PORTS = {{ default_ports | tojson }};
+  let offTarget = null;
+  let offScope = "keep";
+
+  // What a switch-off adds to the generic sentence, per module.
+  const OFF_NOTES = {
+    rag: "LibreChat is recreated without the RAG tools. The documents folder is never deleted.",
+    mail: "Keycloak loses the mail server it was given, so password mails and “email a link” stop working. The server settings can stay for later.",
+  };
+
+  function moduleRow(name) { return MODULE_ROWS.find((r) => r.name === name); }
+  function moduleBox(name) { return document.querySelector('[data-module="' + name + '"]'); }
+  function offEl(id) { return document.getElementById(id); }
+
+  function moduleToggled(box) {
+    const name = box.dataset.module;
+    const row = moduleRow(name);
+    if (box.checked) {
+      if (name === "localai" || name === "rag" || (name === "mail" && !row.configured)) openPanel(name);
+      else enableModule(name);
+    } else {
+      openOffDialog(name);
+    }
+  }
+
+  // What `setup` asks when a module is switched on and its settings are missing: the core says
+  // which questions are open (module-info) and what it would derive as the answer. Questions
+  // that are answered already are not asked again. A core that can't say asks nothing.
+  async function openQuestions(name) {
+    const info = await loadInfo(name);
+    return info ? (info.questions || []).filter((q) => q.ask) : [];
+  }
+
+  function questionField(name, question) {
+    const wrap = document.createElement("div");
+    wrap.className = "form-control w-full";
+    const label = document.createElement("label");
+    label.className = "label-text mb-1 text-sm font-medium";
+    label.htmlFor = "q-url-" + name;
+    label.textContent = question.label;
+    const input = document.createElement("input");
+    input.id = "q-url-" + name;
+    input.type = "text";
+    input.className = "input input-bordered input-sm w-full";
+    input.value = question.default;
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.dataset.option = question.option;
+    const hint = document.createElement("p");
+    hint.className = "mt-1 text-xs opacity-60";
+    hint.textContent = "The same question as papaia-ctl setup. The default is derived from this stack's address; change it if the service is reached under another one.";
+    wrap.append(label, input, hint);
+    return wrap;
+  }
+
+  // The questions of a module open under its row, the same for every module and the same on a
+  // phone: nothing covers the page.
+  function panel(name) { return offEl("panel-" + name); }
+  function panelOpen(name) { const p = panel(name); return !!p && !p.classList.contains("hidden"); }
+
+  function panelError(name, text) {
+    const el = panel(name).querySelector("[data-panel-error]");
+    el.textContent = text || "";
+    el.classList.toggle("hidden", !text);
+  }
+
+  function closePanel(name) {
+    const p = panel(name);
+    if (!p) return;
+    p.classList.add("hidden");
+    panelError(name, "");
+    const probe = p.querySelector("#om-probe-result");
+    if (probe) probe.classList.add("hidden");
+    const questions = p.querySelector("[data-questions]");
+    if (questions) questions.replaceChildren();
+    p.querySelectorAll('input[type="password"]').forEach((el) => { el.value = ""; });
+  }
+
+  function cancelPanel(name) {
+    moduleBox(name).checked = false;
+    closePanel(name);
+  }
+
+  async function openPanel(name) {
+    const row = moduleRow(name);
+    const p = panel(name);
+    panelError(name, "");
+    if (name === "mail") {
+      fillMail(row.mail_defaults);
+      p.classList.remove("hidden");
+      offEl("om-host").focus();
+      return;
+    }
+    const box = moduleBox(name);
+    box.disabled = true;
+    const open = await openQuestions(name);
+    box.disabled = false;
+    // The RAG system has nothing else to choose: with its settings in place it just switches on.
+    if (!open.length && name === "rag") {
+      enableModule(name);
+      return;
+    }
+    const questions = p.querySelector("[data-questions]");
+    questions.replaceChildren();
+    if (open.length) questions.append(questionField(name, open[0]));
+    p.classList.remove("hidden");
+    const first = p.querySelector("input, select");
+    if (first) first.focus();
+  }
+
+  // The mail server's values as the form holds them. The password is only sent when there is a
+  // login and one was typed.
+  function mailForm() {
+    const login = offEl("om-login").checked;
+    const port = offEl("om-port").value.trim();
+    const values = {
+      host: offEl("om-host").value.trim(),
+      port: port === "" ? null : Number(port),
+      security: offEl("om-security").value,
+      user: login ? offEl("om-user").value.trim() : "",
+    };
+    const password = offEl("om-password").value;
+    if (login && password) values.password = password;
+    return values;
+  }
+
+  function probeResult(ok, text) {
+    const el = offEl("om-probe-result");
+    el.textContent = text;
+    el.classList.remove("hidden", "border-success", "bg-success/10", "border-error", "bg-error/10");
+    el.classList.add(ok ? "border-success" : "border-error", ok ? "bg-success/10" : "bg-error/10");
+  }
+
+  // Talks to the mail server with what is in the form: greeting, encryption, login. Nothing is
+  // sent and nothing is saved (the same check as on the Mail page).
+  async function probeOnMail() {
+    const button = offEl("om-probe");
+    button.disabled = true;
+    panelError("mail", "");
+    probeResult(true, "Connecting …");
+    const reply = await _ragRequest("POST", "/api/v1/mail/probe", mailForm());
+    button.disabled = false;
+    if (!reply.ok) {
+      if (!reply.handled) probeResult(false, reply.error);
+      return;
+    }
+    const r = reply.data;
+    if (r.ok) {
+      const login = r.login === "ok" ? "login accepted" : "no login needed";
+      probeResult(true, "The mail server answered (" + login + "). No mail was sent.");
+    } else {
+      probeResult(false, "Stopped at " + r.stage + ": " + r.reason);
+    }
+  }
+
+  function fillMail(d) {
+    offEl("om-host").value = d.host || "";
+    offEl("om-security").value = d.security;
+    offEl("om-port").value = d.port;
+    offEl("om-port").dataset.mode = d.security;
+    offEl("om-login").checked = d.login || !d.host;
+    offEl("om-user").value = d.user || "";
+    offEl("om-password").value = "";
+    offEl("om-from").value = d.from_address || "";
+    offEl("om-from-name").value = d.from_name || "";
+    syncOnMail();
+  }
+
+  // A login makes no sense without encryption, and without a login there is nothing to type in
+  // the two fields (the same rules as the Mail page).
+  function syncOnMail() {
+    const none = offEl("om-security").value === "none";
+    const box = offEl("om-login");
+    if (none) box.checked = false;
+    box.disabled = none;
+    offEl("om-user").disabled = !box.checked;
+    offEl("om-password").disabled = !box.checked;
+  }
+
+  offEl("om-security").addEventListener("change", () => {
+    const port = offEl("om-port");
+    const mode = offEl("om-security").value;
+    // 587, 465 and 25 belong to their mode: follow it unless a port was typed on purpose.
+    if (port.value === "" || Number(port.value) === MAIL_DEFAULT_PORTS[port.dataset.mode]) {
+      port.value = MAIL_DEFAULT_PORTS[mode];
+    }
+    port.dataset.mode = mode;
+    syncOnMail();
+  });
+
+  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+
+  // The dialog first shows the plain question, then asks the core what the module holds and
+  // adds the choice. A core that can't say (or a failed request) leaves the plain switch-off.
+  // What the core says a module holds takes a moment to ask (it lists the Docker volumes), so it
+  // is asked before the page needs it: once for every module that is on when the page loads, and
+  // again when the answer is older than a minute. The dialog opens when it has the answer, so it
+  // never shows the plain question first and the choice a moment later.
+  const INFO_MAX_AGE_MS = 60000;
+  const infoCache = {};
+
+  function loadInfo(name) {
+    const hit = infoCache[name];
+    if (hit && Date.now() - hit.at < INFO_MAX_AGE_MS) return hit.promise;
+    const promise = _ragRequest("GET", "/api/v1/config/modules/" + name + "/info").then((reply) => {
+      if (!reply.ok || !reply.data.available) {
+        delete infoCache[name];
+        return null;
+      }
+      return reply.data;
+    });
+    infoCache[name] = { at: Date.now(), promise: promise };
+    return promise;
+  }
+
+  // The modules that are on may be switched off (volumes, settings); the ones that ask a
+  // question may be switched on.
+  MODULE_ROWS.filter((r) => r.can_delete && (r.enabled || r.name === "rag" || r.name === "localai"))
+    .forEach((r) => loadInfo(r.name));
+
+  async function openOffDialog(name) {
+    const row = moduleRow(name);
+    let info = null;
+    if (row.can_delete) {
+      const box = moduleBox(name);
+      box.disabled = true;
+      info = await loadInfo(name);
+      box.disabled = false;
+    }
+    offTarget = name;
+    offScope = "keep";
+    offEl("module-off-title").textContent = "Switch " + row.title + " off?";
+    offEl("module-off-text").textContent =
+      "Stops and removes its " + plural(row.services, "container") +
+      (row.modules > 1 ? " in " + row.modules + " modules" : "") + ".";
+    offEl("module-off-scopes").classList.add("hidden");
+    offEl("module-off-confirm").classList.add("hidden");
+    offEl("module-off-confirm-input").value = "";
+    const note = offEl("module-off-note");
+    note.textContent = OFF_NOTES[name] || "";
+    note.classList.toggle("hidden", !OFF_NOTES[name]);
+    if (info) renderScopes(name, info);
+    syncOffButton();
+    offEl("module-off-dialog").showModal();
+  }
+
+  function option(value, title, detail, checked) {
+    const label = document.createElement("label");
+    label.className = "flex cursor-pointer items-start gap-3 rounded-lg border border-base-300 p-3";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "module-off-scope";
+    input.value = value;
+    input.className = "radio radio-sm mt-0.5";
+    input.checked = checked;
+    input.addEventListener("change", () => { offScope = value; syncOffScope(); });
+    const text = document.createElement("span");
+    text.className = "min-w-0 text-sm";
+    const head = document.createElement("span");
+    head.className = "block font-medium";
+    head.textContent = title;
+    const body = document.createElement("span");
+    body.className = "block break-words text-xs opacity-60";
+    body.textContent = detail;
+    text.append(head, body);
+    label.append(input, text);
+    return label;
+  }
+
+  function renderScopes(name, info) {
+    const row = moduleRow(name);
+    const box = offEl("module-off-scopes");
+    box.querySelectorAll("label").forEach((n) => n.remove());
+    const volumes = info.volumes || [];
+    const present = volumes.filter((v) => v.exists !== false);
+    const unknown = volumes.some((v) => v.exists === null);
+    const names = present.map((v) => v.name).join(", ");
+    const settings = (info.settings.dirs || []).map((d) => d + "/.env")
+      .concat(info.settings.root_keys && info.settings.root_keys.length ? [".env (" + info.settings.root_keys.join(", ") + ")"] : [])
+      .concat(info.settings.files || []).join(", ");
+
+    box.append(option("keep", "Keep data and settings",
+      "Switching it on again brings everything back.", true));
+    if (present.length) {
+      box.append(option("data", "Delete the data, keep the settings",
+        "Removes " + plural(present.length, "volume") + ": " + names +
+        (unknown ? " (Docker could not be asked, so this list may be incomplete)" : "") + ".", false));
+      box.append(option("all", "Delete the data and the settings",
+        "Also puts " + settings + " back to the defaults" +
+        (info.settings.regenerates_secrets ? " and renews its generated secrets" : "") + ".", false));
+    } else {
+      box.append(option("all", "Delete the settings",
+        "It holds no data. Puts " + settings + " back to the defaults.", false));
+    }
+    box.classList.remove("hidden");
+    offEl("module-off-name").textContent = name;
+    syncOffScope();
+  }
+
+  function syncOffScope() {
+    const deleting = offScope !== "keep";
+    offEl("module-off-confirm").classList.toggle("hidden", !deleting);
+    const go = offEl("module-off-go");
+    go.classList.toggle("btn-error", deleting);
+    go.classList.toggle("btn-primary", !deleting);
+    go.textContent = deleting ? "Switch off and delete" : "Switch off";
+    if (deleting) offEl("module-off-confirm-input").focus();
+    syncOffButton();
+  }
+
+  function syncOffButton() {
+    const deleting = offScope !== "keep";
+    offEl("module-off-go").disabled =
+      deleting && offEl("module-off-confirm-input").value.trim() !== offTarget;
+  }
+
+  // Also runs when the dialog is closed with Escape (its close event).
+  function cancelOff() {
+    const name = offTarget;
+    offTarget = null;
+    if (name) moduleBox(name).checked = true;
+    const dialog = offEl("module-off-dialog");
+    if (dialog.open) dialog.close();
+  }
+
+  function startedModuleJob(jobId, started) {
+    showToast("info", started);
+    htmx.ajax("GET", "/partials/config/job-status", { target: "#config-job-status", swap: "outerHTML" });
+    followConfigJob(jobId);
+  }
+
+  async function startModuleJob(path, body, started) {
+    const reply = await _ragRequest("POST", "/api/v1/config/modules/" + path, body);
+    if (!reply.ok) {
+      if (!reply.handled) showToast("error", _ragEscape(reply.error));
+      return false;
+    }
+    startedModuleJob(reply.data.job_id, started);
+    return true;
+  }
+
+  // Switches a module on. With its panel open the answers in it go along; a refusal is shown in
+  // the panel, which stays open so the answer can be corrected.
+  async function enableModule(name) {
+    const row = moduleRow(name);
+    const body = { revision: modulesRevision };
+    const open = panelOpen(name);
+    if (open) {
+      const p = panel(name);
+      if (name === "localai") body.variant = offEl("localai-variant").value;
+      const url = p.querySelector("[data-option]");
+      if (url) body.public_url = url.value.trim();
+      if (name === "mail") {
+        body.mail = Object.assign(mailForm(), {
+          from_address: offEl("om-from").value.trim(),
+          from_name: offEl("om-from-name").value.trim(),
+        });
+      }
+    }
+    const go = open ? panel(name).querySelector("[data-panel-go]") : null;
+    if (go) go.disabled = true;
+    const reply = await _ragRequest("POST", "/api/v1/config/modules/" + name + "/enable", body);
+    if (go) go.disabled = false;
+    if (!reply.ok) {
+      if (open) {
+        if (!reply.handled) panelError(name, reply.error);
+      } else {
+        if (!reply.handled) showToast("error", _ragEscape(reply.error));
+        moduleBox(name).checked = false;
+      }
+      return;
+    }
+    // The password has done its job; it does not stay in the field while the job runs.
+    closePanel(name);
+    startedModuleJob(reply.data.job_id, "Switching " + row.title + " on …");
+  }
+
+  async function confirmOff() {
+    const name = offTarget;
+    const scope = offScope;
+    const confirm = offEl("module-off-confirm-input").value.trim();
+    offEl("module-off-dialog").close();
+    offTarget = null;
+    const row = moduleRow(name);
+    const body = { revision: modulesRevision, scope: scope };
+    if (scope !== "keep") body.confirm = confirm;
+    const ok = await startModuleJob(name + "/disable", body, "Switching " + row.title + " off …");
+    if (!ok) moduleBox(name).checked = true;
+  }
+
+  // The job strip shows the progress; this only waits for the end to show the new state.
+  let configFollowing = false;
+  function followConfigJob(jobId) {
+    configFollowing = true;
+    _pollJob(jobId, (job) => {
+      if (job.status === "succeeded") showToast("success", "Done");
+      else showToast("error", "The change failed. The log is above.");
+      setTimeout(() => window.location.reload(), 900);
+    });
+  }
+
+  // A job started in another tab, or before this page was opened, changes what the toggles
+  // show: reload once when the strip sees it end.
+  let configJobWasActive = false;
+  window.addEventListener("papaia-config-job", (event) => {
+    if (configFollowing) return;
+    if (event.detail.active) configJobWasActive = true;
+    else if (configJobWasActive) window.location.reload();
+  });
+</script>
+{% endblock %}

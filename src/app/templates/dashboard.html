@@ -118,19 +118,27 @@
     Alpine.store("tiles", {
       revision: "",
       linkKeys: [],
+      widgetTypes: [],
+      widgetIcons: {},
       groups: [],
       dirty: 0,
       preview: false,
       busy: false,
       dialog: null,
+      widgetDialog: null,
+      removed: null,
       raw: null,
       _seq: 0,
       _resolveTimer: null,
+      _previewTimer: null,
+      _removedTimer: null,
 
       // ── Draft lifecycle ──────────────────────────────────────────────────
 
-      load(draft, revision, linkKeys) {
+      load(draft, revision, linkKeys, widgetTypes, widgetIcons) {
         this._seq = 0;
+        this.widgetTypes = widgetTypes || [];
+        this.widgetIcons = widgetIcons || {};
         this.groups = (draft.groups || []).map((group) => ({
           _id: this._id(),
           name: group.name,
@@ -141,6 +149,8 @@
         this.dirty = 0;
         this.preview = false;
         this.dialog = null;
+        this.widgetDialog = null;
+        this.removed = null;
         this.raw = null;
       },
 
@@ -152,6 +162,7 @@
       },
 
       _tile(tile) {
+        if (tile.type === "widget") return this._widgetTile(tile);
         return {
           _id: this._id(),
           name: tile.name || "",
@@ -162,12 +173,54 @@
         };
       },
 
+      // A widget tile in the draft. `id` stays empty until the server has saved the
+      // widget once; it is what the dashboard's request for this one card names.
+      // Unlike a link, an unset visibility is for administrators.
+      _widgetTile(tile) {
+        return {
+          _id: this._id(),
+          type: "widget",
+          id: tile.id || "",
+          widget: tile.widget || "",
+          title: tile.title || "",
+          size: tile.size === "m" || tile.size === "l" ? tile.size : "s",
+          visibility: tile.visibility === "all" ? "all" : "admin",
+        };
+      },
+
       touch() {
         this.dirty += 1;
       },
 
       tileCount() {
         return this.groups.reduce((n, group) => n + group.tiles.length, 0);
+      },
+
+      // ── Widget types ─────────────────────────────────────────────────────
+
+      widgetType(id) {
+        return this.widgetTypes.find((type) => type.id === id) || null;
+      },
+
+      // What a widget card is called: its own title, else its type's name, else the raw
+      // id of a type that is not registered (a hand-edited file).
+      widgetName(tile) {
+        const type = this.widgetType(tile.widget);
+        return tile.title || (type ? type.name : tile.widget);
+      },
+
+      widgetIconPath(name) {
+        return this.widgetIcons[name] || this.widgetIcons.alert || "";
+      },
+
+      // "3 applications · 2 widgets", counting each kind in its own words.
+      groupCount(group) {
+        const widgets = group.tiles.filter((tile) => tile.type === "widget").length;
+        const links = group.tiles.length - widgets;
+        const parts = [];
+        if (links || !widgets) parts.push(links + (links === 1 ? " application" : " applications"));
+        if (widgets) parts.push(widgets + (widgets === 1 ? " widget" : " widgets"));
+        return parts.join(" · ");
       },
 
       // Mirrors visible_groups: a group with nothing a plain user may see is
@@ -204,14 +257,45 @@
 
       // ── Tiles ────────────────────────────────────────────────────────────
 
+      // Removing is undoable for a few seconds rather than confirmed: nothing is written
+      // before "Save changes", and a confirm dialog for a draft edit is more in the way
+      // than the undo strip is.
       removeTile(gi, ti) {
-        this.groups[gi].tiles.splice(ti, 1);
+        const group = this.groups[gi];
+        const [tile] = group.tiles.splice(ti, 1);
+        this.removed = { groupId: group._id, ti: ti, tile: tile };
+        clearTimeout(this._removedTimer);
+        this._removedTimer = setTimeout(() => { this.removed = null; }, 8000);
         this.touch();
       },
 
+      removedName() {
+        const tile = this.removed && this.removed.tile;
+        if (!tile) return "";
+        return tile.type === "widget" ? this.widgetName(tile) : (tile.name || "tile");
+      },
+
+      undoRemove() {
+        const removed = this.removed;
+        if (!removed) return;
+        clearTimeout(this._removedTimer);
+        this.removed = null;
+        const group = this.groups.find((g) => g._id === removed.groupId);
+        if (!group) return;
+        group.tiles.splice(Math.min(removed.ti, group.tiles.length), 0, removed.tile);
+        this.dirty = Math.max(0, this.dirty - 1);
+      },
+
       duplicateTile(gi, ti) {
-        const copy = this._tile(this.groups[gi].tiles[ti]);
-        copy.name = copy.name + " copy";
+        const source = this.groups[gi].tiles[ti];
+        const copy = this._tile(source);
+        if (copy.type === "widget") {
+          // A new widget: the server gives it an id of its own on save.
+          copy.id = "";
+          copy.title = this.widgetName(source) + " copy";
+        } else {
+          copy.name = copy.name + " copy";
+        }
         this.groups[gi].tiles.splice(ti + 1, 0, copy);
         this.touch();
       },
@@ -297,6 +381,10 @@
       },
 
       openTile(gi, ti) {
+        if (this.groups[gi].tiles[ti].type === "widget") {
+          this.openWidget(gi, ti);
+          return;
+        }
         this.dialog = {
           gi: gi,
           ti: ti,
@@ -339,6 +427,112 @@
         this.dialog = null;
         this._closeModal("tile-editor-modal");
         this.touch();
+      },
+
+      // ── Widget dialog ────────────────────────────────────────────────────
+
+      // One dialog, two steps: pick a type from the gallery, then place it. Editing a
+      // widget that is already on the dashboard opens at the second step.
+      newWidget(gi) {
+        this.widgetDialog = {
+          gi: gi,
+          ti: null,
+          step: "pick",
+          query: "",
+          type: null,
+          tile: null,
+          problem: null,
+        };
+        this._openModal("widget-modal");
+      },
+
+      openWidget(gi, ti) {
+        const tile = Object.assign({}, this.groups[gi].tiles[ti]);
+        this.widgetDialog = {
+          gi: gi,
+          ti: ti,
+          step: "configure",
+          query: "",
+          type: this.widgetType(tile.widget),
+          tile: tile,
+          problem: null,
+        };
+        this._openModal("widget-modal");
+        this.previewWidget();
+      },
+
+      widgetChoices() {
+        const dialog = this.widgetDialog;
+        if (!dialog) return [];
+        const query = dialog.query.trim().toLowerCase();
+        return this.widgetTypes.filter((type) =>
+          !query || (type.name + " " + type.description).toLowerCase().includes(query)
+        );
+      },
+
+      // A type the installation cannot use is listed with its reason and cannot be picked.
+      pickWidget(type) {
+        const dialog = this.widgetDialog;
+        if (!dialog || !type.available) return;
+        dialog.type = type;
+        dialog.tile = this._widgetTile({ widget: type.id, size: type.size, visibility: type.visibility });
+        dialog.problem = null;
+        dialog.step = "configure";
+        this.previewWidget();
+      },
+
+      backToGallery() {
+        const dialog = this.widgetDialog;
+        if (!dialog) return;
+        dialog.step = "pick";
+        dialog.type = null;
+        dialog.tile = null;
+        dialog.problem = null;
+      },
+
+      closeWidget() {
+        clearTimeout(this._previewTimer);
+        this.widgetDialog = null;
+        this._closeModal("widget-modal");
+      },
+
+      applyWidget() {
+        const dialog = this.widgetDialog;
+        if (!dialog || !dialog.tile) return;
+        if (!dialog.type) {
+          dialog.problem = "this widget does not exist any more; remove it instead";
+          return;
+        }
+        if (dialog.tile.title.length > 80) {
+          dialog.problem = "keep the title to 80 characters";
+          return;
+        }
+        const tile = Object.assign({}, dialog.tile, { title: dialog.tile.title.trim() });
+        if (dialog.ti === null) {
+          this.groups[dialog.gi].tiles.push(tile);
+        } else {
+          this.groups[dialog.gi].tiles.splice(dialog.ti, 1, tile);
+        }
+        this.closeWidget();
+        this.touch();
+      },
+
+      // The preview is the real card: the server renders it the way the dashboard does, from
+      // live data, and it comes back escaped like any other partial.
+      previewWidget() {
+        clearTimeout(this._previewTimer);
+        this._previewTimer = setTimeout(() => {
+          const dialog = this.widgetDialog;
+          if (!dialog || !dialog.type || !dialog.tile) return;
+          if (!document.getElementById("widget-preview")) return;
+          const title = (dialog.tile.title || "").trim();
+          const query = title ? "?title=" + encodeURIComponent(title) : "";
+          htmx.ajax(
+            "GET",
+            "/partials/widgets/preview/" + encodeURIComponent(dialog.type.id) + query,
+            { target: "#widget-preview", swap: "innerHTML" }
+          );
+        }, 200);
       },
 
       // Resolution runs on the server: the values live in the core .env, which
@@ -424,7 +618,14 @@
               version: 1,
               groups: this.groups.map((group) => ({
                 name: group.name,
-                tiles: group.tiles.map((tile) => ({
+                tiles: group.tiles.map((tile) => tile.type === "widget" ? ({
+                  type: "widget",
+                  id: tile.id,
+                  widget: tile.widget,
+                  title: tile.title,
+                  size: tile.size,
+                  visibility: tile.visibility,
+                }) : ({
                   name: tile.name,
                   href: tile.href,
                   description: tile.description,

@@ -1,0 +1,10 @@
+{# The two pages of the Mail section: who is told about what, and the mail server that carries
+   it. Notifications come first and are what the menu entry opens; the Mail Server tab is the
+   setup behind them. Same bar as the Users section. The tabs do not wrap: on a narrow screen
+   a label that broke into two lines overflowed the fixed height of a tab. #}
+{% macro tabs(active) %}
+<nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="Mail">
+  <a href="/mail" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'notifications' else '' }}">Notifications</a>
+  <a href="/mail/server" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'server' else '' }}">Mail Server</a>
+</nav>
+{% endmacro %}

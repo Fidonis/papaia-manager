@@ -4,7 +4,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import time
+from collections.abc import Callable
+from typing import Any
+from urllib.parse import parse_qs
 
+import httpx
 import pytest
 
 from app.auth.oidc import (
@@ -255,6 +259,53 @@ async def test_refresh_keeps_the_current_token_when_none_is_returned(
     assert token_set.refresh_token == "old-rt"
 
 
+async def test_the_access_token_and_its_expiry_travel_with_the_token_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client()
+    monkeypatch.setattr(
+        client,
+        "_token_request",
+        _areturn(
+            {"id_token": "x", "access_token": "a-1", "refresh_token": "rt", "expires_in": 300}
+        ),
+    )
+    monkeypatch.setattr(client, "_validate_id_token", _areturn(_CLAIMS))
+
+    before = time.time()
+    token_set = await client.refresh(refresh_token="old-rt")
+
+    assert token_set.access_token == "a-1"
+    assert before + 299 <= token_set.access_expires_at <= time.time() + 301
+
+
+async def test_the_access_token_survives_a_refresh_that_keeps_the_refresh_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client()
+    monkeypatch.setattr(
+        client,
+        "_token_request",
+        _areturn({"id_token": "x", "access_token": "a-2", "expires_in": 60}),
+    )
+    monkeypatch.setattr(client, "_validate_id_token", _areturn(_CLAIMS))
+
+    token_set = await client.refresh(refresh_token="old-rt")
+
+    assert (token_set.refresh_token, token_set.access_token) == ("old-rt", "a-2")
+    assert token_set.access_expires_at > 0
+
+
+async def test_a_response_without_expiry_leaves_it_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client()
+    monkeypatch.setattr(client, "_token_request", _areturn({"id_token": "x", "access_token": "a"}))
+    monkeypatch.setattr(client, "_validate_id_token", _areturn(_CLAIMS))
+
+    assert (await client.refresh(refresh_token="r")).access_expires_at == 0.0
+
+
 async def test_refresh_propagates_a_token_endpoint_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -267,6 +318,113 @@ async def test_refresh_propagates_a_token_endpoint_error(
 
     with pytest.raises(OIDCError):
         await client.refresh(refresh_token="dead-rt")
+
+
+# ---------------------------------------------------------------------------
+# End of the provider's session (sign-out)
+# ---------------------------------------------------------------------------
+
+_LOGOUT_URL = "https://kc.example/logout"
+
+
+def _logout_client() -> OIDCClient:
+    return OIDCClient(
+        auth_endpoint="https://kc.example/auth",
+        token_endpoint="https://kc.example/token",
+        jwks_endpoint="https://kc.example/certs",
+        client_id="papaia-manager",
+        client_secret="secret",
+        redirect_uri="https://manager.example/auth/callback",
+        logout_endpoint=_LOGOUT_URL,
+    )
+
+
+def _serve_logout(
+    monkeypatch: pytest.MonkeyPatch, handler: Callable[[httpx.Request], httpx.Response]
+) -> list[httpx.Request]:
+    """Answer the client's HTTP calls with `handler` and return the requests it made."""
+    seen: list[httpx.Request] = []
+
+    def _record(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return handler(request)
+
+    real = httpx.AsyncClient
+
+    def _factory(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
+        return real(*args, transport=httpx.MockTransport(_record), **kwargs)
+
+    monkeypatch.setattr("app.auth.oidc.httpx.AsyncClient", _factory)
+    return seen
+
+
+async def test_end_session_posts_the_refresh_token_with_the_client_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = _serve_logout(monkeypatch, lambda _request: httpx.Response(204))
+
+    assert await _logout_client().end_session(refresh_token="rt-1") is True
+
+    assert [(r.method, str(r.url)) for r in seen] == [("POST", _LOGOUT_URL)]
+    assert parse_qs(seen[0].content.decode()) == {
+        "client_id": ["papaia-manager"],
+        "client_secret": ["secret"],
+        "refresh_token": ["rt-1"],
+    }
+
+
+async def test_end_session_counts_a_session_that_was_already_over_as_over(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _serve_logout(
+        monkeypatch,
+        lambda _request: httpx.Response(
+            400, json={"error": "invalid_grant", "error_description": "Session not active"}
+        ),
+    )
+
+    assert await _logout_client().end_session(refresh_token="dead-rt") is True
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(400, json={"error": "invalid_client"}),
+        httpx.Response(400, text="not json"),
+        httpx.Response(401),
+        httpx.Response(500),
+    ],
+)
+async def test_end_session_raises_when_the_provider_refuses(
+    monkeypatch: pytest.MonkeyPatch, response: httpx.Response
+) -> None:
+    _serve_logout(monkeypatch, lambda _request: response)
+
+    with pytest.raises(OIDCError):
+        await _logout_client().end_session(refresh_token="rt-1")
+
+
+async def test_end_session_raises_when_the_provider_cannot_be_reached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _unreachable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route to host", request=request)
+
+    _serve_logout(monkeypatch, _unreachable)
+
+    with pytest.raises(OIDCError) as excinfo:
+        await _logout_client().end_session(refresh_token="rt-secret")
+
+    assert "rt-secret" not in str(excinfo.value)
+
+
+async def test_end_session_without_a_logout_endpoint_asks_nobody(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = _serve_logout(monkeypatch, lambda _request: httpx.Response(204))
+
+    assert await _client().end_session(refresh_token="rt-1") is False
+    assert seen == []
 
 
 # ---------------------------------------------------------------------------

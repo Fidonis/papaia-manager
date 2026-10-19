@@ -474,7 +474,7 @@ def test_the_settings_page_offers_the_interval_in_seconds_and_in_minutes(
 ) -> None:
     default = _admin(client).get("/settings").text
     assert 'id="host-monitoring"' in default
-    assert "Host monitoring" in default
+    assert "Host Monitoring" in default
     assert 'id="host-interval"' in default
     assert 'value="60"' in default
     assert '<option value="s" selected>' in default

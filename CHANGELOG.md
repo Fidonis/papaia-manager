@@ -12,6 +12,120 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [1.4.0] - 2026-10-19
+
+### Added
+- Users page at `/users` and its API at `/api/v1/users`: manage the accounts of the bundled
+  Keycloak without the Admin Console. List with search and paging; create an account with the
+  roles to start from and a first password (a temporary one shown once, or a link Keycloak
+  mails when the realm has a mail server); enable and disable it (disabling also ends its
+  sessions); change its roles; reset its password; view and end one or all of its sessions.
+  The page is reserved for the new tier `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`)
+  above the admin role. There is no credential of the manager's own: Keycloak's Admin API is
+  called with the access token of the signed-in account, kept in memory only. Nobody can
+  disable their own account, take the identity role from themselves or end all of their own
+  sessions here. The page does not exist where the accounts live in an external identity
+  provider
+  ([#135](https://github.com/Fidonis/papaia-manager/pull/135); closes
+  [#134](https://github.com/Fidonis/papaia-manager/issues/134)).
+- Roles tab at `/users/roles` and its API at `/api/v1/roles`: list every realm role with what it
+  contains, create a role, change its description and the roles it contains, and delete it after
+  naming the accounts that hold it. The roles the stack ships and the three the manager is
+  configured with are shown but not changed or deleted; a role is not renamed, and a loop
+  between roles is refused
+  ([#135](https://github.com/Fidonis/papaia-manager/pull/135)).
+- Mail Server page at `/mail/server` and its API at `/api/v1/mail` (System > Mail): set up the
+  stack's outbound mail relay, the core's optional `smtp` profile. Edit the mail server behind
+  it (host, connection security, port, login, write-only password, sender), with the relay on
+  or off; test the connection to that server without sending a mail or saving anything, and
+  send a test mail through the relay; see whether the relay runs and how many messages wait in
+  its queue. A
+  change is a queued job: the core's own `setup` stores the values and, while the relay is on,
+  it is recreated and Keycloak's realm gets it as its mail server, so the Users page can mail
+  links
+  ([#139](https://github.com/Fidonis/papaia-manager/pull/139); closes
+  [#138](https://github.com/Fidonis/papaia-manager/issues/138)).
+- Notifications page at `/mail` and its API at `/api/v1/notifications`: recipients, each an
+  email address or a webhook URL, choose which of five events they receive. The events are a
+  failed job, an overdue backup, a service that was running and is stopped, unhealthy or gone, an
+  available update (of the core or of an installed add-on) and an expiring certificate. Each is
+  reported once per occurrence, and what was reported is remembered across restarts. Email goes
+  through the mail relay, a webhook gets a JSON `POST`; a webhook URL is never shown again after
+  it is saved, and a notification carries no job log and no error text
+  ([#141](https://github.com/Fidonis/papaia-manager/pull/141); closes
+  [#140](https://github.com/Fidonis/papaia-manager/issues/140)).
+- Dashboard widgets: cards on the dashboard that show one piece of live state and link to the page
+  that explains it. Six ship with the manager (papAIa version, backup age, disk space, services,
+  open warnings, certificate expiry). They are placed in the dashboard editor (**Add widget**,
+  with a live preview, and **Undo** after a removal), appear in `tiles.yaml` as `type: widget`
+  tiles, refresh on their own and honour the tile's visibility on the server. A tile without
+  `type` is still a link, so existing files read as before
+  ([#143](https://github.com/Fidonis/papaia-manager/pull/143); closes
+  [#142](https://github.com/Fidonis/papaia-manager/issues/142)).
+- Settings has two more tabs next to **Manager**, with the sidebar keeping its single entry.
+  **Modules** (`/settings/modules`) is the one place that switches the optional modules on and
+  off: LocalAI (with its accelerator variant), web search, the RAG system and the mail relay. The
+  choice is stored by the core's own `setup` and the module's profile is started. Switching a
+  module on asks what `papaia-ctl setup` asks, only where the answer is missing; switching it off
+  asks whether to keep the data and the settings, delete the data, or delete both (the module's
+  name has to be typed back to delete). **Overlay** (`/settings/overlay`) edits the librechat,
+  litellm and searxng overlay files with a syntax check while typing, the effective result as a
+  diff, and **Apply** as a queued job that recreates the services that read the file. Before
+  every Apply, Discard and Roll back the previous file is saved (the latest 20 per file); the
+  **Versions** tab restores one as a draft or rolls back to it, and a failed start puts the
+  previous file back automatically. A file edited on the host in the meantime is detected and
+  refused
+  ([#147](https://github.com/Fidonis/papaia-manager/pull/147); closes
+  [#146](https://github.com/Fidonis/papaia-manager/issues/146)).
+- New optional setting `MANAGER_IDENTITY_ADMIN_ROLE`, documented in both `.env.example` files
+  ([#135](https://github.com/Fidonis/papaia-manager/pull/135)).
+
+### Changed
+- `papaia-ctl` calls are still restricted to allowlists, now with one more core verb
+  (`keycloak-role-sync`), two more read-only commands of the core's Python entry point
+  (`render-preview`, `module-info`) and a separate allowlist for the two commands that write
+  (`setup`, `module-purge`). Those are reachable only through typed requests that pass nothing
+  but the options of the mail relay or of one optional module, never `--force`, `--env` or any
+  other part of the stack's configuration. The mail server's password reaches the core in the
+  environment of the child process only
+  ([#139](https://github.com/Fidonis/papaia-manager/pull/139),
+  [#147](https://github.com/Fidonis/papaia-manager/pull/147)).
+- The host health poll skips the core's `smtp` check where the core has it: it runs `docker exec`
+  into the relay on every poll and the answer was discarded
+  ([#139](https://github.com/Fidonis/papaia-manager/pull/139)).
+
+### Fixed
+- **Sign out** ends the Keycloak session and shows the Keycloak login page. The sidebar's form
+  was refused with a 403, and the redirect to the login page was answered by the still-open
+  Keycloak session, which signed the user straight back in. `POST /auth/logout` now accepts the
+  CSRF token as a form field as well as a header and ends the session at the realm's logout
+  endpoint before the manager's own cookie is cleared
+  ([#137](https://github.com/Fidonis/papaia-manager/pull/137); closes
+  [#136](https://github.com/Fidonis/papaia-manager/issues/136)).
+- The Upgrade page names the reason when **Install** is disabled because the result of an earlier
+  upgrade has not been dismissed (tooltip and label "Dismiss the previous upgrade first"). "An
+  upgrade is already in flight" is shown only while a runner is actually running
+  ([#145](https://github.com/Fidonis/papaia-manager/pull/145); closes
+  [#144](https://github.com/Fidonis/papaia-manager/issues/144)).
+
+### Notes
+- **Behavior change:** `GET /auth/logout` is removed (405). It ended the session without a CSRF
+  check and would now end the Keycloak session shared with the rest of the stack. Sign out is a
+  `POST`; nothing in this repository or in the core calls the old route.
+- The Users and Roles pages act with the signed-in account's own rights, so the identity role has
+  to carry Keycloak's `manage-users`, `view-users`, `query-users`, `view-realm` and
+  `manage-realm` (of the realm's `realm-management` client). The realm template and the role sync
+  of papAIa 1.6.0 grant them to `papaia-admin`; on an older core the page says which right is
+  missing instead of failing.
+- Features that depend on the core: the Mail Server page and the relay need the `smtp` profile
+  (papAIa 1.6.0), and its realm step needs the role sync fix of `Fidonis/papaia#235`, in the same
+  release; switching the RAG system and the mail relay, and deleting a module's data or settings,
+  need the module operations of papAIa 1.6.0 (before that the Modules tab still switches LocalAI
+  and web search, and switches modules off keeping everything, and disables the rest with an
+  explanation); the effective-result diff of the Overlay tab needs the core's `render-preview`
+  (papAIa 1.6.0, otherwise only the syntax check is available). The RAG pages themselves need
+  papAIa 1.5.0 or newer.
+
 ## [1.3.0] - 2026-10-08
 
 ### Added
@@ -470,6 +584,8 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[1.4.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.4.0
+
 [1.3.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.3.0
 
 [1.2.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.2.0
@@ -490,4 +606,4 @@ based on merged pull requests; this file mirrors the published releases.
 
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.4.0...HEAD
