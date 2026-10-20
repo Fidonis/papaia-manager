@@ -683,8 +683,23 @@ async def _stream_subprocess(
     )
 
     assert proc.stdout is not None
-    async for raw in proc.stdout:
-        yield raw.decode(errors="replace").rstrip()
+    # `asyncio` readers split on newlines with a 64 KiB limit and raise
+    # LimitOverrunError ("Separator is not found, and chunk exceed the limit")
+    # on anything longer -- the classic docker builder emits exactly such
+    # lines as ANSI-escaped pull progress without a trailing newline. Read
+    # fixed-size chunks instead and reassemble lines locally, so the line
+    # length cannot break the job.
+    buffer = b""
+    while True:
+        raw = await proc.stdout.read(65536)
+        if not raw:
+            break
+        buffer += raw
+        *lines, buffer = buffer.split(b"\n")
+        for line in lines:
+            yield line.decode(errors="replace").rstrip()
+    if buffer:
+        yield buffer.decode(errors="replace").rstrip()
 
     await proc.wait()
     # Every verb reachable from here -- install, start, stop, remove, uninstall,
