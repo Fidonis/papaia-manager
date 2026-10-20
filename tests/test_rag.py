@@ -215,6 +215,12 @@ def test_the_tiles_form_a_group_of_their_own_for_administrators() -> None:
     assert {t.visibility for t in tiles} == {"admin"}
 
 
+def test_the_computed_tile_carries_the_bundled_qdrant_icon() -> None:
+    result = rag.with_rag_tiles([], _ENV)
+
+    assert [t.icon for t in result[0].tiles] == ["/static/icons/qdrant.svg"]
+
+
 def test_the_input_is_not_modified() -> None:
     groups = [TileGroup("Tools", [_tile("Wiki", "https://wiki.test")])]
 
@@ -276,6 +282,7 @@ def test_an_administrator_sees_the_qdrant_tile_and_no_ingest_tile(client: TestCl
     assert "Qdrant Ingest" not in body
     assert f"{_INGEST}/ui" not in body
     assert re.search(r"RAG\s*&nbsp;·&nbsp;\s*1\s+application\b", body), "the group heading"
+    assert 'src="/static/icons/qdrant.svg"' in body
 
 
 def test_a_user_without_the_admin_role_does_not_see_them(client: TestClient) -> None:

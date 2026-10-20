@@ -157,6 +157,8 @@ To keep the project freely redistributable under MIT, **contributions containing
 
 "Fidonis" and "papaia-manager" are trademarks of Fidonis GmbH (in Gründung). See [TRADEMARK.md](TRADEMARK.md) for the rules on how you may and may not use them.
 
+Logos and other third-party graphics bundled under `src/app/static/icons/` are the property of their owners. A new file there needs an entry in `src/app/static/icons/NOTICE.txt` with its source, its licence and the owner of the mark it shows, and the licence text where the licence asks for it; `tests/test_icon_assets.py` fails without one. Take a file from its source unchanged and pin the source to a commit or tag, since a collection's licence statement does not always cover every file in it.
+
 ---
 
 Thanks again for contributing!

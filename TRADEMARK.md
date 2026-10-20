@@ -27,6 +27,14 @@ Other third-party names that may appear in this project — for example "Docker"
 "Keycloak", "OIDC", "FastAPI", "HTMX" — are the property of their respective
 owners. No endorsement by, or affiliation with, those parties is implied.
 
+The dashboard of the manager shows the logo of each application it links to
+(for example LibreChat, Keycloak, NGINX Proxy Manager and Qdrant) to identify
+that application, and nothing more. The files, their sources and their licences
+are listed in
+[`src/app/static/icons/NOTICE.txt`](src/app/static/icons/NOTICE.txt). A licence
+for such a file does not extend to the mark it shows. If you own one of these
+marks and want its icon changed or removed, open an issue in this repository.
+
 ## Permitted uses
 
 You may, without seeking permission from Fidonis:

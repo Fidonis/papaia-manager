@@ -63,6 +63,7 @@ from app.core.state import (
     load_deployment_yaml,
 )
 from app.core.tiles import (
+    DEFAULT_ICONS,
     TileGroup,
     TilesFileError,
     config_to_json,
@@ -1612,11 +1613,13 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
     groups, and an editor that could not show a group it had just created
     would be unusable.
     """
-    # The widget types the gallery offers, and the closed icon set they are drawn with. The
-    # editor draws a widget's card from these; the live data comes from the preview route.
-    widgets = {
+    # What the editor draws its cards from. The widget types the gallery offers, and the closed
+    # icon set they are drawn with; the live data comes from the preview route. And the icons a
+    # link tile without one of its own gets on the dashboard, so a card shows what the page shows.
+    lookups = {
         "widget_types": widget_registry.describe(settings),
         "widget_icons": widget_registry.ICON_PATHS,
+        "default_icons": DEFAULT_ICONS,
     }
     try:
         config = load_tiles(settings.papaia_config_dir)
@@ -1626,7 +1629,7 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
             "revision": "",
             "draft": {"version": 1, "groups": []},
             "link_keys": [],
-            **widgets,
+            **lookups,
         }
 
     core_env = load_env_file(Path(settings.papaia_config_dir) / ".env")
@@ -1635,7 +1638,7 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
         "revision": tiles_revision(settings.papaia_config_dir),
         "draft": config_to_json(config),
         "link_keys": link_placeholder_keys(core_env),
-        **widgets,
+        **lookups,
     }
 
 

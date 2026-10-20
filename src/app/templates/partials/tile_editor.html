@@ -43,7 +43,7 @@
    than fetched, so the editor comes up populated instead of blank. #}
 <div
   x-data
-  x-init='$store.tiles.load({{ draft|tojson }}, {{ revision|tojson }}, {{ link_keys|tojson }}, {{ widget_types|tojson }}, {{ widget_icons|tojson }})'
+  x-init='$store.tiles.load({{ draft|tojson }}, {{ revision|tojson }}, {{ link_keys|tojson }}, {{ widget_types|tojson }}, {{ widget_icons|tojson }}, {{ default_icons|tojson }})'
   x-effect="$store.tiles.groups.length; $store.tiles.preview; $nextTick(() => tilesInitSortable())"
 >
 
@@ -132,11 +132,11 @@
               <div class="card-body p-5 flex flex-col gap-3">
 
                 <div class="flex items-start gap-3">
-                  <template x-if="tile.type !== 'widget' && tile.icon">
-                    <img :src="tile.icon" alt=""
+                  <template x-if="tile.type !== 'widget' && $store.tiles.iconFor(tile)">
+                    <img :src="$store.tiles.iconFor(tile)" alt=""
                          class="h-11 w-11 shrink-0 rounded-xl object-contain bg-base-200 p-1">
                   </template>
-                  <template x-if="tile.type !== 'widget' && !tile.icon">
+                  <template x-if="tile.type !== 'widget' && !$store.tiles.iconFor(tile)">
                     <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-extrabold font-brand uppercase
                                  bg-base-300 text-base-content"
                           x-text="(tile.name || '?').charAt(0)"></span>
@@ -330,7 +330,7 @@
                        @input="$store.tiles.resolveDialog()"
                        placeholder="https://example.com/icon.svg">
                 <span class="label-text-alt opacity-60 mt-1">
-                  Left empty, the tile shows a lettered badge.
+                  Left empty, a default application shows its bundled icon and any other tile a lettered badge.
                 </span>
                 <span class="label-text-alt text-error mt-1"
                       x-show="$store.tiles.dialog.iconProblem"
@@ -364,11 +364,11 @@
               <div class="card bg-base-100 border border-base-300">
                 <div class="card-body p-4 gap-2">
                   <div class="flex items-start gap-3">
-                    <template x-if="$store.tiles.dialog.tile.icon">
-                      <img :src="$store.tiles.dialog.tile.icon" alt=""
+                    <template x-if="$store.tiles.iconFor($store.tiles.dialog.tile)">
+                      <img :src="$store.tiles.iconFor($store.tiles.dialog.tile)" alt=""
                            class="h-10 w-10 shrink-0 rounded-xl object-contain bg-base-200 p-1">
                     </template>
-                    <template x-if="!$store.tiles.dialog.tile.icon">
+                    <template x-if="!$store.tiles.iconFor($store.tiles.dialog.tile)">
                       <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-content text-lg font-extrabold font-brand uppercase"
                             x-text="($store.tiles.dialog.tile.name || '?').charAt(0)"></span>
                     </template>
