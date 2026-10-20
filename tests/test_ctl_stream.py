@@ -38,7 +38,7 @@ def test_lines_longer_than_the_64kib_reader_limit_survive() -> None:
     program = (
         "import sys\n"
         "sys.stdout.write('start\\n')\n"
-        f"sys.stdout.write('{payload}')\n"
+        f"sys.stdout.write('x' * {len(payload)})\n"
         "sys.stdout.write('\\n')\n"
         "sys.stdout.write('done\\n')\n"
     )
@@ -49,7 +49,7 @@ def test_partial_lines_across_chunk_boundaries_are_reassembled() -> None:
     # The chunked reader must not emit a fragment mid-word: a 70 KiB write
     # with no newline lands as one yielded line, not as two chunks.
     payload = "y" * (70 * 1024)
-    program = f"import sys\nsys.stdout.write('{payload}')\n"
+    program = f"import sys\nsys.stdout.write('y' * {len(payload)})\n"
     assert _stream_lines(program) == [payload]
 
 
