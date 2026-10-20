@@ -7,11 +7,13 @@ import pytest
 import yaml
 
 from app.core.tiles import (
+    DEFAULT_ICONS,
     Tile,
     TileGroup,
     TilesConfig,
     TilesFileError,
     check_value,
+    default_icon,
     link_placeholder_keys,
     load_tiles,
     load_tiles_raw,
@@ -23,6 +25,8 @@ from app.core.tiles import (
     validate_config,
     visible_groups,
 )
+
+STATIC_ICONS = Path(__file__).resolve().parents[1] / "src" / "app" / "static" / "icons"
 
 
 def _config(*groups: TileGroup) -> TilesConfig:
@@ -41,6 +45,40 @@ def test_seeds_default_tiles_on_first_run(tmp_path: Path) -> None:
     names = [tile.name for group in config.groups for tile in group.tiles]
     assert "LibreChat" in names
     assert "LiteLLM" in names
+
+
+def test_seeded_tiles_carry_their_bundled_icon(tmp_path: Path) -> None:
+    config = load_tiles(str(tmp_path))
+
+    tiles = [tile for group in config.groups for tile in group.tiles]
+    assert tiles
+    for tile in tiles:
+        assert tile.icon == default_icon(tile.name), tile.name
+    assert "icon: /static/icons/librechat.svg" in (
+        tmp_path / "manager" / "tiles.yaml"
+    ).read_text(encoding="utf-8")
+
+
+def test_every_bundled_icon_is_a_file_the_manager_serves() -> None:
+    assert DEFAULT_ICONS
+    for name, path in DEFAULT_ICONS.items():
+        assert name == name.strip().casefold(), f"{name!r} is not a normalised key"
+        assert path.startswith("/static/icons/"), path
+        assert (STATIC_ICONS / path.rsplit("/", 1)[1]).is_file(), path
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("LibreChat", "/static/icons/librechat.svg"),
+        ("  NGINX Proxy Manager ", "/static/icons/nginx-proxy-manager.svg"),
+        ("litellm", "/static/icons/litellm.svg"),
+        ("Wiki", None),
+        ("", None),
+    ],
+)
+def test_the_bundled_icon_is_matched_by_tile_name(name: str, expected: str | None) -> None:
+    assert default_icon(name) == expected
 
 
 def test_seeded_infrastructure_tiles_are_admin_only(tmp_path: Path) -> None:
@@ -230,6 +268,54 @@ def test_safe_links_are_kept(href: str) -> None:
         is_admin=True,
     )
     assert groups[0].tiles[0].href == href
+
+
+def test_a_default_application_without_a_stored_icon_gets_the_bundled_one() -> None:
+    """Every tile written before the icons existed is stored without one."""
+    groups = visible_groups(
+        _config(TileGroup(name="G", tiles=[Tile(name="Keycloak", href="https://k.test")])),
+        is_admin=True,
+    )
+
+    assert groups[0].tiles[0].icon == "/static/icons/keycloak.svg"
+
+
+def test_an_icon_the_operator_set_wins_over_the_bundled_one() -> None:
+    groups = visible_groups(
+        _config(
+            TileGroup(
+                name="G",
+                tiles=[Tile(name="Keycloak", href="https://k.test", icon="https://k.test/i.svg")],
+            )
+        ),
+        is_admin=True,
+    )
+
+    assert groups[0].tiles[0].icon == "https://k.test/i.svg"
+
+
+def test_any_other_tile_stays_without_an_icon() -> None:
+    groups = visible_groups(
+        _config(TileGroup(name="G", tiles=[Tile(name="Wiki", href="https://w.test")])),
+        is_admin=True,
+    )
+
+    assert groups[0].tiles[0].icon is None
+
+
+def test_the_fallback_is_not_written_back_to_the_stored_config(tmp_path: Path) -> None:
+    """Rendering must not touch tiles.yaml, or every open editor would hit a stale revision."""
+    save_tiles(
+        str(tmp_path),
+        _config(TileGroup(name="G", tiles=[Tile(name="LiteLLM", href="https://l.test")])),
+    )
+    revision = tiles_revision(str(tmp_path))
+
+    config = load_tiles(str(tmp_path))
+    visible_groups(config, is_admin=True)
+
+    assert config.groups[0].tiles[0].icon is None
+    assert tiles_revision(str(tmp_path)) == revision
 
 
 def test_unsafe_icon_is_dropped_but_tile_survives() -> None:

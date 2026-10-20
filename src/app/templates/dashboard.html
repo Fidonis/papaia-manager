@@ -120,6 +120,7 @@
       linkKeys: [],
       widgetTypes: [],
       widgetIcons: {},
+      defaultIcons: {},
       groups: [],
       dirty: 0,
       preview: false,
@@ -135,10 +136,11 @@
 
       // ── Draft lifecycle ──────────────────────────────────────────────────
 
-      load(draft, revision, linkKeys, widgetTypes, widgetIcons) {
+      load(draft, revision, linkKeys, widgetTypes, widgetIcons, defaultIcons) {
         this._seq = 0;
         this.widgetTypes = widgetTypes || [];
         this.widgetIcons = widgetIcons || {};
+        this.defaultIcons = defaultIcons || {};
         this.groups = (draft.groups || []).map((group) => ({
           _id: this._id(),
           name: group.name,
@@ -211,6 +213,13 @@
 
       widgetIconPath(name) {
         return this.widgetIcons[name] || this.widgetIcons.alert || "";
+      },
+
+      // The image a link tile shows: its own icon, else the one bundled for a default
+      // application of that name. The dashboard applies the same rule on the server.
+      iconFor(tile) {
+        const name = (tile.name || "").trim().toLowerCase();
+        return tile.icon || this.defaultIcons[name] || "";
       },
 
       // "3 applications · 2 widgets", counting each kind in its own words.

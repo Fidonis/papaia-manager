@@ -1,0 +1,45 @@
+Third-party icons bundled with the manager
+==========================================
+
+These files are shown on the dashboard next to the default tiles. Each one
+depicts a product and only identifies it. The manager is not affiliated with,
+endorsed by or sponsored by any of them. Product names and logos are the
+property of their respective owners (see TRADEMARK.md in the repository).
+
+The files are unmodified copies of the sources named below. Every .svg file
+in this directory needs an entry here, with its file name alone at the start of
+a line; tests/test_icon_assets.py checks that.
+
+If you own one of these marks and want its icon changed or removed, open an
+issue at https://github.com/Fidonis/papaia-manager/issues.
+
+
+librechat.svg
+keycloak.svg
+nginx-proxy-manager.svg
+qdrant.svg
+
+  Source:   Dashboard Icons, https://dashboardicons.com/
+            https://github.com/homarr-labs/dashboard-icons, commit
+            320c819da84048d5a3066e2578bfa83be9019fdf (2026-10-20),
+            files svg/<name>.svg
+  Licence:  Apache License 2.0 for the icon files, as stated by the
+            collection (https://dashboardicons.com/license). The text is in
+            LICENSE-dashboard-icons.txt. The collection records neither the
+            rights holder nor the origin of each icon, and the licence does not
+            cover the marks the icons depict.
+  Depicts:  the logos of LibreChat, Keycloak, NGINX Proxy Manager and Qdrant,
+            marks of their respective owners.
+
+
+litellm.svg
+
+  Source:   Twemoji, https://github.com/jdecked/twemoji, tag v15.1.0, commit
+            7407fa31c51be5ab45626b8ab5554d50cc8073f6,
+            file assets/svg/1f685.svg (the "high-speed train" emoji)
+  Licence:  Creative Commons Attribution 4.0 International (CC BY 4.0),
+            https://creativecommons.org/licenses/by/4.0/
+  Credit:   Twemoji graphics by Twitter and the Twemoji contributors. No
+            changes were made to the file.
+  Depicts:  an emoji. It is not the logo of LiteLLM, which uses the same
+            emoji in its README.

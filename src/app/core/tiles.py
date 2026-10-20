@@ -89,8 +89,9 @@ class Tile:
     name: str
     href: str
     description: str = ""
-    # Optional operator-hosted image URL. Absent means the UI renders a
-    # lettered badge, matching how add-on cards already look.
+    # Optional image URL. Absent means the bundled icon of a default
+    # application (`DEFAULT_ICONS`), or a lettered badge for any other tile,
+    # matching how add-on cards already look.
     icon: str | None = None
     visibility: Visibility = "all"
 
@@ -149,6 +150,25 @@ class Problem:
     message: str
 
 
+# Icons the manager ships for the applications of the default tile set; their
+# sources and licences are listed in static/icons/NOTICE.txt. Keyed by the
+# casefolded tile name so that a stored tile without an icon of its own -- every
+# tile written before these existed -- shows one too, without tiles.yaml being
+# rewritten. An icon the operator set always wins.
+DEFAULT_ICONS: dict[str, str] = {
+    "librechat": "/static/icons/librechat.svg",
+    "litellm": "/static/icons/litellm.svg",
+    "keycloak": "/static/icons/keycloak.svg",
+    "nginx proxy manager": "/static/icons/nginx-proxy-manager.svg",
+    "qdrant": "/static/icons/qdrant.svg",
+}
+
+
+def default_icon(name: str) -> str | None:
+    """The bundled icon for a default application, matched by tile name."""
+    return DEFAULT_ICONS.get(name.strip().casefold())
+
+
 # Seeded on first start so a fresh deployment has a populated dashboard.
 # Mirrors the applications the stack ships today; infrastructure endpoints are
 # restricted to administrators.
@@ -162,12 +182,14 @@ _DEFAULT_TILES: dict[str, Any] = {
                     "name": "LibreChat",
                     "href": "{{PAPAIA_HOST}}:8000",
                     "description": "ChatGPT compatible, self-hosted AI chatbot",
+                    "icon": DEFAULT_ICONS["librechat"],
                     "visibility": "all",
                 },
                 {
                     "name": "LiteLLM",
                     "href": "{{PAPAIA_HOST}}:8200/ui",
                     "description": "LLM proxy and load balancer",
+                    "icon": DEFAULT_ICONS["litellm"],
                     "visibility": "all",
                 },
             ],
@@ -179,12 +201,14 @@ _DEFAULT_TILES: dict[str, Any] = {
                     "name": "Keycloak",
                     "href": "{{PAPAIA_HOST}}:8110/",
                     "description": "Identity and access management",
+                    "icon": DEFAULT_ICONS["keycloak"],
                     "visibility": "admin",
                 },
                 {
                     "name": "NGINX Proxy Manager",
                     "href": "{{PAPAIA_HOST}}:8100/",
                     "description": "Reverse proxy with admin UI",
+                    "icon": DEFAULT_ICONS["nginx proxy manager"],
                     "visibility": "admin",
                 },
             ],
@@ -447,8 +471,9 @@ def _resolve_tile(tile: Tile, env: Mapping[str, str]) -> Tile | None:
         return None
 
     icon: str | None = None
-    if tile.icon:
-        icon, icon_problem = check_value(tile.icon, env)
+    stored = tile.icon or default_icon(tile.name)
+    if stored:
+        icon, icon_problem = check_value(stored, env)
         if icon_problem is not None:
             logger.warning(
                 "ignoring icon for dashboard tile %r: %s (%r)", tile.name, icon_problem, icon

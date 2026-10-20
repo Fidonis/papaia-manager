@@ -541,3 +541,63 @@ def test_a_broken_file_does_not_take_the_dashboard_down(
 
     assert response.status_code == 200
     assert "could not be read" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Bundled icons
+# ---------------------------------------------------------------------------
+
+
+def test_a_fresh_dashboard_shows_the_bundled_icons(client: TestClient) -> None:
+    body = _admin(client).get("/partials/tiles").text
+
+    for icon in ("librechat", "litellm", "keycloak", "nginx-proxy-manager"):
+        assert f'src="/static/icons/{icon}.svg"' in body, icon
+
+
+def test_an_installation_written_before_the_icons_gets_them_too(
+    client: TestClient, config_dir: Path
+) -> None:
+    """The stored file has no icon; the dashboard fills it in, the file stays as it is."""
+    text = yaml.dump(
+        {
+            "version": 1,
+            "groups": [
+                {
+                    "name": "Mine",
+                    "tiles": [
+                        {"name": "LibreChat", "href": "https://chat.test"},
+                        {"name": "Wiki", "href": "https://wiki.test"},
+                        {
+                            "name": "Keycloak",
+                            "href": "https://kc.test",
+                            "icon": "https://kc.test/own.svg",
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+    path = config_dir / "manager" / "tiles.yaml"
+    path.write_text(text, encoding="utf-8")
+
+    body = _admin(client).get("/partials/tiles").text
+
+    assert 'src="/static/icons/librechat.svg"' in body
+    assert 'src="https://kc.test/own.svg"' in body
+    assert "/static/icons/keycloak.svg" not in body, "an icon the operator set wins"
+    assert path.read_text(encoding="utf-8") == text, "rendering must not rewrite the file"
+
+
+def test_the_editor_is_handed_the_bundled_icons(client: TestClient) -> None:
+    body = _admin(client).get("/partials/tiles/edit").text
+
+    assert "/static/icons/librechat.svg" in body
+    assert "iconFor(" in body
+
+
+def test_the_bundled_icons_are_served_as_svg_without_a_session(client: TestClient) -> None:
+    response = client.get("/static/icons/librechat.svg")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/svg+xml")
