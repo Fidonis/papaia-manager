@@ -689,17 +689,53 @@ async def _stream_subprocess(
     # lines as ANSI-escaped pull progress without a trailing newline. Read
     # fixed-size chunks instead and reassemble lines locally, so the line
     # length cannot break the job.
-    buffer = b""
+    #
+    # The pending bytes live in a `bytearray` (amortised append) and the
+    # newline search starts where the previous one stopped, so a very long
+    # line costs one scan per chunk instead of re-scanning the whole buffer
+    # and copying it on every `+=`. A single line is also capped: past
+    # MAX_LINE_BYTES the head is emitted with a truncation marker and the
+    # rest of that line is dropped, so an endless progress meter cannot grow
+    # the buffer (or the job log) without bound (#154).
+    max_line = 1024 * 1024
+    truncation_marker = b"... [truncated]"
+    pending = bytearray()
+    search_from = 0
+    dropping = False
     while True:
         raw = await proc.stdout.read(65536)
         if not raw:
             break
-        buffer += raw
-        *lines, buffer = buffer.split(b"\n")
-        for line in lines:
+        pending += raw
+        while True:
+            newline = pending.find(b"\n", search_from)
+            if dropping:
+                if newline == -1:
+                    # Still inside the discarded tail of an over-long line.
+                    del pending[:]
+                    search_from = 0
+                    break
+                del pending[: newline + 1]
+                dropping = False
+                search_from = 0
+                continue
+            if newline == -1:
+                if len(pending) > max_line:
+                    yield (
+                        bytes(pending[:max_line]) + truncation_marker
+                    ).decode(errors="replace").rstrip()
+                    del pending[:]
+                    dropping = True
+                    search_from = 0
+                else:
+                    search_from = len(pending)
+                break
+            line = bytes(pending[:newline])
+            del pending[: newline + 1]
+            search_from = 0
             yield line.decode(errors="replace").rstrip()
-    if buffer:
-        yield buffer.decode(errors="replace").rstrip()
+    if pending and not dropping:
+        yield pending.decode(errors="replace").rstrip()
 
     await proc.wait()
     # Every verb reachable from here -- install, start, stop, remove, uninstall,

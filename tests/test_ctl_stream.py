@@ -72,3 +72,47 @@ def test_nonzero_exit_still_raises_ctl_error() -> None:
     program = "import sys\nsys.stdout.write('out\\n')\nsys.exit(3)\n"
     with pytest.raises(CtlError, match="exited with code 3"):
         _stream_lines(program)
+
+
+def test_an_overlong_line_is_truncated_and_the_rest_dropped() -> None:
+    # #154: a line past the 1 MiB cap yields its head plus a visible marker,
+    # and the discarded remainder never surfaces as extra fragments.
+    program = (
+        "import sys\n"
+        "sys.stdout.write('start\\n')\n"
+        "sys.stdout.write('z' * (3 * 1024 * 1024))\n"
+        "sys.stdout.write('\\n')\n"
+        "sys.stdout.write('after\\n')\n"
+    )
+    lines = _stream_lines(program)
+    assert lines == [
+        "start",
+        "z" * (1024 * 1024) + "... [truncated]",
+        "after",
+    ]
+
+
+def test_an_overlong_tail_without_a_newline_is_truncated_once() -> None:
+    # End of stream inside an over-long line: the head plus marker is the
+    # only thing emitted, nothing else leaks from the discarded tail.
+    program = f"import sys\nsys.stdout.write('z' * {(3 * 1024 * 1024) + 1})\n"
+    assert _stream_lines(program) == ["z" * (1024 * 1024) + "... [truncated]"]
+
+
+def test_many_short_lines_still_arrive_one_by_one_after_a_long_one() -> None:
+    # The incremental newline search must not lose or duplicate lines around
+    # the chunk boundary after a truncation has reset the buffer.
+    program = (
+        "import sys\n"
+        "sys.stdout.write('z' * (1024 * 1024 - 512))\n"
+        "sys.stdout.write('\\n')\n"
+        "sys.stdout.write('one\\n')\n"
+        "sys.stdout.write('two\\n')\n"
+        "sys.stdout.write('three\\n')\n"
+    )
+    assert _stream_lines(program) == [
+        "z" * (1024 * 1024 - 512),
+        "one",
+        "two",
+        "three",
+    ]
