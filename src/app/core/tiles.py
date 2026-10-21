@@ -33,6 +33,8 @@ from typing import Any, ClassVar, Literal, get_args
 
 import yaml
 
+from app.i18n import gettext
+
 logger = logging.getLogger(__name__)
 
 Visibility = Literal["all", "admin"]
@@ -244,9 +246,11 @@ def parse_tiles(text: str) -> TilesConfig:
     try:
         raw = yaml.safe_load(text) or {}
     except yaml.YAMLError as exc:
-        raise TilesFileError(f"tiles.yaml is not valid YAML: {exc}") from exc
+        raise TilesFileError(
+            gettext("tiles.yaml is not valid YAML: %(exc)s") % {"exc": exc}
+        ) from exc
     if not isinstance(raw, dict):
-        raise TilesFileError("tiles.yaml must hold a mapping at the top level")
+        raise TilesFileError(gettext("tiles.yaml must hold a mapping at the top level"))
     return _config_from_dict(raw)
 
 
@@ -332,10 +336,12 @@ def check_value(value: str, env: Mapping[str, str]) -> tuple[str, str | None]:
 
     unresolved = _PLACEHOLDER_RE.search(resolved)
     if unresolved is not None:
-        return resolved, f"{unresolved.group(0)} has no value in the stack environment"
+        return resolved, gettext("%(name)s has no value in the stack environment") % {
+            "name": unresolved.group(0)
+        }
 
     if not _SAFE_HREF_RE.match(resolved):
-        return resolved, "must start with https://, http:// or /"
+        return resolved, gettext("must start with https://, http:// or /")
 
     return resolved, None
 
@@ -415,9 +421,11 @@ def validate_config(
     for gi, group in enumerate(config.groups):
         name = group.name.strip()
         if not name:
-            problems.append(Problem(gi, None, "name", "group name must not be empty"))
+            problems.append(Problem(gi, None, "name", gettext("group name must not be empty")))
         elif name.casefold() in seen:
-            problems.append(Problem(gi, None, "name", f"duplicate group name {name!r}"))
+            problems.append(Problem(gi, None, "name", gettext(
+                "duplicate group name %(name)r"
+            ) % {"name": name}))
         else:
             seen.add(name.casefold())
 
@@ -427,10 +435,10 @@ def validate_config(
                 continue
 
             if not tile.name.strip():
-                problems.append(Problem(gi, ti, "name", "tile name must not be empty"))
+                problems.append(Problem(gi, ti, "name", gettext("tile name must not be empty")))
 
             if not tile.href.strip():
-                problems.append(Problem(gi, ti, "href", "link must not be empty"))
+                problems.append(Problem(gi, ti, "href", gettext("link must not be empty")))
             else:
                 _, problem = check_value(tile.href, env)
                 if problem is not None:
@@ -449,12 +457,16 @@ def _widget_problems(
 ) -> list[Problem]:
     problems: list[Problem] = []
     if not tile.widget.strip():
-        problems.append(Problem(gi, ti, "widget", "choose a widget"))
+        problems.append(Problem(gi, ti, "widget", gettext("choose a widget")))
     elif known_widgets is not None and tile.widget not in known_widgets:
-        problems.append(Problem(gi, ti, "widget", f"unknown widget {tile.widget!r}"))
+        problems.append(Problem(gi, ti, "widget", gettext(
+            "unknown widget %(widget)r"
+        ) % {"widget": tile.widget}))
     if len(tile.title) > MAX_WIDGET_TITLE:
         problems.append(
-            Problem(gi, ti, "title", f"title must be at most {MAX_WIDGET_TITLE} characters")
+            Problem(gi, ti, "title", gettext(
+                "title must be at most %(MAX_WIDGET_TITLE)s characters"
+            ) % {"MAX_WIDGET_TITLE": MAX_WIDGET_TITLE})
         )
     return problems
 

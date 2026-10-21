@@ -36,6 +36,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.i18n import N_
+from app.i18n import gettext as _
+
 # Selector grammar, mirroring tools/lib/backup.py. Kept as a literal rather than
 # imported: nothing under app/ imports lib.* (see backups.py), and a selector
 # reaching an argv is exactly the place to spell the rule out locally.
@@ -65,49 +68,59 @@ class _Presentation:
 _MODULES: dict[str, _Presentation] = {
     "keycloak": _Presentation(
         label="Keycloak",
-        summary="Logins, users and realm data",
+        summary=N_("Logins, users and realm data"),
         requires_config=True,
         hazards=(
-            "The realm carries every service's client secret and is imported only on "
-            "first start. Restoring the database on its own would leave those secrets "
-            "out of step with the live configuration and no sign-in would work, this "
-            "panel included, so the stack configuration is restored with it.",
-            "Every active session ends. You will have to sign in again.",
+            N_(
+                "The realm carries every service's client secret and is imported only on first "
+                "start. Restoring the database on its own would leave those secrets out of step "
+                "with the live configuration and no sign-in would work, this panel included, so "
+                "the stack configuration is restored with it."
+            ),
+            N_("Every active session ends. You will have to sign in again."),
         ),
     ),
     "librechat": _Presentation(
         label="LibreChat",
-        summary="Conversations, uploads, search index and embeddings",
+        summary=N_("Conversations, uploads, search index and embeddings"),
         hazards=(
-            "Conversations, the search index, the embeddings and the uploaded files "
-            "reference each other by id. Restoring the whole module keeps them "
-            "consistent; picking single volumes below can leave hits on deleted "
-            "conversations, empty retrieval results, or file records with no file.",
+            N_(
+                "Conversations, the search index, the embeddings and the uploaded files "
+                "reference each other by id. Restoring the whole module keeps them consistent; "
+                "picking single volumes below can leave hits on deleted conversations, empty "
+                "retrieval results, or file records with no file."
+            ),
         ),
     ),
     "litellm": _Presentation(
         label="LiteLLM",
-        summary="Model routing, virtual keys and spend",
+        summary=N_("Model routing, virtual keys and spend"),
         hazards=(
-            "Every virtual key issued since the snapshot stops working. Their holders "
-            "get 401 until the keys are reissued.",
+            N_(
+                "Every virtual key issued since the snapshot stops working. Their holders get "
+                "401 until the keys are reissued."
+            ),
         ),
     ),
     "localai": _Presentation(
         label="LocalAI",
-        summary="Local accounts and downloaded models",
+        summary=N_("Local accounts and downloaded models"),
         hazards=(
-            "Restoring the local account store can bring back accounts that were "
-            "deleted since the snapshot.",
+            N_(
+                "Restoring the local account store can bring back accounts that were deleted "
+                "since the snapshot."
+            ),
         ),
     ),
     "searxng": _Presentation(
         label="SearXNG",
-        summary="Search settings and cache",
+        summary=N_("Search settings and cache"),
         advanced=True,
         hazards=(
-            "The settings file itself is mounted over this volume from the "
-            "configuration directory, so restoring it changes less than it looks like.",
+            N_(
+                "The settings file itself is mounted over this volume from the configuration "
+                "directory, so restoring it changes less than it looks like."
+            ),
         ),
     ),
 }
@@ -115,16 +128,16 @@ _MODULES: dict[str, _Presentation] = {
 # Per-volume labels, keyed by the compose volume key -- that is, the manifest
 # target with the project prefix removed.
 _VOLUMES: dict[str, _Presentation] = {
-    "keycloak-postgresql": _Presentation("Users and realm", ""),
-    "librechat-mongodb": _Presentation("Conversations", ""),
-    "librechat-meilisearch": _Presentation("Search index", ""),
-    "librechat-vectordb": _Presentation("Embeddings", ""),
-    "librechat-uploads": _Presentation("Uploaded files", ""),
-    "librechat-images": _Presentation("Generated images", ""),
-    "litellm-postgresql": _Presentation("Keys, budgets and spend", ""),
-    "localai-data": _Presentation("Local accounts and generated data", ""),
-    "localai-models": _Presentation("Downloaded model weights", "", advanced=True),
-    "searxng_config": _Presentation("Settings volume", "", advanced=True),
+    "keycloak-postgresql": _Presentation(N_("Users and realm"), ""),
+    "librechat-mongodb": _Presentation(N_("Conversations"), ""),
+    "librechat-meilisearch": _Presentation(N_("Search index"), ""),
+    "librechat-vectordb": _Presentation(N_("Embeddings"), ""),
+    "librechat-uploads": _Presentation(N_("Uploaded files"), ""),
+    "librechat-images": _Presentation(N_("Generated images"), ""),
+    "litellm-postgresql": _Presentation(N_("Keys, budgets and spend"), ""),
+    "localai-data": _Presentation(N_("Local accounts and generated data"), ""),
+    "localai-models": _Presentation(N_("Downloaded model weights"), "", advanced=True),
+    "searxng_config": _Presentation(N_("Settings volume"), "", advanced=True),
 }
 
 # Not offered individually: logs, scrape data and a search cache. They are still
@@ -137,8 +150,10 @@ _HIDDEN_VOLUMES = frozenset({"librechat-logs", "litellm-prometheus", "searxng_da
 # directory -- so an operator looking for it must be told where it went instead
 # of concluding there is nothing to restore.
 NOTES: tuple[str, ...] = (
-    "The reverse proxy, its certificates and every rendered service config live in "
-    "the stack configuration, not in a volume. They come back only with a full restore.",
+    N_(
+        "The reverse proxy, its certificates and every rendered service config live in the stack "
+        "configuration, not in a volume. They come back only with a full restore."
+    ),
 )
 
 
@@ -191,16 +206,19 @@ def _title(name: str) -> str:
 
 
 _CONFIG_PRESENTATION = _Presentation(
-    label="Stack configuration",
-    summary="Environment files, rendered service configs, proxy database and certificates",
+    label=N_("Stack configuration"),
+    summary=N_("Environment files, rendered service configs, proxy database and certificates"),
     requires_config=True,
     hazards=(
-        "The configuration archive covers the whole bundle and cannot be unpacked in "
-        "part, and every core service bind-mounts individual files out of it -- so all "
-        "containers have to be removed and recreated for the restored files to be "
-        "picked up.",
-        "Because that includes this panel, the operation runs in its own container and "
-        "this page is unreachable while it does.",
+        N_(
+            "The configuration archive covers the whole bundle and cannot be unpacked in part, "
+            "and every core service bind-mounts individual files out of it -- so all containers "
+            "have to be removed and recreated for the restored files to be picked up."
+        ),
+        N_(
+            "Because that includes this panel, the operation runs in its own container and this "
+            "page is unreachable while it does."
+        ),
     ),
 )
 
@@ -238,9 +256,9 @@ def build_groups(manifest: dict[str, Any] | None) -> list[ScopeGroup]:
                     selector=CONFIG_SELECTOR,
                     kind="config",
                     name=CONFIG_SELECTOR,
-                    label=_CONFIG_PRESENTATION.label,
-                    summary=_CONFIG_PRESENTATION.summary,
-                    hazards=_CONFIG_PRESENTATION.hazards,
+                    label=_(_CONFIG_PRESENTATION.label),
+                    summary=_(_CONFIG_PRESENTATION.summary),
+                    hazards=tuple(_(h) for h in _CONFIG_PRESENTATION.hazards),
                     requires_config=True,
                 ),
             ).archives += 1
@@ -256,9 +274,9 @@ def build_groups(manifest: dict[str, Any] | None) -> list[ScopeGroup]:
                 selector=selector,
                 kind="addon" if is_addon else "module",
                 name=module,
-                label=known.label if known else _title(module),
-                summary=known.summary if known else "Application data and documents",
-                hazards=known.hazards if known else (),
+                label=_(known.label) if known else _title(module),
+                summary=_(known.summary) if known else _("Application data and documents"),
+                hazards=tuple(_(h) for h in known.hazards) if known else (),
                 advanced=known.advanced if known else False,
                 requires_config=known.requires_config if known else False,
             )
@@ -278,7 +296,7 @@ def build_groups(manifest: dict[str, Any] | None) -> list[ScopeGroup]:
         group.items.append(
             ScopeItem(
                 selector=f"volume:{target}",
-                label=known_volume.label if known_volume else _title(key),
+                label=_(known_volume.label) if known_volume else _title(key),
                 kind=kind,
                 target=target,
                 advanced=known_volume.advanced if known_volume else False,

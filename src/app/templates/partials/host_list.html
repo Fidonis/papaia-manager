@@ -49,12 +49,12 @@
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
     <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
   </svg>
-  <p class="text-lg font-semibold">Host checks are not available</p>
+  <p class="text-lg font-semibold">{% trans %}Host checks are not available{% endtrans %}</p>
   <p class="max-w-xl text-sm">{{ host.reason }}</p>
 </div>
 {% elif not host.checks %}
 <div class="flex flex-col items-center py-24 gap-4 opacity-60 text-center">
-  <p class="text-lg font-semibold">Nothing to report</p>
+  <p class="text-lg font-semibold">{% trans %}Nothing to report{% endtrans %}</p>
   {% for note in host.notes %}
   <p class="max-w-xl text-sm">{{ note }}</p>
   {% endfor %}
@@ -64,7 +64,7 @@
 {# ── Stats row ───────────────────────────────────────────────────── #}
 <div class="grid grid-cols-2 lg:grid-cols-4 overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Checks</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Checks{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
       <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ host.total }}
     </p>
@@ -76,13 +76,13 @@
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 lg:border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Warning</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Warning{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-warning">
       <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>{{ host.warn_count }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Critical</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Critical{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-error">
       <span class="h-2 w-2 shrink-0 rounded-full bg-error"></span>{{ host.critical_count }}
     </p>
@@ -93,14 +93,13 @@
    server's cache time as much as this page's poll. #}
 <div class="flex justify-end mb-2">
   <p class="text-xs opacity-40">
-    Checked <span data-checked-at="{{ host.checked_at.isoformat() }}"></span> · refreshes every {{ refresh_text }}
-    · <a href="/settings#host-monitoring" class="link link-hover">Change in Settings</a>
+    {% trans %}Checked{% endtrans %} <span data-checked-at="{{ host.checked_at.isoformat() }}"></span> {% trans %}· refreshes every {{ refresh_text }} · <a href="/settings#host-monitoring" class="link link-hover">Change in Settings</a>{% endtrans %}
   </p>
 </div>
 
 {# ── Resources ───────────────────────────────────────────────────── #}
 {% if host.resources %}
-{{ section_header("Resources", host.resources_measured ~ " measured" ~ (", " ~ host.resources_not_measurable ~ " not measurable" if host.resources_not_measurable else "")) }}
+{{ section_header(_("Resources"), _("%(n)s measured", n=host.resources_measured) ~ (", " ~ _("%(n)s not measurable", n=host.resources_not_measurable) if host.resources_not_measurable else "")) }}
 <div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   {% for row in host.resources %}
   {% set st = row.state | string %}
@@ -110,7 +109,7 @@
     {{ dot('unknown') }}
     <p class="text-sm font-semibold md:w-52">{{ row.label }}</p>
     <div class="min-w-0 grow basis-60">
-      <p class="text-xs opacity-60">Not measurable from this panel.</p>
+      <p class="text-xs opacity-60">{% trans %}Not measurable from this panel.{% endtrans %}</p>
       {% if row.reason %}<p class="text-xs opacity-50">{{ row.reason }}</p>{% endif %}
     </div>
   </div>
@@ -122,17 +121,17 @@
               {% else %}border-l-base-300{% endif %}">
     {{ dot(st) }}
     <div class="min-w-0 basis-40 grow md:grow-0 md:basis-auto md:w-52">
-      <p class="text-sm font-semibold truncate">{{ row.label }}</p>
+      <p class="text-sm font-semibold truncate">{{ _(row.label) }}</p>
       {% if row.detail %}<p class="text-xs opacity-50 truncate">{{ row.detail }}</p>{% endif %}
     </div>
     {% if row.used_percent is not none %}
     <div class="order-last basis-full md:order-none md:basis-0 md:grow">
       {% if st == 'critical' %}
-      <progress class="progress progress-error h-1.5 w-full" value="{{ row.used_percent }}" max="100" aria-label="{{ row.label }} used"></progress>
+      <progress class="progress progress-error h-1.5 w-full" value="{{ row.used_percent }}" max="100" aria-label="{{ _('%(label)s used', label=row.label) }}"></progress>
       {% elif st == 'warn' %}
-      <progress class="progress progress-warning h-1.5 w-full" value="{{ row.used_percent }}" max="100" aria-label="{{ row.label }} used"></progress>
+      <progress class="progress progress-warning h-1.5 w-full" value="{{ row.used_percent }}" max="100" aria-label="{{ _('%(label)s used', label=row.label) }}"></progress>
       {% else %}
-      <progress class="progress h-1.5 w-full text-base-content/40" value="{{ row.used_percent }}" max="100" aria-label="{{ row.label }} used"></progress>
+      <progress class="progress h-1.5 w-full text-base-content/40" value="{{ row.used_percent }}" max="100" aria-label="{{ _('%(label)s used', label=row.label) }}"></progress>
       {% endif %}
     </div>
     {% else %}
@@ -158,7 +157,7 @@
 
 {# ── Disk space ──────────────────────────────────────────────────── #}
 {% if host.disks %}
-{{ section_header("Disk space", host.disks | length ~ " measured") }}
+{{ section_header(_("Disk space"), _("%(n)s measured", n=host.disks | length)) }}
 <div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   {% for disk in host.disks %}
   {% set st = disk.state | string %}
@@ -175,11 +174,11 @@
     <div class="order-last basis-full md:order-none md:basis-0 md:grow">
       {% if disk.used_percent is not none %}
         {% if st == 'critical' %}
-        <progress class="progress progress-error h-1.5 w-full" value="{{ disk.used_percent }}" max="100" aria-label="{{ disk.label }} used"></progress>
+        <progress class="progress progress-error h-1.5 w-full" value="{{ disk.used_percent }}" max="100" aria-label="{{ _('%(label)s used', label=disk.label) }}"></progress>
         {% elif st == 'warn' %}
-        <progress class="progress progress-warning h-1.5 w-full" value="{{ disk.used_percent }}" max="100" aria-label="{{ disk.label }} used"></progress>
+        <progress class="progress progress-warning h-1.5 w-full" value="{{ disk.used_percent }}" max="100" aria-label="{{ _('%(label)s used', label=disk.label) }}"></progress>
         {% else %}
-        <progress class="progress h-1.5 w-full text-base-content/40" value="{{ disk.used_percent }}" max="100" aria-label="{{ disk.label }} used"></progress>
+        <progress class="progress h-1.5 w-full text-base-content/40" value="{{ disk.used_percent }}" max="100" aria-label="{{ _('%(label)s used', label=disk.label) }}"></progress>
         {% endif %}
       {% endif %}
     </div>
@@ -187,13 +186,13 @@
        `md:contents` to dissolve it again where they are columns of their own. #}
     <div class="ml-auto flex items-center gap-4 md:ml-0 md:contents">
       <p class="text-xs text-right md:w-56 opacity-80">
-        {% if disk.free_bytes is not none %}{{ disk.free_text }} free of {{ disk.total_text }}{% else %}not measured{% endif %}
+        {% if disk.free_bytes is not none %}{% trans free_text=disk.free_text, total_text=disk.total_text %}{{ free_text }} free of {{ total_text }}{% endtrans %}{% else %}{% trans %}not measured{% endtrans %}{% endif %}
       </p>
       <p class="text-xs text-right w-20 tabular-nums
                 {% if st == 'critical' %}text-error
                 {% elif st == 'warn' %}text-warning
                 {% else %}opacity-60{% endif %}">
-        {% if disk.used_percent is not none %}{{ disk.used_percent | round | int }} % used{% endif %}
+        {% if disk.used_percent is not none %}{% trans used_percent=(disk.used_percent | round | int) %}{{ used_percent }} % used{% endtrans %}{% endif %}
       </p>
     </div>
   </div>
@@ -207,18 +206,18 @@
    no dot and no stripe and nothing here counts towards the chip. Measured apart
    and less often than everything else (see app/core/docker_usage.py). #}
 {% if usage and usage.available %}
-{{ section_header("Docker usage", usage.total_text ~ " used, " ~ usage.reclaimable_text ~ " reclaimable") }}
+{{ section_header(_("Docker usage"), _("%(used)s used, %(reclaimable)s reclaimable", used=usage.total_text, reclaimable=usage.reclaimable_text)) }}
 <div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   {% for row in usage.rows %}
   <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 border-base-300 border-l-4 border-l-base-300
               {% if not loop.first %}border-t{% endif %}">
     <span class="h-2.5 w-2.5 shrink-0"></span>
     <div class="min-w-0 basis-40 grow md:grow-0 md:basis-auto md:w-52">
-      <p class="text-sm font-semibold truncate">{{ row.label }}</p>
+      <p class="text-sm font-semibold truncate">{{ _(row.label) }}</p>
       {% if row.detail %}<p class="text-xs opacity-50 truncate">{{ row.detail }}</p>{% endif %}
     </div>
     <div class="order-last basis-full md:order-none md:basis-0 md:grow">
-      <progress class="progress h-1.5 w-full text-base-content/40" value="{{ row.percent }}" max="100" aria-label="{{ row.label }} share of Docker's data"></progress>
+      <progress class="progress h-1.5 w-full text-base-content/40" value="{{ row.percent }}" max="100" aria-label="{{ _('%(label)s share of Docker\'s data', label=_(row.label)) }}"></progress>
     </div>
     <div class="ml-auto flex items-center gap-4 md:ml-0 md:contents">
       <p class="text-xs text-right md:w-56 opacity-80">{{ row.reclaimable_text }}</p>
@@ -228,19 +227,17 @@
   {% endfor %}
   <div class="px-5 py-2.5 border-base-300 border-t border-l-4 border-l-base-300 bg-base-200/50">
     <p class="text-xs opacity-50">
-      Measured <span data-checked-at="{{ usage.checked_at.isoformat() }}"></span> by
-      <code>docker system df</code>, less often than the rest: the daemon sizes every volume
-      to answer. Reclaimable is what no container uses right now, not what is safe to delete.
+      {% trans %}Measured{% endtrans %} <span data-checked-at="{{ usage.checked_at.isoformat() }}"></span> {% trans %}by <code>docker system df</code>, less often than the rest: the daemon sizes every volume to answer. Reclaimable is what no container uses right now, not what is safe to delete.{% endtrans %}
     </p>
   </div>
 </div>
 {% elif usage and usage.reason %}
-<p class="text-xs opacity-50 mb-8">Docker usage is not available: {{ usage.reason }}</p>
+<p class="text-xs opacity-50 mb-8">{% trans reason=usage.reason %}Docker usage is not available: {{ reason }}{% endtrans %}</p>
 {% endif %}
 
 {# ── Certificates ────────────────────────────────────────────────── #}
 {% if host.certs %}
-{{ section_header("Certificates", host.certs | length) }}
+{{ section_header(_("Certificates"), host.certs | length) }}
 <div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   {% for cert in host.certs %}
   {% set st = cert.state | string %}
@@ -256,11 +253,11 @@
     </div>
     <div class="hidden md:block md:grow"></div>
     {% if st == 'unknown' %}
-    <p class="ml-auto md:ml-0 text-xs text-right opacity-60">could not be read{% if cert.reason %}: {{ cert.reason }}{% endif %}</p>
+    <p class="ml-auto md:ml-0 text-xs text-right opacity-60">{% trans %}could not be read{% endtrans %}{% if cert.reason %}: {{ cert.reason }}{% endif %}</p>
     {% else %}
     <div class="ml-auto flex items-center gap-4 md:ml-0 md:contents">
       <p class="text-xs text-right md:w-56 opacity-80">
-        {%- if cert.days_left is not none and cert.days_left < 0 %}expired{% else %}expires{% endif -%}
+        {%- if cert.days_left is not none and cert.days_left < 0 %}{% trans %}expired{% endtrans %}{% else %}{% trans %}expires{% endtrans %}{% endif -%}
         {%- if cert.expires_on %} {{ cert.expires_on }}{% endif -%}
       </p>
       <p class="text-xs text-right w-20 tabular-nums
@@ -270,9 +267,9 @@
         {%- if cert.days_left is none -%}
           —
         {%- elif cert.days_left < 0 -%}
-          {{ -cert.days_left }} {{ 'day' if cert.days_left == -1 else 'days' }} ago
+          {% trans count=(-cert.days_left) %}{{ count }} day ago{% pluralize %}{{ count }} days ago{% endtrans %}
         {%- else -%}
-          {{ cert.days_left }} {{ 'day' if cert.days_left == 1 else 'days' }}
+          {% trans count=cert.days_left %}{{ count }} day{% pluralize %}{{ count }} days{% endtrans %}
         {%- endif -%}
       </p>
     </div>
@@ -293,7 +290,7 @@
   (function () {
     document.querySelectorAll("[data-checked-at]").forEach(function (el) {
       var when = new Date(el.dataset.checkedAt);
-      el.textContent = isNaN(when.getTime()) ? "just now" : when.toLocaleTimeString();
+      el.textContent = isNaN(when.getTime()) ? {{ _('just now')|tojson }} : when.toLocaleTimeString();
     });
   })();
 </script>

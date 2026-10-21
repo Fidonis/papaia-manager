@@ -49,6 +49,7 @@ from app.core.ingest.errors import CatalogConflict, CatalogRejected
 from app.core.vectordb import catalog_io
 from app.core.vectordb.ingest_file import entry_etag
 from app.core.vectordb.jobs_usage import JOBS_RELPATH
+from app.i18n import gettext
 
 MANAGED_PREFIX = "mgr-"
 
@@ -87,7 +88,7 @@ def managed_job_id(connection: str, collection: str, kind: str) -> str:
     differ only in case or punctuation do not meet, and the kind. At most 47 characters.
     """
     if kind not in _KINDS:
-        raise ValueError(f"unknown source kind {kind!r}")
+        raise ValueError(gettext("unknown source kind %(kind)r") % {"kind": kind})
     slug = _ID_SLUG.sub("-", collection.lower()).strip("-")[:32] or "c"
     digest = hashlib.sha256(f"{connection}|{collection}".encode()).hexdigest()[:8]
     return f"{MANAGED_PREFIX}{slug}-{digest}-{_KINDS[kind]}"
@@ -208,26 +209,39 @@ def catalog_problems(
     connection = _connection_of(mine)
     problems: list[str] = []
     if connections is not None and connection not in connections:
-        problems.append(f"the connection {connection!r} is not in connections.yaml")
+        problems.append(gettext(
+            "the connection %(connection)r is not in connections.yaml"
+        ) % {"connection": connection})
     label = _label_of(mine)
     model = _model_of(document, mine)
     for other in _jobs_of(document):
         if other is mine or not _enabled(other) or _collection_of(other) != collection:
             continue
-        who = f"the job {other.get('id')!r}"
+        job = other.get("id")
         if _connection_of(other) != connection:
             problems.append(
-                f"{who} writes to the collection {collection!r} on the connection "
-                f"{_connection_of(other)!r}; a collection lives in exactly one database"
+                gettext(
+                    "the job %(job)r writes to the collection %(collection)r on the connection "
+                    "%(connection)r; a collection lives in exactly one database"
+                )
+                % {"job": job, "collection": collection, "connection": _connection_of(other)}
             )
         other_model = _model_of(document, other)
         if model and other_model and other_model != model:
             problems.append(
-                f"{who} embeds {collection!r} with {other_model!r}; a collection records "
-                f"exactly one model, and this run uses {model!r}"
+                gettext(
+                    "the job %(job)r embeds %(collection)r with %(other)r; a collection records "
+                    "exactly one model, and this run uses %(model)r"
+                )
+                % {"job": job, "collection": collection, "other": other_model, "model": model}
             )
         if label is not None and _label_of(other) == label:
-            problems.append(f"{who} already uses the source label {label!r} on {collection!r}")
+            problems.append(
+                gettext(
+                    "the job %(job)r already uses the source label %(label)r on %(collection)r"
+                )
+                % {"job": job, "label": label, "collection": collection}
+            )
     return problems
 
 
@@ -268,20 +282,22 @@ def _parse(raw: bytes) -> tuple[dict[str, Any], str | None]:
     try:
         document = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
-        first = str(exc).strip().splitlines()[0] if str(exc).strip() else "invalid YAML"
-        return _starter(), f"invalid YAML: {first}"
+        first = str(exc).strip().splitlines()[0] if str(exc).strip() else gettext("invalid YAML")
+        return _starter(), gettext("invalid YAML: %(first)s") % {"first": first}
     if document is None:
         document = {}
     if not isinstance(document, dict):
-        return _starter(), "the top level must be a mapping"
+        return _starter(), gettext("the top level must be a mapping")
     document.setdefault("version", 1)
     if document["version"] != 1:
-        return _starter(), f"unsupported jobs version {document['version']!r}; expected 1"
+        return _starter(), gettext(
+            "unsupported jobs version %(value)r; expected 1"
+        ) % {"value": document['version']}
     jobs = document.get("jobs")
     if jobs is None:
         document["jobs"] = []
     elif not isinstance(jobs, list):
-        return _starter(), "jobs must be a list"
+        return _starter(), gettext("jobs must be a list")
     return document, None
 
 
@@ -311,7 +327,7 @@ class JobsFileRepository:
                 b"",
                 "",
                 _starter(),
-                f"the file cannot be read: {exc.strerror or exc}",
+                gettext("the file cannot be read: %(value)s") % {"value": exc.strerror or exc},
             )
         document, problem = _parse(raw)
         return JobsSnapshot(
@@ -338,7 +354,9 @@ class JobsFileRepository:
                 snapshot = self.snapshot()
                 if snapshot.structural_error is not None:
                     raise CatalogRejected(
-                        f"jobs.yaml cannot be changed: {snapshot.structural_error}"
+                        gettext(
+                            "jobs.yaml cannot be changed: %(structural_error)s"
+                        ) % {"structural_error": snapshot.structural_error}
                     )
                 document = copy.deepcopy(snapshot.document)
                 mutate(document)
@@ -349,15 +367,15 @@ class JobsFileRepository:
                     problems = rules(document)
                     if problems:
                         raise CatalogRejected(
-                            "jobs.yaml would not be valid for the ingester: "
-                            + "; ".join(problems),
+                            gettext("jobs.yaml would not be valid for the ingester: %(problems)s")
+                            % {"problems": "; ".join(problems)},
                             tuple(problems),
                         )
                 data = catalog_io.dump_document(document).encode("utf-8")
                 if self._swap(snapshot, data):
                     return Written(snapshot.raw, snapshot.exists, self.snapshot(), changed=True)
             raise CatalogRejected(
-                "jobs.yaml keeps changing while the manager writes it; try again"
+                gettext("jobs.yaml keeps changing while the manager writes it; try again")
             )
 
     def upsert(
@@ -400,11 +418,15 @@ class JobsFileRepository:
             index = _index_of(jobs, job_id)
             if create:
                 if index is not None:
-                    raise CatalogConflict(f"A job with the id {job_id!r} already exists.")
+                    raise CatalogConflict(gettext(
+                        "A job with the id %(job_id)r already exists."
+                    ) % {"job_id": job_id})
                 jobs.append(copy.deepcopy(job))
                 return
             if index is None:
-                raise CatalogConflict(f"The job {job_id!r} is no longer in jobs.yaml.")
+                raise CatalogConflict(gettext(
+                    "The job %(job_id)r is no longer in jobs.yaml."
+                ) % {"job_id": job_id})
             _check_etag(jobs[index], etag, job_id)
             jobs[index] = copy.deepcopy(job)
 
@@ -415,7 +437,9 @@ class JobsFileRepository:
             jobs = document["jobs"]
             index = _index_of(jobs, job_id)
             if index is None:
-                raise CatalogConflict(f"The job {job_id!r} is no longer in jobs.yaml.")
+                raise CatalogConflict(gettext(
+                    "The job %(job_id)r is no longer in jobs.yaml."
+                ) % {"job_id": job_id})
             _check_etag(jobs[index], etag, job_id)
             del jobs[index]
 
@@ -438,7 +462,9 @@ class JobsFileRepository:
             jobs = document["jobs"]
             index = _index_of(jobs, job_id)
             if index is None:
-                raise CatalogConflict(f"The job {job_id!r} is no longer in jobs.yaml.")
+                raise CatalogConflict(gettext(
+                    "The job %(job_id)r is no longer in jobs.yaml."
+                ) % {"job_id": job_id})
             job = jobs[index]
             if enabled:
                 job.pop("enabled", None)
@@ -473,14 +499,19 @@ class JobsFileRepository:
             snapshot = self.snapshot()
             if snapshot.revision != expected_revision:
                 raise CatalogConflict(
-                    "jobs.yaml changed since it was opened. Reload the page to see the "
-                    "current content."
+                    gettext(
+                        "jobs.yaml changed since it was opened. Reload the page to see the "
+                        "current content."
+                    )
                 )
             if snapshot.exists and snapshot.raw == raw:
                 return Written(snapshot.raw, True, snapshot, changed=False)
             if not self._swap(snapshot, raw):
                 raise CatalogConflict(
-                    "jobs.yaml changed while it was being saved. Reload the page and try again."
+                    gettext(
+                        "jobs.yaml changed while it was being saved. Reload the page and try "
+                        "again."
+                    )
                 )
             return Written(snapshot.raw, snapshot.exists, self.snapshot(), changed=True)
 
@@ -515,7 +546,9 @@ class JobsFileRepository:
     def _swap(self, snapshot: JobsSnapshot, data: bytes) -> bool:
         directory = self._path.parent
         if not directory.is_dir():
-            raise CatalogRejected(f"{directory} does not exist; the manager does not create it")
+            raise CatalogRejected(gettext(
+                "%(directory)s does not exist; the manager does not create it"
+            ) % {"directory": directory})
         try:
             return catalog_io.swap(
                 self._path,
@@ -528,8 +561,10 @@ class JobsFileRepository:
             )
         except OSError as exc:
             raise CatalogRejected(
-                f"{directory} does not accept the change ({exc.strerror or type(exc).__name__}); "
-                "the job catalog is read-only here"
+                gettext(
+                    "%(directory)s does not accept the change (%(value)s); the job catalog is "
+                    "read-only here"
+                ) % {"directory": directory, "value": exc.strerror or type(exc).__name__}
             ) from exc
 
 
@@ -548,6 +583,8 @@ def entry_etag_of(job: dict[str, Any]) -> str:
 def _check_etag(existing: dict[str, Any], etag: str | None, job_id: str) -> None:
     if etag is not None and entry_etag(existing) != etag:
         raise CatalogConflict(
-            f"The job {job_id!r} was changed by somebody else since it was opened. "
-            "Reload it to see the current version."
+            gettext(
+                "The job %(job_id)r was changed by somebody else since it was opened. Reload it "
+                "to see the current version."
+            ) % {"job_id": job_id}
         )

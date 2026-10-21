@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from app.core.tiles import WidgetTile
 from app.core.widgets import registry
+from app.i18n import gettext
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,7 @@ def title_of(tile: WidgetTile) -> str:
     if tile.title:
         return tile.title
     widget_type = registry.get(tile.widget)
-    return widget_type.name if widget_type is not None else tile.widget
+    return gettext(widget_type.name) if widget_type is not None else tile.widget
 
 
 def slot(tile: WidgetTile) -> Slot:

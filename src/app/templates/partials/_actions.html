@@ -58,7 +58,7 @@
    to a scroll container, and the script in base.html (`.dropdown-float`) puts
    it next to its trigger when it opens. The position is an inline style
    because daisyUI's `.dropdown .dropdown-content` outranks a `fixed` class. #}
-{% macro overflow_menu(size='sm', label='More actions', float=False) %}
+{% macro overflow_menu(size='sm', label=_('More actions'), float=False) %}
 {% if float %}
 <div class="dropdown dropdown-end dropdown-float shrink-0">
 {% else %}

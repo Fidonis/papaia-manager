@@ -13,5 +13,5 @@
    visible text at all, so the dot is the whole message. #}
 {% if available %}
 <span class="h-2 w-2 shrink-0 rounded-full bg-accent"
-      aria-label="papAIa {{ check.target }} is available"></span>
+      aria-label="{{ _('papAIa %(target)s is available', target=check.target) }}"></span>
 {% endif %}

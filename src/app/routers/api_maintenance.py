@@ -32,6 +32,7 @@ from app.core.audit import write_audit_entry
 from app.core.ctl import run_core_verb
 from app.core.jobs import JobContext, JobQueue
 from app.core.scheduler import BackupScheduler
+from app.i18n import gettext as _
 
 router = APIRouter(prefix="/api/v1/maintenance")
 
@@ -98,7 +99,7 @@ def _queue() -> JobQueue:
     from app.main import _job_queue  # noqa: PLC0415
 
     if _job_queue is None:
-        raise HTTPException(status_code=503, detail="job queue not initialized")
+        raise HTTPException(status_code=503, detail=_("job queue not initialized"))
     return _job_queue
 
 
@@ -133,16 +134,20 @@ def _backup_dir(settings: Settings) -> Path:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "PAPAIA_BACKUP_DIR is not set in the stack configuration. "
-                "Run 'papaia-ctl setup --backup-dir=PATH' on the host."
+                _(
+                    "PAPAIA_BACKUP_DIR is not set in the stack configuration. Run 'papaia-ctl "
+                    "setup --backup-dir=PATH' on the host."
+                )
             ),
         )
     if not backups.is_reachable(backup_dir):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"The backup directory {backup_dir} is not reachable from the manager "
-                "container. It must be mounted at its host path."
+                _(
+                    "The backup directory %(backup_dir)s is not reachable from the manager "
+                    "container. It must be mounted at its host path."
+                ) % {"backup_dir": backup_dir}
             ),
         )
     return backup_dir
@@ -158,9 +163,14 @@ async def _require_no_runner() -> None:
     """
     blocking = await backup_run.blocking_runner()
     if blocking is not None:
+        # Two whole sentences: a translator cannot put a translated noun into a third one.
+        if blocking.label == "restore":
+            detail = _("a restore of %(target)s is still running")
+        else:
+            detail = _("an upgrade to %(target)s is still running")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"a {blocking.label} of {blocking.target} is still running",
+            detail=detail % {"target": blocking.target},
         )
 
 
@@ -206,7 +216,9 @@ async def restore_point_detail(
     point = backups.find_restore_point(backup_dir, restore_point_id)
     if point is None:
         raise HTTPException(
-            status_code=404, detail=f"restore point {restore_point_id!r} not found"
+            status_code=404, detail=_(
+                "restore point %(restore_point_id)r not found"
+            ) % {"restore_point_id": restore_point_id}
         )
     manifest = backups.snapshot_manifest(backup_dir, restore_point_id)
     return {
@@ -237,7 +249,9 @@ async def restore_point_selectors(
     point = backups.find_restore_point(backup_dir, restore_point_id)
     if point is None:
         raise HTTPException(
-            status_code=404, detail=f"restore point {restore_point_id!r} not found"
+            status_code=404, detail=_(
+                "restore point %(restore_point_id)r not found"
+            ) % {"restore_point_id": restore_point_id}
         )
     manifest = backups.snapshot_manifest(backup_dir, restore_point_id)
     groups = restore_scope.build_groups(manifest)
@@ -284,7 +298,9 @@ async def create_backup(
     if active is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"a {active.action} job is already running; wait for it to finish",
+            detail=_(
+                "a %(action)s job is already running; wait for it to finish"
+            ) % {"action": active.action},
         )
 
     job = await backup_run.enqueue_backup(
@@ -399,7 +415,7 @@ async def delete_restore_points(
     if malformed:
         raise HTTPException(
             status_code=400,
-            detail=f"not restore point ids: {', '.join(malformed)}",
+            detail=_("not restore point ids: %(value)s") % {"value": ', '.join(malformed)},
         )
 
     backup_dir = _backup_dir(settings)
@@ -407,7 +423,7 @@ async def delete_restore_points(
     if missing:
         raise HTTPException(
             status_code=404,
-            detail=f"restore point(s) not found: {', '.join(missing)}",
+            detail=_("restore point(s) not found: %(value)s") % {"value": ', '.join(missing)},
         )
 
     await _require_no_runner()
@@ -417,7 +433,9 @@ async def delete_restore_points(
     if active is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"a {active.action} job is already running; wait for it to finish",
+            detail=_(
+                "a %(action)s job is already running; wait for it to finish"
+            ) % {"action": active.action},
         )
 
     _username = _user_id(user)
@@ -475,25 +493,31 @@ async def start_restore(
     point = backups.find_restore_point(backup_dir, body.restore_point)
     if point is None:
         raise HTTPException(
-            status_code=404, detail=f"restore point {body.restore_point!r} not found"
+            status_code=404, detail=_(
+                "restore point %(restore_point)r not found"
+            ) % {"restore_point": body.restore_point}
         )
     if not point.is_usable:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"restore point {point.id} is marked 'failed' -- no archive could be "
-                "written during that backup, so there is nothing to restore from"
+                _(
+                    "restore point %(id)s is marked 'failed' -- no archive could be written "
+                    "during that backup, so there is nothing to restore from"
+                ) % {"id": point.id}
             ),
         )
 
     existing = await runner.find_runner()
     if existing is not None:
         detail = (
-            f"a restore of {existing.target} is still running"
+            _("a restore of %(target)s is still running") % {"target": existing.target}
             if existing.is_running
             else (
-                f"the result of the previous restore ({existing.target}) has not "
-                "been acknowledged yet"
+                _(
+                    "the result of the previous restore (%(target)s) has not been acknowledged "
+                    "yet"
+                ) % {"target": existing.target}
             )
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
@@ -504,7 +528,7 @@ async def start_restore(
     if upgrading is not None and upgrading.is_running:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"an upgrade to {upgrading.target} is still running",
+            detail=_("an upgrade to %(target)s is still running") % {"target": upgrading.target},
         )
 
     queue = _queue()
@@ -513,7 +537,7 @@ async def start_restore(
     if queue.active_job() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="a job is currently running; wait for it to finish before restoring",
+            detail=_("a job is currently running; wait for it to finish before restoring"),
         )
 
     # Written before the runner starts, and knowingly so: the restore replaces
@@ -568,14 +592,18 @@ async def start_scoped_restore(
     point = backups.find_restore_point(backup_dir, body.restore_point)
     if point is None:
         raise HTTPException(
-            status_code=404, detail=f"restore point {body.restore_point!r} not found"
+            status_code=404, detail=_(
+                "restore point %(restore_point)r not found"
+            ) % {"restore_point": body.restore_point}
         )
     if not point.is_usable:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"restore point {point.id} is marked 'failed' -- no archive could be "
-                "written during that backup, so there is nothing to restore from"
+                _(
+                    "restore point %(id)s is marked 'failed' -- no archive could be written "
+                    "during that backup, so there is nothing to restore from"
+                ) % {"id": point.id}
             ),
         )
 
@@ -585,16 +613,20 @@ async def start_scoped_restore(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"restore point {point.id} was written by an older core and carries no "
-                "grouping, so it can only be restored as a whole"
+                _(
+                    "restore point %(id)s was written by an older core and carries no grouping, "
+                    "so it can only be restored as a whole"
+                ) % {"id": point.id}
             ),
         )
     if restore_scope.requires_full_restore(groups, body.only):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "this selection needs the stack configuration and must run as a full "
-                "restore; use POST /api/v1/maintenance/restore instead"
+                _(
+                    "this selection needs the stack configuration and must run as a full "
+                    "restore; use POST /api/v1/maintenance/restore instead"
+                )
             ),
         )
     try:
@@ -610,7 +642,9 @@ async def start_scoped_restore(
     if active is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"a {active.action} job is already running; wait for it to finish",
+            detail=_(
+                "a %(action)s job is already running; wait for it to finish"
+            ) % {"action": active.action},
         )
 
     _username = _user_id(user)
@@ -679,7 +713,7 @@ async def clear_restore(
     verify_csrf(request)
     active = await runner.find_runner()
     if active is None:
-        raise HTTPException(status_code=404, detail="no restore runner to clear")
+        raise HTTPException(status_code=404, detail=_("no restore runner to clear"))
     try:
         await runner.clear_runner(active.name)
     except runner.RunnerError as exc:

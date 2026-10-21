@@ -13,12 +13,12 @@
 {% set st = state.status %}
 {% if state.load.error %}
 <div class="alert alert-warning mb-3 py-2">
-  <span class="text-sm">{{ state.load.error }} No backup is scheduled until this is fixed or the schedule is removed.</span>
+  <span class="text-sm">{% trans error=state.load.error %}{{ error }} No backup is scheduled until this is fixed or the schedule is removed.{% endtrans %}</span>
 </div>
 {% endif %}
 {% if s and s.enabled and not scheduler_running %}
 <div class="alert alert-warning mb-3 py-2">
-  <span class="text-sm">The scheduler is not running, so no backup will start by itself. Restarting the manager starts it again.</span>
+  <span class="text-sm">{% trans %}The scheduler is not running, so no backup will start by itself. Restarting the manager starts it again.{% endtrans %}</span>
 </div>
 {% endif %}
 
@@ -26,53 +26,52 @@
   <div class="flex flex-wrap items-start gap-x-8 gap-y-3">
 
     <div class="min-w-0 flex-1 basis-64">
-      <p class="text-xs uppercase tracking-wide opacity-50">Last successful backup</p>
+      <p class="text-xs uppercase tracking-wide opacity-50">{% trans %}Last successful backup{% endtrans %}</p>
       {% if state.last_ok_text %}
       <p class="text-sm font-semibold">
-        {{ state.age_text }} ago
-        <span class="font-normal opacity-60">&middot; {{ state.last_ok_text }}</span>
+        {% trans age_text=state.age_text %}{{ age_text }} ago{% endtrans %} <span class="font-normal opacity-60">&middot; {{ state.last_ok_text }}</span>
       </p>
       {% else %}
-      <p class="text-sm opacity-60">None yet</p>
+      <p class="text-sm opacity-60">{% trans %}None yet{% endtrans %}</p>
       {% endif %}
       {% if st.overdue %}
       <p class="mt-0.5 text-xs text-warning">
-        {% if state.last_ok_text %}Older than {{ state.overdue_after_text }}, the longest this schedule should go without one.
-        {% else %}No restore point has finished successfully.{% endif %}
+        {% if state.last_ok_text %}{% trans overdue_after_text=state.overdue_after_text %}Older than {{ overdue_after_text }}, the longest this schedule should go without one.{% endtrans %}
+        {% else %}{% trans %}No restore point has finished successfully.{% endtrans %}{% endif %}
       </p>
       {% endif %}
       {% if st.latest_result and st.latest_result != "ok" %}
-      <p class="mt-0.5 text-xs text-warning">The latest run finished as <span class="font-mono">{{ st.latest_result }}</span>.</p>
+      <p class="mt-0.5 text-xs text-warning">{% trans latest_result=st.latest_result %}The latest run finished as <span class="font-mono">{{ latest_result }}</span>.{% endtrans %}</p>
       {% endif %}
     </div>
 
     <div class="min-w-0 flex-1 basis-64">
-      <p class="text-xs uppercase tracking-wide opacity-50">Schedule</p>
+      <p class="text-xs uppercase tracking-wide opacity-50">{% trans %}Schedule{% endtrans %}</p>
       {% if s %}
       <p class="text-sm font-semibold">
         {{ state.description }}
         <span class="font-normal opacity-60">&middot; {{ state.timezone }}</span>
-        {% if not s.enabled %}<span class="badge badge-ghost badge-sm ml-1">paused</span>{% endif %}
+        {% if not s.enabled %}<span class="badge badge-ghost badge-sm ml-1">{% trans %}paused{% endtrans %}</span>{% endif %}
       </p>
       {% if s.enabled %}
       <p class="text-xs opacity-60">
-        {% if state.next_run_text %}Next run {{ state.next_run_text }}{% else %}No run is planned{% endif %}
+        {% if state.next_run_text %}{% trans next_run_text=state.next_run_text %}Next run {{ next_run_text }}{% endtrans %}{% else %}{% trans %}No run is planned{% endtrans %}{% endif %}
       </p>
       {% endif %}
       <p class="text-xs opacity-60">
-        {% if s.retention_days %}Keeps restore points for {{ s.retention_days }} days{% else %}Keeps every restore point{% endif %}
+        {% if s.retention_days %}{% trans retention_days=s.retention_days %}Keeps restore points for {{ retention_days }} days{% endtrans %}{% else %}{% trans %}Keeps every restore point{% endtrans %}{% endif %}
       </p>
       {% if state.retention_note %}
       <p class="text-xs text-warning">{{ state.retention_note }}</p>
       {% endif %}
       {% elif not state.load.error %}
-      <p class="text-sm opacity-60">No backup is scheduled.</p>
+      <p class="text-sm opacity-60">{% trans %}No backup is scheduled.{% endtrans %}</p>
       {% endif %}
     </div>
 
     <div class="shrink-0 self-center">
       <button type="button" class="btn btn-outline btn-sm" onclick="openScheduleModal()">
-        {% if s or state.load.error %}Edit schedule{% else %}Set schedule{% endif %}
+        {% if s or state.load.error %}{% trans %}Edit schedule{% endtrans %}{% else %}{% trans %}Set schedule{% endtrans %}{% endif %}
       </button>
     </div>
   </div>

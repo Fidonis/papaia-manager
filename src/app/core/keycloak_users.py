@@ -28,6 +28,8 @@ from urllib.parse import quote
 
 import httpx
 
+from app.i18n import gettext as _
+
 DEFAULT_TIMEOUT = 10.0
 
 # `<base>/realms/<realm>/protocol/openid-connect/token`: the token endpoint the manager
@@ -177,7 +179,9 @@ class KeycloakUsers:
             target = httpx.URL(self._endpoint.base)
             where = f"{target.host}:{target.port}" if target.port else str(target.host)
             raise KeycloakUnavailableError(
-                0, f"Keycloak is not reachable at {where} ({type(exc).__name__})"
+                0, _(
+                    "Keycloak is not reachable at %(where)s (%(__name__)s)"
+                ) % {"where": where, "__name__": type(exc).__name__}
             ) from exc
 
         status = response.status_code
@@ -185,7 +189,7 @@ class KeycloakUsers:
             return response
         detail = _error_detail(response)
         if status == 401:
-            raise KeycloakUnauthorizedError(status, "Keycloak refused the session token")
+            raise KeycloakUnauthorizedError(status, _("Keycloak refused the session token"))
         if status == 403:
             raise KeycloakForbiddenError(status, detail)
         if status == 404:
@@ -194,7 +198,7 @@ class KeycloakUsers:
             raise KeycloakConflictError(status, detail)
         if status in (400, 422):
             raise KeycloakRejectedError(status, detail)
-        raise KeycloakError(status, f"Keycloak failed: {detail}")
+        raise KeycloakError(status, _("Keycloak failed: %(detail)s") % {"detail": detail})
 
     @staticmethod
     def _json(response: httpx.Response) -> Any:
@@ -202,7 +206,7 @@ class KeycloakUsers:
             return response.json()
         except ValueError as exc:
             raise KeycloakError(
-                response.status_code, "Keycloak sent an unreadable answer"
+                response.status_code, _("Keycloak sent an unreadable answer")
             ) from exc
 
     @staticmethod
@@ -229,7 +233,7 @@ class KeycloakUsers:
     async def get_user(self, user_id: str) -> dict[str, Any]:
         body = self._json(await self._request("GET", self._user_path(user_id)))
         if not isinstance(body, dict):
-            raise KeycloakError(200, "Keycloak sent an unreadable answer")
+            raise KeycloakError(200, _("Keycloak sent an unreadable answer"))
         return body
 
     async def create_user(self, representation: dict[str, Any]) -> str:
@@ -245,7 +249,7 @@ class KeycloakUsers:
         for user in found:
             if str(user.get("username", "")).lower() == username.lower() and user.get("id"):
                 return str(user["id"])
-        raise KeycloakError(201, "Keycloak created the user but did not say which")
+        raise KeycloakError(201, _("Keycloak created the user but did not say which"))
 
     async def update_user(self, user_id: str, changes: dict[str, Any]) -> None:
         await self._request("PUT", self._user_path(user_id), json=changes)
@@ -285,7 +289,7 @@ class KeycloakUsers:
     async def get_role(self, name: str) -> dict[str, Any]:
         body = self._json(await self._request("GET", f"/roles/{quote(name, safe='')}"))
         if not isinstance(body, dict):
-            raise KeycloakError(200, "Keycloak sent an unreadable answer")
+            raise KeycloakError(200, _("Keycloak sent an unreadable answer"))
         return body
 
     async def create_role(self, name: str, description: str) -> None:

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "partials/_users_tabs.html" import tabs %}
-{% block title %}Roles — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Roles — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Roles{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">What an account may use, and the roles you add to that</p>{% endblock %}
+{% block page_title %}{% trans %}Roles{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}What an account may use, and the roles you add to that{% endtrans %}</p>{% endblock %}
 
 {# Tier 1: one filled primary, one outline secondary. The dialogs live on the page and not in
    the list partial, so a reload of the list never tears down a form that is being filled in. #}
@@ -14,7 +14,7 @@
         hx-target="#role-list"
         hx-swap="innerHTML"
         hx-disabled-elt="this">
-  Refresh
+  {% trans %}Refresh{% endtrans %}
 </button>
 <button type="button"
         class="btn btn-primary btn-sm"
@@ -22,7 +22,7 @@
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
   </svg>
-  New role
+  {% trans %}New role{% endtrans %}
 </button>
 {% endblock %}
 
@@ -45,15 +45,14 @@
         @role-new.window="openNew()" @role-open.window="openRole($event.detail)">
   <div class="modal-box max-w-xl">
     <div class="flex flex-wrap items-center gap-2">
-      <h3 class="text-lg font-bold" x-text="mode === 'create' ? 'New role' : 'Role'"></h3>
-      <span class="badge badge-ghost badge-sm" style="display:none" x-show="builtIn">Built in</span>
+      <h3 class="text-lg font-bold" x-text="mode === 'create' ? {{ _('New role')|tojson|forceescape }} : {{ _('Role')|tojson|forceescape }}"></h3>
+      <span class="badge badge-ghost badge-sm" style="display:none" x-show="builtIn">{% trans %}Built in{% endtrans %}</span>
     </div>
     <p class="mb-4 text-sm opacity-60" x-show="mode === 'create'" style="display:none">
-      A role is a name services can ask for. Giving it to an account is done on the Users tab.
+      {% trans %}A role is a name services can ask for. Giving it to an account is done on the Users tab.{% endtrans %}
     </p>
     <p class="mb-4 text-sm opacity-60" x-show="builtIn" style="display:none">
-      Built-in roles belong to the stack: services refer to them by name, so they are shown here
-      and changed only in the Keycloak Admin Console.
+      {% trans %}Built-in roles belong to the stack: services refer to them by name, so they are shown here and changed only in the Keycloak Admin Console.{% endtrans %}
     </p>
 
     <div x-show="loading" style="display:none" class="flex justify-center py-10">
@@ -63,26 +62,26 @@
 
     <form @submit.prevent="submit()" x-show="!loading && !loadError" style="display:none">
       <div class="form-control mb-3">
-        <label class="label py-1" for="role-name"><span class="label-text">Name</span></label>
+        <label class="label py-1" for="role-name"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
         <input id="role-name" type="text" class="input input-bordered font-mono" x-model="name"
                :disabled="mode !== 'create'" :required="mode === 'create'" maxlength="127"
-               autocomplete="off" placeholder="sales-team"
+               autocomplete="off" placeholder="{{ _('sales-team') }}"
                pattern="[A-Za-z0-9][A-Za-z0-9._:\-]{0,126}">
         <p class="mt-1 text-xs opacity-60" x-show="mode === 'create'" style="display:none">
-          Letters, digits and . _ : - . The name cannot be changed later, because services refer to it.
+          {% trans %}Letters, digits and . _ : - . The name cannot be changed later, because services refer to it.{% endtrans %}
         </p>
       </div>
       <div class="form-control mb-3">
-        <label class="label py-1" for="role-description"><span class="label-text">Description (optional)</span></label>
+        <label class="label py-1" for="role-description"><span class="label-text">{% trans %}Description (optional){% endtrans %}</span></label>
         <input id="role-description" type="text" class="input input-bordered" x-model="description"
                :disabled="builtIn" maxlength="255" autocomplete="off"
-               placeholder="What an account with this role is for">
+               placeholder="{{ _('What an account with this role is for') }}">
       </div>
 
       <fieldset class="mb-2">
-        <legend class="label-text mb-1 text-sm">Contains these roles</legend>
+        <legend class="label-text mb-1 text-sm">{% trans %}Contains these roles{% endtrans %}</legend>
         <p class="mb-2 text-xs opacity-60">
-          An account that holds this role holds the roles it contains as well. Leave it empty for a plain role.
+          {% trans %}An account that holds this role holds the roles it contains as well. Leave it empty for a plain role.{% endtrans %}
         </p>
         <div class="max-h-48 overflow-y-auto rounded-lg border border-base-300">
           <template x-for="role in candidates()" :key="role.name">
@@ -97,36 +96,35 @@
               </span>
             </label>
           </template>
-          <p x-show="candidates().length === 0" style="display:none" class="px-3 py-4 text-center text-sm opacity-60">There are no other roles.</p>
+          <p x-show="candidates().length === 0" style="display:none" class="px-3 py-4 text-center text-sm opacity-60">{% trans %}There are no other roles.{% endtrans %}</p>
         </div>
         <p class="mt-2 text-xs opacity-60" style="display:none" x-show="clientMembers.length > 0">
-          It also contains <span x-text="clientMembers.length"></span> Keycloak administration
-          roles (<span class="font-mono" x-text="clientMembers.join(', ')"></span>), which stay as they are.
+          <span x-html="fmtHtml({{ _('It also contains {clientMembers} Keycloak administration roles (<span class="font-mono">{clientMembers2}</span>), which stay as they are.')|tojson|forceescape }}, { clientMembers: clientMembers.length, clientMembers2: clientMembers.join(', ') })"></span>
         </p>
       </fieldset>
 
       <p style="display:none" x-show="error" class="mt-3 text-sm text-error" x-text="error"></p>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" @click="$root.close()" x-text="builtIn ? 'Close' : 'Cancel'"></button>
+        <button type="button" class="btn btn-ghost" @click="$root.close()" x-text="builtIn ? {{ _('Close')|tojson|forceescape }} : {{ _('Cancel')|tojson|forceescape }}"></button>
         <button type="submit" class="btn btn-primary" style="display:none" x-show="!builtIn"
                 :disabled="busy || (mode === 'edit' && !dirty())">
           <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
-          <span x-text="mode === 'create' ? 'Create role' : 'Save changes'"></span>
+          <span x-text="mode === 'create' ? {{ _('Create role')|tojson|forceescape }} : {{ _('Save changes')|tojson|forceescape }}"></span>
         </button>
       </div>
     </form>
     <div class="modal-action" x-show="loadError" style="display:none">
-      <button type="button" class="btn btn-ghost" @click="$root.close()">Close</button>
+      <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Close{% endtrans %}</button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 <!-- Delete a role -->
 <dialog id="role-delete-modal" class="modal" x-data="deleteRole()"
         @role-delete.window="open($event.detail)">
   <div class="modal-box">
-    <h3 class="mb-2 text-lg font-bold">Delete <span class="font-mono" x-text="name"></span>?</h3>
+    <h3 class="mb-2 text-lg font-bold"><span x-html="fmtHtml({{ _('Delete <span class="font-mono">{name}</span>?')|tojson|forceescape }}, { name: name })"></span></h3>
 
     <div x-show="loading" style="display:none" class="flex justify-center py-6">
       <span class="loading loading-spinner loading-md text-primary"></span>
@@ -135,43 +133,39 @@
 
     <div x-show="!loading && !loadError" style="display:none">
       <p class="mb-2 text-sm">
-        The role is removed from every account and from every role that contains it. The
-        accounts themselves stay. Services that ask for this role will no longer find it. It
-        cannot be undone.
+        {% trans %}The role is removed from every account and from every role that contains it. The accounts themselves stay. Services that ask for this role will no longer find it. It cannot be undone.{% endtrans %}
       </p>
-      <p class="mb-3 text-sm" x-show="users.length === 0" style="display:none">No account holds it directly.</p>
+      <p class="mb-3 text-sm" x-show="users.length === 0" style="display:none">{% trans %}No account holds it directly.{% endtrans %}</p>
       <div class="mb-3 text-sm" x-show="users.length > 0" style="display:none">
         <p class="mb-1">
-          Held directly by
-          <b x-text="users.length + (more ? '+' : '')"></b>
-          <span x-text="users.length === 1 && !more ? 'account' : 'accounts'"></span>:
+          <span x-html="fmtPlural(users.length, {{ _('Held directly by <b>{number}</b> account:')|tojson|forceescape }}, {{ _('Held directly by <b>{number}</b> accounts:')|tojson|forceescape }}, { number: users.length + (more ? '+' : '') }, true)"></span>
         </p>
         <div class="flex flex-wrap gap-1">
           <template x-for="u in users.slice(0, 12)" :key="u">
             <span class="badge badge-outline badge-sm font-mono" x-text="u"></span>
           </template>
           <span class="badge badge-ghost badge-sm" style="display:none" x-show="users.length > 12"
-                x-text="'+' + (users.length - 12) + (more ? '+' : '') + ' more'"></span>
+                x-text="fmt({{ _('+{count}{plus} more')|tojson|forceescape }}, { count: users.length - 12, plus: more ? '+' : '' })"></span>
         </div>
       </div>
       <form @submit.prevent="submit()">
         <div class="form-control mb-3">
-          <label class="label"><span class="label-text">Type the name to confirm</span></label>
+          <label class="label"><span class="label-text">{% trans %}Type the name to confirm{% endtrans %}</span></label>
           <input type="text" class="input input-bordered font-mono" x-model="typed"
                  autocomplete="off" :placeholder="name">
         </div>
         <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
         <div class="modal-action">
-          <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
-          <button type="submit" class="btn btn-error" :disabled="busy || typed !== name">Delete</button>
+          <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
+          <button type="submit" class="btn btn-error" :disabled="busy || typed !== name">{% trans %}Delete{% endtrans %}</button>
         </div>
       </form>
     </div>
     <div class="modal-action" x-show="loadError" style="display:none">
-      <button type="button" class="btn btn-ghost" @click="$root.close()">Close</button>
+      <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Close{% endtrans %}</button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 {% include "partials/_rag_js.html" %}
@@ -188,13 +182,13 @@ document.body.addEventListener('htmx:responseError', function (event) {
   const detail = event.detail || {};
   if (!detail.target || detail.target.id !== 'role-list') return;
   if (detail.xhr && detail.xhr.status === 401) return;
-  let reason = 'The list could not be loaded.';
+  let reason = {{ _('The list could not be loaded.')|tojson }};
   try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
   detail.target.innerHTML =
     '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
-    '<p class="text-lg font-semibold">Roles are not available</p>' +
+    '<p class="text-lg font-semibold">' + _ragEscape({{ _('Roles are not available')|tojson }}) + '</p>' +
     '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p>' +
-    '<a class="link" href="/users/roles">Reload the page</a></div>';
+    '<a class="link" href="/users/roles">' + _ragEscape({{ _('Reload the page')|tojson }}) + '</a></div>';
 });
 
 function roleDialog() {
@@ -223,7 +217,7 @@ function roleDialog() {
       this.all.forEach(function (role) { picked[role.name] = false; });
       if (open) {
         const row = this.all.find(function (role) { return role.name === open; });
-        if (!row) { this.loadError = 'That role no longer exists.'; return; }
+        if (!row) { this.loadError = {{ _('That role no longer exists.')|tojson }}; return; }
         this.description = row.description;
         this.builtIn = row.built_in;
         this.clientMembers = row.client_members;
@@ -274,7 +268,9 @@ function roleDialog() {
         return;
       }
       this.$root.close();
-      showToast('success', 'Role <b>' + _ragEscape(name) + '</b> ' + (create ? 'created' : 'saved') + '.');
+      showToast('success', fmtHtml(create
+        ? {{ _('Role <b>{name}</b> created.')|tojson }}
+        : {{ _('Role <b>{name}</b> saved.')|tojson }}, { name: name }));
       reloadRoles();
     },
   };
@@ -304,7 +300,7 @@ function deleteRole() {
       if (res.handled) return;
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
-      showToast('success', 'Role <b>' + _ragEscape(this.name) + '</b> deleted.');
+      showToast('success', fmtHtml({{ _('Role <b>{name}</b> deleted.')|tojson }}, { name: this.name }));
       reloadRoles();
     },
   };

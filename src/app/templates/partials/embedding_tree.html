@@ -11,14 +11,14 @@
 <p class="text-sm text-warning">{{ reason }}</p>
 {% elif listing is not none %}
 {% if not listing.entries %}
-<p class="text-sm opacity-60">Nothing here.</p>
+<p class="text-sm opacity-60">{% trans %}Nothing here.{% endtrans %}</p>
 {% endif %}
 <ul class="flex flex-col">
   {% for e in listing.entries %}
   <li x-data="{ open: false }">
     <div class="flex items-center gap-1.5 py-0.5">
       {% if e.is_dir %}
-      <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Show what is in {{ e.name }}"
+      <button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="{{ _('Show what is in %(name)s', name=e.name) }}"
               hx-get="/partials/embedding/tree?source={{ source | urlencode }}&upload={{ upload | urlencode }}&path={{ e.rel | urlencode }}"
               hx-target="next .embed-children"
               hx-swap="innerHTML"
@@ -47,6 +47,6 @@
   {% endfor %}
 </ul>
 {% if listing.truncated %}
-<p class="mt-1 text-xs opacity-60">Only the first entries are shown. Select the folder to take all of it.</p>
+<p class="mt-1 text-xs opacity-60">{% trans %}Only the first entries are shown. Select the folder to take all of it.{% endtrans %}</p>
 {% endif %}
 {% endif %}

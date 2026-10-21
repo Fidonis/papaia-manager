@@ -15,6 +15,7 @@ from app.auth.csrf import verify_csrf
 from app.auth.oidc import OIDCError, _pkce_pair, get_oidc_client
 from app.auth.roles import has_manager_access
 from app.config import Settings, get_settings
+from app.i18n import gettext as _
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ async def callback(
         logger.warning("OIDC error from provider: %s", error)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"authentication error: {error}",
+            detail=_("authentication error: %(error)s") % {"error": error},
         )
 
     code_verifier = _parse_state(settings.manager_session_secret, state)
@@ -103,12 +104,12 @@ async def callback(
         logger.warning("auth/callback: invalid or missing state parameter")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="missing OIDC session state — please start login again",
+            detail=_("missing OIDC session state — please start login again"),
         )
     if not code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="missing authorization code",
+            detail=_("missing authorization code"),
         )
 
     client = get_oidc_client()
@@ -118,7 +119,7 @@ async def callback(
         logger.warning("OIDC token exchange failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="authentication failed",
+            detail=_("authentication failed"),
         ) from exc
 
     claims = token_set.claims
@@ -128,7 +129,7 @@ async def callback(
     if not has_manager_access(claims, settings):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="your account does not have a role granting access to this application",
+            detail=_("your account does not have a role granting access to this application"),
         )
 
     request.session["user"] = claims.to_dict()

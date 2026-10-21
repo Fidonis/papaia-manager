@@ -20,15 +20,15 @@
                  {% elif verdict == "warn" %}bg-warning
                  {% else %}bg-base-content/30{% endif %}"></span>
     <p class="text-sm font-semibold">
-      {% if not on %}Mail Relay is off{% else %}Mail Relay is on{% endif %}
+      {% if not on %}{% trans %}Mail Relay is off{% endtrans %}{% else %}{% trans %}Mail Relay is on{% endtrans %}{% endif %}
     </p>
 
     {% if on and relay and relay.available %}
     <p class="text-xs opacity-70">
-      relay {{ relay.relay or "not created" }}
+      {% if relay.relay %}{% trans relay=relay.relay %}relay {{ relay }}{% endtrans %}{% else %}{% trans %}relay not created{% endtrans %}{% endif %}
       {% if relay.queued is not none %}
         ·
-        {% if relay.queued == 0 %}queue empty{% else %}{{ relay.queued }} message{{ "" if relay.queued == 1 else "s" }} waiting{% endif %}
+        {% if relay.queued == 0 %}{% trans %}queue empty{% endtrans %}{% else %}{% trans queued=relay.queued %}{{ queued }} message waiting{% pluralize queued %}{{ queued }} messages waiting{% endtrans %}{% endif %}
       {% endif %}
     </p>
     {% endif %}
@@ -39,7 +39,7 @@
             hx-target="#mail-status"
             hx-swap="innerHTML"
             hx-disabled-elt="this">
-      Re-check
+      {% trans %}Re-check{% endtrans %}
     </button>
     {% endif %}
   </div>
@@ -47,14 +47,14 @@
   {% if not on %}
   <p class="mt-1 text-xs opacity-60">
     {% if mail.configured %}
-    The settings below are stored. Switch the relay on to use them.
+    {% trans %}The settings below are stored. Switch the relay on to use them.{% endtrans %}
     {% else %}
-    Enter a mail server and a sender address below to switch the relay on.
+    {% trans %}Enter a mail server and a sender address below to switch the relay on.{% endtrans %}
     {% endif %}
   </p>
   {% elif relay and relay.available %}
     {% if relay.summary %}<p class="mt-1 text-xs opacity-70">{{ relay.summary }}</p>{% endif %}
   {% elif relay %}
-  <p class="mt-1 text-xs opacity-70">The relay's state could not be read: {{ relay.reason }}</p>
+  <p class="mt-1 text-xs opacity-70">{% trans reason=relay.reason %}The relay's state could not be read: {{ reason }}{% endtrans %}</p>
   {% endif %}
 </div>

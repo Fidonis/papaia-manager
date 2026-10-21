@@ -27,6 +27,8 @@ from typing import Any
 
 from app.core.ctl import CtlError, run_py_cli
 from app.core.docker_usage import core_checks
+from app.i18n import N_, current_locale
+from app.i18n import gettext as _
 
 logger = logging.getLogger(__name__)
 
@@ -84,11 +86,13 @@ def parse_status(stdout: str, *, checked_at: datetime | None = None) -> RelaySta
     try:
         document = json.loads(stdout)
     except ValueError:
-        return unavailable("doctor did not return JSON")
+        return unavailable(_("doctor did not return JSON"))
     if not isinstance(document, dict):
-        return unavailable("doctor did not return a JSON object")
+        return unavailable(_("doctor did not return a JSON object"))
     if document.get("schema_version") != _SUPPORTED_SCHEMA:
-        return unavailable(f"doctor reports schema {document.get('schema_version')!r}, not 1")
+        return unavailable(_(
+            "doctor reports schema %(value)r, not 1"
+        ) % {"value": document.get('schema_version')})
     checks = document.get("checks")
     check = next(
         (
@@ -99,7 +103,7 @@ def parse_status(stdout: str, *, checked_at: datetime | None = None) -> RelaySta
         None,
     )
     if check is None:
-        return unavailable("doctor did not report the smtp check")
+        return unavailable(_("doctor did not report the smtp check"))
     summary = check.get("summary")
     details = check.get("details")
     details = details if isinstance(details, dict) else {}
@@ -115,10 +119,18 @@ def parse_status(stdout: str, *, checked_at: datetime | None = None) -> RelaySta
     )
 
 
-async def _run(config_dir: str, workspace_dir: str) -> RelayStatus:
+_NO_CHECK = N_("this papAIa core has no smtp check")
+_NO_OUTPUT = N_("doctor exited with status %(code)s and no output")
+_UNEXPECTED = N_("the relay check failed unexpectedly")
+
+
+async def _run(
+    config_dir: str, workspace_dir: str
+) -> tuple[RelayStatus, str | None, tuple[str, dict[str, Any]] | None]:
+    """The reading, the raw output it came from and, for a run without output, why."""
     names = core_checks(workspace_dir)
     if CHECK_NAME not in names:
-        return unavailable("this papAIa core has no smtp check")
+        return unavailable(_(_NO_CHECK)), None, (_NO_CHECK, {})
     try:
         code, out, err = await run_py_cli(
             command="doctor",
@@ -131,16 +143,29 @@ async def _run(config_dir: str, workspace_dir: str) -> RelayStatus:
         )
     except CtlError as exc:
         logger.warning("mail relay status: %s", exc)
-        return unavailable(str(exc))
+        return unavailable(str(exc)), None, None
     if not out.strip():
-        return unavailable(_first_line(err) or f"doctor exited with status {code} and no output")
-    return parse_status(out)
+        first = _first_line(err)
+        if first:
+            return unavailable(first), None, None
+        return (
+            unavailable(_(_NO_OUTPUT) % {"code": code}),
+            None,
+            (_NO_OUTPUT, {"code": code}),
+        )
+    return parse_status(out), out, None
 
 
 @dataclass(frozen=True)
 class _Entry:
     at: float
     status: RelayStatus
+    # What `doctor` printed, the language `status` was written in and, for a run that ended
+    # without output, why as (message, values): the reading is shared by every account, so it
+    # is put into words again for an account whose language is another one.
+    out: str | None = None
+    locale: str = "en"
+    reason: tuple[str, dict[str, Any]] | None = None
 
 
 _cache: _Entry | None = None
@@ -157,13 +182,28 @@ def reset_cache() -> None:
 async def _measure(config_dir: str, workspace_dir: str) -> RelayStatus:
     """One run, stored. Never raises: a task nobody awaits would lose the error."""
     global _cache  # noqa: PLW0603
+    reason: tuple[str, dict[str, Any]] | None
     try:
-        status = await _run(config_dir, workspace_dir)
+        status, out, reason = await _run(config_dir, workspace_dir)
     except Exception:
         logger.exception("mail relay status: unexpected failure")
-        status = unavailable("the relay check failed unexpectedly")
-    _cache = _Entry(at=time.monotonic(), status=status)
+        status, out, reason = unavailable(_(_UNEXPECTED)), None, (_UNEXPECTED, {})
+    _cache = _Entry(
+        at=time.monotonic(), status=status, out=out, locale=current_locale(), reason=reason
+    )
     return status
+
+
+def _in_current_language(entry: _Entry) -> RelayStatus:
+    """The cached reading, in the language of the request asking for it."""
+    if entry.locale == current_locale():
+        return entry.status
+    if entry.out is not None:
+        return parse_status(entry.out, checked_at=entry.status.checked_at)
+    if entry.reason is not None:
+        message, values = entry.reason
+        return unavailable(_(message) % values)
+    return entry.status
 
 
 async def load_status(*, config_dir: str, workspace_dir: str, force: bool = False) -> RelayStatus:
@@ -174,8 +214,9 @@ async def load_status(*, config_dir: str, workspace_dir: str, force: bool = Fals
     global _refresh  # noqa: PLW0603
     limit = STATUS_RECHECK_MIN_SECONDS if force else STATUS_TTL_SECONDS
     if _cache is not None and time.monotonic() - _cache.at < limit:
-        return _cache.status
+        return _in_current_language(_cache)
     if _refresh is None or _refresh.done():
         _refresh = asyncio.get_running_loop().create_task(_measure(config_dir, workspace_dir))
     # Shielded: a visitor who leaves must not cancel the run for the next.
-    return await asyncio.shield(_refresh)
+    status = await asyncio.shield(_refresh)
+    return _in_current_language(_cache) if _cache is not None else status

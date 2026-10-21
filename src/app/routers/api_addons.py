@@ -38,6 +38,7 @@ from app.core.state import (
     deployment_addons_by_name,
     load_deployment_yaml,
 )
+from app.i18n import gettext
 
 router = APIRouter(prefix="/api/v1/addons")
 
@@ -75,7 +76,7 @@ def _queue() -> JobQueue:
     from app.main import _job_queue  # noqa: PLC0415
 
     if _job_queue is None:
-        raise HTTPException(status_code=503, detail="job queue not initialized")
+        raise HTTPException(status_code=503, detail=gettext("job queue not initialized"))
     return _job_queue
 
 
@@ -290,13 +291,15 @@ async def install(
     if catalog is None:
         raise HTTPException(
             status_code=404,
-            detail=f"catalog {body.catalog!r} not found or disabled",
+            detail=gettext("catalog %(catalog)r not found or disabled") % {"catalog": body.catalog},
         )
     clone = catalog_scan_path(catalog, settings.papaia_workspace_dir)
     if not (clone / name).exists():
         raise HTTPException(
             status_code=404,
-            detail=f"addon {name!r} not found in catalog {catalog.name!r}",
+            detail=gettext(
+                "addon %(name)r not found in catalog %(name2)r"
+            ) % {"name": name, "name2": catalog.name},
         )
 
     queue = _queue()
@@ -631,7 +634,9 @@ async def update(
     installed_map = load_installed(settings.papaia_config_dir)
     inst = installed_map.get(name)
     if inst is None:
-        raise HTTPException(status_code=404, detail=f"addon {name!r} is not installed")
+        raise HTTPException(status_code=404, detail=gettext(
+            "addon %(name)r is not installed"
+        ) % {"name": name})
 
     queue = _queue()
     _username = _user_id(user)

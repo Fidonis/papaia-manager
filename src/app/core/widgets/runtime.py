@@ -26,6 +26,8 @@ from dataclasses import dataclass
 
 from app.core.widgets.model import PayloadError, WidgetResult, parse_payload
 from app.core.widgets.registry import WidgetContext, WidgetType, WidgetUnavailableError
+from app.i18n import current_locale
+from app.i18n import gettext as _
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +70,7 @@ def reset_cache() -> None:
 
 async def read(widget_type: WidgetType, context: WidgetContext) -> WidgetResult:
     """The widget's reading, from the cache while it is young, else a read awaited."""
-    key = widget_type.id
+    key = f"{widget_type.id}:{current_locale()}"
     entry = _cache.get(key)
     if entry is not None:
         limit = float(widget_type.interval)
@@ -87,19 +89,21 @@ async def read(widget_type: WidgetType, context: WidgetContext) -> WidgetResult:
 
 async def _measure(widget_type: WidgetType, context: WidgetContext) -> WidgetResult:
     """One read, stored. Never raises: a task nobody awaits would lose the error."""
-    key = widget_type.id
+    key = f"{widget_type.id}:{current_locale()}"
     try:
         document = await asyncio.wait_for(widget_type.provider(context), READ_TIMEOUT_SECONDS)
         payload = parse_payload(document)
     except WidgetUnavailableError as exc:
-        failure = str(exc) or "The widget has nothing to show."
+        failure = str(exc) or _("The widget has nothing to show.")
     except PayloadError as exc:
-        failure = f"The widget produced a document the dashboard cannot show ({exc})."
+        failure = _(
+            "The widget produced a document the dashboard cannot show (%(exc)s)."
+        ) % {"exc": exc}
     except TimeoutError:
-        failure = "Reading the widget took too long."
+        failure = _("Reading the widget took too long.")
     except Exception:
         logger.exception("widget %s: unexpected failure", key)
-        failure = "The widget could not be read."
+        failure = _("The widget could not be read.")
     else:
         entry = _Entry(_clock(), WidgetResult("ok", payload, fetched_at=context.now))
         _cache[key] = entry

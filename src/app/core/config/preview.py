@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.core import ctl
+from app.i18n import gettext as _
 
 COMMAND = "render-preview"
 TIMEOUT_SECONDS = 30.0
@@ -92,20 +93,20 @@ def parse_answer(stdout: str) -> Preview:
     try:
         data = json.loads(stdout)
     except ValueError as exc:
-        raise PreviewError("The core's answer was not understood.") from exc
+        raise PreviewError(_("The core's answer was not understood.")) from exc
     if not isinstance(data, dict) or not isinstance(data.get("ok"), bool):
-        raise PreviewError("The core's answer was not understood.")
+        raise PreviewError(_("The core's answer was not understood."))
     if not data["ok"]:
         line, column = data.get("line"), data.get("column")
         return Preview(
             ok=False,
-            error=str(data.get("error") or "The draft can't be merged."),
+            error=str(data.get("error") or _("The draft can't be merged.")),
             line=line if isinstance(line, int) else None,
             column=column if isinstance(column, int) else None,
         )
     current, preview = data.get("current"), data.get("preview")
     if not isinstance(current, str) or not isinstance(preview, str):
-        raise PreviewError("The core's answer was not understood.")
+        raise PreviewError(_("The core's answer was not understood."))
     diff = diff_lines(current, preview)
     return Preview(
         ok=True,
@@ -131,7 +132,7 @@ async def run(*, workspace_dir: str, config_dir: str, target_path: str, draft: s
             handle.write(draft.encode("utf-8"))
     except OSError as exc:
         raise PreviewError(
-            f"The draft can't be handed to the core ({exc.strerror or exc})."
+            _("The draft can't be handed to the core (%(value)s).") % {"value": exc.strerror or exc}
         ) from exc
     try:
         try:
@@ -143,10 +144,14 @@ async def run(*, workspace_dir: str, config_dir: str, target_path: str, draft: s
                 limit=TIMEOUT_SECONDS,
             )
         except ctl.CtlError as exc:
-            raise PreviewError(f"The core didn't answer in time ({exc}).") from exc
+            raise PreviewError(
+                _("The core didn't answer in time (%(exc)s).") % {"exc": exc}
+            ) from exc
         if code != 0:
             first = next((ln.strip() for ln in (err or out).splitlines() if ln.strip()), "")
-            raise PreviewError(first[:300] or f"The preview exited with status {code}.")
+            raise PreviewError(first[:300] or _(
+                "The preview exited with status %(code)s."
+            ) % {"code": code})
         return parse_answer(out)
     finally:
         with contextlib.suppress(OSError):

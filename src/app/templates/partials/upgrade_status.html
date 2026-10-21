@@ -19,12 +19,9 @@
   {% if version.mismatch %}
   <div class="alert alert-warning mb-4">
     <div>
-      <p class="font-semibold text-sm mb-0.5">An upgrade did not finish</p>
+      <p class="font-semibold text-sm mb-0.5">{% trans %}An upgrade did not finish{% endtrans %}</p>
       <p class="text-xs leading-relaxed">
-        The checkout is on <span class="font-mono">{{ version.checkout }}</span> but the
-        configuration is still at <span class="font-mono">{{ version.recorded }}</span>.
-        The configuration is what an upgrade starts from, so this deployment counts as
-        {{ version.recorded }}. The history below says which attempt stopped and where.
+        {% trans checkout=version.checkout, recorded=version.recorded %}The checkout is on <span class="font-mono">{{ checkout }}</span> but the configuration is still at <span class="font-mono">{{ recorded }}</span>. The configuration is what an upgrade starts from, so this deployment counts as {{ recorded }}. The history below says which attempt stopped and where.{% endtrans %}
       </p>
     </div>
   </div>
@@ -35,9 +32,9 @@
 
       <div class="flex flex-wrap items-end gap-x-8 gap-y-3">
         <div>
-          <p class="text-xs uppercase tracking-wide opacity-50 mb-1">Installed</p>
+          <p class="text-xs uppercase tracking-wide opacity-50 mb-1">{% trans %}Installed{% endtrans %}</p>
           <p class="font-brand text-2xl font-bold leading-none">
-            {{ version.current if version.current else "unknown" }}
+            {% if version.current %}{{ version.current }}{% else %}{% trans %}unknown{% endtrans %}{% endif %}
           </p>
         </div>
 
@@ -47,7 +44,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
         </svg>
         <div>
-          <p class="text-xs uppercase tracking-wide opacity-50 mb-1">Available</p>
+          <p class="text-xs uppercase tracking-wide opacity-50 mb-1">{% trans %}Available{% endtrans %}</p>
           <p class="font-brand text-2xl font-bold leading-none text-primary">
             {{ check.target }}
           </p>
@@ -55,9 +52,9 @@
         {% endif %}
 
         <div class="ml-auto text-right">
-          <p class="text-xs uppercase tracking-wide opacity-50 mb-1">Checkout</p>
+          <p class="text-xs uppercase tracking-wide opacity-50 mb-1">{% trans %}Checkout{% endtrans %}</p>
           {% if not checkout.is_git %}
-            <span class="badge badge-warning badge-sm">not a git checkout</span>
+            <span class="badge badge-warning badge-sm">{% trans %}not a git checkout{% endtrans %}</span>
           {% elif checkout.tag %}
             <span class="badge badge-ghost badge-sm font-mono">{{ checkout.tag }}</span>
           {% else %}
@@ -68,9 +65,9 @@
 
       {% if check and check.checked_at %}
       <p class="text-xs opacity-50">
-        Checked {{ check.checked_at[:19] | replace("T", " ") }} UTC
+        {% trans checked_at=(check.checked_at[:19] | replace("T", " ")) %}Checked {{ checked_at }} UTC{% endtrans %}
         {% if check.fetch_error %}
-        &middot; the remote could not be reached, so this is what the checkout already knew
+        {% trans %}&middot; the remote could not be reached, so this is what the checkout already knew{% endtrans %}
         {% endif %}
       </p>
       {% endif %}
@@ -81,7 +78,7 @@
      Every condition that makes `papaia-ctl upgrade` exit before it touches
      anything, reached by the same commands and shown before the operator
      commits rather than after the stack is already down. #}
-  <h2 class="font-brand text-lg font-bold mb-3">Before you start</h2>
+  <h2 class="font-brand text-lg font-bold mb-3">{% trans %}Before you start{% endtrans %}</h2>
 
   <div class="rounded-xl border border-base-300 divide-y divide-base-300 mb-6">
 
@@ -92,39 +89,34 @@
       {% if not checkout.is_git %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
         <div class="min-w-0">
-          <p class="text-sm font-medium">This installation cannot be upgraded from here</p>
+          <p class="text-sm font-medium">{% trans %}This installation cannot be upgraded from here{% endtrans %}</p>
           <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
-            The papaia workspace is not a git checkout, and the upgrade moves the checkout
-            to a release tag. Re-clone the repository on the host and re-run
-            <span class="font-mono">papaia-ctl setup</span> against the existing
-            configuration directory.
+            {% trans %}The papaia workspace is not a git checkout, and the upgrade moves the checkout to a release tag. Re-clone the repository on the host and re-run <span class="font-mono">papaia-ctl setup</span> against the existing configuration directory.{% endtrans %}
           </p>
         </div>
       {% elif checkout.error %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
         <div class="min-w-0">
-          <p class="text-sm font-medium">The checkout could not be inspected</p>
+          <p class="text-sm font-medium">{% trans %}The checkout could not be inspected{% endtrans %}</p>
           <p class="text-xs opacity-60 mt-0.5 font-mono break-all">{{ checkout.error }}</p>
         </div>
       {% elif not checkout.clean %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
         <div class="min-w-0">
-          <p class="text-sm font-medium">The checkout has uncommitted changes</p>
+          <p class="text-sm font-medium">{% trans %}The checkout has uncommitted changes{% endtrans %}</p>
           <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
-            Commit, stash or discard them on the host first &mdash; the upgrade moves the
-            checkout to a release tag and would otherwise take these edits with it.
+            {% trans %}Commit, stash or discard them on the host first &mdash; the upgrade moves the checkout to a release tag and would otherwise take these edits with it.{% endtrans %}
           </p>
           <pre class="mt-2 max-h-40 overflow-y-auto rounded bg-base-300 p-3 text-xs whitespace-pre-wrap">{{ checkout.dirty }}</pre>
         </div>
       {% else %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-success"></span>
         <div class="min-w-0">
-          <p class="text-sm font-medium">The checkout is clean</p>
+          <p class="text-sm font-medium">{% trans %}The checkout is clean{% endtrans %}</p>
           <p class="text-xs opacity-60 mt-0.5">
-            No uncommitted changes to tracked files, so it can be moved to a release tag.
+            {% trans %}No uncommitted changes to tracked files, so it can be moved to a release tag.{% endtrans %}
             {% if checkout.is_git and not checkout.tag %}
-            It is not sitting on a tag right now, which only matters if an upgrade fails:
-            the way back names a tag.
+            {% trans %}It is not sitting on a tag right now, which only matters if an upgrade fails: the way back names a tag.{% endtrans %}
             {% endif %}
           </p>
         </div>
@@ -137,32 +129,30 @@
       {% if not check or check.up_to_date %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-base-300"></span>
         <div class="min-w-0">
-          <p class="text-sm font-medium opacity-60">Add-on compatibility</p>
-          <p class="text-xs opacity-60 mt-0.5">Checked against a release once there is one.</p>
+          <p class="text-sm font-medium opacity-60">{% trans %}Add-on compatibility{% endtrans %}</p>
+          <p class="text-xs opacity-60 mt-0.5">{% trans %}Checked against a release once there is one.{% endtrans %}</p>
         </div>
       {% elif check.gate.passed %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-success"></span>
         <div class="min-w-0">
-          <p class="text-sm font-medium">Add-ons are compatible with {{ check.target }}</p>
+          <p class="text-sm font-medium">{% trans target=check.target %}Add-ons are compatible with {{ target }}{% endtrans %}</p>
           <p class="text-xs opacity-60 mt-0.5">
             {% if check.gate.results %}
-            {{ check.gate.results | length }} active add-on(s) checked against the target release.
+            {% trans count=(check.gate.results | length) %}{{ count }} active add-on(s) checked against the target release.{% endtrans %}
             {% else %}
-            No active add-ons to check.
+            {% trans %}No active add-ons to check.{% endtrans %}
             {% endif %}
           </p>
         </div>
       {% else %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
         <div class="min-w-0">
-          <p class="text-sm font-medium">Add-ons are not compatible with {{ check.target }}</p>
+          <p class="text-sm font-medium">{% trans target=check.target %}Add-ons are not compatible with {{ target }}{% endtrans %}</p>
           <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
             {% if check.gate.has_error %}
-            One add-on's manifest could not be read. papaia-ctl refuses that regardless of
-            any override &mdash; fix the add-on before upgrading.
+            {% trans %}One add-on's manifest could not be read. papaia-ctl refuses that regardless of any override &mdash; fix the add-on before upgrading.{% endtrans %}
             {% else %}
-            Update the add-ons first, or start the upgrade anyway and accept that they run
-            against a core they declare they do not support.
+            {% trans %}Update the add-ons first, or start the upgrade anyway and accept that they run against a core they declare they do not support.{% endtrans %}
             {% endif %}
           </p>
           <ul class="mt-2 space-y-1">
@@ -185,29 +175,25 @@
       {% if not backup_dir %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-warning"></span>
         <div class="min-w-0">
-          <p class="text-sm font-medium">No restore point can be written</p>
+          <p class="text-sm font-medium">{% trans %}No restore point can be written{% endtrans %}</p>
           <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
-            <span class="font-mono">PAPAIA_BACKUP_DIR</span> is not set in the stack
-            configuration. Set it on the host, or start the upgrade without a restore point
-            and accept that there is nothing to roll back to.
+            {% trans %}<span class="font-mono">PAPAIA_BACKUP_DIR</span> is not set in the stack configuration. Set it on the host, or start the upgrade without a restore point and accept that there is nothing to roll back to.{% endtrans %}
           </p>
         </div>
       {% elif not backup_dir_reachable %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-warning"></span>
         <div class="min-w-0">
-          <p class="text-sm font-medium">The backup directory is not reachable</p>
+          <p class="text-sm font-medium">{% trans %}The backup directory is not reachable{% endtrans %}</p>
           <p class="text-xs opacity-60 mt-0.5">
-            <span class="font-mono">{{ backup_dir }}</span> is not visible from this
-            container, so the restore point would fail after the stack is already down.
+            {% trans %}<span class="font-mono">{{ backup_dir }}</span> is not visible from this container, so the restore point would fail after the stack is already down.{% endtrans %}
           </p>
         </div>
       {% else %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-success"></span>
         <div class="min-w-0">
-          <p class="text-sm font-medium">A restore point is written first</p>
+          <p class="text-sm font-medium">{% trans %}A restore point is written first{% endtrans %}</p>
           <p class="text-xs opacity-60 mt-0.5">
-            Into <span class="font-mono">{{ backup_dir }}</span>. It is what the way back
-            points at if a migration fails.
+            {% trans %}Into <span class="font-mono">{{ backup_dir }}</span>. It is what the way back points at if a migration fails.{% endtrans %}
           </p>
         </div>
       {% endif %}
@@ -218,12 +204,9 @@
     <div class="flex gap-3 px-4 py-3">
       <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-warning"></span>
       <div class="min-w-0">
-        <p class="text-sm font-medium">The whole stack goes down, this panel included</p>
+        <p class="text-sm font-medium">{% trans %}The whole stack goes down, this panel included{% endtrans %}</p>
         <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
-          Containers are removed and recreated; volumes are kept. The upgrade runs in its
-          own container, so it finishes even once this page is gone, and the result appears
-          here again afterwards &mdash; on the papaia-manager version that ships with the
-          new release.
+          {% trans %}Containers are removed and recreated; volumes are kept. The upgrade runs in its own container, so it finishes even once this page is gone, and the result appears here again afterwards &mdash; on the papaia-manager version that ships with the new release.{% endtrans %}
         </p>
       </div>
     </div>

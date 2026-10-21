@@ -1,8 +1,8 @@
 {% from "partials/_actions.html" import row_actions, overflow_menu %}
 {% if not catalogs %}
 <div class="flex flex-col items-center py-16 gap-3 opacity-60">
-  <p class="text-lg font-medium">No catalogs configured</p>
-  <p class="text-sm">Add a catalog to browse addons.</p>
+  <p class="text-lg font-medium">{% trans %}No catalogs configured{% endtrans %}</p>
+  <p class="text-sm">{% trans %}Add a catalog to browse addons.{% endtrans %}</p>
 </div>
 {% else %}
 <div class="flex flex-col gap-3">
@@ -13,18 +13,18 @@
         <div class="flex items-center gap-2">
           <span class="font-semibold">{{ c.name }}</span>
           {% if c.enabled %}
-            <span class="badge badge-success badge-sm">enabled</span>
+            <span class="badge badge-success badge-sm">{% trans %}enabled{% endtrans %}</span>
           {% else %}
-            <span class="badge badge-neutral badge-sm">disabled</span>
+            <span class="badge badge-neutral badge-sm">{% trans %}disabled{% endtrans %}</span>
           {% endif %}
           <span class="badge badge-outline badge-sm">{{ c.type }}</span>
           {% set n = addon_counts.get(c.name, 0) %}
-          <span class="badge badge-ghost badge-sm">{{ n }} add-on{{ '' if n == 1 else 's' }}</span>
+          <span class="badge badge-ghost badge-sm">{% trans n=n %}{{ n }} add-on{% pluralize n %}{{ n }} add-ons{% endtrans %}</span>
           {% set hidden = shadowed_counts.get(c.name, 0) %}
           {% if hidden %}
           <span class="badge badge-warning badge-outline badge-sm"
-                title="{{ hidden }} identically versioned add-on(s) from this catalog are shadowed by another catalog on the dashboard">
-            {{ hidden }} shadowed
+                title="{{ _('%(hidden)s identically versioned add-on(s) from this catalog are shadowed by another catalog on the dashboard', hidden=hidden) }}">
+            {% trans %}{{ hidden }} shadowed{% endtrans %}
           </span>
           {% endif %}
         </div>
@@ -41,27 +41,27 @@
                           catalogAction('{{ c.name }}', 'refresh', id => jobId = id)
                             .then(() => { busy = false; jobId = null })">
             <span x-show="busy" class="loading loading-spinner loading-xs"></span>
-            <span x-show="!busy">Refresh</span>
+            <span x-show="!busy">{% trans %}Refresh{% endtrans %}</span>
           </button>
           <a style="display:none" x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
-             class="link link-hover text-xs opacity-60">view log</a>
+             class="link link-hover text-xs opacity-60">{% trans %}view log{% endtrans %}</a>
           {% else %}
           <button class="btn btn-outline btn-xs"
                   hx-get="/partials/catalogs"
                   hx-target="#catalog-list"
-                  hx-swap="innerHTML">Re-scan</button>
+                  hx-swap="innerHTML">{% trans %}Re-scan{% endtrans %}</button>
           {% endif %}
 
-          {% call overflow_menu(size='xs', label='More actions for catalog ' ~ c.name) %}
+          {% call overflow_menu(size='xs', label=_('More actions for catalog %(name)s', name=c.name)) %}
             <li><a onclick='openEditCatalogModal(
                     {{ c.name|tojson }}, {{ c.type|tojson }},
                     {{ (c.url or "")|tojson }}, {{ c.ref|tojson }},
                     {{ (c.path or "")|tojson }}, {{ c.enabled|tojson }}
-                  )'>Edit</a></li>
+                  )'>{% trans %}Edit{% endtrans %}</a></li>
             <li><a class="text-error"
-                   @click="if (!confirm('Delete catalog {{ c.name }}?')) return;
+                   @click="if (!confirm({{ _('Delete catalog {{ c.name }}?')|tojson|forceescape }})) return;
                            busy = true;
-                           catalogDelete('{{ c.name }}').then(() => busy = false)">Delete</a></li>
+                           catalogDelete('{{ c.name }}').then(() => busy = false)">{% trans %}Delete{% endtrans %}</a></li>
           {% endcall %}
         {% endcall %}
       </div>
@@ -70,7 +70,7 @@
         {% if c.type == "git" %}
           <span class="font-mono">{{ c.url }}</span>
           <span class="opacity-50 ml-2">@ {{ c.ref }}</span>
-          {% if c.auth %}<span class="badge badge-warning badge-xs ml-2">private</span>{% endif %}
+          {% if c.auth %}<span class="badge badge-warning badge-xs ml-2">{% trans %}private{% endtrans %}</span>{% endif %}
         {% else %}
           <span class="font-mono">{{ c.path }}</span>
         {% endif %}

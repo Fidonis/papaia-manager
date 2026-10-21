@@ -21,20 +21,20 @@
       <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
       <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
     </svg>
-    <span x-text="$store.tiles.preview ? 'Back to editing' : 'Preview as user'"></span>
+    <span x-text="$store.tiles.preview ? {{ _('Back to editing')|tojson|forceescape }} : {{ _('Preview as user')|tojson|forceescape }}"></span>
   </button>
 
-  {% call overflow_menu(label='More dashboard actions') %}
-  <li><a @click="$store.tiles.openRaw()">Edit tiles.yaml</a></li>
-  <li><a @click="$store.tiles.discard()">Reload from disk</a></li>
-  <li><a @click="$store.tiles.leave()">Leave editor</a></li>
+  {% call overflow_menu(label=_('More dashboard actions')) %}
+  <li><a @click="$store.tiles.openRaw()">{% trans %}Edit tiles.yaml{% endtrans %}</a></li>
+  <li><a @click="$store.tiles.discard()">{% trans %}Reload from disk{% endtrans %}</a></li>
+  <li><a @click="$store.tiles.leave()">{% trans %}Leave editor{% endtrans %}</a></li>
   {% endcall %}
 
   <button class="btn btn-primary btn-sm"
           :disabled="$store.tiles.busy"
           @click="$store.tiles.save()">
     <span class="loading loading-spinner loading-xs" x-show="$store.tiles.busy" style="display:none"></span>
-    Save changes
+    {% trans %}Save changes{% endtrans %}
   </button>
 </div>
 
@@ -53,14 +53,13 @@
       <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M4.93 19h14.14a2 2 0 001.74-3L13.74 4a2 2 0 00-3.48 0L3.19 16a2 2 0 001.74 3z"/>
     </svg>
     <div>
-      <p class="font-semibold">tiles.yaml could not be parsed</p>
+      <p class="font-semibold">{% trans %}tiles.yaml could not be parsed{% endtrans %}</p>
       <p class="text-sm opacity-80">{{ error }}</p>
       <p class="text-sm opacity-80">
-        The editor started from an empty dashboard. Saving replaces the file —
-        open the raw editor first if the current content is worth keeping.
+        {% trans %}The editor started from an empty dashboard. Saving replaces the file — open the raw editor first if the current content is worth keeping.{% endtrans %}
       </p>
     </div>
-    <button class="btn btn-sm" @click="$store.tiles.openRaw()">Edit tiles.yaml</button>
+    <button class="btn btn-sm" @click="$store.tiles.openRaw()">{% trans %}Edit tiles.yaml{% endtrans %}</button>
   </div>
   {% endif %}
 
@@ -74,7 +73,7 @@
           <span data-group-handle
                 class="cursor-grab opacity-30 hover:opacity-70 shrink-0"
                 x-show="!$store.tiles.preview"
-                title="Drag to reorder groups"
+                title="{{ _('Drag to reorder groups') }}"
                 aria-hidden="true">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/>
@@ -84,7 +83,7 @@
           <template x-if="!$store.tiles.preview">
             <input type="text"
                    class="input input-bordered input-sm w-72 font-semibold uppercase tracking-wide"
-                   aria-label="Group name"
+                   aria-label="{{ _('Group name') }}"
                    :value="group.name"
                    @input="group.name = $event.target.value; $store.tiles.touch()">
           </template>
@@ -97,15 +96,15 @@
           <span class="flex-1"></span>
 
           <div x-show="!$store.tiles.preview">
-            {% call overflow_menu(size='xs', label='Group actions') %}
-            <li><a @click="$store.tiles.newTile(gi)">Add link</a></li>
-            <li><a @click="$store.tiles.newWidget(gi)">Add widget</a></li>
-            <li><a @click="$store.tiles.moveGroup(gi, -1)">Move group up</a></li>
-            <li><a @click="$store.tiles.moveGroup(gi, 1)">Move group down</a></li>
+            {% call overflow_menu(size='xs', label=_('Group actions')) %}
+            <li><a @click="$store.tiles.newTile(gi)">{% trans %}Add link{% endtrans %}</a></li>
+            <li><a @click="$store.tiles.newWidget(gi)">{% trans %}Add widget{% endtrans %}</a></li>
+            <li><a @click="$store.tiles.moveGroup(gi, -1)">{% trans %}Move group up{% endtrans %}</a></li>
+            <li><a @click="$store.tiles.moveGroup(gi, 1)">{% trans %}Move group down{% endtrans %}</a></li>
             <li>
               <a class="text-error"
-                 @click="if (confirm('Delete the group and its ' + group.tiles.length + ' tile(s)? Nothing is written until you save.')) $store.tiles.deleteGroup(gi)">
-                Delete group
+                 @click="if (confirm(fmtPlural(group.tiles.length, {{ _('Delete the group and its {count} tile? Nothing is written until you save.')|tojson|forceescape }}, {{ _('Delete the group and its {count} tiles? Nothing is written until you save.')|tojson|forceescape }}))) $store.tiles.deleteGroup(gi)">
+                {% trans %}Delete group{% endtrans %}
               </a>
             </li>
             {% endcall %}
@@ -154,13 +153,13 @@
                   <div class="flex-1 min-w-0">
                     <div class="flex items-start justify-between gap-2">
                       <p class="font-semibold leading-snug truncate"
-                         x-text="tile.type === 'widget' ? $store.tiles.widgetName(tile) : (tile.name || 'Untitled tile')"></p>
+                         x-text="tile.type === 'widget' ? $store.tiles.widgetName(tile) : (tile.name || {{ _('Untitled tile')|tojson|forceescape }})"></p>
                     </div>
                     {# Editing aid, not part of the card: hidden in preview so
                        what is on screen matches what the gallery renders. #}
                     <p class="mt-1 text-xs opacity-50 truncate"
                        x-show="!$store.tiles.preview"
-                       x-text="tile.type === 'widget' ? 'Widget' : tile.href"></p>
+                       x-text="tile.type === 'widget' ? {{ _('Widget')|tojson|forceescape }} : tile.href"></p>
                   </div>
 
                   <div class="flex items-center gap-1 shrink-0"
@@ -168,21 +167,21 @@
                        @click.stop>
                     <span data-tile-handle
                           class="cursor-grab opacity-30 hover:opacity-70 px-0.5"
-                          title="Drag to reorder tiles"
+                          title="{{ _('Drag to reorder tiles') }}"
                           aria-hidden="true">
                       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/>
                       </svg>
                     </span>
-                    {% call overflow_menu(size='xs', label='Tile actions') %}
+                    {% call overflow_menu(size='xs', label=_('Tile actions')) %}
                     <li><a @click="$store.tiles.openTile(gi, ti)"
-                           x-text="tile.type === 'widget' ? 'Edit widget' : 'Edit tile'"></a></li>
-                    <li><a @click="$store.tiles.duplicateTile(gi, ti)">Duplicate</a></li>
-                    <li><a @click="$store.tiles.moveTile(gi, ti, -1)">Move left</a></li>
-                    <li><a @click="$store.tiles.moveTile(gi, ti, 1)">Move right</a></li>
+                           x-text="tile.type === 'widget' ? {{ _('Edit widget')|tojson|forceescape }} : {{ _('Edit tile')|tojson|forceescape }}"></a></li>
+                    <li><a @click="$store.tiles.duplicateTile(gi, ti)">{% trans %}Duplicate{% endtrans %}</a></li>
+                    <li><a @click="$store.tiles.moveTile(gi, ti, -1)">{% trans %}Move left{% endtrans %}</a></li>
+                    <li><a @click="$store.tiles.moveTile(gi, ti, 1)">{% trans %}Move right{% endtrans %}</a></li>
                     <li x-show="$store.tiles.groups.length > 1">
                       <details>
-                        <summary>Move to group</summary>
+                        <summary>{% trans %}Move to group{% endtrans %}</summary>
                         <ul>
                           <template x-for="(target, index) in $store.tiles.groups" :key="target._id">
                             <li x-show="index !== gi">
@@ -194,7 +193,7 @@
                     </li>
                     <li>
                       <a class="text-error" @click="$store.tiles.removeTile(gi, ti)"
-                         x-text="tile.type === 'widget' ? 'Remove widget' : 'Remove tile'"></a>
+                         x-text="tile.type === 'widget' ? {{ _('Remove widget')|tojson|forceescape }} : {{ _('Remove tile')|tojson|forceescape }}"></a>
                     </li>
                     {% endcall %}
                   </div>
@@ -202,7 +201,7 @@
 
                 <p class="text-sm opacity-70 line-clamp-2 min-h-[2.5rem]"
                    x-text="tile.type === 'widget'
-                             ? (($store.tiles.widgetType(tile.widget) || {}).description || 'No widget with this id exists.')
+                             ? (($store.tiles.widgetType(tile.widget) || {}).description || {{ _('No widget with this id exists.')|tojson|forceescape }})
                              : tile.description"></p>
 
                 <div x-show="!$store.tiles.preview && tile.visibility === 'admin'" style="display:none">
@@ -210,7 +209,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                     </svg>
-                    Administrators only
+                    {% trans %}Administrators only{% endtrans %}
                   </span>
                 </div>
 
@@ -223,12 +222,12 @@
           <button type="button"
                   @click="$store.tiles.newTile(gi)"
                   class="flex-1 rounded-2xl border border-dashed border-base-300 py-4 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
-            + Add link to “<span x-text="group.name"></span>”
+            <span x-html="fmtHtml({{ _('+ Add link to “{name}”')|tojson|forceescape }}, { name: group.name })"></span>
           </button>
           <button type="button"
                   @click="$store.tiles.newWidget(gi)"
                   class="flex-1 rounded-2xl border border-dashed border-base-300 py-4 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
-            + Add widget
+            {% trans %}+ Add widget{% endtrans %}
           </button>
         </div>
       </section>
@@ -239,7 +238,7 @@
           x-show="!$store.tiles.preview"
           @click="$store.tiles.addGroup()"
           class="mt-10 w-full rounded-2xl border border-dashed border-base-300 py-5 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
-    + Add group
+    {% trans %}+ Add group{% endtrans %}
   </button>
 
   {# Same geometry as the bulk bar in _actions.html: pinned to the bottom edge
@@ -249,19 +248,18 @@
        x-show="$store.tiles.dirty > 0 && !$store.tiles.preview"
        class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 mt-6 px-5 py-3 rounded-xl border border-primary bg-base-100 shadow-lg">
     <span class="text-sm">
-      <span class="font-semibold" x-text="$store.tiles.dirty"></span>
-      <span x-text="$store.tiles.dirty === 1 ? 'unsaved change' : 'unsaved changes'"></span>
-      <span class="opacity-60">— everyone still sees the saved dashboard</span>
+      <span x-html="fmtPlural($store.tiles.dirty, {{ _('<span class="font-semibold">{count}</span> unsaved change')|tojson|forceescape }}, {{ _('<span class="font-semibold">{count}</span> unsaved changes')|tojson|forceescape }}, {}, true)"></span>
+      <span class="opacity-60">{% trans %}— everyone still sees the saved dashboard{% endtrans %}</span>
     </span>
     <span class="flex-1"></span>
     <button type="button" class="btn btn-ghost btn-sm" style="display:none"
             x-show="$store.tiles.removed"
             @click="$store.tiles.undoRemove()">
-      Undo: removed “<span x-text="$store.tiles.removedName()"></span>”
+      <span x-html="fmtHtml({{ _('Undo: removed “{tiles}”')|tojson|forceescape }}, { tiles: $store.tiles.removedName() })"></span>
     </button>
-    <button class="btn btn-outline btn-sm" @click="$store.tiles.discard()">Discard</button>
+    <button class="btn btn-outline btn-sm" @click="$store.tiles.discard()">{% trans %}Discard{% endtrans %}</button>
     <button class="btn btn-primary btn-sm" :disabled="$store.tiles.busy" @click="$store.tiles.save()">
-      Save changes
+      {% trans %}Save changes{% endtrans %}
     </button>
   </div>
 
@@ -277,12 +275,12 @@
       <template x-if="$store.tiles.dialog">
         <div>
           <h3 class="text-lg font-bold mb-4"
-              x-text="$store.tiles.dialog.ti === null ? 'Add tile' : 'Edit tile'"></h3>
+              x-text="$store.tiles.dialog.ti === null ? {{ _('Add tile')|tojson|forceescape }} : {{ _('Edit tile')|tojson|forceescape }}"></h3>
 
           <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_15rem] gap-6">
             <div>
               <div class="form-control mb-3">
-                <label class="label"><span class="label-text">Name</span></label>
+                <label class="label"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
                 <input type="text" class="input input-bordered"
                        x-model="$store.tiles.dialog.tile.name"
                        placeholder="LibreChat">
@@ -293,14 +291,14 @@
               </div>
 
               <div class="form-control mb-3">
-                <label class="label"><span class="label-text">Link</span></label>
+                <label class="label"><span class="label-text">{% trans %}Link{% endtrans %}</span></label>
                 <input type="text" class="input input-bordered font-mono text-sm"
                        x-model="$store.tiles.dialog.tile.href"
                        @input="$store.tiles.resolveDialog()"
-                       placeholder="https://app.example.com">
+                       placeholder="{{ _('https://app.example.com') }}">
                 <div class="flex flex-wrap items-center gap-1 mt-2"
                      x-show="$store.tiles.linkKeys.length" style="display:none">
-                  <span class="text-xs opacity-50">Insert:</span>
+                  <span class="text-xs opacity-50">{% trans %}Insert:{% endtrans %}</span>
                   <template x-for="key in $store.tiles.linkKeys" :key="key">
                     <button type="button" class="badge badge-sm badge-outline font-mono"
                             @click="$store.tiles.insertPlaceholder(key)"
@@ -314,23 +312,22 @@
               </div>
 
               <div class="form-control mb-3">
-                <label class="label"><span class="label-text">Description</span></label>
+                <label class="label"><span class="label-text">{% trans %}Description{% endtrans %}</span></label>
                 <input type="text" class="input input-bordered"
                        x-model="$store.tiles.dialog.tile.description"
-                       placeholder="What this application is for">
+                       placeholder="{{ _('What this application is for') }}">
               </div>
 
               <div class="form-control mb-3">
                 <label class="label">
-                  <span class="label-text">Icon URL</span>
-                  <span class="label-text-alt opacity-60">optional</span>
+                  <span class="label-text">{% trans %}Icon URL{% endtrans %}</span> <span class="label-text-alt opacity-60">{% trans %}optional{% endtrans %}</span>
                 </label>
                 <input type="text" class="input input-bordered text-sm"
                        x-model="$store.tiles.dialog.tile.icon"
                        @input="$store.tiles.resolveDialog()"
-                       placeholder="https://example.com/icon.svg">
+                       placeholder="{{ _('https://example.com/icon.svg') }}">
                 <span class="label-text-alt opacity-60 mt-1">
-                  Left empty, a default application shows its bundled icon and any other tile a lettered badge.
+                  {% trans %}Left empty, a default application shows its bundled icon and any other tile a lettered badge.{% endtrans %}
                 </span>
                 <span class="label-text-alt text-error mt-1"
                       x-show="$store.tiles.dialog.iconProblem"
@@ -339,17 +336,17 @@
               </div>
 
               <div class="form-control">
-                <label class="label"><span class="label-text">Who can see this tile</span></label>
+                <label class="label"><span class="label-text">{% trans %}Who can see this tile{% endtrans %}</span></label>
                 <div class="join">
                   <button type="button" class="btn btn-sm join-item"
                           :class="$store.tiles.dialog.tile.visibility === 'all' ? 'btn-primary' : 'btn-outline'"
                           @click="$store.tiles.dialog.tile.visibility = 'all'">
-                    Everyone
+                    {% trans %}Everyone{% endtrans %}
                   </button>
                   <button type="button" class="btn btn-sm join-item"
                           :class="$store.tiles.dialog.tile.visibility === 'admin' ? 'btn-primary' : 'btn-outline'"
                           @click="$store.tiles.dialog.tile.visibility = 'admin'">
-                    Administrators only
+                    {% trans %}Administrators only{% endtrans %}
                   </button>
                 </div>
               </div>
@@ -359,7 +356,7 @@
                values behind a placeholder live in the core .env next to every
                stack secret, so only the finished string is sent back. #}
             <div class="rounded-xl bg-base-200 p-4">
-              <p class="text-xs uppercase tracking-wide opacity-50 mb-3">Live preview</p>
+              <p class="text-xs uppercase tracking-wide opacity-50 mb-3">{% trans %}Live preview{% endtrans %}</p>
 
               <div class="card bg-base-100 border border-base-300">
                 <div class="card-body p-4 gap-2">
@@ -373,38 +370,38 @@
                             x-text="($store.tiles.dialog.tile.name || '?').charAt(0)"></span>
                     </template>
                     <p class="font-semibold leading-snug truncate"
-                       x-text="$store.tiles.dialog.tile.name || 'Untitled tile'"></p>
+                       x-text="$store.tiles.dialog.tile.name || {{ _('Untitled tile')|tojson|forceescape }}"></p>
                   </div>
                   <p class="text-sm opacity-70 line-clamp-2 min-h-[2.5rem]"
                      x-text="$store.tiles.dialog.tile.description"></p>
                 </div>
               </div>
 
-              <p class="text-xs opacity-50 mt-3">Opens</p>
+              <p class="text-xs opacity-50 mt-3">{% trans %}Opens{% endtrans %}</p>
               <p class="text-xs font-mono break-all"
                  :class="$store.tiles.dialog.problem ? 'text-error' : ''"
                  x-text="$store.tiles.dialog.resolved || '—'"></p>
 
               <p class="text-xs opacity-70 mt-3"
                  x-text="$store.tiles.dialog.tile.visibility === 'admin'
-                           ? 'Visible to administrators only'
-                           : 'Visible to everyone'"></p>
+                           ? {{ _('Visible to administrators only')|tojson|forceescape }}
+                           : {{ _('Visible to everyone')|tojson|forceescape }}"></p>
             </div>
           </div>
 
           <div class="modal-action">
             <span class="text-xs opacity-50 mr-auto self-center">
-              Applied to the draft — the dashboard changes when you save.
+              {% trans %}Applied to the draft — the dashboard changes when you save.{% endtrans %}
             </span>
-            <button type="button" class="btn btn-ghost" @click="$store.tiles.closeTile()">Cancel</button>
+            <button type="button" class="btn btn-ghost" @click="$store.tiles.closeTile()">{% trans %}Cancel{% endtrans %}</button>
             <button type="button" class="btn btn-primary"
                     :disabled="!!$store.tiles.dialog.problem"
-                    @click="$store.tiles.applyTile()">Apply</button>
+                    @click="$store.tiles.applyTile()">{% trans %}Apply{% endtrans %}</button>
           </div>
         </div>
       </template>
     </div>
-    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
   </dialog>
 
   {# ── Widget dialog ───────────────────────────────────────────────────────
@@ -419,12 +416,12 @@
 
           <template x-if="$store.tiles.widgetDialog.step === 'pick'">
             <div>
-              <h3 class="text-lg font-bold mb-1">Add a widget</h3>
+              <h3 class="text-lg font-bold mb-1">{% trans %}Add a widget{% endtrans %}</h3>
               <p class="text-sm opacity-60 mb-4">
-                A widget shows live state on the dashboard and links to the page that explains it.
+                {% trans %}A widget shows live state on the dashboard and links to the page that explains it.{% endtrans %}
               </p>
               <input type="text" class="input input-bordered w-full mb-4"
-                     placeholder="Search widgets" aria-label="Search widgets"
+                     placeholder="{{ _('Search widgets') }}" aria-label="{{ _('Search widgets') }}"
                      x-model="$store.tiles.widgetDialog.query">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <template x-for="type in $store.tiles.widgetChoices()" :key="type.id">
@@ -444,17 +441,17 @@
                     <span class="mt-2 block text-sm opacity-70"
                           x-text="type.available ? type.description : type.reason"></span>
                     <span class="mt-2 badge badge-sm badge-ghost" x-show="!type.available" style="display:none">
-                      Not available
+                      {% trans %}Not available{% endtrans %}
                     </span>
                   </button>
                 </template>
               </div>
               <p class="text-sm opacity-60 mt-2"
                  x-show="$store.tiles.widgetChoices().length === 0" style="display:none">
-                No widget matches.
+                {% trans %}No widget matches.{% endtrans %}
               </p>
               <div class="modal-action">
-                <button type="button" class="btn btn-ghost" @click="$store.tiles.closeWidget()">Cancel</button>
+                <button type="button" class="btn btn-ghost" @click="$store.tiles.closeWidget()">{% trans %}Cancel{% endtrans %}</button>
               </div>
             </div>
           </template>
@@ -462,67 +459,66 @@
           <template x-if="$store.tiles.widgetDialog.step === 'configure'">
             <div>
               <h3 class="text-lg font-bold mb-4"
-                  x-text="$store.tiles.widgetDialog.ti === null ? 'Add widget' : 'Edit widget'"></h3>
+                  x-text="$store.tiles.widgetDialog.ti === null ? {{ _('Add widget')|tojson|forceescape }} : {{ _('Edit widget')|tojson|forceescape }}"></h3>
 
               <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_15rem] gap-6">
                 <div>
                   <div class="alert alert-warning mb-3 text-sm"
                        x-show="!$store.tiles.widgetDialog.type" style="display:none">
-                    No widget with this id exists on this installation. Remove the tile instead.
+                    {% trans %}No widget with this id exists on this installation. Remove the tile instead.{% endtrans %}
                   </div>
 
                   <div class="form-control mb-3">
                     <label class="label">
-                      <span class="label-text">Title</span>
-                      <span class="label-text-alt opacity-60">optional</span>
+                      <span class="label-text">{% trans %}Title{% endtrans %}</span> <span class="label-text-alt opacity-60">{% trans %}optional{% endtrans %}</span>
                     </label>
                     <input type="text" class="input input-bordered"
                            x-model="$store.tiles.widgetDialog.tile.title"
                            @input="$store.tiles.previewWidget()"
                            :placeholder="$store.tiles.widgetDialog.type ? $store.tiles.widgetDialog.type.name : ''">
-                    <span class="label-text-alt opacity-60 mt-1">Left empty, the card is called after the widget.</span>
+                    <span class="label-text-alt opacity-60 mt-1">{% trans %}Left empty, the card is called after the widget.{% endtrans %}</span>
                   </div>
 
                   <div class="form-control mb-3">
-                    <label class="label"><span class="label-text">Width</span></label>
+                    <label class="label"><span class="label-text">{% trans %}Width{% endtrans %}</span></label>
                     <div class="join">
                       <button type="button" class="btn btn-sm join-item"
                               :class="$store.tiles.widgetDialog.tile.size === 's' ? 'btn-primary' : 'btn-outline'"
-                              @click="$store.tiles.widgetDialog.tile.size = 's'">Small</button>
+                              @click="$store.tiles.widgetDialog.tile.size = 's'">{% trans %}Small{% endtrans %}</button>
                       <button type="button" class="btn btn-sm join-item"
                               :class="$store.tiles.widgetDialog.tile.size === 'm' ? 'btn-primary' : 'btn-outline'"
-                              @click="$store.tiles.widgetDialog.tile.size = 'm'">Medium</button>
+                              @click="$store.tiles.widgetDialog.tile.size = 'm'">{% trans %}Medium{% endtrans %}</button>
                       <button type="button" class="btn btn-sm join-item"
                               :class="$store.tiles.widgetDialog.tile.size === 'l' ? 'btn-primary' : 'btn-outline'"
-                              @click="$store.tiles.widgetDialog.tile.size = 'l'">Full row</button>
+                              @click="$store.tiles.widgetDialog.tile.size = 'l'">{% trans %}Full row{% endtrans %}</button>
                     </div>
                   </div>
 
                   <div class="form-control">
-                    <label class="label"><span class="label-text">Who can see this widget</span></label>
+                    <label class="label"><span class="label-text">{% trans %}Who can see this widget{% endtrans %}</span></label>
                     <div class="join">
                       <button type="button" class="btn btn-sm join-item"
                               :class="$store.tiles.widgetDialog.tile.visibility === 'all' ? 'btn-primary' : 'btn-outline'"
-                              @click="$store.tiles.widgetDialog.tile.visibility = 'all'">Everyone</button>
+                              @click="$store.tiles.widgetDialog.tile.visibility = 'all'">{% trans %}Everyone{% endtrans %}</button>
                       <button type="button" class="btn btn-sm join-item"
                               :class="$store.tiles.widgetDialog.tile.visibility === 'admin' ? 'btn-primary' : 'btn-outline'"
-                              @click="$store.tiles.widgetDialog.tile.visibility = 'admin'">Administrators only</button>
+                              @click="$store.tiles.widgetDialog.tile.visibility = 'admin'">{% trans %}Administrators only{% endtrans %}</button>
                     </div>
                     <span class="label-text-alt opacity-60 mt-1"
                           x-show="$store.tiles.widgetDialog.tile.visibility === 'all'" style="display:none">
-                      Everyone who can sign in will see what this card shows.
+                      {% trans %}Everyone who can sign in will see what this card shows.{% endtrans %}
                     </span>
                   </div>
                 </div>
 
                 <div class="rounded-xl bg-base-200 p-4">
-                  <p class="text-xs uppercase tracking-wide opacity-50 mb-3">Live preview</p>
+                  <p class="text-xs uppercase tracking-wide opacity-50 mb-3">{% trans %}Live preview{% endtrans %}</p>
                   <div id="widget-preview" aria-live="polite">
                     <span class="loading loading-dots loading-sm opacity-50"></span>
                   </div>
                   <p class="text-xs opacity-50 mt-3"
                      x-show="$store.tiles.widgetDialog.type" style="display:none"
-                     x-text="'Refreshes about every ' + ($store.tiles.widgetDialog.type ? $store.tiles.widgetDialog.type.refresh : '') + ' s'"></p>
+                     x-text="fmt({{ _('Refreshes about every {seconds} s')|tojson|forceescape }}, { seconds: $store.tiles.widgetDialog.type ? $store.tiles.widgetDialog.type.refresh : '' })"></p>
                 </div>
               </div>
 
@@ -532,10 +528,10 @@
                       x-text="$store.tiles.widgetDialog.problem"></span>
                 <button type="button" class="btn btn-ghost"
                         x-show="$store.tiles.widgetDialog.ti === null" style="display:none"
-                        @click="$store.tiles.backToGallery()">Back</button>
-                <button type="button" class="btn btn-ghost" @click="$store.tiles.closeWidget()">Cancel</button>
+                        @click="$store.tiles.backToGallery()">{% trans %}Back{% endtrans %}</button>
+                <button type="button" class="btn btn-ghost" @click="$store.tiles.closeWidget()">{% trans %}Cancel{% endtrans %}</button>
                 <button type="button" class="btn btn-primary" @click="$store.tiles.applyWidget()"
-                        x-text="$store.tiles.widgetDialog.ti === null ? 'Add to dashboard' : 'Apply'"></button>
+                        x-text="$store.tiles.widgetDialog.ti === null ? {{ _('Add to dashboard')|tojson|forceescape }} : {{ _('Apply')|tojson|forceescape }}"></button>
               </div>
             </div>
           </template>
@@ -543,7 +539,7 @@
         </div>
       </template>
     </div>
-    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
   </dialog>
 
   {# ── Raw YAML ────────────────────────────────────────────────────────────
@@ -554,29 +550,28 @@
     <div class="modal-box max-w-3xl">
       <template x-if="$store.tiles.raw">
         <div>
-          <h3 class="text-lg font-bold mb-1">Edit tiles.yaml</h3>
+          <h3 class="text-lg font-bold mb-1">{% trans %}Edit tiles.yaml{% endtrans %}</h3>
           <p class="text-sm opacity-60 mb-4">
-            Saving here replaces the file and reloads the editor. Unsaved changes in
-            the editor are discarded.
+            {% trans %}Saving here replaces the file and reloads the editor. Unsaved changes in the editor are discarded.{% endtrans %}
           </p>
           <textarea class="textarea textarea-bordered w-full h-96 font-mono text-xs"
                     spellcheck="false"
-                    aria-label="tiles.yaml"
+                    aria-label="{{ _('tiles.yaml') }}"
                     x-model="$store.tiles.raw.text"></textarea>
           <p class="text-sm text-error mt-2"
              x-show="$store.tiles.raw.problem"
              style="display:none"
              x-text="$store.tiles.raw.problem"></p>
           <div class="modal-action">
-            <button type="button" class="btn btn-ghost" @click="$store.tiles.closeRaw()">Cancel</button>
+            <button type="button" class="btn btn-ghost" @click="$store.tiles.closeRaw()">{% trans %}Cancel{% endtrans %}</button>
             <button type="button" class="btn btn-primary"
                     :disabled="$store.tiles.busy"
-                    @click="$store.tiles.applyRaw()">Save file</button>
+                    @click="$store.tiles.applyRaw()">{% trans %}Save file{% endtrans %}</button>
           </div>
         </div>
       </template>
     </div>
-    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
   </dialog>
 
 </div>

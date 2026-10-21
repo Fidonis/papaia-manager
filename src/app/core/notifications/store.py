@@ -39,6 +39,7 @@ from app.core.notifications.model import (
     validate_target,
 )
 from app.core.vectordb.catalog_io import revision as _revision
+from app.i18n import gettext as _
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,9 @@ def load_config(config_dir: str) -> ConfigLoad:
         return ConfigLoad(NotificationsConfig(), "")
     except OSError as exc:
         logger.warning("%s cannot be read: %s", path, exc)
-        return ConfigLoad(NotificationsConfig(), "", f"{CONFIG_NAME} cannot be read.")
+        return ConfigLoad(
+            NotificationsConfig(), "", _("%(name)s cannot be read.") % {"name": CONFIG_NAME}
+        )
     revision = _revision(raw_bytes)
     try:
         raw = yaml.safe_load(raw_bytes)
@@ -101,7 +104,9 @@ def load_config(config_dir: str) -> ConfigLoad:
         # The log may name the problem; the page gets a sentence that repeats no value.
         logger.warning("%s is not usable: %s", path, type(exc).__name__)
         return ConfigLoad(
-            NotificationsConfig(), revision, f"{CONFIG_NAME} is not valid and is ignored."
+            NotificationsConfig(),
+            revision,
+            _("%(name)s is not valid and is ignored.") % {"name": CONFIG_NAME},
         )
     return ConfigLoad(config, revision)
 
@@ -159,7 +164,7 @@ def mutate(
                 str(err.get("ctx", {}).get("error", "")).strip() or str(err["msg"])
                 for err in exc.errors()
             ]
-            first = problems[0] if problems else "The change is not valid."
+            first = problems[0] if problems else _("The change is not valid.")
             raise NotificationsError(first) from exc
         data = _dump(checked)
         _write_private(config_path(config_dir), data)

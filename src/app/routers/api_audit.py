@@ -30,6 +30,7 @@ from app.core.audit import (
     query_entries,
     write_audit_entry,
 )
+from app.i18n import gettext as _
 
 router = APIRouter(prefix="/api/v1/audit")
 
@@ -152,7 +153,7 @@ async def prune(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if cutoff > datetime.now(tz=UTC):
-        raise HTTPException(status_code=422, detail="cutoff date is in the future")
+        raise HTTPException(status_code=422, detail=_("cutoff date is in the future"))
 
     result = prune_before(settings.papaia_config_dir, cutoff, dry_run=body.dry_run)
 

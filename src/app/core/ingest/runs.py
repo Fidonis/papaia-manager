@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Literal
 
 from app.config import Settings
 from app.core import runner
@@ -66,6 +66,8 @@ from app.core.rag_collections import (
     validate_embedding_model,
 )
 from app.core.vectordb.ingest_file import IngestFileRepository
+from app.i18n import N_
+from app.i18n import gettext as _
 
 log = logging.getLogger(__name__)
 
@@ -82,36 +84,36 @@ _FOLDER_EXCLUDE = [f"{uploads.UPLOADS_DIR}/**"]
 MAX_EVENTS = 200
 
 _STATUS_TEXT = {
-    "running": "Running",
-    "success": "Finished",
-    "failed": "Failed",
-    "interrupted": "Stopped",
-    "aborted_guard": "Stopped by a safety check",
-    "aborted_lock": "Gave up waiting for the collection",
+    "running": N_("Running"),
+    "success": N_("Finished"),
+    "failed": N_("Failed"),
+    "interrupted": N_("Stopped"),
+    "aborted_guard": N_("Stopped by a safety check"),
+    "aborted_lock": N_("Gave up waiting for the collection"),
 }
 _MODE_TEXT = {
-    "upsert": "Add / update",
-    "full/collection": "Replace",
-    "full/job": "Rebuild",
-    "full": "Rebuild",
-    "append": "Append",
+    "upsert": N_("Add / update"),
+    "full/collection": N_("Replace"),
+    "full/job": N_("Rebuild"),
+    "full": N_("Rebuild"),
+    "append": N_("Append"),
 }
 # The same modes in the words of the job pages, which are about a job's standing purpose
 # ("keep in sync") and not about one upload.
 JOB_MODE_TEXT = {
-    "append": "Add new files only",
-    "upsert": "Keep in sync",
-    "full": "Rebuild",
-    "full/job": "Rebuild the job's content",
-    "full/collection": "Replace the collection",
+    "append": N_("Add new files only"),
+    "upsert": N_("Keep in sync"),
+    "full": N_("Rebuild"),
+    "full/job": N_("Rebuild the job's content"),
+    "full/collection": N_("Replace the collection"),
 }
 
 # Where a running run is, as the ingester names it, in the words of the page.
 PHASE_TEXT = {
-    "syncing": "Fetching the files from the source",
-    "scanning": "Looking at the files",
-    "embedding": "Reading and embedding the files",
-    "cleaning up": "Removing what is no longer in the source",
+    "syncing": N_("Fetching the files from the source"),
+    "scanning": N_("Looking at the files"),
+    "embedding": N_("Reading and embedding the files"),
+    "cleaning up": N_("Removing what is no longer in the source"),
 }
 
 _COUNTERS = (
@@ -204,11 +206,13 @@ class RunView:
 
     @property
     def phase_label(self) -> str | None:
-        return PHASE_TEXT.get(self.phase or "", self.phase) if self.phase else None
+        if not self.phase:
+            return None
+        return _(PHASE_TEXT[self.phase]) if self.phase in PHASE_TEXT else self.phase
 
     @property
     def job_mode_label(self) -> str:
-        return JOB_MODE_TEXT.get(self.mode, self.mode_label)
+        return _(JOB_MODE_TEXT[self.mode]) if self.mode in JOB_MODE_TEXT else self.mode_label
 
     @property
     def source_kind(self) -> str | None:
@@ -218,7 +222,7 @@ class RunView:
     @property
     def mode_label(self) -> str:
         """The ingester's mode as the page's two choices (and what else it may be)."""
-        return _MODE_TEXT.get(self.mode, self.mode)
+        return _(_MODE_TEXT[self.mode]) if self.mode in _MODE_TEXT else self.mode
 
     @property
     def failed_documents(self) -> int:
@@ -290,9 +294,9 @@ def run_view_from(payload: dict[str, Any]) -> RunView:
     finished = run.get("finished_at")
     error = run.get("error")
     counters = {key: _int(run.get(key)) for key in _COUNTERS}
-    label = _STATUS_TEXT.get(status, status or "Unknown")
+    label = _(_STATUS_TEXT[status]) if status in _STATUS_TEXT else (status or _("Unknown"))
     if status == "success" and counters["docs_failed"]:
-        label = "Finished with errors"
+        label = _("Finished with errors")
     tail = run.get("sync_stderr_tail")
     phase = run.get("phase")
     current = run.get("current")
@@ -361,19 +365,35 @@ def _served_as_written(detail: dict[str, Any], job: dict[str, Any]) -> bool:
     )
 
 
-async def refuse_while_blocked(what: str) -> None:
+# What the ingester cannot be asked while a restore, an upgrade or a stack action runs: one whole
+# sentence per combination, because the words around the two parts differ between languages.
+_BLOCKED = {
+    ("run", runner.RESTORE_KIND): N_("A restore is running; a run has to wait until it is done."),
+    ("run", runner.UPGRADE_KIND): N_("An upgrade is running; a run has to wait until it is done."),
+    ("run", runner.STACK_KIND): N_(
+        "A stack action is running; a run has to wait until it is done."
+    ),
+    ("embedding", runner.RESTORE_KIND): N_(
+        "A restore is running; embedding has to wait until it is done."
+    ),
+    ("embedding", runner.UPGRADE_KIND): N_(
+        "An upgrade is running; embedding has to wait until it is done."
+    ),
+    ("embedding", runner.STACK_KIND): N_(
+        "A stack action is running; embedding has to wait until it is done."
+    ),
+}
+
+
+async def refuse_while_blocked(what: Literal["run", "embedding"]) -> None:
     """A restore, an upgrade or a stack action takes the ingester down or rewrites its files."""
-    for kind, label in (
-        (runner.RESTORE_KIND, "restore"),
-        (runner.UPGRADE_KIND, "upgrade"),
-        (runner.STACK_KIND, "stack action"),
-    ):
+    for kind in (runner.RESTORE_KIND, runner.UPGRADE_KIND, runner.STACK_KIND):
         try:
             active = await runner.find_runner(kind)
         except runner.RunnerError:
             return
         if active is not None and active.is_running:
-            raise Conflict(f"A {label} is running; {what} has to wait until it is done.")
+            raise Conflict(_(_BLOCKED[(what, kind)]))
 
 
 def browse_root(settings: Settings, source: str, upload: str | None) -> Documents:
@@ -387,14 +407,14 @@ def browse_root(settings: Settings, source: str, upload: str | None) -> Document
         raise IngestUnavailable(docs.reason)
     if source == SOURCE_UPLOAD:
         if not upload:
-            raise InvalidRequest("Choose an upload.")
+            raise InvalidRequest(_("Choose an upload."))
         store = uploads.new_store(settings, docs.path)
         return store.documents(store.get(upload))
     if source == SOURCE_FOLDER:
         return Documents(
             docs.path, catalog.LOCAL_ROOT, hidden_top=frozenset({uploads.UPLOADS_DIR})
         )
-    raise InvalidRequest("The source must be 'upload' or 'folder'.")
+    raise InvalidRequest(_("The source must be 'upload' or 'folder'."))
 
 
 @dataclass(frozen=True)
@@ -440,7 +460,7 @@ class EmbeddingService:
         except IngestUnavailable as exc:
             return IngestStatus(False, str(exc), None, docs)
         except IngestRejected as exc:
-            reason = f"The ingester answered with an error: {exc.detail}"
+            reason = _("The ingester answered with an error: %(detail)s") % {"detail": exc.detail}
             return IngestStatus(False, reason, None, docs)
         supports: bool | None
         try:
@@ -479,22 +499,27 @@ class EmbeddingService:
     async def start(self, request: StartRequest, *, user: str) -> StartedRun:
         """Embed a selection into a collection. Nothing is changed before everything checks out."""
         if request.mode not in (MODE_ADD, MODE_REPLACE):
-            raise InvalidRequest("The mode must be 'add' or 'replace'.")
+            raise InvalidRequest(_("The mode must be 'add' or 'replace'."))
         collection = request.collection
         if not catalog.COLLECTION_PATTERN.fullmatch(collection):
             raise InvalidRequest(
-                f"The ingester accepts collection names of up to 128 characters: {collection!r}."
+                _(
+                    "The ingester accepts collection names of up to 128 characters: "
+                    "%(collection)r."
+                ) % {"collection": collection}
             )
         if request.mode == MODE_REPLACE and not request.confirm_replace:
-            raise InvalidRequest("Replacing the content of a collection has to be confirmed.")
+            raise InvalidRequest(_("Replacing the content of a collection has to be confirmed."))
 
         info = await self._describe(collection)
         model = self._model(request, info)
         plan = self._plan(request.source)
         if request.mode == MODE_ADD and not await self._client.supports_update_without_delete():
             raise IngestTooOld(
-                "This ingester cannot update without deleting. Use Replace, or upgrade the "
-                "ingester to a release with the delete_vanished run option."
+                _(
+                    "This ingester cannot update without deleting. Use Replace, or upgrade the "
+                    "ingester to a release with the delete_vanished run option."
+                )
             )
         await self._refuse_while_blocked()
 
@@ -518,8 +543,11 @@ class EmbeddingService:
         foreign = [sibling for sibling in siblings if not catalog.is_managed(sibling)]
         if request.mode == MODE_REPLACE and foreign and not request.confirm_other_jobs:
             raise Conflict(
-                "Other ingest jobs write to this collection and would lose their content: "
-                + ", ".join(sorted(foreign)),
+                _(
+                    "Other ingest jobs write to this collection and would lose their content: "
+                    "%(jobs)s"
+                )
+                % {"jobs": ", ".join(sorted(foreign))},
                 {"other_jobs": sorted(foreign)},
             )
 
@@ -543,7 +571,7 @@ class EmbeddingService:
             run_id = await self._client.run(job_id, body)
         except IngestRejected as exc:
             if exc.status == 409:
-                raise Conflict("A run of this job is still working; wait for it.") from exc
+                raise Conflict(_("A run of this job is still working; wait for it.")) from exc
             raise
 
         if plan.batch is not None:
@@ -595,26 +623,28 @@ class EmbeddingService:
         if request.mode == MODE_ADD:
             if recorded and asked and asked != recorded:
                 raise InvalidRequest(
-                    f"The collection records the model {recorded!r}. Adding with {asked!r} "
-                    "would mix two models; use Replace to change the model."
+                    _(
+                        "The collection records the model %(recorded)r. Adding with %(asked)r "
+                        "would mix two models; use Replace to change the model."
+                    ) % {"recorded": recorded, "asked": asked}
                 )
             model = recorded or asked
         else:
             model = asked or recorded
         if not model:
             raise InvalidRequest(
-                "Name the embedding model: the collection has none recorded yet."
+                _("Name the embedding model: the collection has none recorded yet.")
             )
         return model
 
     def _plan(self, source: SourceSpec) -> _Plan:
         if source.kind == SOURCE_UPLOAD:
             if not source.batch:
-                raise InvalidRequest("Choose an upload.")
+                raise InvalidRequest(_("Choose an upload."))
             store = self.upload_store()
             batch = store.get(source.batch)
             if batch.state == uploads.STATE_EMBEDDING:
-                raise Conflict("This upload is already being embedded.")
+                raise Conflict(_("This upload is already being embedded."))
             documents = store.documents(batch)
             rels = source.paths or ("",)
             include = documents.include_patterns(rels)
@@ -625,15 +655,15 @@ class EmbeddingService:
             documents = self.folder()
             batch = None
             if not source.paths:
-                raise InvalidRequest("Select at least one file or folder.")
+                raise InvalidRequest(_("Select at least one file or folder."))
             include = documents.include_patterns(source.paths)
             counts = documents.count(source.paths)
             exclude = list(_FOLDER_EXCLUDE)
             path = documents.container_path()
         else:
-            raise InvalidRequest("The source must be 'upload' or 'folder'.")
+            raise InvalidRequest(_("The source must be 'upload' or 'folder'."))
         if counts.files == 0:
-            raise InvalidRequest("There is nothing to embed in that selection.")
+            raise InvalidRequest(_("There is nothing to embed in that selection."))
         return _Plan(source.kind, path, include, exclude, counts, batch)
 
     def _connection_names(self) -> set[str] | None:
@@ -651,8 +681,10 @@ class EmbeddingService:
             running = await self._client.list_runs(job_id=job_id, status="running", limit=1)
             if running:
                 raise Conflict(
-                    "Another embedding run for this collection is still working. "
-                    "Wait for it to finish, or abort it.",
+                    _(
+                        "Another embedding run for this collection is still working. Wait for it "
+                        "to finish, or abort it."
+                    ),
                     {"run_id": running[0].get("run_id")},
                 )
 
@@ -692,7 +724,7 @@ class EmbeddingService:
             if exc.status == 404:
                 raise NotFound(run_id) from exc
             if exc.status == 409:
-                raise Conflict("That run is not running any more.") from exc
+                raise Conflict(_("That run is not running any more.")) from exc
             raise
         write_audit_entry(
             self._settings.papaia_config_dir,
@@ -796,7 +828,7 @@ def _settle(
     working: set[str],
 ) -> None:
     if payload is None:
-        store.mark_kept(batch.id, "The ingester no longer knows the run; the files were kept.")
+        store.mark_kept(batch.id, _("The ingester no longer knows the run; the files were kept."))
         result.kept.append(batch.id)
         return
     view = run_view_from(payload)
@@ -812,7 +844,9 @@ def _settle(
         )
         return
     note = view.error or (
-        f"{view.failed_documents} document(s) failed" if view.failed_documents else view.label
+        _("%(count)s document(s) failed") % {"count": view.failed_documents}
+        if view.failed_documents
+        else view.label
     )
     store.mark_kept(batch.id, note)
     result.kept.append(batch.id)

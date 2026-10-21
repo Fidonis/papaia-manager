@@ -20,6 +20,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from app.i18n import gettext
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_NAME = "papAIa manager"
@@ -174,9 +176,13 @@ def validate_branding(name: str | None, tagline: str | None) -> tuple[str | None
     cleaned_name = _clean(name)
     cleaned_tagline = _clean(tagline)
     if cleaned_name is not None and len(cleaned_name) > MAX_NAME_LENGTH:
-        raise SettingsError(f"Name must be at most {MAX_NAME_LENGTH} characters.")
+        raise SettingsError(gettext(
+            "Name must be at most %(MAX_NAME_LENGTH)s characters."
+        ) % {"MAX_NAME_LENGTH": MAX_NAME_LENGTH})
     if cleaned_tagline is not None and len(cleaned_tagline) > MAX_TAGLINE_LENGTH:
-        raise SettingsError(f"Tagline must be at most {MAX_TAGLINE_LENGTH} characters.")
+        raise SettingsError(gettext(
+            "Tagline must be at most %(MAX_TAGLINE_LENGTH)s characters."
+        ) % {"MAX_TAGLINE_LENGTH": MAX_TAGLINE_LENGTH})
     return (cleaned_name or None), cleaned_tagline
 
 
@@ -184,8 +190,10 @@ def validate_refresh_seconds(value: int) -> int:
     """The interval as submitted, or `SettingsError` when it is out of range."""
     if not MIN_REFRESH_SECONDS <= value <= MAX_REFRESH_SECONDS:
         raise SettingsError(
-            f"The refresh interval must be between {MIN_REFRESH_SECONDS} seconds"
-            f" and {MAX_REFRESH_SECONDS // 60} minutes."
+            gettext(
+                "The refresh interval must be between %(MIN_REFRESH_SECONDS)s seconds and "
+                "%(value)s minutes."
+            ) % {"MIN_REFRESH_SECONDS": MIN_REFRESH_SECONDS, "value": MAX_REFRESH_SECONDS // 60}
         )
     return value
 
@@ -197,7 +205,9 @@ def refresh_interval(config_dir: str) -> int:
 
 def format_interval(seconds: int) -> str:
     """`30 s`, `60 s`, `5 min`, `90 s`: whole minutes above one are spelled as minutes."""
-    return f"{seconds // 60} min" if seconds > 60 and seconds % 60 == 0 else f"{seconds} s"
+    if seconds > 60 and seconds % 60 == 0:
+        return gettext("%(minutes)s min") % {"minutes": seconds // 60}
+    return gettext("%(seconds)s s") % {"seconds": seconds}
 
 
 def logo_path(config_dir: str, settings: ManagerSettings | None = None) -> Path | None:
@@ -220,9 +230,11 @@ def logo_media_type(path: Path) -> str:
 def detect_logo_type(data: bytes) -> str:
     """Return the extension for supported image bytes, else raise."""
     if not data:
-        raise SettingsError("The file is empty.")
+        raise SettingsError(gettext("The file is empty."))
     if len(data) > MAX_LOGO_BYTES:
-        raise SettingsError(f"The logo must be smaller than {MAX_LOGO_BYTES // 1024} KB.")
+        raise SettingsError(gettext(
+            "The logo must be smaller than %(value)s KB."
+        ) % {"value": MAX_LOGO_BYTES // 1024})
     if data.startswith(_LOGO_TYPES["png"][1]):
         return "png"
     if data.startswith(_LOGO_TYPES["jpg"][1]):
@@ -232,9 +244,11 @@ def detect_logo_type(data: bytes) -> str:
     head = data[:2048].lstrip(b"\xef\xbb\xbf \t\r\n").lower()
     if head.startswith((b"<svg", b"<?xml")) and b"<svg" in data[:4096].lower():
         if _SVG_FORBIDDEN.search(data):
-            raise SettingsError("The SVG contains scripts or external content and was refused.")
+            raise SettingsError(gettext(
+                "The SVG contains scripts or external content and was refused."
+            ))
         return "svg"
-    raise SettingsError("Unsupported logo format. Use PNG, JPEG, WebP or SVG.")
+    raise SettingsError(gettext("Unsupported logo format. Use PNG, JPEG, WebP or SVG."))
 
 
 def save_logo(config_dir: str, data: bytes) -> str:

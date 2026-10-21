@@ -17,15 +17,18 @@ from typing import Any
 import httpx
 
 from app.core.ingest.errors import IngestRejected, IngestTooOld, IngestUnavailable
+from app.i18n import N_, gettext
 
 DEFAULT_TIMEOUT = 15.0
 
 NO_TOKEN = (
-    "QI_API_TOKEN is not set in ai/rag/.env, so the manager cannot call the ingester."
+    N_("QI_API_TOKEN is not set in ai/rag/.env, so the manager cannot call the ingester.")
 )
 TOKEN_REFUSED = (
-    "The ingester refused the API token. Check QI_API_TOKEN in ai/rag/.env; the ingester "
-    "reads it at start, so it needs a restart after a change."
+    N_(
+        "The ingester refused the API token. Check QI_API_TOKEN in ai/rag/.env; the ingester "
+        "reads it at start, so it needs a restart after a change."
+    )
 )
 
 # An id the ingester's job pattern forbids (`^[a-z0-9]...`), so no job can ever have it.
@@ -96,7 +99,7 @@ class IngestClient:
         params: dict[str, Any] | None = None,
     ) -> httpx.Response:
         if not self._token:
-            raise IngestUnavailable(NO_TOKEN)
+            raise IngestUnavailable(gettext(NO_TOKEN))
         try:
             response = await self._client.request(method, path, json=json, params=params)
         except httpx.HTTPError as exc:
@@ -104,10 +107,12 @@ class IngestClient:
             target = httpx.URL(self._base)
             where = f"{target.host}:{target.port}" if target.port else str(target.host)
             raise IngestUnavailable(
-                f"The ingester is not reachable at {where} ({type(exc).__name__})."
+                gettext(
+                    "The ingester is not reachable at %(where)s (%(__name__)s)."
+                ) % {"where": where, "__name__": type(exc).__name__}
             ) from exc
         if response.status_code == 401:
-            raise IngestUnavailable(TOKEN_REFUSED)
+            raise IngestUnavailable(gettext(TOKEN_REFUSED))
         return response
 
     async def request(
@@ -131,7 +136,7 @@ class IngestClient:
             return response.json()
         except ValueError as exc:
             raise IngestRejected(
-                response.status_code, "The ingester sent an unreadable answer"
+                response.status_code, gettext("The ingester sent an unreadable answer")
             ) from exc
 
     # ── the calls the manager makes ─────────────────────────────────────────
@@ -148,14 +153,18 @@ class IngestClient:
             target = httpx.URL(self._base)
             where = f"{target.host}:{target.port}" if target.port else str(target.host)
             raise IngestUnavailable(
-                f"The ingester is not reachable at {where} ({type(exc).__name__})."
+                gettext(
+                    "The ingester is not reachable at %(where)s (%(__name__)s)."
+                ) % {"where": where, "__name__": type(exc).__name__}
             ) from exc
         try:
             body = response.json()
         except ValueError:
             body = None
         if response.status_code >= 400 or not isinstance(body, dict):
-            raise IngestRejected(response.status_code, "The ingester's health check failed")
+            raise IngestRejected(
+                response.status_code, gettext("The ingester's health check failed")
+            )
         return body
 
     async def config(self) -> dict[str, Any]:
@@ -259,13 +268,15 @@ class IngestClient:
         except IngestRejected as exc:
             if exc.status == 422 and "delete_vanished" in _text_of(exc):
                 raise IngestTooOld(
-                    "This ingester does not support updating without deleting. "
-                    "Use an ingester release that has the delete_vanished run option."
+                    gettext(
+                        "This ingester does not support updating without deleting. Use an "
+                        "ingester release that has the delete_vanished run option."
+                    )
                 ) from exc
             raise
         run_id = result.get("run_id") if isinstance(result, dict) else None
         if not isinstance(run_id, str) or not run_id:
-            raise IngestRejected(202, "The ingester did not name the run it started")
+            raise IngestRejected(202, gettext("The ingester did not name the run it started"))
         return run_id
 
     async def get_run(self, run_id: str) -> dict[str, Any] | None:

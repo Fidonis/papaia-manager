@@ -21,15 +21,13 @@
   {% if state.structural_error %}
   <div class="alert alert-error text-sm" role="alert">
     <span>
-      <span class="font-mono">connections.yaml</span> cannot be changed: {{ state.structural_error }}.
-      The ingester cannot read it either. Fix the file, then reload.
+      {% trans structural_error=state.structural_error %}<span class="font-mono">connections.yaml</span> cannot be changed: {{ structural_error }}. The ingester cannot read it either. Fix the file, then reload.{% endtrans %}
     </span>
   </div>
   {% elif not state.writable %}
   <div class="alert alert-warning text-sm" role="alert">
     <span>
-      The ingester's catalog directory does not accept writes from the manager, so the
-      connections are shown read-only.
+      {% trans %}The ingester's catalog directory does not accept writes from the manager, so the connections are shown read-only.{% endtrans %}
     </span>
   </div>
   {% endif %}
@@ -37,9 +35,7 @@
   {% if not state.secret_configured %}
   <div class="alert alert-warning text-sm" role="alert">
     <span>
-      <span class="font-mono">QI_CONNECTIONS_SECRET</span> is not set in
-      <span class="font-mono">ai/rag/.env</span>, so no api-key can be stored or read.
-      Connections without a key still work.
+      {% trans %}<span class="font-mono">QI_CONNECTIONS_SECRET</span> is not set in <span class="font-mono">ai/rag/.env</span>, so no api-key can be stored or read. Connections without a key still work.{% endtrans %}
     </span>
   </div>
   {% endif %}
@@ -47,7 +43,7 @@
   {% if state.issues %}
   <div class="alert alert-warning text-sm" role="alert">
     <div>
-      <p class="font-semibold">The ingester reports problems in connections.yaml</p>
+      <p class="font-semibold">{% trans %}The ingester reports problems in connections.yaml{% endtrans %}</p>
       <ul class="mt-1 list-disc pl-5">
         {% for issue in state.issues %}
         <li>{{ issue }}</li>
@@ -59,18 +55,14 @@
 
   {% if state.jobs_error %}
   <div class="alert alert-warning text-sm" role="alert">
-    <span>{{ state.jobs_error }} Deleting a connection and changing the address of one stay
-    refused until the jobs can be checked.</span>
+    <span>{% trans jobs_error=state.jobs_error %}{{ jobs_error }} Deleting a connection and changing the address of one stay refused until the jobs can be checked.{% endtrans %}</span>
   </div>
   {% endif %}
 
   {% if not state.default_stored and not state.structural_error %}
   <div class="alert alert-info text-sm" role="status">
     <span>
-      The default connection to the integrated Qdrant is not stored yet. It is created as soon
-      as <span class="font-mono">QDRANT_JWT_SECRET</span> and
-      <span class="font-mono">QI_CONNECTIONS_SECRET</span> are set in
-      <span class="font-mono">ai/rag/.env</span>. Collections use the stack's own settings meanwhile.
+      {% trans %}The default connection to the integrated Qdrant is not stored yet. It is created as soon as <span class="font-mono">QDRANT_JWT_SECRET</span> and <span class="font-mono">QI_CONNECTIONS_SECRET</span> are set in <span class="font-mono">ai/rag/.env</span>. Collections use the stack's own settings meanwhile.{% endtrans %}
     </span>
   </div>
   {% endif %}
@@ -79,12 +71,11 @@
   {% if c.key_drift %}
   <div class="alert alert-warning text-sm" role="alert">
     <span>
-      The api-key stored for <span class="font-mono">{{ c.name }}</span> is not the stack's
-      current Qdrant api-key any more, for example after the secret was rotated.
+      {% trans name=c.name %}The api-key stored for <span class="font-mono">{{ name }}</span> is not the stack's current Qdrant api-key any more, for example after the secret was rotated.{% endtrans %}
     </span>
     {% if can_write %}
     <button type="button" class="btn btn-sm"
-            @click='$dispatch("connection-reset", {{ {"name": c.name}|tojson }})'>Reset</button>
+            @click='$dispatch("connection-reset", {{ {"name": c.name}|tojson }})'>{% trans %}Reset{% endtrans %}</button>
     {% endif %}
   </div>
   {% endif %}
@@ -92,8 +83,8 @@
 
   {% if not state.connections %}
   <div class="flex flex-col items-center py-16 gap-3 opacity-60">
-    <p class="text-lg font-medium">No connections yet</p>
-    <p class="text-sm">Add one, or let the default connection be created.</p>
+    <p class="text-lg font-medium">{% trans %}No connections yet{% endtrans %}</p>
+    <p class="text-sm">{% trans %}Add one, or let the default connection be created.{% endtrans %}</p>
   </div>
   {% endif %}
 
@@ -105,28 +96,28 @@
           <span class="font-semibold font-mono">{{ c.name }}</span>
           {% if c.is_default %}
           <span class="badge badge-secondary badge-sm gap-1"
-                title="The connection to the integrated Qdrant. Collections start on it. It can be edited, but not renamed or deleted.">
+                title="{{ _('The connection to the integrated Qdrant. Collections start on it. It can be edited, but not renamed or deleted.') }}">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
             </svg>
-            Default
+            {% trans %}Default{% endtrans %}
           </span>
           {% endif %}
           <span class="badge badge-outline badge-sm">{{ c.type_label }}</span>
           {% if c.key_state == 'unreadable' %}
           <span class="badge badge-error badge-sm"
-                title="The stored api-key cannot be decrypted with the current QI_CONNECTIONS_SECRET. Enter it again.">key unreadable</span>
+                title="{{ _('The stored api-key cannot be decrypted with the current QI_CONNECTIONS_SECRET. Enter it again.') }}">{% trans %}key unreadable{% endtrans %}</span>
           {% elif c.key_state == 'ok' %}
-          <span class="badge badge-ghost badge-sm" title="An api-key is stored (encrypted)">key set</span>
+          <span class="badge badge-ghost badge-sm" title="{{ _('An api-key is stored (encrypted)') }}">{% trans %}key set{% endtrans %}</span>
           {% else %}
-          <span class="badge badge-ghost badge-sm" title="No api-key is stored">no key</span>
+          <span class="badge badge-ghost badge-sm" title="{{ _('No api-key is stored') }}">{% trans %}no key{% endtrans %}</span>
           {% endif %}
           {% if c.key_drift %}
-          <span class="badge badge-warning badge-sm" title="Not the stack's current Qdrant api-key">key differs</span>
+          <span class="badge badge-warning badge-sm" title="{{ _('Not the stack\'s current Qdrant api-key') }}">{% trans %}key differs{% endtrans %}</span>
           {% endif %}
           {% if c.used_by %}
           <span class="badge badge-ghost badge-sm"
-                title="Ingest jobs that write here: {{ c.used_by|join(', ') }}">used by {{ c.used_by|length }} job{{ '' if c.used_by|length == 1 else 's' }}</span>
+                title="{{ _('Ingest jobs that write here: %(used_by)s', used_by=c.used_by|join(', ')) }}">{% trans count=(c.used_by|length) %}used by {{ count }} job{% pluralize count %}used by {{ count }} jobs{% endtrans %}</span>
           {% endif %}
         </div>
 
@@ -136,20 +127,20 @@
         {% call row_actions("{ testing: false }") %}
           {% if can_write %}
           <button type="button" class="btn btn-outline btn-xs"
-                  @click='$dispatch("connection-edit", {{ {"name": c.name, "type": c.type, "fields": c.fields, "hasKey": c.has_key, "etag": c.etag, "usedBy": c.used_by}|tojson }})'>Edit</button>
+                  @click='$dispatch("connection-edit", {{ {"name": c.name, "type": c.type, "fields": c.fields, "hasKey": c.has_key, "etag": c.etag, "usedBy": c.used_by}|tojson }})'>{% trans %}Edit{% endtrans %}</button>
           {% endif %}
           <button type="button" class="btn btn-outline btn-xs" :disabled="testing"
                   @click="testing = true; testConnection('{{ c.name }}').then(() => testing = false)">
             <span x-show="testing" style="display:none" class="loading loading-spinner loading-xs"></span>
-            <span>Test</span>
+            <span>{% trans %}Test{% endtrans %}</span>
           </button>
           {% if can_write %}
-          {% call overflow_menu(size='xs', label='More actions for connection ' ~ c.name) %}
+          {% call overflow_menu(size='xs', label=_('More actions for connection %(name)s', name=c.name)) %}
             {% if c.is_default %}
-            <li><a @click='$dispatch("connection-reset", {{ {"name": c.name}|tojson }})'>Reset to integrated Qdrant</a></li>
+            <li><a @click='$dispatch("connection-reset", {{ {"name": c.name}|tojson }})'>{% trans %}Reset to integrated Qdrant{% endtrans %}</a></li>
             {% else %}
             <li><a class="text-error"
-                   @click='$dispatch("connection-delete", {{ {"name": c.name, "etag": c.etag}|tojson }})'>Delete</a></li>
+                   @click='$dispatch("connection-delete", {{ {"name": c.name, "etag": c.etag}|tojson }})'>{% trans %}Delete{% endtrans %}</a></li>
             {% endif %}
           {% endcall %}
           {% endif %}
@@ -159,7 +150,7 @@
       <div class="mt-1 text-sm opacity-60">
         <span class="font-mono">{{ c.address }}</span>
         {% if c.reach_address %}
-        <span class="ml-2 text-xs opacity-80">The manager connects to <span class="font-mono">{{ c.reach_address }}</span></span>
+        <span class="ml-2 text-xs opacity-80">{% trans %}The manager connects to{% endtrans %} <span class="font-mono">{{ c.reach_address }}</span></span>
         {% endif %}
       </div>
     </div>
@@ -167,8 +158,7 @@
   {% endfor %}
 
   <p class="text-xs opacity-50">
-    The ingester picks up a change within about 30 seconds. A test runs from the manager,
-    which may reach an address differently than the ingester does.
+    {% trans %}The ingester picks up a change within about 30 seconds. A test runs from the manager, which may reach an address differently than the ingester does.{% endtrans %}
   </p>
 </div>
 
@@ -180,22 +170,21 @@
         @connection-edit.window="openEdit($event.detail)"
         @close="reset()">
   <div class="modal-box max-w-xl">
-    <h3 class="mb-4 text-lg font-bold" x-text="mode === 'create' ? 'New connection' : 'Edit connection'"></h3>
+    <h3 class="mb-4 text-lg font-bold" x-text="mode === 'create' ? {{ _('New connection')|tojson|forceescape }} : {{ _('Edit connection')|tojson|forceescape }}"></h3>
     <form @submit.prevent="submit()" autocomplete="off">
 
       <div class="form-control mb-3">
-        <label class="label"><span class="label-text">Name</span></label>
+        <label class="label"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
         <input type="text" class="input input-bordered font-mono" x-model="name" required
                :disabled="mode === 'edit'" maxlength="64"
-               pattern="[a-z0-9][a-z0-9_\-]{0,63}" placeholder="archive">
+               pattern="[a-z0-9][a-z0-9_\-]{0,63}" placeholder="{{ _('archive') }}">
         <p class="mt-1 text-xs opacity-60">
-          Lowercase letters, digits, '-' and '_'. Ingest jobs refer to a connection by its name,
-          so it cannot be changed later.
+          {% trans %}Lowercase letters, digits, '-' and '_'. Ingest jobs refer to a connection by its name, so it cannot be changed later.{% endtrans %}
         </p>
       </div>
 
       <div class="form-control mb-3" style="display:none" x-show="types.length > 1 && mode === 'create'">
-        <label class="label"><span class="label-text">Type</span></label>
+        <label class="label"><span class="label-text">{% trans %}Type{% endtrans %}</span></label>
         <select class="select select-bordered" x-model="type">
           <template x-for="t in types" :key="t.id">
             <option :value="t.id" x-text="t.label"></option>
@@ -206,7 +195,7 @@
       <template x-for="spec in plain()" :key="spec.name">
         <div class="form-control mb-3">
           <label class="label">
-            <span class="label-text" x-text="spec.label + (spec.required ? '' : ' (optional)')"></span>
+            <span class="label-text" x-text="spec.required ? spec.label : fmt({{ _('{label} (optional)')|tojson|forceescape }}, { label: spec.label })"></span>
           </label>
           <input type="text" class="input input-bordered font-mono" inputmode="url"
                  x-model="fields[spec.name]" :required="spec.required"
@@ -217,24 +206,22 @@
 
       <template x-if="secret()">
         <div class="form-control mb-3">
-          <label class="label"><span class="label-text" x-text="secret().label + ' (optional)'"></span></label>
+          <label class="label"><span class="label-text" x-text="fmt({{ _('{label} (optional)')|tojson|forceescape }}, { label: secret().label })"></span></label>
           <input type="password" class="input input-bordered font-mono" x-model="apiKey"
                  autocomplete="new-password" spellcheck="false"
                  :disabled="clearKey"
                  :placeholder="mode === 'edit' && hasKey ? 'unchanged' : ''">
           <p class="mt-1 text-xs opacity-60">
-            <span x-text="secret().help"></span>
-            It is stored encrypted and never shown again.
+            <span x-html="fmtHtml({{ _('{help} It is stored encrypted and never shown again.')|tojson|forceescape }}, { help: secret().help })"></span>
           </p>
           <label class="label cursor-pointer justify-start gap-2" style="display:none"
                  x-show="mode === 'edit' && hasKey">
             <input type="checkbox" class="checkbox checkbox-sm" x-model="clearKey" @change="if (clearKey) apiKey = ''">
-            <span class="label-text">Remove the stored key</span>
+            <span class="label-text">{% trans %}Remove the stored key{% endtrans %}</span>
           </label>
           <p class="mt-1 text-xs text-warning" style="display:none"
              x-show="moved() && hasKey && !apiKey && !clearKey">
-            The stored key is never sent to a different address. Enter the key for the new
-            address, or remove the stored one.
+            {% trans %}The stored key is never sent to a different address. Enter the key for the new address, or remove the stored one.{% endtrans %}
           </p>
         </div>
       </template>
@@ -243,8 +230,7 @@
         <label class="label cursor-pointer justify-start gap-2">
           <input type="checkbox" class="checkbox checkbox-sm" x-model="confirmJobs">
           <span class="label-text">
-            The jobs <span class="font-mono" x-text="usedBy.join(', ')"></span> write to this
-            connection and will write to the new address.
+            <span x-html="fmtHtml({{ _('The jobs <span class="font-mono">{usedBy}</span> write to this connection and will write to the new address.')|tojson|forceescape }}, { usedBy: usedBy.join(', ') })"></span>
           </span>
         </label>
       </div>
@@ -254,59 +240,57 @@
       <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
 
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="button" class="btn btn-outline" :disabled="testing || busy" @click="test()">
           <span x-show="testing" style="display:none" class="loading loading-spinner loading-xs"></span>
-          Test
+          {% trans %}Test{% endtrans %}
         </button>
         <button type="submit" class="btn btn-primary" :disabled="busy">
           <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
-          Save
+          {% trans %}Save{% endtrans %}
         </button>
       </div>
     </form>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 <!-- Delete a connection -->
 <dialog id="delete-connection-modal" class="modal" x-data="deleteConnection()"
         @connection-delete.window="open($event.detail)">
   <div class="modal-box">
-    <h3 class="mb-2 text-lg font-bold">Delete <span class="font-mono" x-text="name"></span>?</h3>
+    <h3 class="mb-2 text-lg font-bold"><span x-html="fmtHtml({{ _('Delete <span class="font-mono">{name}</span>?')|tojson|forceescape }}, { name: name })"></span></h3>
     <p class="mb-3 text-sm">
-      The connection is removed from the ingester's store. The database itself and its
-      collections are not touched. A connection that ingest jobs write to cannot be deleted.
+      {% trans %}The connection is removed from the ingester's store. The database itself and its collections are not touched. A connection that ingest jobs write to cannot be deleted.{% endtrans %}
     </p>
     <form @submit.prevent="submit()">
       <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
-        <button type="submit" class="btn btn-error" :disabled="busy">Delete</button>
+        <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
+        <button type="submit" class="btn btn-error" :disabled="busy">{% trans %}Delete{% endtrans %}</button>
       </div>
     </form>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 <!-- Reset the default connection -->
 <dialog id="reset-connection-modal" class="modal" x-data="resetConnection()"
         @connection-reset.window="open($event.detail)">
   <div class="modal-box">
-    <h3 class="mb-2 text-lg font-bold">Reset <span class="font-mono" x-text="name"></span>?</h3>
+    <h3 class="mb-2 text-lg font-bold"><span x-html="fmtHtml({{ _('Reset <span class="font-mono">{name}</span>?')|tojson|forceescape }}, { name: name })"></span></h3>
     <p class="mb-3 text-sm">
-      The connection points at the integrated Qdrant again, with the stack's current api-key.
-      Changes made to its address or key are replaced.
+      {% trans %}The connection points at the integrated Qdrant again, with the stack's current api-key. Changes made to its address or key are replaced.{% endtrans %}
     </p>
     <form @submit.prevent="submit()">
       <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
-        <button type="submit" class="btn btn-primary" :disabled="busy">Reset</button>
+        <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
+        <button type="submit" class="btn btn-primary" :disabled="busy">{% trans %}Reset{% endtrans %}</button>
       </div>
     </form>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 {% endif %}

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Catalogs — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Catalogs — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Catalogs{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Manage your add-on sources</p>{% endblock %}
+{% block page_title %}{% trans %}Catalogs{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Manage your add-on sources{% endtrans %}</p>{% endblock %}
 {% block page_actions %}
 <button
   class="btn btn-primary btn-sm"
@@ -11,7 +11,7 @@
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
   </svg>
-  Add catalog
+  {% trans %}Add catalog{% endtrans %}
 </button>
 {% endblock %}
 
@@ -30,57 +30,57 @@
 <!-- Add catalog modal -->
 <dialog id="add-catalog-modal" class="modal">
   <div class="modal-box">
-    <h3 class="text-lg font-bold mb-4">Add catalog</h3>
+    <h3 class="text-lg font-bold mb-4">{% trans %}Add catalog{% endtrans %}</h3>
     <form id="add-catalog-form" onsubmit="submitAddCatalog(event)">
       <div class="form-control mb-3">
-        <label class="label"><span class="label-text">Name</span></label>
+        <label class="label"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
         <input name="name" type="text" class="input input-bordered" required
-               placeholder="my-catalog" pattern="[a-z0-9][a-z0-9\-]{0,31}">
+               placeholder="{{ _('my-catalog') }}" pattern="[a-z0-9][a-z0-9\-]{0,31}">
       </div>
       <div class="form-control mb-3">
-        <label class="label"><span class="label-text">Type</span></label>
+        <label class="label"><span class="label-text">{% trans %}Type{% endtrans %}</span></label>
         <select id="catalog-type-select" name="type" class="select select-bordered"
                 onchange="toggleCatalogFields(this.value)">
-          <option value="git">Git</option>
-          <option value="local">Local</option>
+          <option value="git">{% trans %}Git{% endtrans %}</option>
+          <option value="local">{% trans %}Local{% endtrans %}</option>
         </select>
       </div>
       <div id="field-url" class="form-control mb-3">
         <label class="label"><span class="label-text">URL</span></label>
         <input name="url" type="url" class="input input-bordered" required
-               placeholder="https://github.com/example/addons.git">
+               placeholder="{{ _('https://github.com/example/addons.git') }}">
       </div>
       <div id="field-ref" class="form-control mb-3">
-        <label class="label"><span class="label-text">Branch</span></label>
+        <label class="label"><span class="label-text">{% trans %}Branch{% endtrans %}</span></label>
         <input name="ref" type="text" class="input input-bordered" required
                value="main" pattern="[A-Za-z0-9._/\-]{1,100}">
       </div>
       <div id="field-path" class="form-control mb-3 hidden">
-        <label class="label"><span class="label-text">Path</span></label>
+        <label class="label"><span class="label-text">{% trans %}Path{% endtrans %}</span></label>
         <input name="path" type="text" class="input input-bordered" disabled
-               placeholder="/path/to/local/addons">
+               placeholder="{{ _('/path/to/local/addons') }}">
       </div>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost"
-                onclick="document.getElementById('add-catalog-modal').close()">Cancel</button>
-        <button type="submit" class="btn btn-primary">Add</button>
+                onclick="document.getElementById('add-catalog-modal').close()">{% trans %}Cancel{% endtrans %}</button>
+        <button type="submit" class="btn btn-primary">{% trans %}Add{% endtrans %}</button>
       </div>
     </form>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 <!-- Edit catalog modal -->
 <dialog id="edit-catalog-modal" class="modal">
   <div class="modal-box">
-    <h3 class="text-lg font-bold mb-4">Edit catalog</h3>
+    <h3 class="text-lg font-bold mb-4">{% trans %}Edit catalog{% endtrans %}</h3>
     <form id="edit-catalog-form" onsubmit="submitEditCatalog(event)">
       <div class="form-control mb-3">
-        <label class="label"><span class="label-text">Name</span></label>
+        <label class="label"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
         <input id="edit-name" type="text" class="input input-bordered" disabled>
       </div>
       <div class="form-control mb-3">
-        <label class="label"><span class="label-text">Type</span></label>
+        <label class="label"><span class="label-text">{% trans %}Type{% endtrans %}</span></label>
         <input id="edit-type" type="text" class="input input-bordered" disabled>
       </div>
       <div id="edit-field-url" class="form-control mb-3">
@@ -88,28 +88,28 @@
         <input id="edit-url" name="url" type="url" class="input input-bordered">
       </div>
       <div id="edit-field-ref" class="form-control mb-3">
-        <label class="label"><span class="label-text">Branch</span></label>
+        <label class="label"><span class="label-text">{% trans %}Branch{% endtrans %}</span></label>
         <input id="edit-ref" name="ref" type="text" class="input input-bordered"
                pattern="[A-Za-z0-9._/\-]{1,100}">
       </div>
       <div id="edit-field-path" class="form-control mb-3 hidden">
-        <label class="label"><span class="label-text">Path</span></label>
+        <label class="label"><span class="label-text">{% trans %}Path{% endtrans %}</span></label>
         <input id="edit-path" name="path" type="text" class="input input-bordered">
       </div>
       <div class="form-control mb-3">
         <label class="label cursor-pointer justify-start gap-3">
           <input id="edit-enabled" name="enabled" type="checkbox" class="checkbox">
-          <span class="label-text">Enabled</span>
+          <span class="label-text">{% trans %}Enabled{% endtrans %}</span>
         </label>
       </div>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost"
-                onclick="document.getElementById('edit-catalog-modal').close()">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save</button>
+                onclick="document.getElementById('edit-catalog-modal').close()">{% trans %}Cancel{% endtrans %}</button>
+        <button type="submit" class="btn btn-primary">{% trans %}Save{% endtrans %}</button>
       </div>
     </form>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 <script>
 function submitAddCatalog(event) {
@@ -135,7 +135,7 @@ function submitAddCatalog(event) {
     if (!r.ok) {
       var detail = r.status;
       try { var e = await r.json(); detail = e.detail || JSON.stringify(e); } catch (_) {}
-      alert('Add catalog failed: ' + detail);
+      alert({{ _('Add catalog failed:')|tojson }} + " " + detail);
       return;
     }
     document.getElementById('add-catalog-modal').close();

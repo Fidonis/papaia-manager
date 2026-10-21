@@ -31,6 +31,7 @@ from app.core.keycloak_users import (
     KeycloakUnauthorizedError,
     KeycloakUsers,
 )
+from app.i18n import N_, gettext
 
 Credential = Literal["temporary", "email", "none"]
 
@@ -57,7 +58,7 @@ _DIGITS = "23456789"
 _SYMBOLS = "-_.!#$%&*+=?@"
 PASSWORD_LENGTH = 20
 
-_FORBIDDEN_HINT = (
+_FORBIDDEN_HINT = N_(
     "Your account does not have Keycloak's user-administration rights. The role {role} has "
     "to carry the roles manage-users, view-users, query-users, view-realm and manage-realm of "
     "the realm-management client. Add them in the Keycloak Admin Console under Realm roles > "
@@ -82,8 +83,10 @@ class PartiallyCreated(Exception):  # noqa: N818 - a state of the account, not a
         self.username = username
         self.cause = cause
         self.message = (
-            f"The account {username} was created, but {step} failed ({cause.detail}). "
-            "Open its menu to finish."
+            gettext(
+                "The account %(username)s was created, but %(step)s failed (%(detail)s). Open "
+                "its menu to finish."
+            ) % {"username": username, "step": gettext(step), "detail": cause.detail}
         )
         super().__init__(self.message)
 
@@ -96,7 +99,7 @@ def require_known_roles(wanted: list[str], known: dict[str, dict[str, Any]]) -> 
     """Refuse a role that does not exist (or is Keycloak's own) before anything is written."""
     unknown = sorted({name for name in wanted if name not in known})
     if unknown:
-        raise InvalidInput("Unknown role: " + ", ".join(unknown))
+        raise InvalidInput(gettext("Unknown role: %(roles)s") % {"roles": ", ".join(unknown)})
 
 
 def generate_temporary_password() -> str:
@@ -255,15 +258,17 @@ def validate_new_user(
 ) -> None:
     if not _USERNAME.match(username):
         raise InvalidInput(
-            "The username needs 2 to 255 letters, digits or . _ @ + - and must start with "
-            "a letter or digit."
+            gettext(
+                "The username needs 2 to 255 letters, digits or . _ @ + - and must start with a "
+                "letter or digit."
+            )
         )
     if email and (len(email) > _MAX_TEXT or not _EMAIL.match(email)):
-        raise InvalidInput("That does not look like an email address.")
+        raise InvalidInput(gettext("That does not look like an email address."))
     if len(first_name) > _MAX_TEXT or len(last_name) > _MAX_TEXT:
-        raise InvalidInput("Names are limited to 255 characters.")
+        raise InvalidInput(gettext("Names are limited to 255 characters."))
     if credential == "email" and not email:
-        raise InvalidInput("An email address is needed to send the link.")
+        raise InvalidInput(gettext("An email address is needed to send the link."))
 
 
 class UsersService:
@@ -314,7 +319,7 @@ class UsersService:
         except KeycloakForbiddenError:
             return view(
                 state="forbidden",
-                reason=_FORBIDDEN_HINT.format(role=self._identity_role),
+                reason=gettext(_FORBIDDEN_HINT).format(role=self._identity_role),
             )
         except KeycloakError as exc:
             return view(state="unavailable", reason=exc.detail)
@@ -387,7 +392,7 @@ class UsersService:
         )
         if credential == "email" and not await self._has_smtp():
             raise InvalidInput(
-                "The realm has no mail server configured, so the link cannot be sent."
+                gettext("The realm has no mail server configured, so the link cannot be sent.")
             )
 
         # Checked before anything is written: a mistyped role must not leave an account behind.
@@ -407,14 +412,14 @@ class UsersService:
             try:
                 await self._client.add_roles(user_id, [known[name] for name in chosen])
             except KeycloakError as exc:
-                raise PartiallyCreated(username, "giving it its roles", exc) from exc
+                raise PartiallyCreated(username, N_("giving it its roles"), exc) from exc
 
         if credential == "temporary":
             password = generate_temporary_password()
             try:
                 await self._client.set_password(user_id, password, temporary=True)
             except KeycloakError as exc:
-                raise PartiallyCreated(username, "setting its password", exc) from exc
+                raise PartiallyCreated(username, N_("setting its password"), exc) from exc
             return CreatedUser(
                 id=user_id, username=username, temporary_password=password, roles=chosen
             )
@@ -440,7 +445,7 @@ class UsersService:
         signed in until the next token refresh happens to fail.
         """
         if not enabled and user_id == self._actor.sub:
-            raise InvalidInput("You cannot disable your own account.")
+            raise InvalidInput(gettext("You cannot disable your own account."))
         user = await self._client.get_user(user_id)
         # The whole representation goes back: with a declarative user profile a partial one
         # is validated as if the missing fields had been cleared.
@@ -467,10 +472,10 @@ class UsersService:
         """Mail the account Keycloak's "update your password" link. Returns the username."""
         user = await self._client.get_user(user_id)
         if not _text(user.get("email")):
-            raise InvalidInput("This account has no email address.")
+            raise InvalidInput(gettext("This account has no email address."))
         if not await self._has_smtp():
             raise InvalidInput(
-                "The realm has no mail server configured, so the link cannot be sent."
+                gettext("The realm has no mail server configured, so the link cannot be sent.")
             )
         await self._client.send_password_email(user_id)
         return _text(user.get("username"))
@@ -549,7 +554,9 @@ class UsersService:
         to_remove = sorted(current - desired)
         if user_id == self._actor.sub and self._identity_role in to_remove:
             raise InvalidInput(
-                f"You cannot take the {self._identity_role} role away from your own account."
+                gettext(
+                    "You cannot take the %(_identity_role)s role away from your own account."
+                ) % {"_identity_role": self._identity_role}
             )
 
         if to_add:
@@ -583,7 +590,7 @@ class UsersService:
         """End one session of the account. Returns the username."""
         username, rows = await self.sessions(user_id)
         if session_id not in {row.id for row in rows}:
-            raise KeycloakNotFoundError(404, "That session no longer exists.")
+            raise KeycloakNotFoundError(404, gettext("That session no longer exists."))
         await self._client.delete_session(session_id)
         return username
 
@@ -591,8 +598,10 @@ class UsersService:
         """End every session of the account. Returns the username and how many there were."""
         if user_id == self._actor.sub:
             raise InvalidInput(
-                "Ending all of your own sessions would sign you out of the manager too. "
-                "Sign out instead."
+                gettext(
+                    "Ending all of your own sessions would sign you out of the manager too. Sign "
+                    "out instead."
+                )
             )
         username, rows = await self.sessions(user_id)
         await self._client.logout_user(user_id)

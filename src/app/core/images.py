@@ -66,6 +66,7 @@ from typing import Any
 import yaml
 
 from app.core.state import deployment_addons_by_name, load_deployment_yaml
+from app.i18n import gettext
 
 logger = logging.getLogger(__name__)
 
@@ -315,13 +316,15 @@ async def _run(args: list[str], *, limit: float) -> str:
             stdin=asyncio.subprocess.DEVNULL,
         )
     except (FileNotFoundError, OSError) as exc:
-        raise ImagesError(f"cannot invoke docker: {exc}") from exc
+        raise ImagesError(gettext("cannot invoke docker: %(exc)s") % {"exc": exc}) from exc
     try:
         async with asyncio.timeout(limit):
             raw_out, raw_err = await proc.communicate()
     except TimeoutError as exc:
         proc.kill()
-        raise ImagesError(f"{' '.join(args[:3])} timed out after {limit:.0f}s") from exc
+        raise ImagesError(gettext(
+            "%(value)s timed out after %(limit).0fs"
+        ) % {"value": ' '.join(args[:3]), "limit": limit}) from exc
     if proc.returncode != 0:
         detail = raw_err.decode(errors="replace").strip() or f"exit code {proc.returncode}"
         raise ImagesError(detail)
@@ -348,7 +351,9 @@ async def local_images() -> list[LocalImage]:
         try:
             entry = json.loads(row)
         except json.JSONDecodeError as exc:
-            raise ImagesError(f"docker image ls gave unreadable output: {exc}") from exc
+            raise ImagesError(gettext(
+                "docker image ls gave unreadable output: %(exc)s"
+            ) % {"exc": exc}) from exc
         sizes[str(entry.get("ID", ""))] = parse_size(str(entry.get("Size", "")))
     ids = sorted(i for i in sizes if i)
     images: list[LocalImage] = []
@@ -363,7 +368,9 @@ async def local_images() -> list[LocalImage]:
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError as exc:
-                raise ImagesError(f"docker image inspect gave unreadable output: {exc}") from exc
+                raise ImagesError(gettext(
+                    "docker image inspect gave unreadable output: %(exc)s"
+                ) % {"exc": exc}) from exc
             images.append(_local_image(entry, sizes.get(str(entry.get("Id", "")), 0)))
     return images
 
@@ -467,16 +474,18 @@ async def declared_images(
     errors: list[str] = []
 
     if not (Path(workspace_dir) / "papaia" / "src" / "docker-compose.yml").is_file():
-        return {}, ["the papaia checkout has no src/docker-compose.yml"]
+        return {}, [gettext("the papaia checkout has no src/docker-compose.yml")]
     commands[CORE_SOURCE] = _core_command(config_dir, workspace_dir)
 
     try:
         addons = _addon_paths(config_dir, workspace_dir)
     except (OSError, yaml.YAMLError) as exc:
-        return {}, [f"deployment.yaml could not be read: {exc}"]
+        return {}, [gettext("deployment.yaml could not be read: %(exc)s") % {"exc": exc}]
     for name, path in sorted(addons.items()):
         if not (path / "docker-compose.yml").is_file():
-            errors.append(f"add-on {name}: {path}/docker-compose.yml does not exist")
+            errors.append(gettext(
+                "add-on %(name)s: %(path)s/docker-compose.yml does not exist"
+            ) % {"name": name, "path": path})
             continue
         commands[name] = _addon_command(path, workspace_dir)
 

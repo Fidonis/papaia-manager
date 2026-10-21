@@ -41,6 +41,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from app.core.state import load_deployment_yaml
+from app.i18n import N_, current_locale, gettext
 
 logger = logging.getLogger(__name__)
 
@@ -119,15 +120,19 @@ async def _run_git(repo: Path, args: tuple[str, ...], limit: float) -> str:
             env=env,
         )
     except (FileNotFoundError, OSError) as exc:
-        raise UpgradeError(f"cannot invoke git: {exc}") from exc
+        raise UpgradeError(gettext("cannot invoke git: %(exc)s") % {"exc": exc}) from exc
     try:
         raw_out, raw_err = await asyncio.wait_for(proc.communicate(), timeout=limit)
     except TimeoutError as exc:
         proc.kill()
-        raise UpgradeError(f"git {args[0]} timed out after {limit:.0f}s") from exc
+        raise UpgradeError(gettext(
+            "git %(value)s timed out after %(limit).0fs"
+        ) % {"value": args[0], "limit": limit}) from exc
     if proc.returncode != 0:
         detail = raw_err.decode(errors="replace").strip() or f"exit code {proc.returncode}"
-        raise UpgradeError(f"git {args[0]} failed: {detail}")
+        raise UpgradeError(gettext(
+            "git %(value)s failed: %(detail)s"
+        ) % {"value": args[0], "detail": detail})
     return raw_out.decode(errors="replace")
 
 
@@ -415,10 +420,12 @@ def fetch_hint(error: str, *, repo: Path, origin: str, uid: int, gid: int) -> st
     lines: list[str] = []
     if kind == "ssh":
         lines.append(
-            "origin is an SSH URL and the manager container has no SSH key, so it fetched over "
-            "HTTPS instead; that needs a repository readable without credentials."
+            gettext(
+                "origin is an SSH URL and the manager container has no SSH key, so it fetched "
+                "over HTTPS instead; that needs a repository readable without credentials."
+            )
             if https is not None
-            else "origin is an SSH URL and the manager container has no SSH key."
+            else gettext("origin is an SSH URL and the manager container has no SSH key.")
         )
         lines += ["", f"{host_fetch}   {note}"]
         if https is not None:
@@ -429,22 +436,25 @@ def fetch_hint(error: str, *, repo: Path, origin: str, uid: int, gid: int) -> st
             ]
     elif kind == "permissions":
         lines += [
-            "The manager cannot write to the checkout's .git directory.",
+            gettext("The manager cannot write to the checkout's .git directory."),
             "",
             f"chown -R {uid}:{gid} {repo}/.git   # as root on the host; that is the manager's user",
             "",
             f"{host_fetch}   {note}",
         ]
     elif kind == "network":
-        host = urlsplit(https or origin).hostname or "the remote"
+        host = urlsplit(https or origin).hostname or gettext("the remote")
         lines += [
-            f"The manager container cannot reach {host}. Allow outbound HTTPS (port 443) to it.",
+            gettext(
+                "The manager container cannot reach %(host)s. Allow outbound HTTPS (port 443) to "
+                "it."
+            ) % {"host": host},
             "",
             f"{host_fetch}   {note}",
         ]
     else:
         lines += [
-            "The fetch failed for a reason the manager does not recognise.",
+            gettext("The fetch failed for a reason the manager does not recognise."),
             "",
             f"{host_fetch}   {note}",
         ]
@@ -538,9 +548,11 @@ def parse_gate_json(text: str, *, exit_code: int) -> Gate:
     try:
         raw = json.loads(text) if text.strip() else []
     except json.JSONDecodeError as exc:
-        raise UpgradeError(f"could not read the add-on compatibility report: {exc}") from exc
+        raise UpgradeError(gettext(
+            "could not read the add-on compatibility report: %(exc)s"
+        ) % {"exc": exc}) from exc
     if not isinstance(raw, list):
-        raise UpgradeError("the add-on compatibility report is not a list")
+        raise UpgradeError(gettext("the add-on compatibility report is not a list"))
     results = tuple(
         GateResult(
             name=str(entry.get("name") or "?"),
@@ -657,12 +669,12 @@ PHASE_SKIPPED = "skipped"
 # migrations would claim the migrations began before they did. The second word
 # is what tells them apart.
 _PHASES: tuple[tuple[str, str, str, str], ...] = (
-    ("backup", "Creating a restore point", "", "Create a restore point"),
-    ("stop", "Stopping and removing the containers", "", "Remove the containers"),
-    ("checkout", "Moving the checkout to", "", "Move the checkout to the release tag"),
-    ("migrations", "Running ", "migration", "Run the release migrations"),
-    ("render", "Applying ", "configuration", "Apply the new configuration"),
-    ("start", "Starting the stack", "", "Start the stack and add-ons"),
+    ("backup", "Creating a restore point", "", N_("Create a restore point")),
+    ("stop", "Stopping and removing the containers", "", N_("Remove the containers")),
+    ("checkout", "Moving the checkout to", "", N_("Move the checkout to the release tag")),
+    ("migrations", "Running ", "migration", N_("Run the release migrations")),
+    ("render", "Applying ", "configuration", N_("Apply the new configuration")),
+    ("start", "Starting the stack", "", N_("Start the stack and add-ons")),
 )
 
 # Reached only at the very end, after `cmd_start` returned.
@@ -674,7 +686,7 @@ _COMPLETE_MARKER = "upgrade complete:"
 # fails must not read as an upgrade that did. Kept out of `_PHASES` so the six
 # above keep their meaning for a run that never asked for it.
 _IMAGES_KEY = "images"
-_IMAGES_LABEL = "Remove outdated Docker images"
+_IMAGES_LABEL = N_("Remove outdated Docker images")
 _IMAGES_START = "Removing outdated Docker images"
 _IMAGES_DONE = "Image cleanup "
 
@@ -757,7 +769,9 @@ def phases_from_log(
             # pending: --no-backup is the case that produces this, and calling
             # it "waiting" would leave a spinner on a step that never runs.
             state = PHASE_SKIPPED if index < last_seen else PHASE_PENDING
-        phases.append(Phase(key=key, label=label, state=state, detail=_detail(key, seen)))
+        phases.append(
+            Phase(key=key, label=gettext(label), state=state, detail=_detail(key, seen))
+        )
     if prune_images:
         phases.append(_images_phase(lines, running=running))
     return phases
@@ -772,7 +786,7 @@ def _images_phase(lines: list[str], *, running: bool) -> Phase:
     """
 
     def phase(state: str, detail: str = "") -> Phase:
-        return Phase(key=_IMAGES_KEY, label=_IMAGES_LABEL, state=state, detail=detail)
+        return Phase(key=_IMAGES_KEY, label=gettext(_IMAGES_LABEL), state=state, detail=detail)
 
     start = next((i for i, line in enumerate(lines) if line.startswith(_IMAGES_START)), None)
     if start is None:
@@ -792,7 +806,7 @@ def _detail(key: str, seen: dict[str, str]) -> str:
     """The announcement line itself, where it carries more than the label does."""
     line = seen.get(key, "")
     if key == "migrations" and line.startswith(_MIGRATIONS_NONE):
-        return "none in this release"
+        return gettext("none in this release")
     if key == "checkout" and line.startswith("Moving the checkout to "):
         return line.removeprefix("Moving the checkout to ").rstrip(".")
     return ""
@@ -850,10 +864,12 @@ def synthetic_recovery(
             "",
         ]
     lines += [
-        f"The checkout was moved to v{to} but the configuration is still {frm}, and the",
-        "stack is stopped. The upgrade stopped before it could print its own way back.",
+        gettext(
+            "The checkout was moved to v%(to)s but the configuration is still %(frm)s, and the "
+            "stack is stopped. The upgrade stopped before it could print its own way back."
+        ) % {"to": to, "frm": frm},
         "",
-        f"To go back to {frm}:",
+        gettext("To go back to %(frm)s:") % {"frm": frm},
         f"    git -C {repo} checkout v{frm}",
     ]
     if restore_point:
@@ -864,7 +880,7 @@ def synthetic_recovery(
         lines.append(f"    bash {ctl} start --addons --config-dir={config_dir}")
     lines += [
         "",
-        f"To go forward to {to} once the cause is fixed:",
+        gettext("To go forward to %(to)s once the cause is fixed:") % {"to": to},
         f"    bash {ctl} upgrade --version={to} --config-dir={config_dir}",
     ]
     return "\n".join(lines)
@@ -889,10 +905,21 @@ class UpgradeCheck:
     fetch_error: str = ""
     fetch_hint: str = ""
     checked_at: str = ""
+    # What the hint was made from and the language it was written in. The check is cached and
+    # read by every account, so the hint is put into words again for one that reads another
+    # language (see `hint_text`).
+    hint_args: dict[str, Any] | None = None
+    hint_locale: str = "en"
 
     @property
     def up_to_date(self) -> bool:
         return self.status == "up-to-date"
+
+    def hint_text(self) -> str:
+        """`fetch_hint`, in the language of the request that asks."""
+        if self.hint_args is None or self.hint_locale == current_locale():
+            return self.fetch_hint
+        return fetch_hint(self.fetch_error, **self.hint_args)
 
 
 _check_lock = asyncio.Lock()
@@ -958,20 +985,23 @@ async def run_check(
         state = await checkout_state(workspace_dir)
         if not state.is_git:
             raise UpgradeError(
-                f"{repo} is not a git checkout, so it cannot be moved to a release tag"
+                gettext(
+                    "%(repo)s is not a git checkout, so it cannot be moved to a release tag"
+                ) % {"repo": repo}
             )
 
         fetch_error = await fetch_tags(workspace_dir)
         hint = ""
+        hint_args: dict[str, Any] | None = None
         if fetch_error:
             uid, gid = _process_user()
-            hint = fetch_hint(
-                fetch_error,
-                repo=repo,
-                origin=await origin_url(workspace_dir),
-                uid=uid,
-                gid=gid,
-            )
+            hint_args = {
+                "repo": repo,
+                "origin": await origin_url(workspace_dir),
+                "uid": uid,
+                "gid": gid,
+            }
+            hint = fetch_hint(fetch_error, **hint_args)
         tags = await local_tags(workspace_dir)
 
         with tempfile.TemporaryDirectory(prefix="papaia-upgrade-") as tmp:
@@ -987,7 +1017,7 @@ async def run_check(
                 extra_flags=flags,
             )
         if code != 0:
-            raise UpgradeError(err.strip() or "could not resolve a target release")
+            raise UpgradeError(err.strip() or gettext("could not resolve a target release"))
         resolved = parse_resolve_tsv(out)
 
         current = resolved.get("CURRENT", "")
@@ -1002,6 +1032,8 @@ async def run_check(
             fetch_error=fetch_error,
             fetch_hint=hint,
             checked_at=datetime.now(tz=UTC).isoformat(timespec="seconds"),
+            hint_args=hint_args,
+            hint_locale=current_locale(),
         )
 
         if not check.up_to_date and tag:
@@ -1048,7 +1080,9 @@ async def _evaluate_target(
             await _git(repo, "worktree", "add", "--detach", "--quiet", str(worktree), tag)
         except UpgradeError as exc:
             raise UpgradeError(
-                f"could not check out {tag} for inspection. Does the tag exist? ({exc})"
+                gettext(
+                    "could not check out %(tag)s for inspection. Does the tag exist? (%(exc)s)"
+                ) % {"tag": tag, "exc": exc}
             ) from exc
 
         code, out, _ = await run_py_cli(
@@ -1068,7 +1102,7 @@ async def _evaluate_target(
             extra_flags=[f"--from={current}", f"--to={target}"],
         )
         if code != 0:
-            raise UpgradeError(err.strip() or "could not determine the pending migrations")
+            raise UpgradeError(err.strip() or gettext("could not determine the pending migrations"))
         return gate, parse_plan_tsv(out)
     finally:
         try:

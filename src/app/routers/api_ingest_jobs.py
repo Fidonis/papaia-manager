@@ -40,6 +40,7 @@ from app.core.ingest.jobspec import (
     source_forms,
 )
 from app.core.rag_collections import CollectionStore
+from app.i18n import gettext
 from app.routers.rag_deps import JobsServiceDep, RagAdmin, get_store
 from app.routers.rag_deps import translated as _translated
 
@@ -449,7 +450,9 @@ async def job_files(
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="This ingester does not report the files of a job. Use a newer release.",
+            detail=gettext(
+                "This ingester does not report the files of a job. Use a newer release."
+            ),
         )
     return result
 

@@ -14,20 +14,20 @@
   <input type="hidden" id="schedule-compiled-timezone" value="{{ preview.timezone }}">
   <p class="text-sm font-semibold">{{ preview.description }}
     <span class="font-normal opacity-60">&middot; {{ preview.timezone }}</span></p>
-  <p class="mt-1 text-xs uppercase tracking-wide opacity-50">Next runs</p>
+  <p class="mt-1 text-xs uppercase tracking-wide opacity-50">{% trans %}Next runs{% endtrans %}</p>
   <ul class="text-sm font-mono">
     {% for run in preview.runs %}<li>{{ run }}</li>{% endfor %}
   </ul>
   <p class="mt-2 text-xs opacity-50">
-    Cron <span class="font-mono">{{ preview.cron }}</span>. Longest gap between runs: {{ preview.longest_gap }}.
-    {% if preview.retention_days is none %}A retention would have to be at least {{ preview.min_retention }} day{{ "" if preview.min_retention == 1 else "s" }} for this schedule.{% endif %}
+    {% trans cron=preview.cron, longest_gap=preview.longest_gap %}Cron <span class="font-mono">{{ cron }}</span>. Longest gap between runs: {{ longest_gap }}.{% endtrans %}
+    {% if preview.retention_days is none %}{% trans min_retention=preview.min_retention %}A retention would have to be at least {{ min_retention }} day for this schedule.{% pluralize min_retention %}A retention would have to be at least {{ min_retention }} days for this schedule.{% endtrans %}{% endif %}
   </p>
   {% if preview.retention_days is not none %}
   <p class="mt-1 text-xs opacity-60">
     {% if preview.would_delete %}
-    The next run would delete {{ preview.would_delete }} existing restore point{{ "" if preview.would_delete == 1 else "s" }} older than {{ preview.retention_days }} days.
+    {% trans would_delete=preview.would_delete, retention_days=preview.retention_days %}The next run would delete {{ would_delete }} existing restore point older than {{ retention_days }} days.{% pluralize would_delete %}The next run would delete {{ would_delete }} existing restore points older than {{ retention_days }} days.{% endtrans %}
     {% else %}
-    No existing restore point is older than {{ preview.retention_days }} days.
+    {% trans retention_days=preview.retention_days %}No existing restore point is older than {{ retention_days }} days.{% endtrans %}
     {% endif %}
   </p>
   {% endif %}

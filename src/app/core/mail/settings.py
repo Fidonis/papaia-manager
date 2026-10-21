@@ -29,6 +29,7 @@ from typing import Any
 
 from app.core.envfile import load_env_file
 from app.core.inventory import profiles_in
+from app.i18n import gettext as _
 
 PROFILE = "smtp"
 SERVICE = "smtp-relay"
@@ -79,8 +80,10 @@ def validate_host(value: str) -> str:
     host = value.strip()
     if not host or not _HOST_RE.match(host):
         raise MailError(
-            f"'{value}' is not a valid mail server host name (letters, digits, dots and"
-            " hyphens; no scheme, no port)."
+            _(
+                "'%(value)s' is not a valid mail server host name (letters, digits, dots and "
+                "hyphens; no scheme, no port)."
+            ) % {"value": value}
         )
     return host
 
@@ -91,7 +94,7 @@ def validate_port(value: str | int) -> int:
     except ValueError:
         port = 0
     if not 1 <= port <= 65535:
-        raise MailError(f"'{value}' is not a valid port (1-65535).")
+        raise MailError(_("'%(value)s' is not a valid port (1-65535).") % {"value": value})
     return port
 
 
@@ -99,7 +102,9 @@ def validate_security(value: str) -> str:
     mode = value.strip().lower()
     if mode not in SECURITY_MODES:
         raise MailError(
-            f"'{value}' is not a valid connection security ({', '.join(SECURITY_MODES)})."
+            _(
+                "'%(value)s' is not a valid connection security (%(value2)s)."
+            ) % {"value": value, "value2": ', '.join(SECURITY_MODES)}
         )
     return mode
 
@@ -108,30 +113,34 @@ def _env_safe(label: str, value: str) -> str:
     text = value.strip()
     if _CONTROL.search(text) or any(ch in _ENV_UNSAFE for ch in text):
         raise MailError(
-            f"{label} may not contain control characters or any of # $ \" ' \\ ` (they would"
-            " change meaning in the .env file)."
+            _(
+                "%(label)s may not contain control characters or any of # $ \" ' \\ ` (they "
+                "would change meaning in the .env file)."
+            ) % {"label": label}
         )
     return text
 
 
 def validate_user(value: str) -> str:
-    user = _env_safe("The mail server login", value)
+    user = _env_safe(_("The mail server login"), value)
     if len(user) > 256 or ":" in user:
-        raise MailError("The mail server login may not contain ':' or exceed 256 characters.")
+        raise MailError(_("The mail server login may not contain ':' or exceed 256 characters."))
     return user
 
 
 def validate_address(value: str) -> str:
-    address = _env_safe("The sender address", value)
+    address = _env_safe(_("The sender address"), value)
     if not _ADDRESS_RE.match(address):
-        raise MailError(f"'{value}' is not a valid sender address (expected name@example.org).")
+        raise MailError(_(
+            "'%(value)s' is not a valid sender address (expected name@example.org)."
+        ) % {"value": value})
     return address
 
 
 def validate_display_name(value: str) -> str:
-    name = _env_safe("The sender name", value)
+    name = _env_safe(_("The sender name"), value)
     if not name or len(name) > 80:
-        raise MailError("The sender name must have 1-80 characters.")
+        raise MailError(_("The sender name must have 1-80 characters."))
     return name
 
 
@@ -142,13 +151,17 @@ def validate_password(value: str) -> str:
     from a table whose values are stripped, so such a password would silently differ
     from the one the server expects."""
     if not value or len(value) > MAX_PASSWORD_LENGTH:
-        raise MailError(f"The mail server password must have 1-{MAX_PASSWORD_LENGTH} characters.")
+        raise MailError(_(
+            "The mail server password must have 1-%(MAX_PASSWORD_LENGTH)s characters."
+        ) % {"MAX_PASSWORD_LENGTH": MAX_PASSWORD_LENGTH})
     if any(ch in value for ch in "\r\n\x00"):
-        raise MailError("The mail server password may not contain line breaks.")
+        raise MailError(_("The mail server password may not contain line breaks."))
     if value != value.strip():
         raise MailError(
-            "The mail server password may not start or end with a space: the relay could not"
-            " send it unchanged."
+            _(
+                "The mail server password may not start or end with a space: the relay could not "
+                "send it unchanged."
+            )
         )
     return value
 
@@ -312,21 +325,25 @@ def validate_input(
     if clean_user:
         if mode == "none":
             raise MailError(
-                "The login would be sent unencrypted: use starttls or tls, or clear the login"
-                " for a mail server that needs none."
+                _(
+                    "The login would be sent unencrypted: use starttls or tls, or clear the "
+                    "login for a mail server that needs none."
+                )
             )
         if new_password is None:
             if not current.has_password:
-                raise MailError("A login needs its password: enter the password of the login.")
+                raise MailError(_("A login needs its password: enter the password of the login."))
             if not stored_secret_applies(
                 current, host=clean_host, port=clean_port, user=clean_user
             ):
                 raise MailError(
-                    "The stored password belongs to another mail server or login: enter the"
-                    " password again."
+                    _(
+                        "The stored password belongs to another mail server or login: enter the "
+                        "password again."
+                    )
                 )
     elif new_password is not None:
-        raise MailError("A password needs a login: enter the login, or clear the password.")
+        raise MailError(_("A password needs a login: enter the login, or clear the password."))
     return MailInput(
         host=clean_host,
         port=clean_port,

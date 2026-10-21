@@ -27,7 +27,6 @@ from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core.config import history, modules, overlay, preview, service
 from app.core.config.overlay import OverlayError
-from app.core.ctl import LOCALAI_VARIANTS
 from app.core.jobs import JobQueue
 from app.core.mail.settings import (
     MailError,
@@ -36,6 +35,7 @@ from app.core.mail.settings import (
     load_mail_settings,
     validate_input,
 )
+from app.i18n import gettext
 from app.routers.stack_guard import require_idle_stack
 
 router = APIRouter(prefix="/api/v1/config")
@@ -89,7 +89,7 @@ def _queue() -> JobQueue:
     from app.main import _job_queue  # noqa: PLC0415
 
     if _job_queue is None:
-        raise HTTPException(status_code=503, detail="job queue not initialized")
+        raise HTTPException(status_code=503, detail=gettext("job queue not initialized"))
     return _job_queue
 
 
@@ -102,14 +102,16 @@ async def _body[T: BaseModel](request: Request, model: type[T]) -> T:
     try:
         payload = await request.json()
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail="The body is not valid JSON.") from exc
+        raise HTTPException(status_code=422, detail=gettext("The body is not valid JSON.")) from exc
     try:
         return model.model_validate(payload)
     except ValidationError as exc:
         problems = "; ".join(
             f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}" for err in exc.errors()
         )
-        raise HTTPException(status_code=422, detail=problems or "The body is not valid.") from exc
+        raise HTTPException(
+            status_code=422, detail=problems or gettext("The body is not valid.")
+        ) from exc
 
 
 def _overlay_error(exc: OverlayError, *, code: int = 422) -> HTTPException:
@@ -128,8 +130,10 @@ def _stale(current_revision: str, given: str) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "The overlay file changed after this page loaded it. "
-                "Reload the file to see the current version."
+                gettext(
+                    "The overlay file changed after this page loaded it. Reload the file to see "
+                    "the current version."
+                )
             ),
         )
 
@@ -144,7 +148,9 @@ def _read(settings: Settings, key: str) -> overlay.OverlayFile:
             file.raw.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise HTTPException(
-                status_code=409, detail="The overlay file is not valid UTF-8. Edit it on the host."
+                status_code=409, detail=gettext(
+                    "The overlay file is not valid UTF-8. Edit it on the host."
+                )
             ) from exc
     return file
 
@@ -161,7 +167,7 @@ async def get_modules(
     return {
         "revision": modules.revision(settings.papaia_config_dir),
         "modules": modules.state(settings.papaia_config_dir, settings.papaia_workspace_dir),
-        "variants": [{"id": v, "label": modules.VARIANT_LABELS[v]} for v in LOCALAI_VARIANTS],
+        "variants": modules.variant_options(),
         "host_only_variants": list(modules.HOST_ONLY_VARIANTS),
     }
 
@@ -169,11 +175,13 @@ async def get_modules(
 def _module_current(settings: Settings, name: str, revision: str) -> bool:
     """Whether `name` is switched on, after checking the page is not stale."""
     if name not in modules.SWITCHABLE:
-        raise HTTPException(status_code=404, detail="This module can't be switched from here.")
+        raise HTTPException(status_code=404, detail=gettext(
+            "This module can't be switched from here."
+        ))
     if revision != modules.revision(settings.papaia_config_dir):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="The modules changed since this page was loaded. Reload and try again.",
+            detail=gettext("The modules changed since this page was loaded. Reload and try again."),
         )
     return modules.SWITCHABLE[name].profile in modules.active(settings.papaia_config_dir)
 
@@ -185,7 +193,9 @@ async def get_module_info(
     """What switching the module off could delete: its volumes (and whether they exist) and
     its settings, as the core reports them. `available` is false for a core that can't say."""
     if name not in modules.SWITCHABLE:
-        raise HTTPException(status_code=404, detail="This module can't be switched from here.")
+        raise HTTPException(status_code=404, detail=gettext(
+            "This module can't be switched from here."
+        ))
     return await modules.module_info(
         name,
         workspace_dir=settings.papaia_workspace_dir,
@@ -200,7 +210,7 @@ def _mail_input(
     if values is None:
         return None
     if name != "mail":
-        raise modules.ModuleError("Only the mail relay takes a mail server.")
+        raise modules.ModuleError(gettext("Only the mail relay takes a mail server."))
     return validate_input(
         host=values.host,
         port=values.port,
@@ -224,7 +234,7 @@ async def enable_module(
     verify_csrf(request)
     body = await _body(request, ModuleBody)
     if _module_current(settings, name, body.revision):
-        raise HTTPException(status_code=409, detail="This module is already switched on.")
+        raise HTTPException(status_code=409, detail=gettext("This module is already switched on."))
     current_mail = load_mail_settings(settings.papaia_config_dir)
     try:
         variant = modules.validate_enable(name, body.variant)
@@ -273,7 +283,7 @@ async def disable_module(
     verify_csrf(request)
     body = await _body(request, DisableBody)
     if not _module_current(settings, name, body.revision):
-        raise HTTPException(status_code=409, detail="This module is not switched on.")
+        raise HTTPException(status_code=409, detail=gettext("This module is not switched on."))
     try:
         scope = modules.validate_scope(
             name, body.scope, body.confirm, settings.papaia_workspace_dir
@@ -315,7 +325,7 @@ def target_json(settings: Settings, target: overlay.OverlayTarget) -> dict[str, 
         "key": target.key,
         "label": target.label,
         "path": target.path,
-        "description": target.description,
+        "description": gettext(target.description),
         "profile": target.profile,
         "group_active": target.profile in modules.active(settings.papaia_config_dir),
         "services": services,
@@ -390,8 +400,10 @@ async def preview_overlay(
             "ok": False,
             "available": False,
             "error": (
-                "This papAIa core can't preview the effective result yet. "
-                "The syntax check above still applies."
+                gettext(
+                    "This papAIa core can't preview the effective result yet. The syntax check "
+                    "above still applies."
+                )
             ),
         }
     try:
@@ -428,7 +440,8 @@ async def _validated(settings: Settings, target: overlay.OverlayTarget, content:
         raise HTTPException(
             status_code=422,
             detail={
-                "message": "The overlay can't be saved: " + problems[0].message,
+                "message": gettext("The overlay can't be saved: %(problem)s")
+                % {"problem": problems[0].message},
                 "problems": [p.as_json() for p in problems],
             },
         )
@@ -446,7 +459,8 @@ async def _validated(settings: Settings, target: overlay.OverlayTarget, content:
             raise HTTPException(
                 status_code=422,
                 detail={
-                    "message": "The core can't merge this overlay: " + result.error,
+                    "message": gettext("The core can't merge this overlay: %(error)s")
+                    % {"error": result.error},
                     "problems": [
                         {"message": result.error, "line": result.line, "column": result.column}
                     ],
@@ -523,7 +537,7 @@ async def discard_overlay(
     file = _read(settings, key)
     _stale(file.revision, revision)
     if not file.exists:
-        raise HTTPException(status_code=409, detail="There is no overlay file to discard.")
+        raise HTTPException(status_code=409, detail=gettext("There is no overlay file to discard."))
     await require_idle_stack()
     return await _enqueue_overlay(
         settings, user, key=key, content=None, revision=revision, event="discard"
@@ -580,7 +594,10 @@ async def rollback_overlay(
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise HTTPException(status_code=422, detail="That version is not valid UTF-8.") from exc
+        raise HTTPException(
+            status_code=422,
+            detail=gettext("That version is not valid UTF-8."),
+        ) from exc
     await _validated(settings, target, text)
     await require_idle_stack()
     return await _enqueue_overlay(

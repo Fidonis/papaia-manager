@@ -51,6 +51,7 @@ from typing import Any
 
 from app.core.backups import is_valid_restore_point_id
 from app.core.ctl import papaia_ctl_path
+from app.i18n import gettext as _
 
 logger = logging.getLogger(__name__)
 
@@ -207,15 +208,19 @@ async def _docker(*args: str) -> str:
         # No docker CLI on PATH -- the manager is running outside its image. Same
         # class of failure as an unreachable daemon, so it surfaces the same way
         # rather than as an unhandled exception on a polled endpoint.
-        raise RunnerError(f"cannot invoke docker: {exc}") from exc
+        raise RunnerError(_("cannot invoke docker: %(exc)s") % {"exc": exc}) from exc
     try:
         raw_out, raw_err = await asyncio.wait_for(proc.communicate(), timeout=_DOCKER_TIMEOUT)
     except TimeoutError as exc:
         proc.kill()
-        raise RunnerError(f"docker {args[0]} timed out after {_DOCKER_TIMEOUT:.0f}s") from exc
+        raise RunnerError(_(
+            "docker %(value)s timed out after %(_DOCKER_TIMEOUT).0fs"
+        ) % {"value": args[0], "_DOCKER_TIMEOUT": _DOCKER_TIMEOUT}) from exc
     if proc.returncode != 0:
         detail = raw_err.decode(errors="replace").strip() or f"exit code {proc.returncode}"
-        raise RunnerError(f"docker {args[0]} failed: {detail}")
+        raise RunnerError(_(
+            "docker %(value)s failed: %(detail)s"
+        ) % {"value": args[0], "detail": detail})
     return raw_out.decode(errors="replace")
 
 
@@ -230,17 +235,20 @@ async def self_spec() -> ContainerSpec:
     ids = [line.strip() for line in listing.splitlines() if line.strip()]
     if not ids:
         raise RunnerError(
-            "cannot locate the papaia-manager container "
-            f"(no running container labelled {SELF_LABEL}); "
-            "restore is only available when the manager runs in Docker"
+            _(
+                "cannot locate the papaia-manager container (no running container labelled "
+                "%(SELF_LABEL)s); restore is only available when the manager runs in Docker"
+            ) % {"SELF_LABEL": SELF_LABEL}
         )
     # More than one match means several manager containers share the host (a dev
     # container next to a deployed one). The first is ours often enough to be
     # useless as a guess, so name the ambiguity instead of picking blindly.
     if len(ids) > 1:
         raise RunnerError(
-            f"found {len(ids)} containers labelled {SELF_LABEL}; "
-            "cannot tell which one to clone the restore runner from"
+            _(
+                "found %(value)s containers labelled %(SELF_LABEL)s; cannot tell which one to "
+                "clone the restore runner from"
+            ) % {"value": len(ids), "SELF_LABEL": SELF_LABEL}
         )
     return _spec_from_inspect(json.loads(await _docker("inspect", ids[0])))
 
@@ -248,15 +256,15 @@ async def self_spec() -> ContainerSpec:
 def _spec_from_inspect(payload: Any) -> ContainerSpec:
     """Build a ContainerSpec from a `docker inspect` payload."""
     if not isinstance(payload, list) or not payload:
-        raise RunnerError("docker inspect returned no container")
+        raise RunnerError(_("docker inspect returned no container"))
     entry = payload[0]
     if not isinstance(entry, dict):
-        raise RunnerError("docker inspect returned an unexpected shape")
+        raise RunnerError(_("docker inspect returned an unexpected shape"))
     host_config = entry.get("HostConfig") or {}
     config = entry.get("Config") or {}
     image = str(config.get("Image") or entry.get("Image") or "")
     if not image:
-        raise RunnerError("the manager container reports no image to reuse")
+        raise RunnerError(_("the manager container reports no image to reuse"))
     return ContainerSpec(
         image=image,
         binds=[str(b) for b in host_config.get("Binds") or []],
@@ -320,7 +328,9 @@ def build_run_args(
     module.
     """
     if not is_valid_restore_point_id(restore_point):
-        raise ValueError(f"restore point {restore_point!r} is not a valid snapshot id")
+        raise ValueError(_(
+            "restore point %(restore_point)r is not a valid snapshot id"
+        ) % {"restore_point": restore_point})
 
     args = _base_run_args(
         spec,
@@ -384,9 +394,11 @@ def build_stack_run_args(
     design, so a stack action leaves them running.
     """
     if action not in STACK_ACTIONS:
-        raise ValueError(f"action {action!r} is not in {sorted(STACK_ACTIONS)}")
+        raise ValueError(_(
+            "action %(action)r is not in %(value)s"
+        ) % {"action": action, "value": sorted(STACK_ACTIONS)})
     if clean_up and action == "start":
-        raise ValueError("--clean-up needs something to stop")
+        raise ValueError(_("--clean-up needs something to stop"))
 
     args = _base_run_args(
         spec,
@@ -438,7 +450,9 @@ def build_upgrade_run_args(
     Without it the argv is exactly the bare papaia-ctl invocation.
     """
     if not is_valid_target_version(target_version):
-        raise ValueError(f"target version {target_version!r} is not a release version")
+        raise ValueError(_(
+            "target version %(target_version)r is not a release version"
+        ) % {"target_version": target_version})
 
     args = _base_run_args(
         spec,
@@ -503,7 +517,7 @@ async def start_upgrade(
     await _docker(*args)
     status = await find_runner(UPGRADE_KIND)
     if status is None:
-        raise RunnerError("the upgrade runner exited before it could be inspected")
+        raise RunnerError(_("the upgrade runner exited before it could be inspected"))
     return status
 
 
@@ -537,7 +551,7 @@ async def find_runner(kind: RunnerKind = RESTORE_KIND) -> RunnerStatus | None:
 
 def _status_from_inspect(payload: Any, kind: RunnerKind = RESTORE_KIND) -> RunnerStatus:
     if not isinstance(payload, list) or not payload or not isinstance(payload[0], dict):
-        raise RunnerError("docker inspect returned an unexpected shape for the runner")
+        raise RunnerError(_("docker inspect returned an unexpected shape for the runner"))
     entry = payload[0]
     state = entry.get("State") or {}
     labels = ((entry.get("Config") or {}).get("Labels")) or {}
@@ -586,7 +600,7 @@ async def start_restore(
     await _docker(*args)
     status = await find_runner()
     if status is None:
-        raise RunnerError("the restore runner exited before it could be inspected")
+        raise RunnerError(_("the restore runner exited before it could be inspected"))
     return status
 
 
@@ -613,7 +627,7 @@ async def clear_runner(name: str, kind: RunnerKind = RESTORE_KIND) -> None:
     """
     status = await find_runner(kind)
     if status is not None and status.name == name and status.is_running:
-        raise RunnerError(f"runner {name} is still running")
+        raise RunnerError(_("runner %(name)s is still running") % {"name": name})
     await _docker("rm", name)
 
 
@@ -637,7 +651,7 @@ async def start_stack_action(
     await _docker(*args)
     status = await find_runner(STACK_KIND)
     if status is None:
-        raise RunnerError("the stack runner exited before it could be inspected")
+        raise RunnerError(_("the stack runner exited before it could be inspected"))
     return status
 
 
