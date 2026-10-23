@@ -39,6 +39,7 @@ from typing import Any
 
 from app.core.ctl import CtlError, run_py_cli
 from app.core.settings_store import refresh_interval
+from app.i18n import N_, current_locale, gettext
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +74,10 @@ USAGE_RUN_TIMEOUT_SECONDS = 30.0
 
 # (key in the core's details, label). The core's order, which is Docker's.
 _ROWS = (
-    ("images", "Images"),
-    ("containers", "Containers"),
-    ("volumes", "Volumes"),
-    ("build_cache", "Build cache"),
+    ("images", N_("Images")),
+    ("containers", N_("Containers")),
+    ("volumes", N_("Volumes")),
+    ("build_cache", N_("Build cache")),
 )
 
 _UNITS = ("B", "kB", "MB", "GB")
@@ -114,16 +115,18 @@ class DockerUsageRow:
     def reclaimable_text(self) -> str:
         if self.reclaimable_bytes is None:
             return ""
-        return f"{format_decimal_bytes(self.reclaimable_bytes)} reclaimable"
+        return gettext("%(size)s reclaimable") % {
+            "size": format_decimal_bytes(self.reclaimable_bytes)
+        }
 
     @property
     def detail(self) -> str:
         """`53 total · 31 active`, in Docker's own column names."""
         parts = []
         if self.count is not None:
-            parts.append(f"{self.count} total")
+            parts.append(gettext("%(count)s total") % {"count": self.count})
         if self.active is not None:
-            parts.append(f"{self.active} active")
+            parts.append(gettext("%(count)s active") % {"count": self.active})
         return " · ".join(parts)
 
 
@@ -212,11 +215,13 @@ def parse_docker_usage(stdout: str, *, checked_at: datetime | None = None) -> Do
     try:
         document = json.loads(stdout)
     except ValueError:
-        return unavailable("doctor did not return JSON")
+        return unavailable(gettext("doctor did not return JSON"))
     if not isinstance(document, dict):
-        return unavailable("doctor did not return a JSON object")
+        return unavailable(gettext("doctor did not return a JSON object"))
     if document.get("schema_version") != _SUPPORTED_SCHEMA:
-        return unavailable(f"doctor reports schema {document.get('schema_version')!r}, not 1")
+        return unavailable(gettext(
+            "doctor reports schema %(value)r, not 1"
+        ) % {"value": document.get('schema_version')})
 
     checks = document.get("checks")
     check = next(
@@ -228,16 +233,16 @@ def parse_docker_usage(stdout: str, *, checked_at: datetime | None = None) -> Do
         None,
     )
     if check is None:
-        return unavailable("doctor did not report docker_usage")
+        return unavailable(gettext("doctor did not report docker_usage"))
     summary = check.get("summary")
     reason = summary.strip() if isinstance(summary, str) else ""
     if check.get("status") != "pass":
-        return unavailable(reason or "docker_usage could not be read")
+        return unavailable(reason or gettext("docker_usage could not be read"))
 
     details = check.get("details")
     types = details.get("types") if isinstance(details, dict) else None
     if not isinstance(types, dict):
-        return unavailable("doctor reported docker_usage without figures")
+        return unavailable(gettext("doctor reported docker_usage without figures"))
     # The bars are shares of the rows that are shown, not of a type Docker adds later.
     sizes = [
         _int(entry.get("size_bytes"))
@@ -251,7 +256,7 @@ def parse_docker_usage(stdout: str, *, checked_at: datetime | None = None) -> Do
         if (row := _row(key, label, types.get(key), total)) is not None
     )
     if not rows:
-        return unavailable("doctor reported docker_usage without figures")
+        return unavailable(gettext("doctor reported docker_usage without figures"))
     return DockerUsage(
         available=True,
         rows=rows,
@@ -280,6 +285,12 @@ def usage_interval(interval: int) -> float:
 class _Entry:
     at: float
     usage: DockerUsage
+    # What `doctor` printed, the language `usage` was written in and, for a run that ended
+    # without output, why as (message, values): the reading is shared by every account, so it
+    # is put into words again for an account whose language is another one.
+    out: str | None = None
+    locale: str = "en"
+    reason: tuple[str, dict[str, Any]] | None = None
 
 
 # One manager process serves one deployment, so a single entry is all this needs.
@@ -304,10 +315,18 @@ def _first_line(text: str, limit: int = 200) -> str:
     return ""
 
 
-async def _run(config_dir: str, workspace_dir: str) -> DockerUsage:
+_NO_CHECK = N_("this papAIa core has no docker_usage check")
+_NO_OUTPUT = N_("doctor exited with status %(code)s and no output")
+_UNEXPECTED = N_("the Docker usage check failed unexpectedly")
+
+
+async def _run(
+    config_dir: str, workspace_dir: str
+) -> tuple[DockerUsage, str | None, tuple[str, dict[str, Any]] | None]:
+    """The reading, the raw output it came from and, for a run without output, why."""
     names = core_checks(workspace_dir)
     if CHECK_NAME not in names:
-        return unavailable("this papAIa core has no docker_usage check")
+        return unavailable(gettext(_NO_CHECK)), None, (_NO_CHECK, {})
     try:
         code, out, err = await run_py_cli(
             command="doctor",
@@ -319,22 +338,44 @@ async def _run(config_dir: str, workspace_dir: str) -> DockerUsage:
         )
     except CtlError as exc:
         logger.warning("docker usage: %s", exc)
-        return unavailable(str(exc))
+        return unavailable(str(exc)), None, None
     if not out.strip():
-        return unavailable(_first_line(err) or f"doctor exited with status {code} and no output")
-    return parse_docker_usage(out)
+        first = _first_line(err)
+        if first:
+            return unavailable(first), None, None
+        return (
+            unavailable(gettext(_NO_OUTPUT) % {"code": code}),
+            None,
+            (_NO_OUTPUT, {"code": code}),
+        )
+    return parse_docker_usage(out), out, None
 
 
 async def _measure(config_dir: str, workspace_dir: str) -> DockerUsage:
     """One run, stored. Never raises: a task nobody awaits would lose the error."""
     global _cache  # noqa: PLW0603
+    reason: tuple[str, dict[str, Any]] | None
     try:
-        usage = await _run(config_dir, workspace_dir)
+        usage, out, reason = await _run(config_dir, workspace_dir)
     except Exception:
         logger.exception("docker usage: unexpected failure")
-        usage = unavailable("the Docker usage check failed unexpectedly")
-    _cache = _Entry(at=time.monotonic(), usage=usage)
+        usage, out, reason = unavailable(gettext(_UNEXPECTED)), None, (_UNEXPECTED, {})
+    _cache = _Entry(
+        at=time.monotonic(), usage=usage, out=out, locale=current_locale(), reason=reason
+    )
     return usage
+
+
+def _in_current_language(entry: _Entry) -> DockerUsage:
+    """The cached reading, in the language of the request asking for it."""
+    if entry.locale == current_locale():
+        return entry.usage
+    if entry.out is not None:
+        return parse_docker_usage(entry.out, checked_at=entry.usage.checked_at)
+    if entry.reason is not None:
+        message, values = entry.reason
+        return unavailable(gettext(message) % values)
+    return entry.usage
 
 
 def _fresh(*, force: bool, interval: int) -> DockerUsage | None:
@@ -347,7 +388,7 @@ def _fresh(*, force: bool, interval: int) -> DockerUsage | None:
         limit = usage_interval(interval)
     else:
         limit = min(USAGE_FAILURE_TTL_SECONDS, usage_interval(interval))
-    return _cache.usage if time.monotonic() - _cache.at < limit else None
+    return _in_current_language(_cache) if time.monotonic() - _cache.at < limit else None
 
 
 def _start(config_dir: str, workspace_dir: str) -> asyncio.Task[DockerUsage]:
@@ -375,6 +416,7 @@ async def load_docker_usage(
         return hit
     if _cache is None or force:
         # Shielded: a visitor who leaves must not cancel the run for the next.
-        return await asyncio.shield(_start(config_dir, workspace_dir))
+        usage = await asyncio.shield(_start(config_dir, workspace_dir))
+        return _in_current_language(_cache) if _cache is not None else usage
     _start(config_dir, workspace_dir)
-    return _cache.usage
+    return _in_current_language(_cache)

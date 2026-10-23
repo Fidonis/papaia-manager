@@ -36,11 +36,11 @@
       <span class="font-mono">{{ step.subject }}</span>
       {% if step.state == "in-use" %}
       <span class="badge badge-warning badge-sm ml-auto"
-            title="A container still had this volume open, so it was left alone rather than overwritten underneath a live process.">skipped, still in use</span>
+            title="{{ _('A container still had this volume open, so it was left alone rather than overwritten underneath a live process.') }}">{% trans %}skipped, still in use{% endtrans %}</span>
       {% elif step.failed %}
-      <span class="badge badge-error badge-sm ml-auto">failed</span>
+      <span class="badge badge-error badge-sm ml-auto">{% trans %}failed{% endtrans %}</span>
       {% elif step.state == "missing" %}
-      <span class="badge badge-ghost badge-sm ml-auto">no longer installed</span>
+      <span class="badge badge-ghost badge-sm ml-auto">{% trans %}no longer installed{% endtrans %}</span>
       {% endif %}
     </li>
     {% endfor %}

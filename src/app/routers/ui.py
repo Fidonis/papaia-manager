@@ -75,6 +75,7 @@ from app.core.tiles import (
 from app.core.users_service import MAX_PAGE_SIZE, PAGE_SIZE
 from app.core.vectordb.service import DEFAULT_NAME as DEFAULT_CONNECTION
 from app.core.widgets import registry as widget_registry
+from app.i18n import gettext as _
 from app.routers.api_connections import state_payload
 from app.routers.rag_deps import (
     ConnectionServiceDep,
@@ -324,7 +325,7 @@ async def backup_page(
             backup_dir=str(backup_dir) if backup_dir else None,
             backup_dir_reachable=backups.is_reachable(backup_dir),
             common_timezones=schedule.COMMON_TIMEZONES,
-            weekdays=[(day, schedule.WEEKDAY_LABELS[day][:3]) for day in schedule.WEEKDAYS],
+            weekdays=[(day, _(schedule.WEEKDAY_SHORT[day])) for day in schedule.WEEKDAYS],
             hourly_choices=schedule.HOURLY_CHOICES,
             **_backup_panel_ctx(_queue()),
         ),
@@ -806,7 +807,7 @@ async def partial_embedding_tree(
     except InvalidRequest as exc:
         reason = str(exc)
     except NotFound:
-        reason = "That folder is gone."
+        reason = _("That folder is gone.")
     except IngestError as exc:
         reason = str(exc)
     return _no_store(
@@ -870,7 +871,7 @@ async def partial_embedding_status(
             if not view.active:
                 await ingest_runs.reconcile(settings, transport=transport)
     except NotFound:
-        problem = "The ingester no longer has this run."
+        problem = _("The ingester no longer has this run.")
     except IngestError as exc:
         problem = str(exc)
     history: list[Any] = []
@@ -1237,14 +1238,14 @@ def _schedule_preview(
         if mode == "hourly":
             # The hourly preset has no time of day, only a minute past the hour.
             if not minute.strip().isdigit() or int(minute) > 59:
-                raise schedule.ScheduleError("The minute must be between 0 and 59.")
+                raise schedule.ScheduleError(_("The minute must be between 0 and 59."))
             time = f"00:{int(minute):02d}"
         expression = schedule.compile_preset(
             mode, time=time, weekdays=weekdays, every_hours=every_hours, cron=cron
         )
         raw_retention = retention_days.strip()
         if raw_retention and not raw_retention.isdigit():
-            raise schedule.ScheduleError("The retention must be a whole number of days.")
+            raise schedule.ScheduleError(_("The retention must be a whole number of days."))
         retention = int(raw_retention) if raw_retention else None
         chosen = schedule.build_schedule(
             cron=expression,

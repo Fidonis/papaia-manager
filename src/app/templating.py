@@ -25,6 +25,7 @@ from app.core.rag import rag_active
 from app.core.settings_store import EffectiveBranding, effective_branding
 from app.core.widgets import registry as widget_registry
 from app.core.widgets import view as widget_view
+from app.i18n.jinja import install as install_i18n
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -71,6 +72,9 @@ def asset_url(name: str) -> str:
 
 
 templates.env.globals["asset_url"] = asset_url
+
+# `_()`, `{% trans %}` and the language helpers. Not part of the brand layer above.
+install_i18n(templates.env)
 
 
 @pass_context

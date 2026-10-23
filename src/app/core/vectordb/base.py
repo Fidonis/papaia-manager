@@ -18,6 +18,7 @@ from typing import Any, Literal, Protocol
 import httpx
 
 from app.core.vectordb.errors import InvalidConnectionError
+from app.i18n import gettext as _
 
 # The type of every entry that carries none: an entry without a type is a Qdrant, which
 # is what the ingester's file format means by it.
@@ -123,7 +124,9 @@ def get_type(type_id: str) -> ConnectionType:
     except KeyError:
         known = ", ".join(sorted(_REGISTRY)) or "none"
         raise InvalidConnectionError(
-            f"Unknown connection type {type_id!r} (known: {known})."
+            _(
+                "Unknown connection type %(type_id)r (known: %(known)s)."
+            ) % {"type_id": type_id, "known": known}
         ) from None
 
 

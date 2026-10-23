@@ -29,43 +29,43 @@
       {{ run_badge(view) }}
       <a href="/ingest/jobs/{{ view.job_id }}" class="link link-hover font-mono text-sm font-semibold">{{ view.job_id }}</a>
       <span class="text-sm opacity-70">{{ view.job_mode_label }}</span>
-      <span class="text-sm opacity-60">{{ {'cron': 'on schedule', 'manual_rest': 'started by hand', 'manual_ui': 'started by hand', 'manual_mcp': 'started by an assistant', 'startup': 'at start of the ingester'}.get(view.trigger, view.trigger) }}</span>
+      <span class="text-sm opacity-60">{{ {'cron': _('on schedule'), 'manual_rest': _('started by hand'), 'manual_ui': _('started by hand'), 'manual_mcp': _('started by an assistant'), 'startup': _('at start of the ingester')}.get(view.trigger, view.trigger) }}</span>
       {% if view.active %}
-      <button type="button" class="btn btn-outline btn-xs ml-auto" onclick="ingestAbort('{{ view.run_id }}', reloadRun)">Abort</button>
+      <button type="button" class="btn btn-outline btn-xs ml-auto" onclick="ingestAbort('{{ view.run_id }}', reloadRun)">{% trans %}Abort{% endtrans %}</button>
       {% endif %}
     </div>
     <p class="mt-1 text-sm opacity-70">
-      Started {{ view.started_at | ingest_when(tz) }} ({{ view.started_at | ingest_ago }})
-      {% if view.finished_at %}· took {{ view.started_at | ingest_duration(view.finished_at) }}{% else %}· working for {{ view.started_at | ingest_duration }}{% endif %}
+      {% trans started_at=(view.started_at | ingest_when(tz)), started_at2=(view.started_at | ingest_ago) %}Started {{ started_at }} ({{ started_at2 }}){% endtrans %}
+      {% if view.finished_at %}{% trans started_at=(view.started_at | ingest_duration(view.finished_at)) %}· took {{ started_at }}{% endtrans %}{% else %}{% trans started_at=(view.started_at | ingest_duration) %}· working for {{ started_at }}{% endtrans %}{% endif %}
     </p>
 
     {% if view.active %}
     <div class="mt-3">
       {{ progress(view) }}
       <p class="mt-1 text-sm">
-        {% if view.phase_label %}<b>{{ view.phase_label }}</b>{% else %}Working in the background.{% endif %}
-        {% if view.files_done is not none and view.counters.files_seen %} · {{ view.files_done }} of {{ view.counters.files_seen }} files{% endif %}
+        {% if view.phase_label %}<b>{{ view.phase_label }}</b>{% else %}{% trans %}Working in the background.{% endtrans %}{% endif %}
+        {% if view.files_done is not none and view.counters.files_seen %} {% trans files_done=view.files_done, files_seen=view.counters.files_seen %}· {{ files_done }} of {{ files_seen }} files{% endtrans %}{% endif %}
       </p>
       {% if view.current %}<p class="truncate font-mono text-xs opacity-60" title="{{ view.current }}">{{ view.current }}</p>{% endif %}
       {% if progress_supported is sameas false %}
-      <p class="mt-1 text-xs opacity-60">This ingester reports its counts when a run ends; the figures fill in then.</p>
+      <p class="mt-1 text-xs opacity-60">{% trans %}This ingester reports its counts when a run ends; the figures fill in then.{% endtrans %}</p>
       {% endif %}
-      <p class="mt-1 text-xs opacity-60">An abort takes effect between two files, so a long file or a slow fetch finishes first.</p>
+      <p class="mt-1 text-xs opacity-60">{% trans %}An abort takes effect between two files, so a long file or a slow fetch finishes first.{% endtrans %}</p>
     </div>
     {% elif view.dry_run %}
-    <p class="mt-2 text-sm">This was a dry run: it read and planned, but embedded and wrote nothing. “Would embed” counts the files that <i>would</i> be embedded.</p>
+    <p class="mt-2 text-sm">{% trans %}This was a dry run: it read and planned, but embedded and wrote nothing. “Would embed” counts the files that <i>would</i> be embedded.{% endtrans %}</p>
     {% endif %}
 
     {% if view.error %}
     <p class="mt-2 text-sm text-error">{{ view.error }}</p>
     {% if view.sync_status == 'failed' %}
-    <p class="mt-1 text-sm">The files could not be fetched from the source, so nothing was read. The output of the fetch is below; usually it is a wrong address, a credential that no longer works or a source the ingester cannot reach.</p>
+    <p class="mt-1 text-sm">{% trans %}The files could not be fetched from the source, so nothing was read. The output of the fetch is below; usually it is a wrong address, a credential that no longer works or a source the ingester cannot reach.{% endtrans %}</p>
     {% elif view.status == 'aborted_guard' %}
-    <p class="mt-1 text-sm">A safety check stopped the run before it removed content: the source looked empty, or much smaller than before. If that is expected, run again with “Keep files that disappeared” or raise the safety limit of the job.</p>
+    <p class="mt-1 text-sm">{% trans %}A safety check stopped the run before it removed content: the source looked empty, or much smaller than before. If that is expected, run again with “Keep files that disappeared” or raise the safety limit of the job.{% endtrans %}</p>
     {% elif view.status == 'aborted_lock' %}
-    <p class="mt-1 text-sm">Another run was changing the same collection and the ingester gave up waiting. The next run will try again.</p>
+    <p class="mt-1 text-sm">{% trans %}Another run was changing the same collection and the ingester gave up waiting. The next run will try again.{% endtrans %}</p>
     {% elif view.status == 'interrupted' %}
-    <p class="mt-1 text-sm">The run was stopped (by an abort, or because the ingester restarted). What was already embedded stays; the next run continues with the rest.</p>
+    <p class="mt-1 text-sm">{% trans %}The run was stopped (by an abort, or because the ingester restarted). What was already embedded stays; the next run continues with the rest.{% endtrans %}</p>
     {% endif %}
     {% endif %}
   </div>
@@ -74,17 +74,17 @@
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
-        <div><span class="opacity-60">Files seen</span> <b>{{ view.counters.files_seen }}</b></div>
-        <div><span class="opacity-60">{{ 'Would embed' if view.dry_run else 'Embedded' }}</span> <b>{{ view.counters.docs_indexed }}</b></div>
-        <div><span class="opacity-60">Unchanged</span> <b>{{ view.counters.docs_unchanged }}</b></div>
-        <div><span class="opacity-60">Failed</span> <b class="{{ 'text-error' if view.counters.docs_failed else '' }}">{{ view.counters.docs_failed }}</b></div>
-        <div><span class="opacity-60">Removed</span> <b>{{ view.counters.docs_deleted }}</b></div>
-        <div><span class="opacity-60">Chunks written</span> <b>{{ '{:,}'.format(view.counters.chunks_upserted) }}</b></div>
-        <div><span class="opacity-60">Changed, not updated</span> <b title="A job that only adds new files leaves changed files as they were">{{ view.counters.docs_skipped_changed }}</b></div>
-        <div><span class="opacity-60">Data read</span> <b>{{ view.counters.bytes_read | filesize }}</b></div>
+        <div><span class="opacity-60">{% trans %}Files seen{% endtrans %}</span> <b>{{ view.counters.files_seen }}</b></div>
+        <div><span class="opacity-60">{{ _('Would embed') if view.dry_run else _('Embedded') }}</span> <b>{{ view.counters.docs_indexed }}</b></div>
+        <div><span class="opacity-60">{% trans %}Unchanged{% endtrans %}</span> <b>{{ view.counters.docs_unchanged }}</b></div>
+        <div><span class="opacity-60">{% trans %}Failed{% endtrans %}</span> <b class="{{ 'text-error' if view.counters.docs_failed else '' }}">{{ view.counters.docs_failed }}</b></div>
+        <div><span class="opacity-60">{% trans %}Removed{% endtrans %}</span> <b>{{ view.counters.docs_deleted }}</b></div>
+        <div><span class="opacity-60">{% trans %}Chunks written{% endtrans %}</span> <b>{{ '{:,}'.format(view.counters.chunks_upserted) }}</b></div>
+        <div><span class="opacity-60">{% trans %}Changed, not updated{% endtrans %}</span> <b title="{{ _('A job that only adds new files leaves changed files as they were') }}">{{ view.counters.docs_skipped_changed }}</b></div>
+        <div><span class="opacity-60">{% trans %}Data read{% endtrans %}</span> <b>{{ (view.counters.bytes_read | filesize) }}</b></div>
       </div>
       <p class="mt-2 text-sm">
-        <a class="link" href="/ingest/jobs/{{ view.job_id }}?run={{ view.run_id }}#files">Files this run touched</a>
+        <a class="link" href="/ingest/jobs/{{ view.job_id }}?run={{ view.run_id }}#files">{% trans %}Files this run touched{% endtrans %}</a>
       </p>
     </div>
   </div>
@@ -93,9 +93,9 @@
   {% if view.sync_stderr_tail %}
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body gap-1 p-4">
-      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">Output of the fetch</p>
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}Output of the fetch{% endtrans %}</p>
       <pre class="max-h-72 overflow-auto rounded-lg bg-base-300 p-3 font-mono text-xs">{{ view.sync_stderr_tail }}</pre>
-      <p class="text-xs opacity-60">The last lines of the tool that fetches remote files. It can contain addresses.</p>
+      <p class="text-xs opacity-60">{% trans %}The last lines of the tool that fetches remote files. It can contain addresses.{% endtrans %}</p>
     </div>
   </div>
   {% endif %}
@@ -103,10 +103,10 @@
   {% if view.events %}
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body gap-2 p-4">
-      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">Messages from the ingester</p>
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}Messages from the ingester{% endtrans %}</p>
       {% if problems %}
       <details open>
-        <summary class="cursor-pointer text-sm">{{ problems | length }} problem{{ '' if problems | length == 1 else 's' }}{% if view.events_truncated %} (among the first {{ view.events | length }} messages){% endif %}</summary>
+        <summary class="cursor-pointer text-sm">{% trans count=(problems | length) %}{{ count }} problem{% pluralize count %}{{ count }} problems{% endtrans %}{% if view.events_truncated %} {% trans count=(view.events | length) %}(among the first {{ count }} messages){% endtrans %}{% endif %}</summary>
         <ul class="mt-1 max-h-72 overflow-y-auto rounded bg-base-300 p-2 text-xs">
           {% for event in problems %}
           <li class="flex gap-2 py-0.5">
@@ -118,7 +118,7 @@
       </details>
       {% endif %}
       <details {% if not problems %}open{% endif %}>
-        <summary class="cursor-pointer text-sm">All messages ({{ view.events | length }})</summary>
+        <summary class="cursor-pointer text-sm">{% trans count=(view.events | length) %}All messages ({{ count }}){% endtrans %}</summary>
         <ul class="mt-1 max-h-72 overflow-y-auto rounded bg-base-300 p-2 text-xs">
           {% for event in view.events %}
           <li class="flex gap-2 py-0.5">
@@ -131,7 +131,7 @@
     </div>
   </div>
   {% elif not view.active %}
-  <p class="text-sm opacity-60">The ingester recorded no messages for this run.</p>
+  <p class="text-sm opacity-60">{% trans %}The ingester recorded no messages for this run.{% endtrans %}</p>
   {% endif %}
   {% endif %}
 </div>

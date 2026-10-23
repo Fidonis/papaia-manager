@@ -37,9 +37,11 @@ from app.core.vectordb import (
     get_type,
 )
 from app.core.vectordb.service import DEFAULT_NAME, ConnectionService
+from app.i18n import N_
+from app.i18n import gettext as _
 
 _NO_API_KEY = (
-    "QDRANT_JWT_SECRET is not set in ai/rag/.env, so the manager has no api-key for Qdrant."
+    N_("QDRANT_JWT_SECRET is not set in ai/rag/.env, so the manager has no api-key for Qdrant.")
 )
 
 
@@ -62,17 +64,22 @@ def translated(what: str = "") -> Iterator[None]:
     except (InvalidRequest, InvalidInput, SecretProblem) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except NotFound as exc:
-        raise HTTPException(status_code=404, detail=f"{what or exc} was not found") from exc
+        raise HTTPException(status_code=404, detail=_(
+            "%(value)s was not found"
+        ) % {"value": what or exc}) from exc
     except (Conflict, CatalogConflict, IngestTooOld) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IngestUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except (IngestRejected, CatalogRejected) as exc:
-        raise HTTPException(status_code=502, detail=f"Ingester: {exc}") from exc
+        raise HTTPException(status_code=502, detail=_("Ingester: %(exc)s") % {"exc": exc}) from exc
     except QdrantUnavailable as exc:
         raise HTTPException(status_code=503, detail=exc.detail) from exc
     except QdrantError as exc:
-        raise HTTPException(status_code=502, detail=f"Qdrant: {exc.detail}") from exc
+        raise HTTPException(
+            status_code=502,
+            detail=_("Qdrant: %(detail)s") % {"detail": exc.detail},
+        ) from exc
 
 
 def require_rag_admin(
@@ -88,7 +95,7 @@ def require_rag_admin(
     if not rag_active(settings.papaia_config_dir):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="The RAG system is not enabled on this deployment",
+            detail=_("The RAG system is not enabled on this deployment"),
         )
     return user
 
@@ -144,23 +151,29 @@ async def get_store(
     if CAPABILITY_COLLECTIONS not in get_type(resolved.type).capabilities:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"The connection {resolved.name!r} does not support collections.",
+            detail=_(
+                "The connection %(name)r does not support collections."
+            ) % {"name": resolved.name},
         )
 
     blocked: str | None = None
-    hint = f"Check the api-key of the connection {resolved.name!r} on the Connections page."
+    hint = _(
+        "Check the api-key of the connection %(name)r on the Connections page."
+    ) % {"name": resolved.name}
     if resolved.source == "env":
         # No stored default: the stack's own settings stand in for it.
-        hint = "Check QDRANT_JWT_SECRET in ai/rag/.env."
+        hint = _("Check QDRANT_JWT_SECRET in ai/rag/.env.")
         if not resolved.api_key:
-            blocked = _NO_API_KEY
+            blocked = _(_NO_API_KEY)
     elif resolved.key_state == "unreadable":
         blocked = (
-            f"The api-key of the connection {resolved.name!r} cannot be decrypted with the "
-            "current QI_CONNECTIONS_SECRET. Enter the key again on the Connections page."
+            _(
+                "The api-key of the connection %(name)r cannot be decrypted with the current "
+                "QI_CONNECTIONS_SECRET. Enter the key again on the Connections page."
+            ) % {"name": resolved.name}
         )
     elif resolved.integrated:
-        hint += " Reset restores the stack's key."
+        hint += " " + _("Reset restores the stack's key.")
 
     client = QdrantClient(
         resolved.url,

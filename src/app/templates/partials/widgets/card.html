@@ -26,15 +26,15 @@
         <p class="font-semibold leading-snug truncate">{{ title }}</p>
         <p class="mt-0.5 flex items-center gap-1.5 text-xs opacity-70">
           {% if result.status == 'unavailable' %}
-          <span class="h-2 w-2 shrink-0 rounded-full bg-base-content/30" aria-hidden="true"></span>Not available
+          <span class="h-2 w-2 shrink-0 rounded-full bg-base-content/30" aria-hidden="true"></span>{% trans %}Not available{% endtrans %}
           {% elif state == 'ok' %}
           <span class="h-2 w-2 shrink-0 rounded-full bg-success" aria-hidden="true"></span>OK
           {% elif state == 'warn' %}
-          <span class="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden="true"></span>Needs attention
+          <span class="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden="true"></span>{% trans %}Needs attention{% endtrans %}
           {% elif state == 'critical' %}
-          <span class="h-2 w-2 shrink-0 rounded-full bg-error" aria-hidden="true"></span>Critical
+          <span class="h-2 w-2 shrink-0 rounded-full bg-error" aria-hidden="true"></span>{% trans %}Critical{% endtrans %}
           {% else %}
-          <span class="h-2 w-2 shrink-0 rounded-full bg-base-content/30" aria-hidden="true"></span>Unknown
+          <span class="h-2 w-2 shrink-0 rounded-full bg-base-content/30" aria-hidden="true"></span>{% trans %}Unknown{% endtrans %}
           {% endif %}
         </p>
       </div>
@@ -47,7 +47,7 @@
       {% if is_admin %}
       <p class="opacity-80">{{ result.reason }}</p>
       {% else %}
-      <p class="opacity-70">This widget cannot show its data right now.</p>
+      <p class="opacity-70">{% trans %}This widget cannot show its data right now.{% endtrans %}</p>
       {% endif %}
     </div>
 
@@ -83,8 +83,8 @@
         <span class="flex shrink-0 items-center gap-1.5 opacity-80">
           {{ item.value }}
           {% if item.state and item.state.value == 'ok' %}<span class="h-2 w-2 rounded-full bg-success" aria-hidden="true"></span><span class="sr-only">OK</span>
-          {% elif item.state and item.state.value == 'warn' %}<span class="h-2 w-2 rounded-full bg-warning" aria-hidden="true"></span><span class="sr-only">Needs attention</span>
-          {% elif item.state and item.state.value == 'critical' %}<span class="h-2 w-2 rounded-full bg-error" aria-hidden="true"></span><span class="sr-only">Critical</span>
+          {% elif item.state and item.state.value == 'warn' %}<span class="h-2 w-2 rounded-full bg-warning" aria-hidden="true"></span><span class="sr-only">{% trans %}Needs attention{% endtrans %}</span>
+          {% elif item.state and item.state.value == 'critical' %}<span class="h-2 w-2 rounded-full bg-error" aria-hidden="true"></span><span class="sr-only">{% trans %}Critical{% endtrans %}</span>
           {% endif %}
         </span>
       </li>
@@ -95,7 +95,7 @@
     {% if result.status == 'stale' %}
     {# The latest read failed and this is the last good one, so say how old it is. #}
     <p class="text-xs opacity-60">
-      As of {{ result.fetched_at.strftime('%H:%M') }} UTC.{% if is_admin %} {{ result.reason }}{% endif %}
+      {% trans strftime=result.fetched_at.strftime('%H:%M') %}As of {{ strftime }} UTC.{% endtrans %}{% if is_admin %} {{ result.reason }}{% endif %}
     </p>
     {% endif %}
 

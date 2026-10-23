@@ -1,6 +1,6 @@
 {% if job is none %}
 <div id="job-status" class="alert alert-error">
-  <span>Job not found.</span>
+  <span>{% trans %}Job not found.{% endtrans %}</span>
 </div>
 {% else %}
 <div
@@ -14,13 +14,13 @@
 >
   {% if job.status.value == "running" %}
     <span class="loading loading-spinner loading-sm text-info"></span>
-    <span class="badge badge-info">running</span>
+    <span class="badge badge-info">{% trans %}running{% endtrans %}</span>
   {% elif job.status.value == "succeeded" %}
-    <span class="badge badge-success">succeeded</span>
+    <span class="badge badge-success">{% trans %}succeeded{% endtrans %}</span>
   {% elif job.status.value == "failed" %}
-    <span class="badge badge-error">failed</span>
+    <span class="badge badge-error">{% trans %}failed{% endtrans %}</span>
   {% else %}
-    <span class="badge badge-ghost">queued</span>
+    <span class="badge badge-ghost">{% trans %}queued{% endtrans %}</span>
   {% endif %}
 
   <span class="text-sm opacity-60">
@@ -29,13 +29,13 @@
 
   {% if job.started_at %}
   <span class="text-xs opacity-40">
-    started {{ job.started_at.strftime("%H:%M:%S") }}
+    {% trans strftime=job.started_at.strftime("%H:%M:%S") %}started {{ strftime }}{% endtrans %}
   </span>
   {% endif %}
 
   {% if job.finished_at %}
   <span class="text-xs opacity-40">
-    finished {{ job.finished_at.strftime("%H:%M:%S") }}
+    {% trans strftime=job.finished_at.strftime("%H:%M:%S") %}finished {{ strftime }}{% endtrans %}
   </span>
   {% endif %}
 </div>

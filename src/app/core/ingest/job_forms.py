@@ -23,61 +23,83 @@ from typing import Any
 from app.core.ingest import jobspec, schedules
 from app.core.ingest.jobspec import Issue
 from app.core.schedule import ScheduleError
+from app.i18n import N_
+from app.i18n import gettext as _
 
 # The modes in the words of the editor: what the job does with a source over time.
 MODE_CHOICES: tuple[dict[str, str], ...] = (
     {
         "value": "append",
-        "title": "Add new files only",
+        "title": N_("Add new files only"),
         "text": (
-            "Files that are new in the source are added. A file that changed is left as it "
-            "was embedded, and a file that disappeared stays in the collection."
+            N_(
+                "Files that are new in the source are added. A file that changed is left as it "
+                "was embedded, and a file that disappeared stays in the collection."
+            )
         ),
     },
     {
         "value": "upsert",
-        "title": "Keep in sync",
+        "title": N_("Keep in sync"),
         "text": (
-            "New files are added, changed files replace their old content and files that "
-            "disappeared from the source are removed from the collection. A safety limit "
-            "stops a run that would remove too much."
+            N_(
+                "New files are added, changed files replace their old content and files that "
+                "disappeared from the source are removed from the collection. A safety limit "
+                "stops a run that would remove too much."
+            )
         ),
     },
     {
         "value": "full",
-        "title": "Rebuild every time",
+        "title": N_("Rebuild every time"),
         "text": (
-            "Everything of this job is embedded again on every run and what was not "
-            "refreshed is removed afterwards. Slow and costly; for sources that change "
-            "completely."
+            N_(
+                "Everything of this job is embedded again on every run and what was not "
+                "refreshed is removed afterwards. Slow and costly; for sources that change "
+                "completely."
+            )
         ),
     },
 )
 
 STRATEGY_TEXT = {
-    "auto": "Choose by file type",
-    "markdown": "By headings (Markdown)",
-    "paragraph": "By paragraphs",
-    "sheet_rows": "By rows (spreadsheets)",
-    "slide": "By slide (presentations)",
+    "auto": N_("Choose by file type"),
+    "markdown": N_("By headings (Markdown)"),
+    "paragraph": N_("By paragraphs"),
+    "sheet_rows": N_("By rows (spreadsheets)"),
+    "slide": N_("By slide (presentations)"),
 }
 
 STARTUP_TEXT = {
-    "if_missed": "Run once if a scheduled run was missed",
-    "never": "Never",
-    "always": "Always run when the ingester starts",
+    "if_missed": N_("Run once if a scheduled run was missed"),
+    "never": N_("Never"),
+    "always": N_("Always run when the ingester starts"),
 }
+
+def translated_modes() -> list[dict[str, str]]:
+    """`MODE_CHOICES` in the language of the request."""
+    translated = []
+    for choice in MODE_CHOICES:
+        title, text = choice["title"], choice["text"]
+        translated.append({**choice, "title": _(title), "text": _(text)})
+    return translated
+
+
+def translated_texts(texts: Mapping[str, str]) -> dict[str, str]:
+    """A table of marked texts (`STRATEGY_TEXT`, `STARTUP_TEXT`) in the language of the request."""
+    return {key: _(value) for key, value in texts.items()}
+
 
 # Filter presets: the include patterns of the file types people ask for by name.
 FILTER_PRESETS: tuple[dict[str, Any], ...] = (
     {
-        "title": "Documents",
+        "title": N_("Documents"),
         "include": ["**/*.pdf", "**/*.docx", "**/*.doc", "**/*.odt", "**/*.rtf"],
     },
-    {"title": "Text and Markdown", "include": ["**/*.md", "**/*.txt", "**/*.rst"]},
-    {"title": "Spreadsheets", "include": ["**/*.xlsx", "**/*.xls", "**/*.ods", "**/*.csv"]},
-    {"title": "Presentations", "include": ["**/*.pptx", "**/*.ppt", "**/*.odp"]},
-    {"title": "Web pages", "include": ["**/*.html", "**/*.htm"]},
+    {"title": N_("Text and Markdown"), "include": ["**/*.md", "**/*.txt", "**/*.rst"]},
+    {"title": N_("Spreadsheets"), "include": ["**/*.xlsx", "**/*.xls", "**/*.ods", "**/*.csv"]},
+    {"title": N_("Presentations"), "include": ["**/*.pptx", "**/*.ppt", "**/*.odp"]},
+    {"title": N_("Web pages"), "include": ["**/*.html", "**/*.htm"]},
 )
 
 
@@ -106,7 +128,9 @@ def source_detail(source: Mapping[str, Any]) -> str:
         return f"ftp://{source.get('host', '')}/{part('path')}".rstrip("/")
     if kind == "gdrive":
         folder = part("root_folder_id")
-        return f"Google Drive, folder {folder}" if folder else "Google Drive"
+        if folder:
+            return _("Google Drive, folder %(folder)s") % {"folder": folder}
+        return _("Google Drive")
     if kind == "azureblob":
         tail = f"/{part('prefix')}" if part("prefix") else ""
         return f"{part('account')}/{part('container')}{tail}"
@@ -115,7 +139,7 @@ def source_detail(source: Mapping[str, Any]) -> str:
 
 def source_title(source_type: str) -> str:
     form = jobspec.SOURCE_FORMS.get(source_type)
-    return form.title if form else source_type
+    return _(form.title) if form else source_type
 
 
 # ---------------------------------------------------------------------------
@@ -296,12 +320,14 @@ def authored(
         try:
             parsed = json.loads(payload)
         except json.JSONDecodeError as exc:
-            issues.append(Issue(job_id, "target.extra_payload", f"is not valid JSON: {exc.msg}"))
+            issues.append(Issue(job_id, "target.extra_payload", _(
+                "is not valid JSON: %(msg)s"
+            ) % {"msg": exc.msg}))
         else:
             if isinstance(parsed, dict):
                 extra = parsed
             else:
-                issues.append(Issue(job_id, "target.extra_payload", "must be a JSON object"))
+                issues.append(Issue(job_id, "target.extra_payload", _("must be a JSON object")))
     elif isinstance(payload, dict):
         extra = payload
     target = {
@@ -372,7 +398,7 @@ def authored(
 def _plan_from(raw: Mapping[str, Any]) -> schedules.Plan:
     mode = str(raw.get("mode") or "manual")
     if mode not in schedules.MODES:
-        raise ScheduleError(f"Unknown schedule type {mode!r}.")
+        raise ScheduleError(_("Unknown schedule type %(mode)r.") % {"mode": mode})
     weekdays = raw.get("weekdays") or ()
     return schedules.Plan(
         mode=mode,  # type: ignore[arg-type]
@@ -392,14 +418,14 @@ def _plan_from(raw: Mapping[str, Any]) -> schedules.Plan:
 
 def _as_int(value: Any, default: int) -> int:
     if isinstance(value, bool):
-        raise ValueError("a number is expected")
+        raise ValueError(_("a number is expected"))
     if isinstance(value, int):
         return value
     if isinstance(value, str) and value.strip().lstrip("-").isdigit():
         return int(value.strip())
     if value is None or value == "":
         return default
-    raise ValueError("a whole number is expected")
+    raise ValueError(_("a whole number is expected"))
 
 
 def plan_from(raw: Mapping[str, Any]) -> schedules.Plan:

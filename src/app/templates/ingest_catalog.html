@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "partials/_ingest_macros.html" import tabs %}
-{% block title %}Catalog file — Ingest — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Catalog file — Ingest — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Catalog file{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">The defaults every job inherits, and <span class="font-mono">jobs.yaml</span> itself</p>{% endblock %}
+{% block page_title %}{% trans %}Catalog file{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}The defaults every job inherits, and <span class="font-mono">jobs.yaml</span> itself{% endtrans %}</p>{% endblock %}
 
 {% block content %}
 {{ tabs('catalog') }}
@@ -12,12 +12,12 @@
 
   {% if raw.problem %}
   <div class="alert alert-error text-sm" role="alert">
-    <span><span class="font-mono">jobs.yaml</span> cannot be read: {{ raw.problem }}. Fix it in the editor below.</span>
+    <span>{% trans problem=raw.problem %}<span class="font-mono">jobs.yaml</span> cannot be read: {{ problem }}. Fix it in the editor below.{% endtrans %}</span>
   </div>
   {% endif %}
   {% if not raw.writable %}
   <div class="alert alert-warning text-sm" role="alert">
-    <span>The catalog folder does not accept writes from the manager, so the file is shown read-only.</span>
+    <span>{% trans %}The catalog folder does not accept writes from the manager, so the file is shown read-only.{% endtrans %}</span>
   </div>
   {% endif %}
 
@@ -25,51 +25,50 @@
   <section class="card bg-base-100 border border-base-300" x-data='catalogDefaults({{ defaults|tojson }})'>
     <div class="card-body gap-4 p-5">
       <div>
-        <h2 class="font-semibold">Defaults</h2>
+        <h2 class="font-semibold">{% trans %}Defaults{% endtrans %}</h2>
         <p class="text-sm opacity-70">
-          What a job gets for a setting it does not make itself. Changing one moves every job that does not set it.
-          The embedding model is the one worth setting here: a job needs one, from itself or from here.
+          {% trans %}What a job gets for a setting it does not make itself. Changing one moves every job that does not set it. The embedding model is the one worth setting here: a job needs one, from itself or from here.{% endtrans %}
         </p>
       </div>
       <div class="grid gap-4 sm:grid-cols-2">
         <div class="form-control">
-          <label class="label py-1"><span class="label-text">Embedding model</span></label>
-          <input type="text" class="input input-bordered input-sm font-mono" x-model="d.embedding.model" placeholder="nomic-embed-text">
+          <label class="label py-1"><span class="label-text">{% trans %}Embedding model{% endtrans %}</span></label>
+          <input type="text" class="input input-bordered input-sm font-mono" x-model="d.embedding.model" placeholder="{{ _('nomic-embed-text') }}">
         </div>
         <div class="form-control">
-          <label class="label py-1"><span class="label-text">Files per embedding request</span></label>
+          <label class="label py-1"><span class="label-text">{% trans %}Files per embedding request{% endtrans %}</span></label>
           <input type="number" min="1" class="input input-bordered input-sm" x-model="d.embedding.batch_size">
         </div>
         <div class="form-control">
-          <label class="label py-1"><span class="label-text">How text is split</span></label>
+          <label class="label py-1"><span class="label-text">{% trans %}How text is split{% endtrans %}</span></label>
           <select class="select select-bordered select-sm" x-model="d.chunking.strategy">
-            <option value="">(the ingester's choice)</option>
+            <option value="">{% trans %}(the ingester's choice){% endtrans %}</option>
             {% for value in chunk_strategies %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
           </select>
         </div>
         <div class="grid grid-cols-2 gap-2">
           <div class="form-control">
-            <label class="label py-1"><span class="label-text">Chunk size</span></label>
+            <label class="label py-1"><span class="label-text">{% trans %}Chunk size{% endtrans %}</span></label>
             <input type="number" min="1" class="input input-bordered input-sm" x-model="d.chunking.words" placeholder="400">
           </div>
           <div class="form-control">
-            <label class="label py-1"><span class="label-text">Overlap</span></label>
+            <label class="label py-1"><span class="label-text">{% trans %}Overlap{% endtrans %}</span></label>
             <input type="number" min="0" class="input input-bordered input-sm" x-model="d.chunking.overlap" placeholder="50">
           </div>
         </div>
         <div class="form-control sm:col-span-2">
-          <label class="label py-1"><span class="label-text">Always skip</span></label>
-          <textarea rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="d.filters.exclude" spellcheck="false" placeholder="**/.DS_Store&#10;**/~$*"></textarea>
-          <p class="mt-1 text-xs opacity-60">One pattern per line, for every job that does not list its own.</p>
+          <label class="label py-1"><span class="label-text">{% trans %}Always skip{% endtrans %}</span></label>
+          <textarea rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="d.filters.exclude" spellcheck="false" placeholder="{{ _('**/.DS_Store&#10;**/~$*') }}"></textarea>
+          <p class="mt-1 text-xs opacity-60">{% trans %}One pattern per line, for every job that does not list its own.{% endtrans %}</p>
         </div>
         <div class="form-control">
-          <label class="label py-1"><span class="label-text">Time zone of schedules</span></label>
+          <label class="label py-1"><span class="label-text">{% trans %}Time zone of schedules{% endtrans %}</span></label>
           <input type="text" list="catalog-timezones" class="input input-bordered input-sm" x-model="d.schedule.timezone" placeholder="{{ tz }}">
           <datalist id="catalog-timezones">{% for zone in timezones %}<option value="{{ zone }}"></option>{% endfor %}</datalist>
-          <p class="mt-1 text-xs opacity-60">Empty uses the ingester's own zone ({{ tz }}).</p>
+          <p class="mt-1 text-xs opacity-60">{% trans %}Empty uses the ingester's own zone ({{ tz }}).{% endtrans %}</p>
         </div>
         <div class="form-control">
-          <label class="label py-1"><span class="label-text">Most that may be removed in one run</span></label>
+          <label class="label py-1"><span class="label-text">{% trans %}Most that may be removed in one run{% endtrans %}</span></label>
           <input type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm" x-model="d.safety.max_delete_ratio" placeholder="0.25">
         </div>
       </div>
@@ -77,9 +76,9 @@
       <div class="flex items-center gap-2">
         <button type="button" class="btn btn-primary btn-sm" :disabled="busy" @click="save()"{% if not raw.writable %} disabled{% endif %}>
           <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
-          Save defaults
+          {% trans %}Save defaults{% endtrans %}
         </button>
-        <span class="text-xs opacity-60">Every job is checked against the new defaults before anything is written.</span>
+        <span class="text-xs opacity-60">{% trans %}Every job is checked against the new defaults before anything is written.{% endtrans %}</span>
       </div>
     </div>
   </section>
@@ -88,17 +87,16 @@
   <section class="card bg-base-100 border border-base-300" x-data='rawEditor({{ {"text": raw.text, "revision": raw.revision}|tojson }})'>
     <div class="card-body gap-3 p-5">
       <div>
-        <h2 class="font-semibold">jobs.yaml</h2>
+        <h2 class="font-semibold">{% trans %}jobs.yaml{% endtrans %}</h2>
         <p class="text-sm opacity-70">
-          Edited exactly as typed: comments and blank lines stay. The job editor rewrites the file and drops them
-          (the previous version is kept as <span class="font-mono">jobs.yaml.bak</span>), so keep notes here if you want them.
+          {% trans %}Edited exactly as typed: comments and blank lines stay. The job editor rewrites the file and drops them (the previous version is kept as <span class="font-mono">jobs.yaml.bak</span>), so keep notes here if you want them.{% endtrans %}
         </p>
       </div>
       <textarea rows="22" class="textarea textarea-bordered w-full font-mono text-xs leading-relaxed" x-model="text"
                 spellcheck="false" :readonly="!writable" @input="checked = false"></textarea>
       <div style="display:none" x-show="issues.length" class="alert alert-error text-sm" role="alert">
         <div>
-          <p class="font-semibold" x-text="issues.length + (issues.length === 1 ? ' problem' : ' problems')"></p>
+          <p class="font-semibold" x-text="fmtPlural(issues.length, {{ _('{count} problem')|tojson|forceescape }}, {{ _('{count} problems')|tojson|forceescape }})"></p>
           <ul class="mt-1 list-disc pl-5">
             <template x-for="i in issues.slice(0, 12)" :key="i.field + i.message + String(i.job_id)">
               <li><span x-show="i.job_id" class="font-mono" x-text="i.job_id + ': '"></span><span class="font-mono" x-text="i.field"></span>: <span x-text="i.message"></span></li>
@@ -106,15 +104,15 @@
           </ul>
         </div>
       </div>
-      <p style="display:none" x-show="ok" class="text-sm text-success">This would load.</p>
+      <p style="display:none" x-show="ok" class="text-sm text-success">{% trans %}This would load.{% endtrans %}</p>
       <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
       <div class="flex flex-wrap items-center gap-2">
-        <button type="button" class="btn btn-outline btn-sm" :disabled="busy" @click="check()">Check</button>
+        <button type="button" class="btn btn-outline btn-sm" :disabled="busy" @click="check()">{% trans %}Check{% endtrans %}</button>
         <button type="button" class="btn btn-primary btn-sm" :disabled="busy || !writable" @click="save()">
           <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
-          Save
+          {% trans %}Save{% endtrans %}
         </button>
-        <a href="/ingest/catalog" class="btn btn-ghost btn-sm" x-show="stale" style="display:none">Reload the file</a>
+        <a href="/ingest/catalog" class="btn btn-ghost btn-sm" x-show="stale" style="display:none">{% trans %}Reload the file{% endtrans %}</a>
       </div>
     </div>
   </section>
@@ -163,7 +161,7 @@ function catalogDefaults(stored) {
       if (res.handled) return;
       if (!res.ok) { this.error = res.error; return; }
       this.base = JSON.parse(JSON.stringify(res.data.defaults));
-      const out = ingestOutcome(res.data, 'Defaults saved');
+      const out = ingestOutcome(res.data, {{ _('Defaults saved')|tojson }});
       showToast(out.level, out.text);
     },
   };
@@ -193,7 +191,7 @@ function rawEditor(initial) {
         return;
       }
       this.issues = []; this.revision = res.data.raw.revision;
-      const out = ingestOutcome(res.data, 'jobs.yaml saved');
+      const out = ingestOutcome(res.data, {{ _('jobs.yaml saved')|tojson }});
       showToast(out.level, out.text);
     },
   };

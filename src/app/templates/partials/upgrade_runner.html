@@ -25,7 +25,7 @@
 {% if upgrade_runner is none %}
   {% if upgrade_error %}
   <div class="alert alert-warning mb-6">
-    <span>Cannot reach the Docker daemon: {{ upgrade_error }}</span>
+    <span>{% trans %}Cannot reach the Docker daemon: {{ upgrade_error }}{% endtrans %}</span>
   </div>
   {% endif %}
 {% else %}
@@ -35,41 +35,37 @@
       <div class="flex items-center gap-3 flex-wrap">
         {% if upgrade_runner.is_running %}
           <span class="loading loading-spinner loading-sm text-warning"></span>
-          <span class="badge badge-warning">upgrading</span>
+          <span class="badge badge-warning">{% trans %}upgrading{% endtrans %}</span>
         {% elif upgrade_runner.succeeded %}
-          <span class="badge badge-success">upgrade complete</span>
+          <span class="badge badge-success">{% trans %}upgrade complete{% endtrans %}</span>
         {% else %}
-          <span class="badge badge-error">upgrade failed</span>
+          <span class="badge badge-error">{% trans %}upgrade failed{% endtrans %}</span>
         {% endif %}
 
         <span class="text-sm font-medium">papAIa {{ upgrade_runner.target }}</span>
 
         {% if upgrade_runner.exit_code is not none %}
-        <span class="text-xs opacity-40">exit code {{ upgrade_runner.exit_code }}</span>
+        <span class="text-xs opacity-40">{% trans exit_code=upgrade_runner.exit_code %}exit code {{ exit_code }}{% endtrans %}</span>
         {% endif %}
 
         <span class="grow"></span>
 
         {% if not upgrade_runner.is_running %}
-        <button class="btn btn-outline btn-xs" onclick="acknowledgeUpgrade()">Dismiss</button>
+        <button class="btn btn-outline btn-xs" onclick="acknowledgeUpgrade()">{% trans %}Dismiss{% endtrans %}</button>
         {% endif %}
       </div>
 
       {% if upgrade_runner.is_running %}
       <p class="text-sm opacity-60 leading-relaxed">
-        The stack is being stopped, migrated and started again. This page will lose its
-        connection to the manager for a while &mdash; that is expected, and the result
-        appears here once it is back.
+        {% trans %}The stack is being stopped, migrated and started again. This page will lose its connection to the manager for a while &mdash; that is expected, and the result appears here once it is back.{% endtrans %}
       </p>
       {% elif upgrade_runner.succeeded %}
       <p class="text-sm opacity-60 leading-relaxed">
-        papaia-manager was upgraded along with the stack, so this page is now served by a
-        different build than the one that started the upgrade.
-        <button class="link" onclick="window.location.reload()">Reload the page</button>
-        to pick it up.
+        {% trans %}papaia-manager was upgraded along with the stack, so this page is now served by a different build than the one that started the upgrade.{% endtrans %}
+        <button class="link" onclick="window.location.reload()">{% trans %}Reload the page{% endtrans %}</button>
+        {% trans %}to pick it up.{% endtrans %}
         {% if upgrade_runner.prune_images %}
-        The previous papaia-manager image is still held by this result; it is removed
-        when you dismiss it.
+        {% trans %}The previous papaia-manager image is still held by this result; it is removed when you dismiss it.{% endtrans %}
         {% endif %}
       </p>
       {% endif %}
@@ -107,12 +103,12 @@
             </svg>
             <div class="min-w-0">
               <p class="text-sm font-medium text-error">{{ phase.label }}</p>
-              <p class="text-xs opacity-60">stopped here</p>
+              <p class="text-xs opacity-60">{% trans %}stopped here{% endtrans %}</p>
             </div>
           {% elif phase.state == "skipped" %}
             <span class="h-1.5 w-1.5 mt-2 shrink-0 rounded-full bg-base-300"></span>
             <div class="min-w-0">
-              <p class="text-sm opacity-40">{{ phase.label }} &mdash; skipped</p>
+              <p class="text-sm opacity-40">{% trans label=phase.label %}{{ label }} &mdash; skipped{% endtrans %}</p>
               {# The image cleanup says why it did not run. The upgrade itself
                  has succeeded by then, so this is information, not an error. #}
               {% if phase.detail %}
@@ -129,7 +125,7 @@
 
       <div x-show="offline" class="text-sm opacity-60">
         <span class="loading loading-dots loading-xs"></span>
-        Manager not reachable &mdash; reconnecting&hellip;
+        {% trans %}Manager not reachable &mdash; reconnecting&hellip;{% endtrans %}
       </div>
 
       {# The way back. Normally taken verbatim from papaia-ctl's output -- the
@@ -140,18 +136,14 @@
       {% if recovery %}
       <div class="rounded-lg border border-error bg-error/10 p-4">
         {% if recovery_generated %}
-        <p class="text-sm font-semibold mb-1">How to get back</p>
+        <p class="text-sm font-semibold mb-1">{% trans %}How to get back{% endtrans %}</p>
         <p class="text-xs opacity-70 mb-3 leading-relaxed">
-          The upgrade stopped between steps, before papaia-ctl could print its own way
-          back. These commands are assembled from the recorded versions &mdash; run them
-          on the host:
+          {% trans %}The upgrade stopped between steps, before papaia-ctl could print its own way back. These commands are assembled from the recorded versions &mdash; run them on the host:{% endtrans %}
         </p>
         {% else %}
-        <p class="text-sm font-semibold mb-1">There is no automatic rollback</p>
+        <p class="text-sm font-semibold mb-1">{% trans %}There is no automatic rollback{% endtrans %}</p>
         <p class="text-xs opacity-70 mb-3 leading-relaxed">
-          A rollback that fails after a migration failed would leave an installation nobody
-          can reason about, so papaia-ctl stops instead and says how to get back. Run these
-          on the host:
+          {% trans %}A rollback that fails after a migration failed would leave an installation nobody can reason about, so papaia-ctl stops instead and says how to get back. Run these on the host:{% endtrans %}
         </p>
         {% endif %}
         <pre class="rounded bg-base-300 p-3 text-xs whitespace-pre-wrap overflow-x-auto">{{ recovery }}</pre>
@@ -160,7 +152,7 @@
 
       {% if upgrade_log %}
       <details {% if not upgrade_runner.is_running and not upgrade_runner.succeeded %}open{% endif %}>
-        <summary class="text-xs opacity-60 cursor-pointer">Output</summary>
+        <summary class="text-xs opacity-60 cursor-pointer">{% trans %}Output{% endtrans %}</summary>
         <pre class="mt-2 max-h-96 overflow-y-auto rounded-lg bg-base-300 p-3 text-xs whitespace-pre-wrap">{{ upgrade_log }}</pre>
       </details>
       {% endif %}

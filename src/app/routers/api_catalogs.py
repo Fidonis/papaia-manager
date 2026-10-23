@@ -22,6 +22,7 @@ from app.core.catalogs import (
     validate_ref,
 )
 from app.core.jobs import JobContext
+from app.i18n import gettext as _
 
 router = APIRouter(prefix="/api/v1/catalogs")
 
@@ -75,17 +76,19 @@ async def create_catalog(
     verify_csrf(request)
     if body.type == "git":
         if not body.url:
-            raise HTTPException(status_code=400, detail="url is required for git catalogs")
+            raise HTTPException(status_code=400, detail=_("url is required for git catalogs"))
         validate_catalog_url(body.url)
         validate_ref(body.ref)
     else:
         if not body.path:
-            raise HTTPException(status_code=400, detail="path is required for local catalogs")
+            raise HTTPException(status_code=400, detail=_("path is required for local catalogs"))
         validate_local_path(body.path, settings.papaia_workspace_dir)
 
     registry = load_registry(settings.papaia_config_dir)
     if any(c.name == body.name for c in registry.catalogs):
-        raise HTTPException(status_code=409, detail=f"catalog {body.name!r} already exists")
+        raise HTTPException(status_code=409, detail=_(
+            "catalog %(name)r already exists"
+        ) % {"name": body.name})
 
     catalog = Catalog(
         name=body.name,
@@ -127,7 +130,10 @@ async def update_catalog(
     registry = load_registry(settings.papaia_config_dir)
     catalog = next((c for c in registry.catalogs if c.name == name), None)
     if catalog is None:
-        raise HTTPException(status_code=404, detail=f"catalog {name!r} not found")
+        raise HTTPException(
+            status_code=404,
+            detail=_("catalog %(name)r not found") % {"name": name},
+        )
 
     changed: dict[str, Any] = {}
     if body.url is not None:
@@ -169,7 +175,10 @@ async def delete_catalog(
     before = len(registry.catalogs)
     registry.catalogs = [c for c in registry.catalogs if c.name != name]
     if len(registry.catalogs) == before:
-        raise HTTPException(status_code=404, detail=f"catalog {name!r} not found")
+        raise HTTPException(
+            status_code=404,
+            detail=_("catalog %(name)r not found") % {"name": name},
+        )
     save_registry(settings.papaia_config_dir, registry)
     write_audit_entry(
         settings.papaia_config_dir,
@@ -190,12 +199,15 @@ async def refresh_catalog(
     registry = load_registry(settings.papaia_config_dir)
     catalog = next((c for c in registry.catalogs if c.name == name), None)
     if catalog is None:
-        raise HTTPException(status_code=404, detail=f"catalog {name!r} not found")
+        raise HTTPException(
+            status_code=404,
+            detail=_("catalog %(name)r not found") % {"name": name},
+        )
 
     from app.main import _job_queue  # noqa: PLC0415
 
     if _job_queue is None:
-        raise HTTPException(status_code=503, detail="job queue not initialized")
+        raise HTTPException(status_code=503, detail=_("job queue not initialized"))
 
     _catalog = catalog
     _username = user.preferred_username or user.sub

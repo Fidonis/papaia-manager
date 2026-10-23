@@ -3,18 +3,18 @@
    because app.css is built by scanning these templates. #}
 {% if not rows %}
 <div class="rounded-xl border border-base-300 px-5 py-8 text-center">
-  <p class="text-sm font-semibold">Nothing sent yet</p>
-  <p class="mt-1 text-sm opacity-60">Deliveries show up here, test notifications included.</p>
+  <p class="text-sm font-semibold">{% trans %}Nothing sent yet{% endtrans %}</p>
+  <p class="mt-1 text-sm opacity-60">{% trans %}Deliveries show up here, test notifications included.{% endtrans %}</p>
 </div>
 {% else %}
 <div class="overflow-x-auto rounded-xl border border-base-300">
   <table class="table table-sm">
     <thead>
       <tr>
-        <th>When (UTC)</th>
-        <th>Event</th>
-        <th>Recipient</th>
-        <th>Result</th>
+        <th>{% trans %}When (UTC){% endtrans %}</th>
+        <th>{% trans %}Event{% endtrans %}</th>
+        <th>{% trans %}Recipient{% endtrans %}</th>
+        <th>{% trans %}Result{% endtrans %}</th>
       </tr>
     </thead>
     <tbody>
@@ -27,9 +27,9 @@
         <td class="text-xs">{{ row.recipient }}</td>
         <td>
           {% if row.ok %}
-          <span class="badge badge-success badge-sm">Sent</span>
+          <span class="badge badge-success badge-sm">{% trans %}Sent{% endtrans %}</span>
           {% else %}
-          <span class="badge badge-error badge-sm">Failed</span>
+          <span class="badge badge-error badge-sm">{% trans %}Failed{% endtrans %}</span>
           {% if row.reason %}<span class="block text-xs opacity-60">{{ row.reason }}</span>{% endif %}
           {% endif %}
         </td>
@@ -39,6 +39,6 @@
   </table>
 </div>
 {% if total > rows | length %}
-<p class="mt-2 text-xs opacity-60">The last {{ rows | length }} of {{ total }}. The audit log has the rest (action “notify.”).</p>
+<p class="mt-2 text-xs opacity-60">{% trans count=(rows | length) %}The last {{ count }} of {{ total }}. The audit log has the rest (action “notify.”).{% endtrans %}</p>
 {% endif %}
 {% endif %}

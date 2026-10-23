@@ -13,6 +13,8 @@ from typing import Any, Literal
 
 import yaml
 
+from app.i18n import gettext
+
 logger = logging.getLogger(__name__)
 
 _CATALOG_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
@@ -81,18 +83,20 @@ def save_registry(config_dir: str, registry: CatalogRegistry) -> None:
 def validate_catalog_name(name: str) -> None:
     if not _CATALOG_NAME_RE.match(name):
         raise ValueError(
-            f"catalog name {name!r} must match ^[a-z0-9][a-z0-9-]{{0,31}}$"
+            gettext("catalog name %(name)r must match ^[a-z0-9][a-z0-9-]{0,31}$") % {"name": name}
         )
 
 
 def validate_catalog_url(url: str) -> None:
     if not _HTTPS_RE.match(url):
-        raise ValueError(f"catalog URL must start with https://; got {url!r}")
+        raise ValueError(
+            gettext("catalog URL must start with https://; got %(url)r") % {"url": url}
+        )
 
 
 def validate_ref(ref: str) -> None:
     if not _REF_RE.match(ref):
-        raise ValueError(f"catalog ref {ref!r} contains invalid characters")
+        raise ValueError(gettext("catalog ref %(ref)r contains invalid characters") % {"ref": ref})
 
 
 def validate_local_path(path: str, workspace_dir: str) -> None:
@@ -100,8 +104,10 @@ def validate_local_path(path: str, workspace_dir: str) -> None:
     workspace = Path(workspace_dir).resolve()
     if not str(resolved).startswith(str(workspace)):
         raise ValueError(
-            f"local catalog path must reside under PAPAIA_WORKSPACE_DIR "
-            f"({workspace}); got {resolved}"
+            gettext(
+                "local catalog path must reside under PAPAIA_WORKSPACE_DIR (%(workspace)s); got "
+                "%(resolved)s"
+            ) % {"workspace": workspace, "resolved": resolved}
         )
 
 

@@ -5,12 +5,12 @@
 
 {% if not result["items"] %}
 <p class="py-6 text-center text-sm opacity-60">
-  {% if selected_status or query or selected_run %}No file matches.{% else %}Nothing is tracked yet. A run records every file it reads.{% endif %}
+  {% if selected_status or query or selected_run %}{% trans %}No file matches.{% endtrans %}{% else %}{% trans %}Nothing is tracked yet. A run records every file it reads.{% endtrans %}{% endif %}
 </p>
 {% else %}
 <div class="overflow-x-auto rounded-lg border border-base-300">
   <table class="table table-sm">
-    <thead><tr class="text-xs uppercase opacity-60"><th>File</th><th>Result</th><th>Chunks</th><th>Last change</th></tr></thead>
+    <thead><tr class="text-xs uppercase opacity-60"><th>{% trans %}File{% endtrans %}</th><th>{% trans %}Result{% endtrans %}</th><th>{% trans %}Chunks{% endtrans %}</th><th>{% trans %}Last change{% endtrans %}</th></tr></thead>
     <tbody>
       {% for item in result["items"] %}
       <tr>
@@ -28,13 +28,13 @@
   </table>
 </div>
 <div class="flex items-center justify-between text-xs opacity-70">
-  <span>{{ offset + 1 }}–{{ offset + (result["items"] | length) }} of {{ '{:,}'.format(result.total) }}</span>
+  <span>{% trans offset=offset + 1, count=(offset + (result["items"] | length)), value='{:,}'.format(result.total) %}{{ offset }}–{{ count }} of {{ value }}{% endtrans %}</span>
   <span class="flex gap-1">
     {% set base = '/partials/ingest/jobs/' ~ row.id ~ '/files?rows=1&status=' ~ (selected_status | urlencode) ~ '&q=' ~ (query | urlencode) ~ '&run=' ~ (selected_run | urlencode) %}
     <button type="button" class="btn btn-ghost btn-xs" {% if offset <= 0 %}disabled{% endif %}
-            hx-get="{{ base }}&offset={{ [offset - page, 0] | max }}" hx-target="#files-table" hx-swap="innerHTML">Previous</button>
+            hx-get="{{ base }}&offset={{ [offset - page, 0] | max }}" hx-target="#files-table" hx-swap="innerHTML">{% trans %}Previous{% endtrans %}</button>
     <button type="button" class="btn btn-ghost btn-xs" {% if offset + page >= result.total %}disabled{% endif %}
-            hx-get="{{ base }}&offset={{ offset + page }}" hx-target="#files-table" hx-swap="innerHTML">Next</button>
+            hx-get="{{ base }}&offset={{ offset + page }}" hx-target="#files-table" hx-swap="innerHTML">{% trans %}Next{% endtrans %}</button>
   </span>
 </div>
 {% endif %}

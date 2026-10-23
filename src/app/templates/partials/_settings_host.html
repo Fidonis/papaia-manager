@@ -7,38 +7,33 @@
 <section id="host-monitoring" class="card bg-base-100 border border-base-300">
   <div class="card-body gap-5">
     <div>
-      <h2 class="font-brand text-lg font-bold">Host Monitoring</h2>
+      <h2 class="font-brand text-lg font-bold">{% trans %}Host Monitoring{% endtrans %}</h2>
       <p class="text-sm opacity-60">
-        How often the Host page, the status row and the sidebar dot measure the machine
-        again. Applies to all administrators. What Docker's data takes is measured less
-        often, every tenth interval but never sooner than 5 minutes and never later than an
-        hour, because the daemon has to size every volume to answer.
+        {% trans %}How often the Host page, the status row and the sidebar dot measure the machine again. Applies to all administrators. What Docker's data takes is measured less often, every tenth interval but never sooner than 5 minutes and never later than an hour, because the daemon has to size every volume to answer.{% endtrans %}
       </p>
     </div>
 
     <form id="host-form" class="space-y-4" onsubmit="saveHost(event)" novalidate>
       <div class="form-control w-full">
-        <label for="host-interval" class="label-text mb-1 text-sm font-medium">Refresh interval</label>
+        <label for="host-interval" class="label-text mb-1 text-sm font-medium">{% trans %}Refresh interval{% endtrans %}</label>
         <div class="flex flex-wrap items-center gap-2">
           <input id="host-interval" type="number" min="1" step="1" inputmode="numeric"
                  class="input input-bordered w-28" aria-describedby="host-interval-hint"
                  value="{{ (seconds // 60) if in_minutes else seconds }}">
-          <select id="host-unit" class="select select-bordered" aria-label="Unit">
-            <option value="s" {% if not in_minutes %}selected{% endif %}>seconds</option>
-            <option value="min" {% if in_minutes %}selected{% endif %}>minutes</option>
+          <select id="host-unit" class="select select-bordered" aria-label="{{ _('Unit') }}">
+            <option value="s" {% if not in_minutes %}selected{% endif %}>{% trans %}seconds{% endtrans %}</option>
+            <option value="min" {% if in_minutes %}selected{% endif %}>{% trans %}minutes{% endtrans %}</option>
           </select>
         </div>
         <span id="host-interval-hint" class="label-text-alt mt-1 opacity-60">
-          Between {{ refresh_min }} seconds and {{ refresh_max // 60 }} minutes. The default is
-          {{ refresh_default }} seconds. The Host page also has a Re-check button for an
-          immediate reading.
+          {% trans refresh_max=refresh_max // 60 %}Between {{ refresh_min }} seconds and {{ refresh_max }} minutes. The default is {{ refresh_default }} seconds. The Host page also has a Re-check button for an immediate reading.{% endtrans %}
         </span>
         <span id="host-interval-error" class="label-text-alt mt-1 hidden text-error" role="alert"></span>
       </div>
 
       <div class="flex flex-wrap gap-2">
-        <button type="submit" class="btn btn-primary btn-sm">Save</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="resetHost()">Reset to default</button>
+        <button type="submit" class="btn btn-primary btn-sm">{% trans %}Save{% endtrans %}</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="resetHost()">{% trans %}Reset to default{% endtrans %}</button>
       </div>
     </form>
   </div>
@@ -60,12 +55,12 @@
     const value = Number(document.getElementById("host-interval").value);
     const unit = document.getElementById("host-unit").value;
     if (!Number.isInteger(value) || value <= 0) {
-      hostIntervalError("Enter a whole number.");
+      hostIntervalError({{ _('Enter a whole number.')|tojson }});
       return null;
     }
     const seconds = unit === "min" ? value * 60 : value;
     if (seconds < HOST_MIN_SECONDS || seconds > HOST_MAX_SECONDS) {
-      hostIntervalError("Choose between " + HOST_MIN_SECONDS + " seconds and " + (HOST_MAX_SECONDS / 60) + " minutes.");
+      hostIntervalError(fmt({{ _('Choose between {min} seconds and {max} minutes.')|tojson }}, { min: HOST_MIN_SECONDS, max: HOST_MAX_SECONDS / 60 }));
       return null;
     }
     hostIntervalError("");
@@ -77,7 +72,7 @@
       method: "PUT",
       json: { revision: settingsRevision, refresh_seconds: seconds },
     });
-    if (data) reloadAfter("Host monitoring saved");
+    if (data) reloadAfter({{ _('Host monitoring saved')|tojson }});
   }
 
   function saveHost(event) {

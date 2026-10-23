@@ -44,6 +44,7 @@ from app.core.ctl import (
 from app.core.jobs import JobCallback, JobContext
 from app.core.mail import service as mail_service
 from app.core.mail.settings import MailInput, MailSettings
+from app.i18n import gettext as _
 
 ENABLE_ACTION = "config-module-enable"
 DISABLE_ACTION = "config-module-disable"
@@ -148,7 +149,9 @@ async def _verb(
             ctx.log(line)
             lines.append(line)
     except CtlError as exc:
-        raise StepFailedError(f"papaia-ctl {verb}: {last_problem(lines) or exc}") from exc
+        raise StepFailedError(_(
+            "papaia-ctl %(verb)s: %(value)s"
+        ) % {"verb": verb, "value": last_problem(lines) or exc}) from exc
 
 
 async def wait_healthy(
@@ -290,8 +293,10 @@ def enable_callback(
                 result="partial",
             )
             raise StepFailedError(
-                f"{exc} {definition.title} is switched on in the configuration but did not "
-                "start. Fix the cause and start it from the Services page, or switch it off here."
+                _(
+                    "%(exc)s %(title)s is switched on in the configuration but did not start. "
+                    "Fix the cause and start it from the Services page, or switch it off here."
+                ) % {"exc": exc, "title": definition.title}
             ) from exc
         problem = await wait_healthy(
             ctx, definition.profile, config_dir=config_dir, workspace_dir=workspace_dir
@@ -307,13 +312,17 @@ def enable_callback(
         )
         if realm:
             raise mail_service.RealmNotUpdatedError(
-                f"The relay is running, but Keycloak was not given its mail server ({realm}). "
-                "Switch it off and on again once that is fixed."
+                _(
+                    "The relay is running, but Keycloak was not given its mail server "
+                    "(%(realm)s). Switch it off and on again once that is fixed."
+                ) % {"realm": realm}
             )
         if problem:
             raise NotHealthyError(
-                f"{definition.title} is switched on, but {problem[0].lower()}{problem[1:]} "
-                "Check the service log, or switch it off again."
+                _(
+                    "%(title)s is switched on, but %(value)s%(value2)s Check the service log, or "
+                    "switch it off again."
+                ) % {"title": definition.title, "value": problem[0].lower(), "value2": problem[1:]}
             )
         ctx.log("[info] done")
 
@@ -409,8 +418,13 @@ async def _purge(
             result="partial",
         )
         raise PurgeFailedError(
-            f"{modules.SWITCHABLE[module].title} is off, but its {what} could not be deleted: "
-            f"{refusal(code, out, err)}"
+            _(
+                "%(title)s is off, but its %(what)s could not be deleted: %(value)s"
+            ) % {
+                "title": modules.SWITCHABLE[module].title,
+                "what": what,
+                "value": refusal(code, out, err),
+            }
         )
 
 
@@ -448,7 +462,7 @@ def overlay_callback(
         current = overlay.read(config_dir, key)
         if current.revision != expected_revision:
             raise ConflictError(
-                "The overlay file changed after the page loaded it. Nothing was changed."
+                _("The overlay file changed after the page loaded it. Nothing was changed.")
             )
         saved: str | None = None
         if current.raw is not None:
@@ -465,7 +479,9 @@ def overlay_callback(
             written_ok = written is not None
             new_revision = written.revision if written is not None else ""
         if not written_ok:
-            raise ConflictError("The overlay file changed while the job ran. Nothing was changed.")
+            raise ConflictError(_(
+                "The overlay file changed while the job ran. Nothing was changed."
+            ))
         ctx.log("[info] overlay file removed" if content is None else "[info] overlay file written")
 
         params: dict[str, Any] = {
@@ -519,8 +535,10 @@ def overlay_callback(
                 result="error",
             )
             raise RolledBackError(
-                f"{target.label} did not start with the new overlay, so the previous version "
-                f"was put back. ({exc})"
+                _(
+                    "%(label)s did not start with the new overlay, so the previous version was "
+                    "put back. (%(exc)s)"
+                ) % {"label": target.label, "exc": exc}
             ) from exc
 
         problem = await wait_healthy(
@@ -537,8 +555,10 @@ def overlay_callback(
         )
         if problem:
             raise NotHealthyError(
-                f"The overlay is in place, but {problem[0].lower()}{problem[1:]} "
-                "The previous version is in Versions if you want to go back."
+                _(
+                    "The overlay is in place, but %(value)s%(value2)s The previous version is in "
+                    "Versions if you want to go back."
+                ) % {"value": problem[0].lower(), "value2": problem[1:]}
             )
         ctx.log("[info] done")
 

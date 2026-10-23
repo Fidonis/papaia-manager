@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+from app.i18n import gettext as _
+
 # Marker values in .env.example and their semantics:
 #   CHANGE_ME       — operator must supply a value before install
 #   GENERATE_*      — auto-generated random secret on first install (seed_addon_env)
@@ -288,9 +290,9 @@ def _resolve_prefill(
     """
     if is_secret:
         if marker == MARKER_GENERATE:
-            return "", "wird automatisch generiert"
+            return "", _("generated automatically")
         if marker == MARKER_REPLACE_WITH:
-            return "", "nach Keycloak-Import eintragen"
+            return "", _("enter after the Keycloak import")
         return "", ""
 
     if marker == MARKER_CHANGE_ME:
@@ -300,10 +302,10 @@ def _resolve_prefill(
         return "", ""
 
     if marker == MARKER_GENERATE:
-        return "", "wird automatisch generiert"
+        return "", _("generated automatically")
 
     if marker == MARKER_REPLACE_WITH:
-        return "", "nach Keycloak-Import eintragen"
+        return "", _("enter after the Keycloak import")
 
     # Plain literal — use the resolved default.
     return resolved_default, resolved_default

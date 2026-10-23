@@ -39,7 +39,7 @@ import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -76,6 +76,7 @@ from app.core.rag import (
 from app.core.schedule import ScheduleError
 from app.core.vectordb import catalog_io
 from app.core.vectordb.ingest_file import IngestFileRepository, entry_etag
+from app.i18n import N_, gettext
 
 log = logging.getLogger(__name__)
 
@@ -88,12 +89,12 @@ STATE_REGISTRY_ONLY = "registry_only"
 STATE_UNKNOWN = "unknown"
 
 STATE_TEXT = {
-    STATE_LOADED: "Active",
-    STATE_STALE: "Running its previous version",
-    STATE_NOT_LOADED: "Not loaded",
-    STATE_PENDING: "Waiting for the ingester",
-    STATE_REGISTRY_ONLY: "Not in jobs.yaml",
-    STATE_UNKNOWN: "Unknown",
+    STATE_LOADED: N_("Active"),
+    STATE_STALE: N_("Running its previous version"),
+    STATE_NOT_LOADED: N_("Not loaded"),
+    STATE_PENDING: N_("Waiting for the ingester"),
+    STATE_REGISTRY_ONLY: N_("Not in jobs.yaml"),
+    STATE_UNKNOWN: N_("Unknown"),
 }
 
 FEATURE_PROGRESS = "run_progress"
@@ -349,7 +350,9 @@ class JobsService:
         except IngestUnavailable as exc:
             return IngesterState(reason=str(exc)), {}
         except IngestRejected as exc:
-            return IngesterState(reason=f"The ingester answered with an error: {exc.detail}"), {}
+            return IngesterState(reason=gettext(
+                "The ingester answered with an error: %(detail)s"
+            ) % {"detail": exc.detail}), {}
         raw_deps = health.get("deps")
         base = IngesterState(
             reachable=True,
@@ -368,7 +371,9 @@ class JobsService:
         except IngestUnavailable as exc:
             return replace(base, reason=str(exc)), {}
         except IngestRejected as exc:
-            reason = f"The ingester answered with an error: {exc.detail}"
+            reason = gettext(
+                "The ingester answered with an error: %(detail)s"
+            ) % {"detail": exc.detail}
             return replace(base, reason=reason), {}
         valid, applied, path = config.get("valid"), config.get("applied"), config.get("path")
         return (
@@ -488,22 +493,28 @@ class JobsService:
         mode = str(raw.get("mode") or "")
         problem_texts = tuple(f"{p.get('field')}: {p.get('message')}" for p in problems)
         if not state.usable:
-            row_state, note = STATE_UNKNOWN, state.reason or "The ingester cannot be reached."
+            row_state, note = STATE_UNKNOWN, state.reason or gettext(
+                "The ingester cannot be reached."
+            )
         elif problems:
-            row_state, note = STATE_NOT_LOADED, "The ingester does not load this job."
+            row_state, note = STATE_NOT_LOADED, gettext("The ingester does not load this job.")
         elif summary is None:
             row_state = STATE_PENDING
             note = (
-                "The ingester reads the file every 30 seconds. Open Reload to read it now."
+                gettext("The ingester reads the file every 30 seconds. Open Reload to read it now.")
                 if state.config_applied is not False
-                else "The ingester is not applying changes because of problems elsewhere in "
-                "jobs.yaml."
+                else gettext(
+                    "The ingester is not applying changes because of problems elsewhere in "
+                    "jobs.yaml."
+                )
             )
         elif state.config_applied is False:
             row_state = STATE_STALE
             note = (
-                "The ingester found problems in jobs.yaml and keeps the previous catalog, so "
-                "recent changes to this job are not active yet."
+                gettext(
+                    "The ingester found problems in jobs.yaml and keeps the previous catalog, so "
+                    "recent changes to this job are not active yet."
+                )
             )
         else:
             row_state, note = STATE_LOADED, ""
@@ -513,7 +524,7 @@ class JobsService:
         return JobRow(
             id=job_id,
             state=row_state,
-            state_text=STATE_TEXT[row_state],
+            state_text=gettext(STATE_TEXT[row_state]),
             note=note,
             problems=problem_texts,
             enabled=raw.get("enabled", True) is not False,
@@ -528,7 +539,7 @@ class JobsService:
             connection=str(target.get("connection") or ""),
             collection=str(target.get("collection") or ""),
             mode=mode,
-            mode_label=JOB_MODE_TEXT.get(mode, mode),
+            mode_label=gettext(JOB_MODE_TEXT[mode]) if mode in JOB_MODE_TEXT else mode,
             schedule=schedules.describe_block(_mapping(merged.get("schedule"))),
             next_run_at=(
                 str(summary["next_run_at"]) if summary and summary.get("next_run_at") else None
@@ -553,10 +564,12 @@ class JobsService:
         return JobRow(
             id=job_id,
             state=STATE_REGISTRY_ONLY,
-            state_text=STATE_TEXT[STATE_REGISTRY_ONLY],
+            state_text=gettext(STATE_TEXT[STATE_REGISTRY_ONLY]),
             note=(
-                "The ingester is running this job, but it is not in jobs.yaml. It reads the "
-                "file every 30 seconds, or the file it serves is another one."
+                gettext(
+                    "The ingester is running this job, but it is not in jobs.yaml. It reads the "
+                    "file every 30 seconds, or the file it serves is another one."
+                )
             ),
             problems=(),
             enabled=bool(summary.get("enabled", True)),
@@ -571,7 +584,7 @@ class JobsService:
             connection=str(summary.get("connection") or ""),
             collection=str(summary.get("collection") or ""),
             mode=mode,
-            mode_label=JOB_MODE_TEXT.get(mode, mode),
+            mode_label=gettext(JOB_MODE_TEXT[mode]) if mode in JOB_MODE_TEXT else mode,
             schedule=schedules.describe_block({k: v for k, v in block.items() if v}),
             next_run_at=str(summary["next_run_at"]) if summary.get("next_run_at") else None,
             paused_in_ingester=bool(summary.get("paused")),
@@ -595,7 +608,9 @@ class JobsService:
         """Everything the editor starts from: the job's state, its etag, the defaults."""
         snapshot = self._repo.snapshot()
         if snapshot.structural_error is not None:
-            raise CatalogRejected(f"jobs.yaml cannot be read: {snapshot.structural_error}")
+            raise CatalogRejected(gettext(
+                "jobs.yaml cannot be read: %(structural_error)s"
+            ) % {"structural_error": snapshot.structural_error})
         defaults = self._defaults(snapshot.document)
         timezone = self.timezone()
         if job_id is None:
@@ -645,7 +660,9 @@ class JobsService:
         """The entry the editor's state becomes, the catalog with it in, and what is wrong."""
         snapshot = self._repo.snapshot()
         if snapshot.structural_error is not None:
-            raise CatalogRejected(f"jobs.yaml cannot be changed: {snapshot.structural_error}")
+            raise CatalogRejected(gettext(
+                "jobs.yaml cannot be changed: %(structural_error)s"
+            ) % {"structural_error": snapshot.structural_error})
         document = copy.deepcopy(snapshot.document)
         defaults = self._defaults(document)
         entry, issues = job_forms.authored(state, defaults)
@@ -655,15 +672,17 @@ class JobsService:
             if problem:
                 issues.append(Issue(job_id or None, "id", problem))
             elif self._find(document, job_id) is not None:
-                issues.append(Issue(job_id, "id", "a job with this id already exists"))
+                issues.append(Issue(job_id, "id", gettext("a job with this id already exists")))
         else:
             if original_id is not None and job_id != original_id:
                 issues.append(
                     Issue(
                         original_id,
                         "id",
-                        "the id of a job cannot change, because its content is tied to it; "
-                        "duplicate the job instead",
+                        gettext(
+                            "the id of a job cannot change, because its content is tied to it; "
+                            "duplicate the job instead"
+                        ),
                     )
                 )
             if catalog.is_managed(original_id or job_id):
@@ -671,8 +690,10 @@ class JobsService:
                     Issue(
                         job_id,
                         "id",
-                        "this job belongs to the Embedding page; its next run would overwrite "
-                        "a change",
+                        gettext(
+                            "this job belongs to the Embedding page; its next run would "
+                            "overwrite a change"
+                        ),
                     )
                 )
         spec, schema_issues = jobspec.parse_job(entry, defaults)
@@ -783,7 +804,7 @@ class JobsService:
                 log.warning("jobs.yaml changed again; job %s was not rolled back", job_id)
             raise
         except IngestUnavailable as exc:
-            return None, f"Saved, but not checked: {exc}"
+            return None, gettext("Saved, but not checked: %(exc)s") % {"exc": exc}
         except IngestError:
             if not self._repo.restore(written):
                 log.warning("jobs.yaml changed again; job %s was not rolled back", job_id)
@@ -795,7 +816,9 @@ class JobsService:
     async def set_enabled(self, job_id: str, enabled: bool, *, user: str) -> SaveResult:
         raw, defaults, _ = self.authored_job(job_id)
         if catalog.is_managed(job_id):
-            raise Conflict("This job belongs to the Embedding page and cannot be changed here.")
+            raise Conflict(gettext(
+                "This job belongs to the Embedding page and cannot be changed here."
+            ))
         if enabled:
             # A disabled job is exempt from the cross-job rules, so enabling can fail them.
             candidate = copy.deepcopy(self._repo.snapshot().document)
@@ -857,16 +880,22 @@ class JobsService:
                     rows = int(result.get("deleted_rows") or 0)
                     purged = True
                 else:
-                    notes.append("The job had embedded nothing, so there was nothing to remove.")
+                    notes.append(gettext(
+                        "The job had embedded nothing, so there was nothing to remove."
+                    ))
         except IngestUnavailable as exc:
             notes.append(
-                f"The job was removed from jobs.yaml, but the ingester could not be reached: "
-                f"{exc} Its content stays in the collection and can be removed under "
-                "Leftovers once the ingester is back, and its runs can be deleted on the "
-                "Runs page."
+                gettext(
+                    "The job was removed from jobs.yaml, but the ingester could not be reached: "
+                    "%(exc)s Its content stays in the collection and can be removed under "
+                    "Leftovers once the ingester is back, and its runs can be deleted on the "
+                    "Runs page."
+                ) % {"exc": exc}
             )
         except IngestError as exc:
-            notes.append(f"The job was removed from jobs.yaml, but cleaning up failed: {exc}")
+            notes.append(gettext(
+                "The job was removed from jobs.yaml, but cleaning up failed: %(exc)s"
+            ) % {"exc": exc})
         self._audit(
             user,
             "rag.ingest.job.delete",
@@ -883,22 +912,27 @@ class JobsService:
         try:
             if await self._client.job(job_id) is not None:
                 notes.append(
-                    "The ingester still serves this job, because it keeps its previous catalog "
-                    "while another job is invalid. Its runs were kept; delete them on the Runs "
-                    "page once the catalog is repaired."
+                    gettext(
+                        "The ingester still serves this job, because it keeps its previous "
+                        "catalog while another job is invalid. Its runs were kept; delete them "
+                        "on the Runs page once the catalog is repaired."
+                    )
                 )
                 return 0
             result = await self._client.delete_runs(job_id)
         except IngestError as exc:
-            notes.append(f"Its runs could not be deleted: {exc}")
+            notes.append(gettext("Its runs could not be deleted: %(exc)s") % {"exc": exc})
             return 0
         if result is None:
             notes.append(
-                "This ingester cannot delete runs, so the runs of the job stay in its history."
+                gettext(
+                    "This ingester cannot delete runs, so the runs of the job stay in its "
+                    "history."
+                )
             )
             return 0
         if int(result.get("skipped_running") or 0):
-            notes.append("A run that was still working was kept.")
+            notes.append(gettext("A run that was still working was kept."))
         return int(result.get("deleted_runs") or 0)
 
     async def delete_runs(
@@ -920,15 +954,17 @@ class JobsService:
         real call would delete.
         """
         if not jobspec.is_valid_id(job_id):
-            raise InvalidRequest(f"{job_id!r} is not a job id.")
+            raise InvalidRequest(gettext("%(job_id)r is not a job id.") % {"job_id": job_id})
         if since is not None and until is not None and since > until:
-            raise InvalidRequest("The first day is after the last day.")
+            raise InvalidRequest(gettext("The first day is after the last day."))
         start, end = display.day_bounds(since, until, self.timezone())
         result = await self._client.delete_runs(job_id, since=start, until=end, dry_run=dry_run)
         if result is None:
             raise IngestTooOld(
-                "This ingester cannot delete runs. Use an ingester release that has the "
-                f"{FEATURE_DELETE_RUNS} feature."
+                gettext(
+                    "This ingester cannot delete runs. Use an ingester release that has the "
+                    "%(FEATURE_DELETE_RUNS)s feature."
+                ) % {"FEATURE_DELETE_RUNS": FEATURE_DELETE_RUNS}
             )
         outcome = RunsDeleteResult(
             job_id=job_id,
@@ -952,14 +988,22 @@ class JobsService:
             )
         return outcome
 
-    async def _refuse_while_running(self, job_id: str, what: str) -> None:
+    async def _refuse_while_running(self, job_id: str, what: Literal["deleted", "cleaned"]) -> None:
         try:
             running = await self._client.list_runs(job_id=job_id, status="running", limit=1)
         except IngestError:
             return
         if running:
             raise Conflict(
-                f"A run of this job is working. Wait for it, or abort it, before it is {what}.",
+                gettext(
+                    "A run of this job is working. Wait for it, or abort it, before it is "
+                    "deleted."
+                )
+                if what == "deleted"
+                else gettext(
+                    "A run of this job is working. Wait for it, or abort it, before its "
+                    "content is cleaned up."
+                ),
                 {"run_id": running[0].get("run_id")},
             )
 
@@ -972,20 +1016,22 @@ class JobsService:
             raise NotFound(job_id)
         config = _mapping(detail.get("config"))
         if config.get("enabled") is False:
-            raise Conflict("The job is disabled. Enable it first.")
+            raise Conflict(gettext("The job is disabled. Enable it first."))
         effective_mode = options.mode or str(config.get("mode") or "")
         if not options.dry_run:
             if effective_mode == "full" and not options.confirm_rebuild:
-                raise InvalidRequest("Rebuilding a job's content has to be confirmed.")
+                raise InvalidRequest(gettext("Rebuilding a job's content has to be confirmed."))
             if (
                 effective_mode == "full"
                 and (options.full_scope or config.get("full_scope")) == "collection"
                 and not options.confirm_collection
             ):
-                raise InvalidRequest("Replacing the whole collection has to be confirmed.")
+                raise InvalidRequest(gettext("Replacing the whole collection has to be confirmed."))
         if not options.delete_vanished and effective_mode != "upsert":
-            raise InvalidRequest("Keeping vanished files only applies to a job that keeps in sync.")
-        await refuse_while_blocked("a run")
+            raise InvalidRequest(gettext(
+                "Keeping vanished files only applies to a job that keeps in sync."
+            ))
+        await refuse_while_blocked("run")
 
         body: dict[str, Any] = {}
         if options.mode:
@@ -1004,7 +1050,7 @@ class JobsService:
             run_id = await self._client.run(job_id, body)
         except IngestRejected as exc:
             if exc.status == 409:
-                raise Conflict("A run of this job is already working.") from exc
+                raise Conflict(gettext("A run of this job is already working.")) from exc
             raise
         self._audit(user, "rag.ingest.job.run", job_id, run_id=run_id, **body)
         return run_id
@@ -1016,7 +1062,7 @@ class JobsService:
             if exc.status == 404:
                 raise NotFound(run_id) from exc
             if exc.status == 409:
-                raise Conflict("That run is not running any more.") from exc
+                raise Conflict(gettext("That run is not running any more.")) from exc
             raise
         self._audit(user, "rag.ingest.run.abort", run_id)
 
@@ -1108,15 +1154,19 @@ class JobsService:
         snapshot = self._repo.snapshot()
         if self._find(snapshot.document, job_id) is not None:
             raise Conflict(
-                f"The job {job_id!r} is still in jobs.yaml, so its content is not left over: "
-                "the ingester did not load it. Repair the job instead."
+                gettext(
+                    "The job %(job_id)r is still in jobs.yaml, so its content is not left over: "
+                    "the ingester did not load it. Repair the job instead."
+                ) % {"job_id": job_id}
             )
-        await self._refuse_while_running(job_id, "cleaned up")
+        await self._refuse_while_running(job_id, "cleaned")
         try:
             result = await self._client.delete_orphan(job_id)
         except IngestRejected as exc:
             if exc.status == 409:
-                raise Conflict(f"The job {job_id!r} is still in the ingester's catalog.") from exc
+                raise Conflict(gettext(
+                    "The job %(job_id)r is still in the ingester's catalog."
+                ) % {"job_id": job_id}) from exc
             raise
         self._audit(
             user,
@@ -1162,11 +1212,11 @@ class JobsService:
             document = yaml.safe_load(text)
         except yaml.YAMLError as exc:
             first = str(exc).strip().splitlines()[0] if str(exc).strip() else "invalid YAML"
-            return [Issue(None, "jobs_file", f"invalid YAML: {first}")]
+            return [Issue(None, "jobs_file", gettext("invalid YAML: %(first)s") % {"first": first})]
         if document is None:
             document = {}
         if not isinstance(document, dict):
-            return [Issue(None, "jobs_file", "top level must be a mapping")]
+            return [Issue(None, "jobs_file", gettext("top level must be a mapping"))]
         return jobspec.check_catalog(document, self._rules())
 
     async def replace_raw(
@@ -1174,7 +1224,7 @@ class JobsService:
     ) -> tuple[LoadOutcome | None, list[Issue]]:
         """Replace jobs.yaml with the text as typed (comments kept), if it would load."""
         if len(text.encode("utf-8")) > 1_000_000:
-            raise InvalidRequest("The file is larger than 1 MB.")
+            raise InvalidRequest(gettext("The file is larger than 1 MB."))
         issues = await self.validate_raw(text)
         if issues:
             raise InvalidJob(issues)
@@ -1205,7 +1255,14 @@ class JobsService:
         unknown = set(sections) - set(jobspec.DEFAULT_SECTIONS)
         if unknown:
             raise InvalidJob(
-                [Issue(None, "defaults", "unsupported sections: " + ", ".join(sorted(unknown)))]
+                [
+                    Issue(
+                        None,
+                        "defaults",
+                        gettext("unsupported sections: %(sections)s")
+                        % {"sections": ", ".join(sorted(unknown))},
+                    )
+                ]
             )
         document = copy.deepcopy(self._repo.snapshot().document)
         if clean:
@@ -1275,15 +1332,19 @@ class JobsService:
             raise InvalidRequest(str(exc)) from exc
         if full in environment_credentials(self._config_dir):
             raise Conflict(
-                f"{full} is already defined in ai/rag/.env. The ingester answers from the "
-                "environment first, so a stored value would never be used. Change it there, "
-                "or choose another name."
+                gettext(
+                    "%(full)s is already defined in ai/rag/.env. The ingester answers from the "
+                    "environment first, so a stored value would never be used. Change it there, "
+                    "or choose another name."
+                ) % {"full": full}
             )
         state, _ = await self.ingester()
         if state.reachable and FEATURE_SECRETS not in state.features:
             raise IngestTooOld(
-                "This ingester does not read stored credentials. Use an ingester release "
-                "with the secret store, or put the credential into ai/rag/.env."
+                gettext(
+                    "This ingester does not read stored credentials. Use an ingester release "
+                    "with the secret store, or put the credential into ai/rag/.env."
+                )
             )
         repo = secrets_store.SecretsRepository(
             self._config_dir, rag_secrets(self._config_dir).connections_secret
@@ -1305,13 +1366,17 @@ class JobsService:
             raise InvalidRequest(str(exc)) from exc
         if full in environment_credentials(self._config_dir):
             raise Conflict(
-                f"{full} comes from ai/rag/.env and cannot be deleted here. Remove it from "
-                "that file."
+                gettext(
+                    "%(full)s comes from ai/rag/.env and cannot be deleted here. Remove it from "
+                    "that file."
+                ) % {"full": full}
             )
         used = secrets_store.references(self._repo.snapshot().document).get(full, [])
         if used:
             raise Conflict(
-                f"{full} is used by: {', '.join(used)}. Change those jobs first.",
+                gettext(
+                    "%(full)s is used by: %(value)s. Change those jobs first."
+                ) % {"full": full, "value": ', '.join(used)},
                 {"used_by": used},
             )
         repo = secrets_store.SecretsRepository(

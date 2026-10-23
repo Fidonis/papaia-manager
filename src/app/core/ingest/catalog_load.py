@@ -24,6 +24,7 @@ from typing import Any
 
 from app.core.ingest.client import IngestClient
 from app.core.ingest.errors import CatalogRejected
+from app.i18n import gettext as _
 
 # Keys of the source whose value the ingester masks when it reports a job.
 _SECRET_FIELDS = frozenset(
@@ -73,9 +74,10 @@ async def reload_and_verify(
     others = tuple(issue_text(item) for item in errors if item.get("job_id") != job_id)
     if not mine and others and tolerate_other_problems:
         return LoadOutcome(False, others)
-    problems = mine or list(others) or ["the ingester kept its previous job catalog"]
+    problems = mine or list(others) or [_("the ingester kept its previous job catalog")]
     raise CatalogRejected(
-        "The ingester did not take the job: " + "; ".join(problems), tuple(problems)
+        _("The ingester did not take the job: %(problems)s") % {"problems": "; ".join(problems)},
+        tuple(problems),
     )
 
 

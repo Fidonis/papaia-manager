@@ -20,9 +20,9 @@
         <span class="loading loading-spinner loading-xs text-warning"></span>
         <p class="text-sm font-semibold">
           {% if job_is_config %}
-            {% if job.status.value == "queued" %}{{ running }}: queued{% else %}{{ running }}{% endif %}
+            {% if job.status.value == "queued" %}{% trans %}{{ running }}: queued{% endtrans %}{% else %}{{ running }}{% endif %}
           {% else %}
-            {{ job.action }} {{ "queued" if job.status.value == "queued" else "running" }}
+            {% if job.status.value == "queued" %}{% trans action=job.action %}{{ action }} queued{% endtrans %}{% else %}{% trans action=job.action %}{{ action }} running{% endtrans %}{% endif %}
           {% endif %}
         </p>
       {% elif job.status.value == "succeeded" %}
@@ -34,17 +34,17 @@
       {% endif %}
 
       {% if job.finished_at %}
-      <p class="text-xs opacity-50">finished {{ job.finished_at.strftime("%H:%M:%S") }}</p>
+      <p class="text-xs opacity-50">{% trans strftime=job.finished_at.strftime("%H:%M:%S") %}finished {{ strftime }}{% endtrans %}</p>
       {% elif job.started_at %}
-      <p class="text-xs opacity-50">started {{ job.started_at.strftime("%H:%M:%S") }}</p>
+      <p class="text-xs opacity-50">{% trans strftime=job.started_at.strftime("%H:%M:%S") %}started {{ strftime }}{% endtrans %}</p>
       {% endif %}
 
-      <a href="/jobs/{{ job.id }}" class="link link-hover ml-auto text-xs opacity-60">View log</a>
+      <a href="/jobs/{{ job.id }}" class="link link-hover ml-auto text-xs opacity-60">{% trans %}View log{% endtrans %}</a>
     </div>
 
     {% if job_active and not job_is_config %}
     <p class="mt-1 text-xs opacity-60">
-      The change is queued behind it and starts when that job is done.
+      {% trans %}The change is queued behind it and starts when that job is done.{% endtrans %}
     </p>
     {% endif %}
 

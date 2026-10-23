@@ -42,6 +42,7 @@ from pydantic import (
 )
 
 from app.core.tiles import check_value
+from app.i18n import gettext
 
 # The generation of the document format this manager reads.
 WIDGET_API = 1
@@ -73,9 +74,9 @@ _TAG_LIKE = re.compile(r"<\s*[A-Za-z/!?]")
 
 def _plain(value: str) -> str:
     if _TAG_LIKE.search(value):
-        raise ValueError("must be plain text, not markup")
+        raise ValueError(gettext("must be plain text, not markup"))
     if any(ord(char) < 32 for char in value):
-        raise ValueError("must not contain control characters")
+        raise ValueError(gettext("must not contain control characters"))
     return value.strip()
 
 
@@ -99,7 +100,7 @@ def _safe_href(value: str) -> str:
     # on another host. A link that starts with "/" must mean a page of this manager: the card
     # shows such a link to administrators only, on exactly that reading.
     if value.startswith(("//", "/\\")):
-        raise ValueError("must be an address or a path on this manager, not //host")
+        raise ValueError(gettext("must be an address or a path on this manager, not //host"))
     return value
 
 
@@ -139,7 +140,7 @@ class ProgressData(_Model):
     @model_validator(mode="after")
     def _within_max(self) -> ProgressData:
         if self.value > self.max:
-            raise ValueError("value must not exceed max")
+            raise ValueError(gettext("value must not exceed max"))
         return self
 
     @property
@@ -203,24 +204,30 @@ def parse_payload(document: object) -> WidgetPayload:
     sentence that names the field and never repeats the value.
     """
     if not isinstance(document, dict):
-        raise PayloadError("the widget document must be an object")
+        raise PayloadError(gettext("the widget document must be an object"))
     generation = document.get("widget_api")
     if generation != WIDGET_API:
         raise PayloadError(
-            f"widget_api {generation!r} is not supported (this manager reads {WIDGET_API})"
+            gettext(
+                "widget_api %(generation)r is not supported (this manager reads %(WIDGET_API)s)"
+            ) % {"generation": generation, "WIDGET_API": WIDGET_API}
         )
     try:
         size = len(json.dumps(document, default=str))
     except (TypeError, ValueError) as exc:
-        raise PayloadError("the widget document is not valid JSON") from exc
+        raise PayloadError(gettext("the widget document is not valid JSON")) from exc
     if size > MAX_PAYLOAD_BYTES:
-        raise PayloadError(f"the widget document is larger than {MAX_PAYLOAD_BYTES // 1024} KiB")
+        raise PayloadError(gettext(
+            "the widget document is larger than %(value)s KiB"
+        ) % {"value": MAX_PAYLOAD_BYTES // 1024})
     try:
         return _Document.model_validate(document).root
     except ValidationError as exc:
         first = exc.errors()[0]
         where = ".".join(str(part) for part in first["loc"])
-        raise PayloadError(f"{where}: {first['msg']}") from exc
+        raise PayloadError(
+            gettext("%(where)s: %(value)s") % {"where": where, "value": first['msg']}
+        ) from exc
 
 
 @dataclass(frozen=True)

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "partials/_settings_tabs.html" import tabs %}
-{% block title %}Modules — Settings — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Modules — Settings — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Settings{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Optional parts of the stack. A change recreates the affected containers and runs as a job.</p>{% endblock %}
+{% block page_title %}{% trans %}Settings{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Optional parts of the stack. A change recreates the affected containers and runs as a job.{% endtrans %}</p>{% endblock %}
 
 {% block content %}
 {{ tabs('modules') }}
@@ -20,11 +20,9 @@
   <section id="modules" class="card bg-base-100 border border-base-300">
     <div class="card-body gap-0 p-0">
       <div class="px-6 pt-5 pb-3">
-        <h2 class="font-brand text-lg font-bold">Optional Modules</h2>
+        <h2 class="font-brand text-lg font-bold">{% trans %}Optional Modules{% endtrans %}</h2>
         <p class="text-sm opacity-60">
-          Switch parts of the stack on or off. Switching a module off removes its containers.
-          You choose whether its data and settings stay, so switching it on again can bring
-          everything back.
+          {% trans %}Switch parts of the stack on or off. Switching a module off removes its containers. You choose whether its data and settings stay, so switching it on again can bring everything back.{% endtrans %}
         </p>
       </div>
 
@@ -40,17 +38,17 @@
           <p class="text-sm font-semibold">
             {{ row.title }}
             {% if row.enabled %}
-            <span class="badge badge-sm badge-success ml-1">On</span>
+            <span class="badge badge-sm badge-success ml-1">{% trans %}On{% endtrans %}</span>
             {% else %}
-            <span class="badge badge-sm badge-ghost ml-1">Off</span>
+            <span class="badge badge-sm badge-ghost ml-1">{% trans %}Off{% endtrans %}</span>
             {% endif %}
-            {% if row.name == "manager" %}<span class="ml-1 text-xs opacity-60" aria-hidden="true">locked</span>{% endif %}
+            {% if row.name == "manager" %}<span class="ml-1 text-xs opacity-60" aria-hidden="true">{% trans %}locked{% endtrans %}</span>{% endif %}
           </p>
           <p class="text-xs opacity-60">{{ row.description }}</p>
           {% if row.services %}
           <p class="mt-1 text-xs opacity-50">
-            {{ row.services }} service{{ "s" if row.services != 1 else "" }}{% if row.modules > 1 %} in {{ row.modules }} modules{% endif %}
-            {% if row.name == "localai" and row.enabled %} · variant {{ row.variant }}{% endif %}
+            {% trans count=row.services %}{{ count }} service{% pluralize %}{{ count }} services{% endtrans %}{% if row.modules > 1 %} {% trans modules=row.modules %}in {{ modules }} modules{% endtrans %}{% endif %}
+            {% if row.name == "localai" and row.enabled %} {% trans variant=row.variant %}· variant {{ variant }}{% endtrans %}{% endif %}
           </p>
           {% endif %}
           {% if row.note or row.problem %}
@@ -58,9 +56,8 @@
           {% endif %}
           {% if row.name == "mail" and not row.configured %}
           <p class="mt-1 text-xs text-warning" data-mail-hint>
-            No mail server is stored yet. Switching the relay on asks for it, or
-            <a href="{{ row.link }}" class="link link-secondary">set it up first</a> on the Mail page
-            (it is saved with the relay off).
+            {% trans %}No mail server is stored yet. Switching the relay on asks for it, or{% endtrans %}
+            <a href="{{ row.link }}" class="link link-secondary">{% trans %}set it up first{% endtrans %}</a> {% trans %}on the Mail page (it is saved with the relay off).{% endtrans %}
           </p>
           {% elif row.link %}
           <p class="mt-1 text-xs"><a href="{{ row.link }}" class="link link-secondary">{{ row.link_label }}</a></p>
@@ -72,7 +69,7 @@
           <div id="panel-{{ row.name }}" class="mt-3 hidden space-y-3 border-t border-dashed border-base-300 pt-3">
             {% if row.name == "localai" %}
             <div class="form-control w-full max-w-xs">
-              <label for="localai-variant" class="label-text mb-1 text-sm font-medium">Accelerator</label>
+              <label for="localai-variant" class="label-text mb-1 text-sm font-medium">{% trans %}Accelerator{% endtrans %}</label>
               <select id="localai-variant" class="select select-bordered select-sm">
                 {% for v in variants %}
                 <option value="{{ v.id }}" {% if v.id == stored_variant %}selected{% endif %}>{{ v.label }}</option>
@@ -85,63 +82,59 @@
             {% endif %}
             {% if row.name == "localai" %}
             <p class="text-xs opacity-60">
-              The manager can't detect GPUs from inside its container. Pick the variant that
-              matches this host, or start with CPU.
-              {% for v in host_only_variants %}The {{ v }} variant is set on the host with
-              <code>papaia-ctl setup --localai-variant={{ v }}</code>.{% endfor %}
-              The image download can be several GB.
+              {% trans %}The manager can't detect GPUs from inside its container. Pick the variant that matches this host, or start with CPU.{% endtrans %}
+              {% for v in host_only_variants %}{% trans %}The {{ v }} variant is set on the host with <code>papaia-ctl setup --localai-variant={{ v }}</code>.{% endtrans %}{% endfor %}
+              {% trans %}The image download can be several GB.{% endtrans %}
             </p>
             {% elif row.name == "mail" %}
             <form id="om-form" class="space-y-3" onsubmit="event.preventDefault(); enableModule('mail')" novalidate>
               <p class="text-xs opacity-60">
-                The relay forwards every mail to this server. Enter it as
-                <code>papaia-ctl setup</code> asks for it. The password is only used for this host,
-                port and login and is never shown again.
+                {% trans %}The relay forwards every mail to this server. Enter it as <code>papaia-ctl setup</code> asks for it. The password is only used for this host, port and login and is never shown again.{% endtrans %}
               </p>
               <div class="grid gap-3 sm:grid-cols-[1fr_8rem_6rem]">
                 <div class="form-control w-full">
-                  <label for="om-host" class="label-text mb-1 text-sm font-medium">Mail Server</label>
+                  <label for="om-host" class="label-text mb-1 text-sm font-medium">{% trans %}Mail Server{% endtrans %}</label>
                   <input id="om-host" type="text" class="input input-bordered input-sm w-full"
-                         autocomplete="off" spellcheck="false" placeholder="smtp.example.org">
+                         autocomplete="off" spellcheck="false" placeholder="{{ _('smtp.example.org') }}">
                 </div>
                 <div class="form-control w-full">
-                  <label for="om-security" class="label-text mb-1 text-sm font-medium">Connection</label>
+                  <label for="om-security" class="label-text mb-1 text-sm font-medium">{% trans %}Connection{% endtrans %}</label>
                   <select id="om-security" class="select select-bordered select-sm w-full">
                     {% for mode in security_modes %}
-                    <option value="{{ mode }}">{{ {"starttls": "STARTTLS", "tls": "TLS", "none": "No encryption"}[mode] }}</option>
+                    <option value="{{ mode }}">{{ {"starttls": "STARTTLS", "tls": "TLS", "none": _("No encryption")}[mode] }}</option>
                     {% endfor %}
                   </select>
                 </div>
                 <div class="form-control w-full">
-                  <label for="om-port" class="label-text mb-1 text-sm font-medium">Port</label>
+                  <label for="om-port" class="label-text mb-1 text-sm font-medium">{% trans %}Port{% endtrans %}</label>
                   <input id="om-port" type="number" min="1" max="65535" inputmode="numeric"
                          class="input input-bordered input-sm w-full">
                 </div>
               </div>
               <label class="flex cursor-pointer items-center gap-3">
                 <input id="om-login" type="checkbox" class="checkbox checkbox-sm" onchange="syncOnMail()">
-                <span class="text-sm font-medium">The mail server needs a login</span>
+                <span class="text-sm font-medium">{% trans %}The mail server needs a login{% endtrans %}</span>
               </label>
               <div class="grid gap-3 sm:grid-cols-2">
                 <div class="form-control w-full">
-                  <label for="om-user" class="label-text mb-1 text-sm font-medium">Login</label>
+                  <label for="om-user" class="label-text mb-1 text-sm font-medium">{% trans %}Login{% endtrans %}</label>
                   <input id="om-user" type="text" class="input input-bordered input-sm w-full"
                          autocomplete="off" spellcheck="false">
                 </div>
                 <div class="form-control w-full">
-                  <label for="om-password" class="label-text mb-1 text-sm font-medium">Password</label>
+                  <label for="om-password" class="label-text mb-1 text-sm font-medium">{% trans %}Password{% endtrans %}</label>
                   <input id="om-password" type="password" class="input input-bordered input-sm w-full"
                          autocomplete="new-password">
                 </div>
               </div>
               <div class="grid gap-3 sm:grid-cols-2">
                 <div class="form-control w-full">
-                  <label for="om-from" class="label-text mb-1 text-sm font-medium">Sender address</label>
+                  <label for="om-from" class="label-text mb-1 text-sm font-medium">{% trans %}Sender address{% endtrans %}</label>
                   <input id="om-from" type="email" class="input input-bordered input-sm w-full"
-                         autocomplete="off" spellcheck="false" placeholder="noreply@example.org">
+                         autocomplete="off" spellcheck="false" placeholder="{{ _('noreply@example.org') }}">
                 </div>
                 <div class="form-control w-full">
-                  <label for="om-from-name" class="label-text mb-1 text-sm font-medium">Sender name</label>
+                  <label for="om-from-name" class="label-text mb-1 text-sm font-medium">{% trans %}Sender name{% endtrans %}</label>
                   <input id="om-from-name" type="text" class="input input-bordered input-sm w-full"
                          autocomplete="off">
                 </div>
@@ -154,11 +147,11 @@
             {% endif %}
             <p data-panel-error class="hidden text-sm text-error" role="alert"></p>
             <div class="flex flex-wrap gap-2">
-              <button type="button" class="btn btn-primary btn-sm" data-panel-go onclick="enableModule('{{ row.name }}')">Enable {{ row.title }}</button>
+              <button type="button" class="btn btn-primary btn-sm" data-panel-go onclick="enableModule('{{ row.name }}')">{% trans title=row.title %}Enable {{ title }}{% endtrans %}</button>
               {% if row.name == "mail" %}
-              <button id="om-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeOnMail()">Test Connection</button>
+              <button id="om-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeOnMail()">{% trans %}Test Connection{% endtrans %}</button>
               {% endif %}
-              <button type="button" class="btn btn-ghost btn-sm" onclick="cancelPanel('{{ row.name }}')">Cancel</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="cancelPanel('{{ row.name }}')">{% trans %}Cancel{% endtrans %}</button>
             </div>
           </div>
           {% endif %}
@@ -169,8 +162,7 @@
   </section>
 
   <p class="text-xs opacity-50">
-    Keycloak, Nginx Proxy Manager, oauth2-proxy, LibreChat and LiteLLM are part of every
-    installation and can't be switched off.
+    {% trans %}Keycloak, Nginx Proxy Manager, oauth2-proxy, LibreChat and LiteLLM are part of every installation and can't be switched off.{% endtrans %}
   </p>
 </div>
 
@@ -180,26 +172,24 @@
     <p id="module-off-text" class="mt-2 text-sm opacity-60"></p>
 
     <fieldset id="module-off-scopes" class="mt-4 hidden space-y-2">
-      <legend class="mb-1 text-sm font-medium">What happens to its data and settings?</legend>
+      <legend class="mb-1 text-sm font-medium">{% trans %}What happens to its data and settings?{% endtrans %}</legend>
     </fieldset>
 
     <div id="module-off-confirm" class="form-control mt-4 hidden">
-      <label for="module-off-confirm-input" class="label-text mb-1 text-sm font-medium">
-        Type <code id="module-off-name"></code> to confirm the deletion
-      </label>
+      <label id="module-off-confirm-label" for="module-off-confirm-input" class="label-text mb-1 text-sm font-medium"></label>
       <input id="module-off-confirm-input" type="text" class="input input-bordered input-sm w-full"
              autocomplete="off" spellcheck="false" oninput="syncOffButton()">
-      <p class="mt-1 text-xs text-error">Deleted data can't be brought back.</p>
+      <p class="mt-1 text-xs text-error">{% trans %}Deleted data can't be brought back.{% endtrans %}</p>
     </div>
 
     <p id="module-off-note" class="mt-3 hidden text-xs opacity-60"></p>
 
     <div class="modal-action">
-      <button type="button" class="btn btn-ghost btn-sm" onclick="cancelOff()">Cancel</button>
-      <button type="button" id="module-off-go" class="btn btn-primary btn-sm" onclick="confirmOff()">Switch off</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="cancelOff()">{% trans %}Cancel{% endtrans %}</button>
+      <button type="button" id="module-off-go" class="btn btn-primary btn-sm" onclick="confirmOff()">{% trans %}Switch off{% endtrans %}</button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button onclick="cancelOff()">close</button></form>
+  <form method="dialog" class="modal-backdrop"><button onclick="cancelOff()">{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 {% include "partials/_rag_js.html" %}
@@ -212,8 +202,8 @@
 
   // What a switch-off adds to the generic sentence, per module.
   const OFF_NOTES = {
-    rag: "LibreChat is recreated without the RAG tools. The documents folder is never deleted.",
-    mail: "Keycloak loses the mail server it was given, so password mails and “email a link” stop working. The server settings can stay for later.",
+    rag: {{ _('LibreChat is recreated without the RAG tools. The documents folder is never deleted.')|tojson }},
+    mail: {{ _('Keycloak loses the mail server it was given, so password mails and “email a link” stop working. The server settings can stay for later.')|tojson }},
   };
 
   function moduleRow(name) { return MODULE_ROWS.find((r) => r.name === name); }
@@ -256,7 +246,7 @@
     input.dataset.option = question.option;
     const hint = document.createElement("p");
     hint.className = "mt-1 text-xs opacity-60";
-    hint.textContent = "The same question as papaia-ctl setup. The default is derived from this stack's address; change it if the service is reached under another one.";
+    hint.textContent = {{ _('The same question as papaia-ctl setup. The default is derived from this stack\'s address; change it if the service is reached under another one.')|tojson }};
     wrap.append(label, input, hint);
     return wrap;
   }
@@ -345,7 +335,7 @@
     const button = offEl("om-probe");
     button.disabled = true;
     panelError("mail", "");
-    probeResult(true, "Connecting …");
+    probeResult(true, {{ _('Connecting …')|tojson }});
     const reply = await _ragRequest("POST", "/api/v1/mail/probe", mailForm());
     button.disabled = false;
     if (!reply.ok) {
@@ -354,10 +344,10 @@
     }
     const r = reply.data;
     if (r.ok) {
-      const login = r.login === "ok" ? "login accepted" : "no login needed";
-      probeResult(true, "The mail server answered (" + login + "). No mail was sent.");
+      const login = r.login === "ok" ? {{ _('login accepted')|tojson }} : {{ _('no login needed')|tojson }};
+      probeResult(true, fmt({{ _('The mail server answered ({login}). No mail was sent.')|tojson }}, { login: login }));
     } else {
-      probeResult(false, "Stopped at " + r.stage + ": " + r.reason);
+      probeResult(false, fmt({{ _('Stopped at {stage}: {reason}')|tojson }}, { stage: r.stage, reason: r.reason }));
     }
   }
 
@@ -395,8 +385,6 @@
     port.dataset.mode = mode;
     syncOnMail();
   });
-
-  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
 
   // The dialog first shows the plain question, then asks the core what the module holds and
   // adds the choice. A core that can't say (or a failed request) leaves the plain switch-off.
@@ -437,10 +425,11 @@
     }
     offTarget = name;
     offScope = "keep";
-    offEl("module-off-title").textContent = "Switch " + row.title + " off?";
-    offEl("module-off-text").textContent =
-      "Stops and removes its " + plural(row.services, "container") +
-      (row.modules > 1 ? " in " + row.modules + " modules" : "") + ".";
+    offEl("module-off-title").textContent = fmt({{ _('Switch {module} off?')|tojson }}, { module: row.title });
+    const containers = fmtPlural(row.services, {{ _('{count} container')|tojson }}, {{ _('{count} containers')|tojson }});
+    offEl("module-off-text").textContent = row.modules > 1
+      ? fmt({{ _('Stops and removes its {containers} in {modules} modules.')|tojson }}, { containers: containers, modules: row.modules })
+      : fmt({{ _('Stops and removes its {containers}.')|tojson }}, { containers: containers });
     offEl("module-off-scopes").classList.add("hidden");
     offEl("module-off-confirm").classList.add("hidden");
     offEl("module-off-confirm-input").value = "";
@@ -487,21 +476,22 @@
       .concat(info.settings.root_keys && info.settings.root_keys.length ? [".env (" + info.settings.root_keys.join(", ") + ")"] : [])
       .concat(info.settings.files || []).join(", ");
 
-    box.append(option("keep", "Keep data and settings",
-      "Switching it on again brings everything back.", true));
+    box.append(option("keep", {{ _('Keep data and settings')|tojson }},
+      {{ _('Switching it on again brings everything back.')|tojson }}, true));
     if (present.length) {
-      box.append(option("data", "Delete the data, keep the settings",
-        "Removes " + plural(present.length, "volume") + ": " + names +
-        (unknown ? " (Docker could not be asked, so this list may be incomplete)" : "") + ".", false));
-      box.append(option("all", "Delete the data and the settings",
-        "Also puts " + settings + " back to the defaults" +
-        (info.settings.regenerates_secrets ? " and renews its generated secrets" : "") + ".", false));
+      box.append(option("data", {{ _('Delete the data, keep the settings')|tojson }},
+        fmtPlural(present.length, {{ _('Removes {count} volume: {names}.')|tojson }}, {{ _('Removes {count} volumes: {names}.')|tojson }}, { names: names }) +
+        (unknown ? " " + {{ _('Docker could not be asked, so this list may be incomplete.')|tojson }} : ""), false));
+      box.append(option("all", {{ _('Delete the data and the settings')|tojson }},
+        fmt(info.settings.regenerates_secrets
+          ? {{ _('Also puts {settings} back to the defaults and renews its generated secrets.')|tojson }}
+          : {{ _('Also puts {settings} back to the defaults.')|tojson }}, { settings: settings }), false));
     } else {
-      box.append(option("all", "Delete the settings",
-        "It holds no data. Puts " + settings + " back to the defaults.", false));
+      box.append(option("all", {{ _('Delete the settings')|tojson }},
+        fmt({{ _('It holds no data. Puts {settings} back to the defaults.')|tojson }}, { settings: settings }), false));
     }
     box.classList.remove("hidden");
-    offEl("module-off-name").textContent = name;
+    offEl("module-off-confirm-label").innerHTML = fmtHtml({{ _('Type <code>{name}</code> to confirm the deletion')|tojson }}, { name: name });
     syncOffScope();
   }
 
@@ -511,7 +501,7 @@
     const go = offEl("module-off-go");
     go.classList.toggle("btn-error", deleting);
     go.classList.toggle("btn-primary", !deleting);
-    go.textContent = deleting ? "Switch off and delete" : "Switch off";
+    go.textContent = deleting ? {{ _('Switch off and delete')|tojson }} : {{ _('Switch off')|tojson }};
     if (deleting) offEl("module-off-confirm-input").focus();
     syncOffButton();
   }
@@ -580,7 +570,7 @@
     }
     // The password has done its job; it does not stay in the field while the job runs.
     closePanel(name);
-    startedModuleJob(reply.data.job_id, "Switching " + row.title + " on …");
+    startedModuleJob(reply.data.job_id, fmt({{ _('Switching {module} on …')|tojson }}, { module: row.title }));
   }
 
   async function confirmOff() {
@@ -592,7 +582,7 @@
     const row = moduleRow(name);
     const body = { revision: modulesRevision, scope: scope };
     if (scope !== "keep") body.confirm = confirm;
-    const ok = await startModuleJob(name + "/disable", body, "Switching " + row.title + " off …");
+    const ok = await startModuleJob(name + "/disable", body, fmt({{ _('Switching {module} off …')|tojson }}, { module: row.title }));
     if (!ok) moduleBox(name).checked = true;
   }
 
@@ -601,8 +591,8 @@
   function followConfigJob(jobId) {
     configFollowing = true;
     _pollJob(jobId, (job) => {
-      if (job.status === "succeeded") showToast("success", "Done");
-      else showToast("error", "The change failed. The log is above.");
+      if (job.status === "succeeded") showToast("success", {{ _('Done')|tojson }});
+      else showToast("error", {{ _('The change failed. The log is above.')|tojson }});
       setTimeout(() => window.location.reload(), 900);
     });
   }

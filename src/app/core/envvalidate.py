@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
 from app.core.envforms import EnvField
+from app.i18n import gettext as _
 
 
 class EnvValidationError(Exception):
@@ -41,7 +42,7 @@ def coerce_env_values(
         # so a value containing \n would inject arbitrary KEY=VALUE lines.
         if "\n" in value or "\r" in value:
             raise EnvValidationError(
-                key, "value must not contain newline or carriage-return characters"
+                key, _("value must not contain newline or carriage-return characters")
             )
 
         f = field_index.get(key)
@@ -78,22 +79,26 @@ def _coerce_declared(f: EnvField, value: str) -> str:
     """
     if not value:
         if f.required:
-            raise EnvValidationError(f.key, "required field must not be empty")
+            raise EnvValidationError(f.key, _("required field must not be empty"))
         return value
 
     if f.value_type == "integer":
         if not _is_integer(value):
             raise EnvValidationError(
-                f.key, f"expected integer, got {value!r}"
+                f.key, _("expected integer, got %(value)r") % {"value": value}
             )
         int_val = int(value)
         if f.min_value is not None and int_val < int(f.min_value):
             raise EnvValidationError(
-                f.key, f"value {int_val} is below minimum {f.min_value}"
+                f.key, _(
+                    "value %(int_val)s is below minimum %(min_value)s"
+                ) % {"int_val": int_val, "min_value": f.min_value}
             )
         if f.max_value is not None and int_val > int(f.max_value):
             raise EnvValidationError(
-                f.key, f"value {int_val} exceeds maximum {f.max_value}"
+                f.key, _(
+                    "value %(int_val)s exceeds maximum %(max_value)s"
+                ) % {"int_val": int_val, "max_value": f.max_value}
             )
 
     elif f.value_type == "decimal":
@@ -101,17 +106,21 @@ def _coerce_declared(f: EnvField, value: str) -> str:
         normalised = value.replace(",", ".")
         if not _is_decimal(normalised):
             raise EnvValidationError(
-                f.key, f"expected decimal number, got {value!r}"
+                f.key, _("expected decimal number, got %(value)r") % {"value": value}
             )
         value = normalised
         dec_val = Decimal(normalised)
         if f.min_value is not None and dec_val < Decimal(f.min_value):
             raise EnvValidationError(
-                f.key, f"value {dec_val} is below minimum {f.min_value}"
+                f.key, _(
+                    "value %(dec_val)s is below minimum %(min_value)s"
+                ) % {"dec_val": dec_val, "min_value": f.min_value}
             )
         if f.max_value is not None and dec_val > Decimal(f.max_value):
             raise EnvValidationError(
-                f.key, f"value {dec_val} exceeds maximum {f.max_value}"
+                f.key, _(
+                    "value %(dec_val)s exceeds maximum %(max_value)s"
+                ) % {"dec_val": dec_val, "max_value": f.max_value}
             )
 
     elif f.value_type == "url":
@@ -119,7 +128,9 @@ def _coerce_declared(f: EnvField, value: str) -> str:
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             raise EnvValidationError(
                 f.key,
-                f"expected a URL with http or https scheme and a host, got {value!r}",
+                _(
+                    "expected a URL with http or https scheme and a host, got %(value)r"
+                ) % {"value": value},
             )
 
     if f.pattern and f.value_type == "text":
@@ -128,7 +139,9 @@ def _coerce_declared(f: EnvField, value: str) -> str:
         if not re.fullmatch(f.pattern, value):
             raise EnvValidationError(
                 f.key,
-                f"value {value!r} does not match required pattern {f.pattern!r}",
+                _(
+                    "value %(value)r does not match required pattern %(pattern)r"
+                ) % {"value": value, "pattern": f.pattern},
             )
 
     return value

@@ -44,6 +44,15 @@ the VM boundary.
 
 ## How it works
 
+**Language.** The interface is available in English and German. Every account chooses its
+own language in the account menu at the bottom of the sidebar (**Automatic**, **English** or
+**Deutsch**). The choice is stored on the server with the account, not in the browser, so it is
+the same on every computer the account signs in from. **Automatic**, which is also what an account has before
+it chooses, follows the browser's language and falls back to the installation's default
+(`MANAGER_DEFAULT_LOCALE`, English unless set). Another language is a catalogue file under
+`src/app/locale/` and needs no change to the code; see [CONTRIBUTING.md](CONTRIBUTING.md). Log
+lines, the audit log, job logs and the emails and webhooks of notifications stay in English.
+
 **Settings and branding.** Administrators open **Settings** to change the
 name and second line shown at the top of the sidebar (defaults: "papAIa
 manager" / "by Fidonis") and to upload their own logo (PNG, JPEG, WebP or SVG,
@@ -803,6 +812,8 @@ papaia-manager/
 │   └── app/
 │       ├── main.py         # FastAPI application factory
 │       ├── config.py       # Pydantic Settings
+│       ├── i18n/           # Languages found under locale/, the request's language, Jinja install
+│       ├── locale/         # One directory per language: <code>/LC_MESSAGES/messages.po
 │       ├── auth/           # OIDC + PKCE login, CSRF, role dependencies, the user's own token
 │       ├── core/           # ctl (whitelisted papaia-ctl calls), papaia_lib (core handshake),
 │       │                   # catalogs, snapshots, status, env-forms, jobs, audit, tiles,

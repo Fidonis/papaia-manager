@@ -42,6 +42,7 @@ from app.config import Settings, get_settings
 from app.core import backups, images, runner, upgrade
 from app.core.audit import write_audit_entry
 from app.core.jobs import JobQueue
+from app.i18n import N_, gettext
 
 router = APIRouter(prefix="/api/v1/upgrade")
 
@@ -106,24 +107,29 @@ async def _require_idle() -> None:
     existing = await _find(runner.UPGRADE_KIND)
     if existing is not None:
         detail = (
-            f"an upgrade to {existing.target} is still running"
+            gettext("an upgrade to %(target)s is still running") % {"target": existing.target}
             if existing.is_running
             else (
-                f"the result of the previous upgrade ({existing.target}) has not "
-                "been acknowledged yet"
+                gettext(
+                    "the result of the previous upgrade (%(target)s) has not been acknowledged "
+                    "yet"
+                ) % {"target": existing.target}
             )
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
-    for kind, label in ((runner.RESTORE_KIND, "restore"), (runner.STACK_KIND, "stack")):
+    for kind, message in (
+        (runner.RESTORE_KIND, N_("a restore of %(target)s is still running")),
+        (runner.STACK_KIND, N_("a stack of %(target)s is still running")),
+    ):
         active = await _find(kind)
         if active is not None and active.is_running:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"a {label} of {active.target} is still running",
+                detail=gettext(message) % {"target": active.target},
             )
 
-    _require_no_active_job("it would be killed when the upgrade stops the stack")
+    _require_no_active_job(N_("it would be killed when the upgrade stops the stack"))
 
 
 def _require_no_active_job(consequence: str) -> None:
@@ -132,7 +138,8 @@ def _require_no_active_job(consequence: str) -> None:
     if active_job is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"a {active_job.action} job is running; {consequence}",
+            detail=gettext("a %(action)s job is running; %(consequence)s")
+            % {"action": active_job.action, "consequence": gettext(consequence)},
         )
 
 
@@ -144,18 +151,27 @@ async def _require_quiet() -> None:
     a running one does, because it is recreating the containers whose images
     decide what is outdated.
     """
-    for kind, label in (
-        (runner.UPGRADE_KIND, "an upgrade"),
-        (runner.RESTORE_KIND, "a restore"),
-        (runner.STACK_KIND, "a stack action"),
+    for kind, message in (
+        (
+            runner.UPGRADE_KIND,
+            N_("an upgrade is still running; remove images once it has finished"),
+        ),
+        (
+            runner.RESTORE_KIND,
+            N_("a restore is still running; remove images once it has finished"),
+        ),
+        (
+            runner.STACK_KIND,
+            N_("a stack action is still running; remove images once it has finished"),
+        ),
     ):
         active = await _find(kind)
         if active is not None and active.is_running:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"{label} is still running; remove images once it has finished",
+                detail=gettext(message),
             )
-    _require_no_active_job("remove images once it has finished")
+    _require_no_active_job(N_("remove images once it has finished"))
 
 
 def _check_force(body: UpgradeBody, check: upgrade.UpgradeCheck) -> None:
@@ -172,26 +188,32 @@ def _check_force(body: UpgradeBody, check: upgrade.UpgradeCheck) -> None:
     if check.gate.passed:
         raise HTTPException(
             status_code=400,
-            detail="the add-on compatibility check passed; there is nothing for force to override",
+            detail=gettext(
+                "the add-on compatibility check passed; there is nothing for force to override"
+            ),
         )
     if check.gate.has_error:
         raise HTTPException(
             status_code=400,
             detail=(
-                "force cannot override a malformed add-on manifest -- papaia-ctl refuses "
-                "an ERROR result regardless of the flag. Fix the add-on first."
+                gettext(
+                    "force cannot override a malformed add-on manifest -- papaia-ctl refuses an "
+                    "ERROR result regardless of the flag. Fix the add-on first."
+                )
             ),
         )
 
 
 def _check_gate(body: UpgradeBody, check: upgrade.UpgradeCheck) -> None:
     if not check.gate.passed and not body.force:
-        names = ", ".join(r.name for r in check.gate.blocking) or "an add-on"
+        names = ", ".join(r.name for r in check.gate.blocking) or gettext("an add-on")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"the add-on compatibility check failed against {check.target} ({names}). "
-                "Update the add-ons first, or re-run with force."
+                gettext(
+                    "the add-on compatibility check failed against %(target)s (%(names)s). "
+                    "Update the add-ons first, or re-run with force."
+                ) % {"target": check.target, "names": names}
             ),
         )
 
@@ -267,7 +289,9 @@ async def run_check(
     verify_csrf(request)
     if body.version is not None and not upgrade.is_valid_target_version(body.version):
         raise HTTPException(
-            status_code=400, detail=f"{body.version!r} is not a release version (X.Y.Z)"
+            status_code=400, detail=gettext(
+                "%(version)r is not a release version (X.Y.Z)"
+            ) % {"version": body.version}
         )
     try:
         result = await upgrade.run_check(
@@ -335,7 +359,9 @@ async def prune_images(
     if body.images is not None:
         bad = next((i for i in body.images if not _IMAGE_ID_RE.match(i)), None)
         if bad is not None:
-            raise HTTPException(status_code=400, detail=f"{bad!r} is not an image id")
+            raise HTTPException(status_code=400, detail=gettext(
+                "%(bad)r is not an image id"
+            ) % {"bad": bad})
     await _require_quiet()
     try:
         result = await images.prune(
@@ -383,7 +409,9 @@ async def start_upgrade(
     verify_csrf(request)
     if not upgrade.is_valid_target_version(body.version):
         raise HTTPException(
-            status_code=400, detail=f"{body.version!r} is not a release version (X.Y.Z)"
+            status_code=400, detail=gettext(
+                "%(version)r is not a release version (X.Y.Z)"
+            ) % {"version": body.version}
         )
 
     # The check is a precondition, not a convenience. It is where the add-on
@@ -395,14 +423,18 @@ async def start_upgrade(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"no completed check for {body.version}; run the upgrade check again "
-                "before starting the upgrade"
+                gettext(
+                    "no completed check for %(version)s; run the upgrade check again before "
+                    "starting the upgrade"
+                ) % {"version": body.version}
             ),
         )
     if check.up_to_date:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"already at {check.current} -- there is no newer release to move to",
+            detail=gettext(
+                "already at %(current)s -- there is no newer release to move to"
+            ) % {"current": check.current},
         )
 
     # The checkout comes before the gate, in that order, because `cmd_upgrade`
@@ -416,8 +448,10 @@ async def start_upgrade(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "the papaia workspace is not a git checkout, so it cannot be moved to a "
-                "release tag"
+                gettext(
+                    "the papaia workspace is not a git checkout, so it cannot be moved to a "
+                    "release tag"
+                )
             ),
         )
     if state.error:
@@ -426,9 +460,11 @@ async def start_upgrade(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "the checkout has uncommitted changes to tracked files. Commit, stash or "
-                "discard them on the host first -- the upgrade moves the checkout to a "
-                "release tag and would otherwise take those edits with it."
+                gettext(
+                    "the checkout has uncommitted changes to tracked files. Commit, stash or "
+                    "discard them on the host first -- the upgrade moves the checkout to a "
+                    "release tag and would otherwise take those edits with it."
+                )
             ),
         )
 
@@ -441,18 +477,22 @@ async def start_upgrade(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    "PAPAIA_BACKUP_DIR is not set in the stack configuration, so no restore "
-                    "point can be written. Set it on the host, or start the upgrade without "
-                    "a restore point."
+                    gettext(
+                        "PAPAIA_BACKUP_DIR is not set in the stack configuration, so no restore "
+                        "point can be written. Set it on the host, or start the upgrade without "
+                        "a restore point."
+                    )
                 ),
             )
         if not backups.is_reachable(backup_dir):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    f"the backup directory {backup_dir} is not reachable from the manager "
-                    "container, so the restore point would fail after the stack is already "
-                    "down"
+                    gettext(
+                        "the backup directory %(backup_dir)s is not reachable from the manager "
+                        "container, so the restore point would fail after the stack is already "
+                        "down"
+                    ) % {"backup_dir": backup_dir}
                 ),
             )
 
@@ -519,7 +559,7 @@ async def clear_upgrade_runner(
     verify_csrf(request)
     active = await _find(runner.UPGRADE_KIND)
     if active is None:
-        return {"status": "nothing to clear"}
+        return {"status": gettext("nothing to clear")}
     clean_up_after = active.succeeded and active.prune_images
     try:
         await runner.clear_runner(active.name, runner.UPGRADE_KIND)
@@ -563,7 +603,7 @@ def _check_to_dict(check: upgrade.UpgradeCheck) -> dict[str, Any]:
         "up_to_date": check.up_to_date,
         "available": check.available,
         "fetch_error": check.fetch_error,
-        "fetch_hint": check.fetch_hint,
+        "fetch_hint": check.hint_text(),
         "migrations": [
             {"id": m.id, "version": m.version, "kind": m.kind} for m in check.migrations
         ],

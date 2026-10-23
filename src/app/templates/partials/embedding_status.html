@@ -37,11 +37,11 @@
       {% endif %}
       <p class="text-sm font-semibold">{{ view.label }}</p>
       <p class="text-xs opacity-60">{{ view.mode_label }}</p>
-      {% if view.started_at %}<p class="text-xs opacity-50">started {{ view.started_at[11:19] }} UTC</p>{% endif %}
-      {% if view.finished_at %}<p class="text-xs opacity-50">finished {{ view.finished_at[11:19] }} UTC</p>{% endif %}
+      {% if view.started_at %}<p class="text-xs opacity-50">{% trans started_at=view.started_at[11:19] %}started {{ started_at }} UTC{% endtrans %}</p>{% endif %}
+      {% if view.finished_at %}<p class="text-xs opacity-50">{% trans finished_at=view.finished_at[11:19] %}finished {{ finished_at }} UTC{% endtrans %}</p>{% endif %}
       {% if view.active %}
       <button type="button" class="btn btn-outline btn-xs ml-auto" :disabled="aborting" @click="abort()">
-        <span x-text="aborting ? 'Aborting…' : 'Abort'">Abort</span>
+        <span x-text="aborting ? {{ _('Aborting…')|tojson|forceescape }} : {{ _('Abort')|tojson|forceescape }}">{% trans %}Abort{% endtrans %}</span>
       </button>
       {% endif %}
     </div>
@@ -49,25 +49,25 @@
     {% if view.active %}
     <p class="mt-2 text-sm">
       {% if view.live_chunks is not none %}
-      <b>{{ '{:,}'.format(view.live_chunks) }}</b> chunk{{ '' if view.live_chunks == 1 else 's' }} written so far.
+      {% trans value='{:,}'.format(view.live_chunks), n=view.live_chunks %}<b>{{ value }}</b> chunk written so far.{% pluralize n %}<b>{{ value }}</b> chunks written so far.{% endtrans %}
       {% else %}
-      Embedding in the background.
+      {% trans %}Embedding in the background.{% endtrans %}
       {% endif %}
-      <span class="opacity-60">The ingester reports its counts when the run ends.</span>
+      <span class="opacity-60">{% trans %}The ingester reports its counts when the run ends.{% endtrans %}</span>
     </p>
     {% else %}
     <div class="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
-      <div><span class="opacity-60">Files seen</span> <b>{{ view.counters.files_seen }}</b></div>
-      <div><span class="opacity-60">Embedded</span> <b>{{ view.counters.docs_indexed }}</b></div>
-      <div><span class="opacity-60">Unchanged</span> <b>{{ view.counters.docs_unchanged }}</b></div>
-      <div><span class="opacity-60">Chunks</span> <b>{{ '{:,}'.format(view.counters.chunks_upserted) }}</b></div>
-      <div><span class="opacity-60">Failed</span> <b>{{ view.counters.docs_failed }}</b></div>
+      <div><span class="opacity-60">{% trans %}Files seen{% endtrans %}</span> <b>{{ view.counters.files_seen }}</b></div>
+      <div><span class="opacity-60">{% trans %}Embedded{% endtrans %}</span> <b>{{ view.counters.docs_indexed }}</b></div>
+      <div><span class="opacity-60">{% trans %}Unchanged{% endtrans %}</span> <b>{{ view.counters.docs_unchanged }}</b></div>
+      <div><span class="opacity-60">{% trans %}Chunks{% endtrans %}</span> <b>{{ '{:,}'.format(view.counters.chunks_upserted) }}</b></div>
+      <div><span class="opacity-60">{% trans %}Failed{% endtrans %}</span> <b>{{ view.counters.docs_failed }}</b></div>
     </div>
     {% if view.source_kind == 'upload' %}
     {% if view.clean %}
-    <p class="mt-2 text-xs opacity-60">The upload this run read has been deleted.</p>
+    <p class="mt-2 text-xs opacity-60">{% trans %}The upload this run read has been deleted.{% endtrans %}</p>
     {% else %}
-    <p class="mt-2 text-xs opacity-60">The upload this run read is kept, so the run can be repeated. It is deleted after its time limit.</p>
+    <p class="mt-2 text-xs opacity-60">{% trans %}The upload this run read is kept, so the run can be repeated. It is deleted after its time limit.{% endtrans %}</p>
     {% endif %}
     {% endif %}
     {% endif %}
@@ -78,7 +78,7 @@
 
     {% if view.events %}
     <details class="mt-2" {% if not view.clean %}open{% endif %}>
-      <summary class="cursor-pointer text-xs opacity-70">{{ view.events | length }}{% if view.events_truncated %}+{% endif %} message{{ '' if view.events | length == 1 else 's' }} from the ingester</summary>
+      <summary class="cursor-pointer text-xs opacity-70">{{ view.events | length }}{% if view.events_truncated %}+{% endif %} {% trans n=view.events | length %}message from the ingester{% pluralize n %}messages from the ingester{% endtrans %}</summary>
       <ul class="mt-1 max-h-48 overflow-y-auto rounded bg-base-300 p-2 text-xs">
         {% for event in view.events %}
         <li class="flex gap-2 py-0.5">
@@ -95,7 +95,7 @@
   {% if history %}
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
-      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Earlier runs</p>
+      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">{% trans %}Earlier runs{% endtrans %}</p>
       <ul class="flex flex-col divide-y divide-base-300 text-sm">
         {% for run in history %}
         <li class="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5">
@@ -103,7 +103,7 @@
           <span class="text-xs opacity-60">{{ run.mode_label }}</span>
           <span class="text-xs opacity-60">{{ run.started_at[:16] | replace('T', ' ') }} UTC</span>
           {% if not run.active %}
-          <span class="text-xs opacity-60">{{ run.counters.docs_indexed }} embedded · {{ run.counters.docs_failed }} failed · {{ '{:,}'.format(run.counters.chunks_upserted) }} chunks</span>
+          <span class="text-xs opacity-60">{% trans docs_indexed=run.counters.docs_indexed, docs_failed=run.counters.docs_failed, value='{:,}'.format(run.counters.chunks_upserted) %}{{ docs_indexed }} embedded · {{ docs_failed }} failed · {{ value }} chunks{% endtrans %}</span>
           {% endif %}
         </li>
         {% endfor %}

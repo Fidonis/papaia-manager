@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from app.i18n import gettext as _
+
 
 class IngestError(Exception):
     """Base of the failures that come from the ingester or its catalog."""
@@ -53,8 +55,11 @@ class InvalidJob(InvalidRequest):  # noqa: N818
 
     def __init__(self, issues: Sequence[Any]) -> None:
         self.issues = tuple(issues)
-        first = str(self.issues[0]) if self.issues else "The job is not valid."
-        extra = f" (+{len(self.issues) - 1} more)" if len(self.issues) > 1 else ""
+        first = str(self.issues[0]) if self.issues else _("The job is not valid.")
+        more = len(self.issues) - 1
+        extra = _("(+%(count)s more)") % {"count": more} if more > 0 else ""
+        if extra:
+            extra = " " + extra
         super().__init__(first + extra)
 
 

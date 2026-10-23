@@ -27,11 +27,14 @@ from urllib.parse import quote
 import certifi
 import httpx
 
+from app.i18n import N_
+from app.i18n import gettext as _
+
 DEFAULT_TIMEOUT = 10.0
 
 # What a refused api-key tells the operator to check. The caller knows which connection
 # the key belongs to; this client only knows that it was refused.
-DEFAULT_REFUSED_HINT = "Check the api-key of this connection."
+DEFAULT_REFUSED_HINT = N_("Check the api-key of this connection.")
 
 
 @lru_cache(maxsize=8)
@@ -143,13 +146,17 @@ class QdrantClient:
             target = httpx.URL(self._base)
             where = f"{target.host}:{target.port}" if target.port else str(target.host)
             raise QdrantUnavailable(
-                0, f"Qdrant is not reachable at {where} ({type(exc).__name__})"
+                0, _(
+                    "Qdrant is not reachable at %(where)s (%(__name__)s)"
+                ) % {"where": where, "__name__": type(exc).__name__}
             ) from exc
 
         if response.status_code in (401, 403):
             raise QdrantUnavailable(
                 response.status_code,
-                f"Qdrant refused the api-key. {self._refused_hint}",
+                _(
+                    "Qdrant refused the api-key. %(_refused_hint)s"
+                ) % {"_refused_hint": self._refused_hint},
             )
         if response.status_code >= 400:
             raise QdrantError(response.status_code, _error_detail(response))
@@ -157,5 +164,5 @@ class QdrantClient:
         try:
             body = response.json()
         except ValueError as exc:
-            raise QdrantError(response.status_code, "Qdrant sent an unreadable answer") from exc
+            raise QdrantError(response.status_code, _("Qdrant sent an unreadable answer")) from exc
         return body.get("result") if isinstance(body, dict) else None

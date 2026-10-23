@@ -37,6 +37,7 @@ from app.core.audit import write_audit_entry
 from app.core.ctl import profiles_flag, run_core_verb
 from app.core.inventory import active_profiles, core_groups
 from app.core.jobs import JobContext, JobQueue
+from app.i18n import gettext as _
 
 router = APIRouter(prefix="/api/v1/stack")
 
@@ -62,7 +63,7 @@ def _queue() -> JobQueue:
     from app.main import _job_queue  # noqa: PLC0415
 
     if _job_queue is None:
-        raise HTTPException(status_code=503, detail="job queue not initialized")
+        raise HTTPException(status_code=503, detail=_("job queue not initialized"))
     return _job_queue
 
 
@@ -105,7 +106,7 @@ def _check_clean_up(action: str, clean_up: bool) -> None:
     if clean_up and action == "start":
         raise HTTPException(
             status_code=400,
-            detail="clean_up needs something to stop, and start stops nothing",
+            detail=_("clean_up needs something to stop, and start stops nothing"),
         )
 
 
@@ -125,7 +126,7 @@ async def group_action(
     verify_csrf(request)
     if action not in GROUP_ACTIONS:
         raise HTTPException(
-            status_code=404, detail=f"unknown action {action!r}"
+            status_code=404, detail=_("unknown action %(action)r") % {"action": action}
         )
     _check_clean_up(action, body.clean_up)
 
@@ -207,7 +208,9 @@ async def stack_action(
 ) -> dict[str, Any]:
     verify_csrf(request)
     if action not in runner.STACK_ACTIONS:
-        raise HTTPException(status_code=404, detail=f"unknown action {action!r}")
+        raise HTTPException(status_code=404, detail=_(
+            "unknown action %(action)r"
+        ) % {"action": action})
     _check_clean_up(action, body.clean_up)
 
     # A job in flight would be killed together with the manager and left stuck in
@@ -216,7 +219,7 @@ async def stack_action(
     # before anything is started.
     if _job_running():
         raise HTTPException(
-            status_code=409, detail="a job is running; wait for it to finish"
+            status_code=409, detail=_("a job is running; wait for it to finish")
         )
     # An upgrade already owns the whole stack: it takes it down between its two
     # phases and brings it back on the target release. A stack action started
@@ -224,13 +227,17 @@ async def stack_action(
     upgrading = await _find(runner.UPGRADE_KIND)
     if upgrading is not None and upgrading.is_running:
         raise HTTPException(
-            status_code=409, detail=f"an upgrade to {upgrading.target} is still running"
+            status_code=409, detail=_(
+                "an upgrade to %(target)s is still running"
+            ) % {"target": upgrading.target}
         )
     existing = await _find(runner.STACK_KIND)
     if existing is not None:
         if existing.is_running:
             raise HTTPException(
-                status_code=409, detail=f"a stack {existing.target} is still running"
+                status_code=409, detail=_(
+                    "a stack %(target)s is still running"
+                ) % {"target": existing.target}
             )
         # A finished runner holds the name the next one needs. Clearing it here
         # rather than making the operator do it keeps a one-click action one

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Jobs — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Jobs — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Jobs{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">What the manager has run, newest first</p>{% endblock %}
+{% block page_title %}{% trans %}Jobs{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}What the manager has run, newest first{% endtrans %}</p>{% endblock %}
 
 {# No page_actions: nothing is started from here. Jobs are started where the
    thing they act on lives -- an add-on, a service group, a backup -- and this

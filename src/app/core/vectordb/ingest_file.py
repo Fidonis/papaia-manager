@@ -49,6 +49,7 @@ from app.core.vectordb.errors import (
     ConnectionsReadOnlyError,
     InvalidConnectionError,
 )
+from app.i18n import gettext
 
 CONNECTIONS_RELPATH = Path("ai") / "rag" / "catalog" / "connections.yaml"
 
@@ -81,7 +82,7 @@ class ConnectionEntry(BaseModel):
     @classmethod
     def _http_scheme(cls, value: str) -> str:
         if not value.startswith(("http://", "https://")):
-            raise ValueError("url must start with http:// or https://")
+            raise ValueError(gettext("url must start with http:// or https://"))
         return value
 
     @field_validator("api_key")
@@ -90,7 +91,9 @@ class ConnectionEntry(BaseModel):
         if value is None or value == "":
             return None
         if not value.startswith(ENC_PREFIX):
-            raise ValueError("api_key must be an enc:1: token; a literal value is not accepted")
+            raise ValueError(gettext(
+                "api_key must be an enc:1: token; a literal value is not accepted"
+            ))
         return value
 
 
@@ -107,7 +110,7 @@ class FileIssue:
         return (self.name, self.field)
 
     def __str__(self) -> str:
-        scope = f"connection {self.name!r}: " if self.name else ""
+        scope = f"{gettext('connection %(name)r') % {'name': self.name}}: " if self.name else ""
         return f"{scope}{self.field}: {self.message}"
 
 
@@ -167,7 +170,9 @@ def validate_entries(raw_entries: list[Any]) -> list[FileIssue]:
     seen: set[str] = set()
     for index, raw in enumerate(raw_entries):
         if not isinstance(raw, dict):
-            issues.append(FileIssue(None, f"connections[{index}]", "connection must be a mapping"))
+            issues.append(FileIssue(None, f"connections[{index}]", gettext(
+                "connection must be a mapping"
+            )))
             continue
         name = raw.get("name") if isinstance(raw.get("name"), str) else None
         try:
@@ -176,7 +181,7 @@ def validate_entries(raw_entries: list[Any]) -> list[FileIssue]:
             issues.extend(_issues_from(name or f"connections[{index}]", exc))
             continue
         if entry.name in seen:
-            issues.append(FileIssue(entry.name, "name", "duplicate connection name"))
+            issues.append(FileIssue(entry.name, "name", gettext("duplicate connection name")))
         seen.add(entry.name)
     return issues
 
@@ -190,21 +195,25 @@ def _parse(raw: bytes) -> tuple[dict[str, Any], str | None]:
     try:
         document = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
-        first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else "invalid YAML"
-        return _starter(), f"invalid YAML: {first_line}"
+        first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else gettext(
+            "invalid YAML"
+        )
+        return _starter(), gettext("invalid YAML: %(first_line)s") % {"first_line": first_line}
     if document is None:
         document = {}
     if not isinstance(document, dict):
-        return _starter(), "the top level must be a mapping"
+        return _starter(), gettext("the top level must be a mapping")
     # The ingester's interface sets a missing version on its first save; so does this.
     document.setdefault("version", 1)
     if document["version"] != 1:
-        return _starter(), f"unsupported connections version {document['version']!r}; expected 1"
+        return _starter(), gettext(
+            "unsupported connections version %(value)r; expected 1"
+        ) % {"value": document['version']}
     connections = document.get("connections")
     if connections is None:
         document["connections"] = []
     elif not isinstance(connections, list):
-        return _starter(), "connections must be a list"
+        return _starter(), gettext("connections must be a list")
     return document, None
 
 
@@ -243,7 +252,9 @@ class IngestFileRepository:
                 raw=b"",
                 revision="",
                 document=_starter(),
-                structural_error=f"the file cannot be read: {exc.strerror or exc}",
+                structural_error=gettext(
+                    "the file cannot be read: %(value)s"
+                ) % {"value": exc.strerror or exc},
             )
 
         document, problem = _parse(raw)
@@ -277,7 +288,9 @@ class IngestFileRepository:
                 snapshot = self.snapshot()
                 if snapshot.structural_error is not None:
                     raise ConnectionFileError(
-                        f"connections.yaml cannot be changed: {snapshot.structural_error}"
+                        gettext(
+                            "connections.yaml cannot be changed: %(structural_error)s"
+                        ) % {"structural_error": snapshot.structural_error}
                     )
                 document = copy.deepcopy(snapshot.document)
                 mutator(document)
@@ -294,7 +307,7 @@ class IngestFileRepository:
                 if result is not None:
                     return result
             raise ConnectionFileError(
-                "connections.yaml keeps changing while the manager writes it; try again"
+                gettext("connections.yaml keeps changing while the manager writes it; try again")
             )
 
     def _replace(self, snapshot: FileSnapshot, data: bytes) -> FileSnapshot | None:
@@ -302,7 +315,9 @@ class IngestFileRepository:
         directory = self._path.parent
         if not directory.is_dir():
             raise ConnectionsReadOnlyError(
-                f"{directory} does not exist; the manager does not create it"
+                gettext(
+                    "%(directory)s does not exist; the manager does not create it"
+                ) % {"directory": directory}
             )
         try:
             swapped = catalog_io.swap(
@@ -316,7 +331,9 @@ class IngestFileRepository:
             )
         except OSError as exc:
             raise ConnectionsReadOnlyError(
-                f"{directory} does not accept the change ({exc.strerror or type(exc).__name__}); "
-                "connections are read-only here"
+                gettext(
+                    "%(directory)s does not accept the change (%(value)s); connections are "
+                    "read-only here"
+                ) % {"directory": directory, "value": exc.strerror or type(exc).__name__}
             ) from exc
         return self.snapshot() if swapped else None

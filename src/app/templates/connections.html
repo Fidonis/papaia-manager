@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Connections — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Connections — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Connections{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Vector databases of the RAG system, shared with the ingester</p>{% endblock %}
+{% block page_title %}{% trans %}Connections{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Vector databases of the RAG system, shared with the ingester{% endtrans %}</p>{% endblock %}
 
 {# Tier 1: one filled primary, one outline secondary. The dialog lives in the list
    partial, so the button finds none while the connections cannot be changed. #}
@@ -13,7 +13,7 @@
         hx-target="#connection-list"
         hx-swap="innerHTML"
         hx-disabled-elt="this">
-  Refresh
+  {% trans %}Refresh{% endtrans %}
 </button>
 <button type="button"
         class="btn btn-primary btn-sm"
@@ -21,7 +21,7 @@
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
   </svg>
-  New connection
+  {% trans %}New connection{% endtrans %}
 </button>
 {% endblock %}
 
@@ -48,11 +48,11 @@ document.body.addEventListener('htmx:responseError', function (event) {
   const detail = event.detail || {};
   if (!detail.target || detail.target.id !== 'connection-list') return;
   if (detail.xhr && detail.xhr.status === 401) return;
-  let reason = 'The connections could not be loaded.';
+  let reason = {{ _('The connections could not be loaded.')|tojson }};
   try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
   detail.target.innerHTML =
     '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
-    '<p class="text-lg font-semibold">Connections are not available</p>' +
+    '<p class="text-lg font-semibold">' + _ragEscape({{ _('Connections are not available')|tojson }}) + '</p>' +
     '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p></div>';
 });
 
@@ -135,8 +135,9 @@ function connectionDialog(types) {
       if (!res.ok) { this.error = res.error; return; }
       const name = this.name.trim();
       this.$root.close();
-      showToast('success', 'Connection <b>' + _ragEscape(name) + '</b> ' +
-                (this.mode === 'create' ? 'created' : 'saved'));
+      showToast('success', fmtHtml(this.mode === 'create'
+                ? {{ _('Connection <b>{name}</b> created')|tojson }}
+                : {{ _('Connection <b>{name}</b> saved')|tojson }}, { name: name }));
       reloadConnections();
     },
     async test() {
@@ -171,7 +172,7 @@ function deleteConnection() {
       if (res.handled) return;
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
-      showToast('success', 'Connection <b>' + _ragEscape(this.name) + '</b> deleted');
+      showToast('success', fmtHtml({{ _('Connection <b>{name}</b> deleted')|tojson }}, { name: this.name }));
       reloadConnections();
     },
   };
@@ -193,7 +194,7 @@ function resetConnection() {
       if (res.handled) return;
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
-      showToast('success', 'Connection <b>' + _ragEscape(this.name) + '</b> reset to the integrated Qdrant');
+      showToast('success', fmtHtml({{ _('Connection <b>{name}</b> reset to the integrated Qdrant')|tojson }}, { name: this.name }));
       reloadConnections();
     },
   };

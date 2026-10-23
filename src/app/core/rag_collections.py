@@ -50,6 +50,7 @@ from typing import Any
 
 from app.core.qdrant import QdrantClient, QdrantError, QdrantUnavailable, collection_path
 from app.core.rag import RagBackend
+from app.i18n import gettext as _
 
 META_NAMESPACE = uuid.UUID("9e3a5c2f-8b7d-4f1e-a6b3-2d8c9e4f1a02")
 ACL_NAMESPACE = uuid.UUID("8c9f3b0e-4a5d-4d0a-9f1e-7d6c5b2a1f00")
@@ -112,11 +113,13 @@ def validate_collection_name(name: str, system: frozenset[str] = frozenset()) ->
     """
     if not _NAME_RE.fullmatch(name):
         raise InvalidInput(
-            "A collection name starts with a letter or digit and contains only letters, "
-            f"digits, '.', '_' and '-' (at most {MAX_NAME_LENGTH} characters)."
+            _(
+                "A collection name starts with a letter or digit and contains only letters, "
+                "digits, '.', '_' and '-' (at most %(MAX_NAME_LENGTH)s characters)."
+            ) % {"MAX_NAME_LENGTH": MAX_NAME_LENGTH}
         )
     if name in system:
-        raise InvalidInput(f"{name!r} is a system collection.")
+        raise InvalidInput(_("%(name)r is a system collection.") % {"name": name})
     return name
 
 
@@ -127,15 +130,17 @@ def _existing_name(name: str, system: frozenset[str]) -> str:
     this page would not, and those still have to be manageable.
     """
     if not name or len(name) > MAX_NAME_LENGTH or _has_control_character(name):
-        raise InvalidInput("Not a valid collection name.")
+        raise InvalidInput(_("Not a valid collection name."))
     if name in system:
-        raise InvalidInput(f"{name!r} is a system collection.")
+        raise InvalidInput(_("%(name)r is a system collection.") % {"name": name})
     return name
 
 
 def validate_vector_size(size: int) -> int:
     if not 1 <= size <= MAX_VECTOR_SIZE:
-        raise InvalidInput(f"The vector size must be between 1 and {MAX_VECTOR_SIZE}.")
+        raise InvalidInput(_(
+            "The vector size must be between 1 and %(MAX_VECTOR_SIZE)s."
+        ) % {"MAX_VECTOR_SIZE": MAX_VECTOR_SIZE})
     return size
 
 
@@ -145,7 +150,7 @@ def validate_embedding_model(model: str | None) -> str | None:
     if not value:
         return None
     if len(value) > MAX_NAME_LENGTH or _has_control_character(value):
-        raise InvalidInput("Not a valid embedding model name.")
+        raise InvalidInput(_("Not a valid embedding model name."))
     return value
 
 
@@ -157,11 +162,13 @@ def validate_role(role: str) -> str:
     """
     value = role.strip()
     if not value:
-        raise InvalidInput("A role name must not be empty.")
+        raise InvalidInput(_("A role name must not be empty."))
     if len(value) > MAX_NAME_LENGTH:
-        raise InvalidInput(f"A role name is at most {MAX_NAME_LENGTH} characters.")
+        raise InvalidInput(_(
+            "A role name is at most %(MAX_NAME_LENGTH)s characters."
+        ) % {"MAX_NAME_LENGTH": MAX_NAME_LENGTH})
     if "|" in value or _has_control_character(value):
-        raise InvalidInput(f"{value!r} is not a valid role name.")
+        raise InvalidInput(_("%(value)r is not a valid role name.") % {"value": value})
     return value
 
 
@@ -178,13 +185,18 @@ def normalise_grants(grants: Iterable[RoleGrant], operator_role: str) -> tuple[R
     for grant in grants:
         role = validate_role(grant.role)
         if grant.access not in ACCESS_LEVELS:
-            raise InvalidInput(f"The access level must be one of {', '.join(ACCESS_LEVELS)}.")
+            raise InvalidInput(_(
+                "The access level must be one of %(value)s."
+            ) % {"value": ', '.join(ACCESS_LEVELS)})
         if role == operator_role:
             raise InvalidInput(
-                f"{role!r} always has access to every collection and is not listed per collection."
+                _(
+                    "%(role)r always has access to every collection and is not listed per "
+                    "collection."
+                ) % {"role": role}
             )
         if role in seen:
-            raise InvalidInput(f"The role {role!r} is listed twice.")
+            raise InvalidInput(_("The role %(role)r is listed twice.") % {"role": role})
         seen.add(role)
         result.append(RoleGrant(role, grant.access))
     return tuple(sorted(result, key=lambda grant: grant.role))
@@ -330,7 +342,9 @@ class CollectionStore:
         except QdrantUnavailable as exc:
             return _with_reason(unavailable, exc.detail)
         except QdrantError as exc:
-            return _with_reason(unavailable, f"Qdrant answered with an error: {exc.detail}")
+            return _with_reason(unavailable, _(
+                "Qdrant answered with an error: %(detail)s"
+            ) % {"detail": exc.detail})
 
     async def _snapshot(self) -> CollectionsView:
         backend = self._backend

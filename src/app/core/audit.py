@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.i18n import gettext
+
 logger = logging.getLogger(__name__)
 
 _SECRET_KEY_RE = re.compile(
@@ -187,7 +189,9 @@ def parse_cutoff(value: str) -> datetime:
         try:
             parsed = datetime.fromisoformat(value)
         except ValueError as exc:
-            raise ValueError(f"{value!r} is not a valid date or datetime") from exc
+            raise ValueError(
+                gettext("%(value)r is not a valid date or datetime") % {"value": value}
+            ) from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)

@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% from "partials/_actions.html" import overflow_menu %}
 {% from "partials/_ingest_macros.html" import tabs, state_badge %}
-{% block title %}{{ job_id }} — Ingest Jobs — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}{{ job_id }} — Ingest Jobs — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_breadcrumb %}
 <a href="/ingest/jobs" class="inline-flex items-center gap-1 text-sm opacity-60 hover:opacity-100">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
   </svg>
-  Ingest Jobs
+  {% trans %}Ingest Jobs{% endtrans %}
 </a>
 {% endblock %}
 {% block page_title %}<span class="font-mono">{{ job_id }}</span>{% endblock %}
@@ -21,41 +21,41 @@
   {% set delete_detail = {"id": row.id, "etag": row.etag, "collection": row.collection, "managed": row.managed, "can_delete_runs": can_delete_runs} %}
   {% set runs_detail = {"job_id": row.id, "tz": tz} %}
   {% if row.managed %}
-  <a href="/ingest/runs?job={{ row.id }}" class="btn btn-outline btn-sm">All runs</a>
+  <a href="/ingest/runs?job={{ row.id }}" class="btn btn-outline btn-sm">{% trans %}All runs{% endtrans %}</a>
   {# The Embedding page's jobs cannot be edited or paused, but they can be deleted with their runs. #}
   {% if can_delete_runs or (view.editable and row.in_file) %}
-  {% call overflow_menu(label='More actions for job ' ~ row.id) %}
+  {% call overflow_menu(label=_('More actions for job %(name)s', name=row.id)) %}
     {% if can_delete_runs %}
-    <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>Delete runs…</a></li>
+    <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>{% trans %}Delete runs…{% endtrans %}</a></li>
     {% endif %}
     {% if view.editable and row.in_file %}
     <li><a class="text-error"
-           @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ delete_detail|tojson }})'>Delete</a></li>
+           @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ delete_detail|tojson }})'>{% trans %}Delete{% endtrans %}</a></li>
     {% endif %}
   {% endcall %}
   {% endif %}
   {% else %}
   {% if row.runnable %}
   <button type="button" class="btn btn-success btn-sm"
-          @click='$dispatch("ingest-run", {{ run_dialog|tojson }})'>Run</button>
+          @click='$dispatch("ingest-run", {{ run_dialog|tojson }})'>{% trans %}Run{% endtrans %}</button>
   {% endif %}
   {% if view.editable and row.in_file %}
-  <a href="/ingest/jobs/{{ row.id }}/edit" class="btn btn-outline btn-sm">Edit</a>
-  {% call overflow_menu(label='More actions for job ' ~ row.id) %}
-    <li><a href="/ingest/new?duplicate={{ row.id }}">Duplicate</a></li>
+  <a href="/ingest/jobs/{{ row.id }}/edit" class="btn btn-outline btn-sm">{% trans %}Edit{% endtrans %}</a>
+  {% call overflow_menu(label=_('More actions for job %(name)s', name=row.id)) %}
+    <li><a href="/ingest/new?duplicate={{ row.id }}">{% trans %}Duplicate{% endtrans %}</a></li>
     {% if row.enabled %}
-    <li><a onclick="ingestCloseMenu(); ingestToggle('{{ row.id }}', false, function () { window.location.reload(); })">Disable</a></li>
+    <li><a onclick="ingestCloseMenu(); ingestToggle('{{ row.id }}', false, function () { window.location.reload(); })">{% trans %}Disable{% endtrans %}</a></li>
     {% else %}
-    <li><a onclick="ingestCloseMenu(); ingestToggle('{{ row.id }}', true, function () { window.location.reload(); })">Enable</a></li>
+    <li><a onclick="ingestCloseMenu(); ingestToggle('{{ row.id }}', true, function () { window.location.reload(); })">{% trans %}Enable{% endtrans %}</a></li>
     {% endif %}
     {% if row.paused_in_ingester %}
-    <li><a onclick="ingestCloseMenu(); ingestResume('{{ row.id }}', function () { window.location.reload(); })">Resume scheduling</a></li>
+    <li><a onclick="ingestCloseMenu(); ingestResume('{{ row.id }}', function () { window.location.reload(); })">{% trans %}Resume scheduling{% endtrans %}</a></li>
     {% endif %}
     {% if can_delete_runs %}
-    <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>Delete runs…</a></li>
+    <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>{% trans %}Delete runs…{% endtrans %}</a></li>
     {% endif %}
     <li><a class="text-error"
-           @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ delete_detail|tojson }})'>Delete</a></li>
+           @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ delete_detail|tojson }})'>{% trans %}Delete{% endtrans %}</a></li>
   {% endcall %}
   {% endif %}
   {% endif %}
@@ -67,23 +67,23 @@
 
 {% if not row %}
 <div class="flex flex-col items-center py-20 gap-3 opacity-70 text-center">
-  <p class="text-lg font-semibold">There is no job <span class="font-mono">{{ job_id }}</span></p>
-  <p class="max-w-md text-sm">It is not in <span class="font-mono">jobs.yaml</span> and the ingester does not know it either.</p>
-  <a class="btn btn-outline btn-sm" href="/ingest/jobs">Back to the jobs</a>
+  <p class="text-lg font-semibold">{% trans %}There is no job <span class="font-mono">{{ job_id }}</span>{% endtrans %}</p>
+  <p class="max-w-md text-sm">{% trans %}It is not in <span class="font-mono">jobs.yaml</span> and the ingester does not know it either.{% endtrans %}</p>
+  <a class="btn btn-outline btn-sm" href="/ingest/jobs">{% trans %}Back to the jobs{% endtrans %}</a>
 </div>
 {% else %}
 
 <div class="mb-4 flex flex-wrap items-center gap-2">
   {{ state_badge(row) }}
-  {% if row.managed %}<span class="badge badge-outline badge-sm">Embedding page</span>{% endif %}
-  <span class="text-sm opacity-60">{{ row.source_title }} → <span class="font-mono">{{ row.collection }}</span> on {{ row.connection }}</span>
+  {% if row.managed %}<span class="badge badge-outline badge-sm">{% trans %}Embedding page{% endtrans %}</span>{% endif %}
+  <span class="text-sm opacity-60">{% trans source_title=row.source_title, collection=row.collection, connection=row.connection %}{{ source_title }} → <span class="font-mono">{{ collection }}</span> on {{ connection }}{% endtrans %}</span>
 </div>
 
 <div role="tablist" class="tabs tabs-boxed mb-4 w-fit max-w-full overflow-x-auto overflow-y-hidden" id="job-tabs">
-  <button type="button" role="tab" class="tab whitespace-nowrap" data-tab="overview" onclick="jobTab('overview')">Overview</button>
-  <button type="button" role="tab" class="tab whitespace-nowrap" data-tab="runs" onclick="jobTab('runs')">Runs</button>
-  <button type="button" role="tab" class="tab whitespace-nowrap" data-tab="files" onclick="jobTab('files')">Files</button>
-  <button type="button" role="tab" class="tab whitespace-nowrap" data-tab="config" onclick="jobTab('config')">Configuration</button>
+  <button type="button" role="tab" class="tab whitespace-nowrap" data-tab="overview" onclick="jobTab('overview')">{% trans %}Overview{% endtrans %}</button>
+  <button type="button" role="tab" class="tab whitespace-nowrap" data-tab="runs" onclick="jobTab('runs')">{% trans %}Runs{% endtrans %}</button>
+  <button type="button" role="tab" class="tab whitespace-nowrap" data-tab="files" onclick="jobTab('files')">{% trans %}Files{% endtrans %}</button>
+  <button type="button" role="tab" class="tab whitespace-nowrap" data-tab="config" onclick="jobTab('config')">{% trans %}Configuration{% endtrans %}</button>
 </div>
 
 <div id="job-tab">
@@ -113,7 +113,7 @@ document.body.addEventListener('htmx:responseError', function (event) {
   const detail = event.detail || {};
   if (!detail.target || detail.target.id !== 'job-tab') return;
   if (detail.xhr && detail.xhr.status === 401) return;
-  let reason = 'This tab could not be loaded.';
+  let reason = {{ _('This tab could not be loaded.')|tojson }};
   try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
   detail.target.innerHTML =
     '<div class="flex flex-col items-center py-16 gap-3 opacity-60 text-center">' +

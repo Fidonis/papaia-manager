@@ -27,6 +27,7 @@ from app.core.vectordb import (
     all_types,
 )
 from app.core.vectordb.service import DEFAULT_NAME, ConnectionsState, audit_key_action
+from app.i18n import gettext as _
 from app.routers.rag_deps import ConnectionServiceDep, RagAdmin, get_probe_env
 
 router = APIRouter(prefix="/api/v1/rag/connections")
@@ -80,7 +81,14 @@ def state_payload(state: ConnectionsState) -> dict[str, Any]:
             {
                 "id": connection_type.id,
                 "label": connection_type.label,
-                "fields": [asdict(spec) for spec in connection_type.fields],
+                "fields": [
+                    {
+                        **asdict(spec),
+                        "label": _(spec.label),
+                        "help": _(spec.help) if spec.help else "",
+                    }
+                    for spec in connection_type.fields
+                ],
             }
             for connection_type in all_types()
         ],
@@ -230,7 +238,7 @@ async def reset_connection(
     verify_csrf(request)
     with _translated():
         if name != DEFAULT_NAME:
-            raise InvalidConnectionError("Only the default connection can be reset.")
+            raise InvalidConnectionError(_("Only the default connection can be reset."))
         view = service.reset_default()
     _audit(
         settings,

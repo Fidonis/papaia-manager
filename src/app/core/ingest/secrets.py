@@ -48,6 +48,7 @@ import yaml
 from app.core.ingest.errors import CatalogRejected
 from app.core.vectordb import catalog_io
 from app.core.vectordb.crypto import ENC_PREFIX, SecretError, decrypt, encrypt
+from app.i18n import gettext
 
 SECRETS_RELPATH = Path("ai") / "rag" / "catalog" / "secrets.yaml"
 NAME_PREFIX = "QI_SECRET_"
@@ -83,8 +84,10 @@ def full_name(name: str) -> str:
         text = NAME_PREFIX + text
     if not _NAME_RE.match(text) or not _SUFFIX_RE.match(text[len(NAME_PREFIX) :]):
         raise SecretProblem(
-            "Use capital letters, digits and '_' for the name (for example S3_KEY or "
-            "NEXTCLOUD_PASSWORD)."
+            gettext(
+                "Use capital letters, digits and '_' for the name (for example S3_KEY or "
+                "NEXTCLOUD_PASSWORD)."
+            )
         )
     return text
 
@@ -95,7 +98,7 @@ def is_credential_name(name: str) -> bool:
 
 def _first_line(exc: Exception) -> str:
     text = str(exc).strip()
-    return text.splitlines()[0] if text else "invalid YAML"
+    return text.splitlines()[0] if text else gettext("invalid YAML")
 
 
 @dataclass(frozen=True)
@@ -119,22 +122,26 @@ def _parse(raw: bytes) -> tuple[dict[str, Any], str | None]:
     try:
         document = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
-        return {"version": 1, "secrets": []}, f"invalid YAML: {_first_line(exc)}"
+        return {"version": 1, "secrets": []}, gettext(
+            "invalid YAML: %(value)s"
+        ) % {"value": _first_line(exc)}
     if document is None:
         document = {}
     if not isinstance(document, dict):
-        return {"version": 1, "secrets": []}, "the top level must be a mapping"
+        return {"version": 1, "secrets": []}, gettext("the top level must be a mapping")
     document.setdefault("version", 1)
     if document["version"] != 1:
         return (
             {"version": 1, "secrets": []},
-            f"unsupported secrets version {document['version']!r}; expected 1",
+            gettext(
+                "unsupported secrets version %(value)r; expected 1"
+            ) % {"value": document['version']},
         )
     secrets = document.get("secrets")
     if secrets is None:
         document["secrets"] = []
     elif not isinstance(secrets, list):
-        return {"version": 1, "secrets": []}, "secrets must be a list"
+        return {"version": 1, "secrets": []}, gettext("secrets must be a list")
     return document, None
 
 
@@ -144,17 +151,23 @@ def _entry_problems(document: Mapping[str, Any]) -> list[str]:
     seen: set[str] = set()
     for index, entry in enumerate(document.get("secrets") or []):
         if not isinstance(entry, dict) or set(entry) != {"name", "value"}:
-            problems.append(f"secrets[{index}] must hold exactly a name and a value")
+            problems.append(gettext(
+                "secrets[%(index)s] must hold exactly a name and a value"
+            ) % {"index": index})
             continue
         name, value = entry.get("name"), entry.get("value")
         if not isinstance(name, str) or not _NAME_RE.match(name):
-            problems.append(f"secrets[{index}]: the name must look like QI_SECRET_<NAME>")
+            problems.append(gettext(
+                "secrets[%(index)s]: the name must look like QI_SECRET_<NAME>"
+            ) % {"index": index})
         elif name in seen:
-            problems.append(f"duplicate secret name {name!r}")
+            problems.append(gettext("duplicate secret name %(name)r") % {"name": name})
         else:
             seen.add(name)
         if not isinstance(value, str) or not value.startswith(ENC_PREFIX):
-            problems.append(f"secrets[{index}]: the value must be an {ENC_PREFIX} token")
+            problems.append(gettext(
+                "secrets[%(index)s]: the value must be an %(ENC_PREFIX)s token"
+            ) % {"index": index, "ENC_PREFIX": ENC_PREFIX})
     return problems
 
 
@@ -184,7 +197,9 @@ class SecretsRepository:
         except OSError as exc:
             return SecretsSnapshot(
                 self._path, True, writable, b"", "",
-                structural_error=f"the file cannot be read: {exc.strerror or exc}",
+                structural_error=gettext(
+                    "the file cannot be read: %(value)s"
+                ) % {"value": exc.strerror or exc},
             )
         document, problem = _parse(raw)
         if problem is None:
@@ -214,13 +229,15 @@ class SecretsRepository:
         """Store (or replace) a credential. Returns whether the name was new."""
         if not self._key:
             raise CatalogRejected(
-                "QI_CONNECTIONS_SECRET is not set in ai/rag/.env, so credentials cannot be "
-                "stored encrypted."
+                gettext(
+                    "QI_CONNECTIONS_SECRET is not set in ai/rag/.env, so credentials cannot be "
+                    "stored encrypted."
+                )
             )
         if not value or not value.strip():
-            raise SecretProblem("The value is empty.")
+            raise SecretProblem(gettext("The value is empty."))
         if len(value.encode("utf-8")) > MAX_VALUE_BYTES:
-            raise SecretProblem("The value is larger than 64 KB.")
+            raise SecretProblem(gettext("The value is larger than 64 KB."))
         token = encrypt(value, self._key)
         created = False
 
@@ -260,7 +277,9 @@ class SecretsRepository:
                 snapshot = self.snapshot()
                 if snapshot.structural_error is not None:
                     raise CatalogRejected(
-                        f"secrets.yaml cannot be changed: {snapshot.structural_error}"
+                        gettext(
+                            "secrets.yaml cannot be changed: %(structural_error)s"
+                        ) % {"structural_error": snapshot.structural_error}
                     )
                 document, _ = _parse(snapshot.raw) if snapshot.exists else (
                     {"version": 1, "secrets": []}, None
@@ -272,13 +291,15 @@ class SecretsRepository:
                 if self._swap(snapshot, data):
                     return
             raise CatalogRejected(
-                "secrets.yaml keeps changing while the manager writes it; try again"
+                gettext("secrets.yaml keeps changing while the manager writes it; try again")
             )
 
     def _swap(self, snapshot: SecretsSnapshot, data: bytes) -> bool:
         directory = self._path.parent
         if not directory.is_dir():
-            raise CatalogRejected(f"{directory} does not exist; the manager does not create it")
+            raise CatalogRejected(gettext(
+                "%(directory)s does not exist; the manager does not create it"
+            ) % {"directory": directory})
         try:
             return catalog_io.swap(
                 self._path,
@@ -292,8 +313,10 @@ class SecretsRepository:
             )
         except OSError as exc:
             raise CatalogRejected(
-                f"{directory} does not accept the change ({exc.strerror or type(exc).__name__}); "
-                "the catalog folder is read-only here"
+                gettext(
+                    "%(directory)s does not accept the change (%(value)s); the catalog folder is "
+                    "read-only here"
+                ) % {"directory": directory, "value": exc.strerror or type(exc).__name__}
             ) from exc
 
 

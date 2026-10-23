@@ -34,6 +34,7 @@ from app.core.notifications.model import (
     Recipient,
 )
 from app.core.notifications.service import send_test
+from app.i18n import gettext as _
 
 router = APIRouter(prefix="/api/v1/notifications")
 
@@ -86,21 +87,24 @@ async def _body[T: BaseModel](request: Request, model: type[T]) -> T:
     try:
         payload = await request.json()
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail="The body is not valid JSON.") from exc
+        raise HTTPException(status_code=422, detail=_("The body is not valid JSON.")) from exc
     try:
         return model.model_validate(payload)
     except ValidationError as exc:
         problems = "; ".join(
             f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}" for err in exc.errors()
         )
-        raise HTTPException(status_code=422, detail=problems or "The body is not valid.") from exc
+        raise HTTPException(
+            status_code=422, detail=problems or _("The body is not valid.")
+        ) from exc
 
 
 def _stale() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
-        detail="The notification settings changed since this page was loaded. "
-        "Reload and try again.",
+        detail=_(
+            "The notification settings changed since this page was loaded. Reload and try again."
+        ),
     )
 
 
@@ -111,13 +115,13 @@ def _refused(exc: NotificationsError) -> HTTPException:
 def _unreadable(exc: store.ConfigUnreadableError) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
-        detail=f"{exc} Repair or remove manager/notifications.yaml first.",
+        detail=_("%(exc)s Repair or remove manager/notifications.yaml first.") % {"exc": exc},
     )
 
 
 def _gone() -> HTTPException:
     return HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND, detail="That recipient does not exist (any more)."
+        status_code=status.HTTP_404_NOT_FOUND, detail=_("That recipient does not exist (any more).")
     )
 
 
@@ -153,9 +157,9 @@ def document(settings: Settings) -> dict[str, Any]:
         "events": [
             {
                 "id": info.event.value,
-                "label": info.label,
-                "short": info.short,
-                "description": info.description,
+                "label": _(info.label),
+                "short": _(info.short),
+                "description": _(info.description),
                 "severity": info.severity.value,
             }
             for info in CATALOGUE
@@ -184,8 +188,10 @@ def _require_mail_support(kind: Kind, settings: Settings) -> None:
     if kind is Kind.EMAIL and not supported(settings.papaia_workspace_dir):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This papAIa core has no mail relay (it comes with papAIa 1.6.0), "
-            "so there is no way to send email. A webhook works.",
+            detail=_(
+                "This papAIa core has no mail relay (it comes with papAIa 1.6.0), so there is no "
+                "way to send email. A webhook works."
+            ),
         )
 
 
@@ -376,7 +382,7 @@ async def test_recipient(
     if waited < TEST_INTERVAL_SECONDS:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="A test was sent a moment ago. Wait a few seconds.",
+            detail=_("A test was sent a moment ago. Wait a few seconds."),
         )
     _last_test[recipient_id] = time.monotonic()
     outcome = await send_test(settings, recipient_id, actor=_user_id(user))

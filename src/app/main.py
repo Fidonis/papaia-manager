@@ -20,7 +20,10 @@ from app.core.notifications.service import NotificationService
 from app.core.papaia_lib import bootstrap
 from app.core.scheduler import BackupScheduler
 from app.core.vectordb.service import ConnectionService
+from app.i18n import gettext as _
+from app.i18n.middleware import LocaleMiddleware
 from app.routers import (
+    account,
     api_addons,
     api_audit,
     api_catalogs,
@@ -68,6 +71,9 @@ def create_app() -> FastAPI:
         openapi_url=None,
     )
 
+    # Registered before the session middleware, so it runs inside it: the language of a request
+    # comes from the account in the session, and the exception handlers below run inside it too.
+    app.add_middleware(LocaleMiddleware)
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.manager_session_secret,
@@ -79,6 +85,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(auth.router)
+    app.include_router(account.router)
     app.include_router(ui.router)
     app.include_router(ui_config.router)
     app.include_router(ui_ingest.router)
@@ -117,7 +124,7 @@ def create_app() -> FastAPI:
         the 307, and it carries where to return afterwards.
         """
         if request.headers.get("HX-Request") or request.url.path.startswith("/api/"):
-            return JSONResponse({"detail": "session expired"}, status_code=401)
+            return JSONResponse({"detail": _("session expired")}, status_code=401)
         return RedirectResponse(url="/auth/login?next=" + quote(request.url.path, safe="/"))
 
     @app.exception_handler(status.HTTP_403_FORBIDDEN)
@@ -129,7 +136,7 @@ def create_app() -> FastAPI:
         split keeps the JSON contract intact for the fetch() callers and for
         CSRF rejections, which surface on the same status code.
         """
-        detail = str(getattr(exc, "detail", "") or "You do not have access to this page.")
+        detail = str(getattr(exc, "detail", "") or _("You do not have access to this page."))
         if request.url.path.startswith("/api/"):
             return JSONResponse({"detail": detail}, status_code=status.HTTP_403_FORBIDDEN)
 
@@ -139,7 +146,7 @@ def create_app() -> FastAPI:
             "error.html",
             {
                 "status_code": status.HTTP_403_FORBIDDEN,
-                "heading": "Access denied",
+                "heading": _("Access denied"),
                 "message": detail,
                 "csrf_token": get_csrf_token(request),
                 "user": claims,

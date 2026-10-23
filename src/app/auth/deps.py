@@ -11,6 +11,7 @@ from fastapi import Depends, HTTPException, Request, status
 from app.auth.oidc import OIDCClaims, OIDCError, get_oidc_client
 from app.auth.roles import has_manager_access, is_admin, is_identity_admin
 from app.config import Settings, get_settings
+from app.i18n import gettext
 
 # Renew the session this many seconds before the access token actually expires,
 # so a request landing right on the boundary still goes through.
@@ -39,7 +40,7 @@ async def get_current_user(request: Request) -> OIDCClaims:
     if raw is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="not authenticated",
+            detail=gettext("not authenticated"),
             headers={"Location": "/auth/login"},
         )
     try:
@@ -47,7 +48,7 @@ async def get_current_user(request: Request) -> OIDCClaims:
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="invalid session",
+            detail=gettext("invalid session"),
         ) from exc
 
     if claims.exp - time.time() >= _REFRESH_SKEW_SECONDS:
@@ -61,7 +62,7 @@ async def get_current_user(request: Request) -> OIDCClaims:
         request.session.clear()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="session expired",
+            detail=gettext("session expired"),
             headers={"Location": "/auth/login"},
         )
     # Still valid for a little longer: a transient Keycloak hiccup must not log
@@ -131,7 +132,7 @@ def require_admin(
     if not is_admin(claims, settings):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="admin role required",
+            detail=gettext("admin role required"),
         )
     return claims
 
@@ -145,8 +146,10 @@ def require_identity_admin(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                f"the {settings.manager_identity_admin_role} role is required "
-                "to manage users and roles"
+                gettext(
+                    "the %(manager_identity_admin_role)s role is required to manage users and "
+                    "roles"
+                ) % {"manager_identity_admin_role": settings.manager_identity_admin_role}
             ),
         )
     return claims
@@ -160,7 +163,7 @@ def require_manager_access(
     if not has_manager_access(claims, settings):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="admin or user role required",
+            detail=gettext("admin or user role required"),
         )
     return claims
 

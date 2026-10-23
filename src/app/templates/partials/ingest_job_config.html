@@ -5,21 +5,19 @@
 <div class="flex flex-col gap-4">
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body gap-2 p-4">
-      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">As written in jobs.yaml</p>
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}As written in jobs.yaml{% endtrans %}</p>
       <pre class="overflow-x-auto rounded-lg bg-base-300 p-3 font-mono text-xs leading-relaxed">{{ yaml_text }}</pre>
       <p class="text-xs opacity-60">
-        Only what differs from the defaults is written. Credentials appear as references; the
-        values are kept on the <a class="link" href="/ingest/secrets">Credentials</a> page or in
-        <span class="font-mono">ai/rag/.env</span>.
+        {% trans %}Only what differs from the defaults is written. Credentials appear as references; the values are kept on the <a class="link" href="/ingest/secrets">Credentials</a> page or in <span class="font-mono">ai/rag/.env</span>.{% endtrans %}
       </p>
     </div>
   </div>
   {% if defaults %}
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body gap-2 p-4">
-      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">Inherited from the catalog defaults</p>
+      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}Inherited from the catalog defaults{% endtrans %}</p>
       <pre class="overflow-x-auto rounded-lg bg-base-300 p-3 font-mono text-xs leading-relaxed">{{ defaults_text }}</pre>
-      <p class="text-xs opacity-60">A job that does not set one of these values itself uses the catalog's. <a class="link" href="/ingest/catalog">Change the defaults</a></p>
+      <p class="text-xs opacity-60">{% trans %}A job that does not set one of these values itself uses the catalog's. <a class="link" href="/ingest/catalog">Change the defaults</a>{% endtrans %}</p>
     </div>
   </div>
   {% endif %}
