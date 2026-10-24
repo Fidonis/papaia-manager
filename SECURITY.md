@@ -54,7 +54,10 @@ a web control plane is explicitly desired and access is gated by Keycloak.
 
 **Subprocess isolation:** All calls to `papaia-ctl` are routed through
 `app/core/ctl.py`, which validates the operation verb against an allowlist
-and uses arg arrays rather than shell string interpolation.
+and uses arg arrays rather than shell string interpolation. The output of the
+child is read in bounded chunks and one line is cut at 1 MiB before it reaches the
+job log, so a process that prints without end cannot exhaust the manager's memory
+or fill the log.
 
 **Core stack lifecycle:** Two allowlists are kept apart, so an add-on name can
 never be dispatched as a stack operation or the other way round. The stack-level
@@ -106,6 +109,22 @@ the identity role from themselves or end all of their own sessions there. A
 temporary password is returned once, with `Cache-Control: no-store`, and appears
 in no audit entry or log line. The roles the stack ships are never changed or
 deleted from there.
+
+**Add-on catalogs:** A catalog is input from a third party, and so is the
+`components` list of its manifests. It is read defensively: an entry of the wrong
+shape is skipped, text is cut to a fixed length, at most 32 entries are read, and
+only an `https://` source becomes a link. The templates escape everything they
+show. Removing an add-on is refused while its `docker-compose.yml` is missing,
+because the core's Compose call would then address the core project instead of the
+add-on's.
+
+**Language preference and bundled images:** The language an account chose is kept
+in `manager/preferences.yaml` by OIDC subject (mode 0600, replaced atomically) and
+holds nothing else. `POST /account/language` requires the session-bound CSRF token,
+accepts only a language the manager ships and redirects only to a path on its own
+origin, never to a host. The icons of the default tiles are files in the image,
+served from `/static/icons/`; a test refuses one that carries a script, an embedded
+image or a link to another host.
 
 **Mail and notifications:** The mail server's password is write-only: it is never
 shown or returned, it is used only for the host, port and login it was stored with,
