@@ -13,6 +13,7 @@ other way round.
 from __future__ import annotations
 
 import asyncio
+import codecs
 import logging
 import os
 import re
@@ -156,6 +157,12 @@ SETUP_TIMEOUT_SECONDS = 120.0
 # Exit status `run_py_cli` reports for a child it had to kill, the one the
 # shell's `timeout` uses.
 TIMEOUT_EXIT_CODE = 124
+
+# The longest line `_stream_subprocess` hands on whole. A longer one is cut here and
+# ends in the marker, because every yielded line goes verbatim into the job log; what
+# the pipe still delivers up to the next newline is dropped.
+MAX_LINE_BYTES = 1024 * 1024
+TRUNCATION_MARKER = "... [truncated]"
 
 _ADDON_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
@@ -699,6 +706,16 @@ async def _run_py(
     )
 
 
+def _clip_line(head: bytes) -> str:
+    """The first `MAX_LINE_BYTES` of an over-long line, ending in the marker."""
+    # `final=False` holds back a multi-byte character the cut split in two, so the
+    # marker is not preceded by a replacement character.
+    text = codecs.getincrementaldecoder("utf-8")(errors="replace").decode(
+        head, final=False
+    )
+    return text + TRUNCATION_MARKER
+
+
 async def _stream_subprocess(
     cmd: list[str],
     env: dict[str, str],
@@ -723,11 +740,10 @@ async def _stream_subprocess(
     # newline search starts where the previous one stopped, so a very long
     # line costs one scan per chunk instead of re-scanning the whole buffer
     # and copying it on every `+=`. A single line is also capped: past
-    # MAX_LINE_BYTES the head is emitted with a truncation marker and the
-    # rest of that line is dropped, so an endless progress meter cannot grow
-    # the buffer (or the job log) without bound (#154).
-    max_line = 1024 * 1024
-    truncation_marker = b"... [truncated]"
+    # MAX_LINE_BYTES the head is emitted with TRUNCATION_MARKER and the rest of
+    # that line is dropped, so an endless progress meter cannot grow the buffer
+    # (or the job log) without bound (#154). The cap applies wherever the
+    # newline arrives, not only to a line still unterminated after a chunk.
     pending = bytearray()
     search_from = 0
     dropping = False
@@ -749,10 +765,8 @@ async def _stream_subprocess(
                 search_from = 0
                 continue
             if newline == -1:
-                if len(pending) > max_line:
-                    yield (
-                        bytes(pending[:max_line]) + truncation_marker
-                    ).decode(errors="replace").rstrip()
+                if len(pending) > MAX_LINE_BYTES:
+                    yield _clip_line(bytes(pending[:MAX_LINE_BYTES]))
                     del pending[:]
                     dropping = True
                     search_from = 0
@@ -762,7 +776,10 @@ async def _stream_subprocess(
             line = bytes(pending[:newline])
             del pending[: newline + 1]
             search_from = 0
-            yield line.decode(errors="replace").rstrip()
+            if len(line) > MAX_LINE_BYTES:
+                yield _clip_line(line[:MAX_LINE_BYTES])
+            else:
+                yield line.decode(errors="replace").rstrip()
     if pending and not dropping:
         yield pending.decode(errors="replace").rstrip()
 

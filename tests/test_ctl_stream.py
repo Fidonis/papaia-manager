@@ -14,7 +14,12 @@ import sys
 
 import pytest
 
-from app.core.ctl import CtlError, _stream_subprocess
+from app.core.ctl import (
+    MAX_LINE_BYTES,
+    TRUNCATION_MARKER,
+    CtlError,
+    _stream_subprocess,
+)
 
 
 def _stream_lines(program: str) -> list[str]:
@@ -80,14 +85,14 @@ def test_an_overlong_line_is_truncated_and_the_rest_dropped() -> None:
     program = (
         "import sys\n"
         "sys.stdout.write('start\\n')\n"
-        "sys.stdout.write('z' * (3 * 1024 * 1024))\n"
+        f"sys.stdout.write('z' * {3 * MAX_LINE_BYTES})\n"
         "sys.stdout.write('\\n')\n"
         "sys.stdout.write('after\\n')\n"
     )
     lines = _stream_lines(program)
     assert lines == [
         "start",
-        "z" * (1024 * 1024) + "... [truncated]",
+        "z" * MAX_LINE_BYTES + TRUNCATION_MARKER,
         "after",
     ]
 
@@ -95,8 +100,8 @@ def test_an_overlong_line_is_truncated_and_the_rest_dropped() -> None:
 def test_an_overlong_tail_without_a_newline_is_truncated_once() -> None:
     # End of stream inside an over-long line: the head plus marker is the
     # only thing emitted, nothing else leaks from the discarded tail.
-    program = f"import sys\nsys.stdout.write('z' * {(3 * 1024 * 1024) + 1})\n"
-    assert _stream_lines(program) == ["z" * (1024 * 1024) + "... [truncated]"]
+    program = f"import sys\nsys.stdout.write('z' * {3 * MAX_LINE_BYTES + 1})\n"
+    assert _stream_lines(program) == ["z" * MAX_LINE_BYTES + TRUNCATION_MARKER]
 
 
 def test_many_short_lines_still_arrive_one_by_one_after_a_long_one() -> None:
@@ -104,15 +109,55 @@ def test_many_short_lines_still_arrive_one_by_one_after_a_long_one() -> None:
     # the chunk boundary after a truncation has reset the buffer.
     program = (
         "import sys\n"
-        "sys.stdout.write('z' * (1024 * 1024 - 512))\n"
+        f"sys.stdout.write('z' * {MAX_LINE_BYTES - 512})\n"
         "sys.stdout.write('\\n')\n"
         "sys.stdout.write('one\\n')\n"
         "sys.stdout.write('two\\n')\n"
         "sys.stdout.write('three\\n')\n"
     )
     assert _stream_lines(program) == [
-        "z" * (1024 * 1024 - 512),
+        "z" * (MAX_LINE_BYTES - 512),
         "one",
         "two",
         "three",
     ]
+
+
+def test_a_line_just_over_the_cap_is_truncated_when_its_newline_follows() -> None:
+    # The newline of a line a few bytes over the cap can arrive in the very
+    # chunk that crosses it. The cap holds there too, however the pipe splits
+    # the reads.
+    program = (
+        "import sys\n"
+        f"sys.stdout.write('z' * {MAX_LINE_BYTES + 100})\n"
+        "sys.stdout.write('\\n')\n"
+        "sys.stdout.write('after\\n')\n"
+    )
+    assert _stream_lines(program) == [
+        "z" * MAX_LINE_BYTES + TRUNCATION_MARKER,
+        "after",
+    ]
+
+
+def test_a_line_of_exactly_the_cap_is_not_truncated() -> None:
+    # Written as bytes: a text-mode "\n" is "\r\n" on Windows, which would put
+    # one byte more into the line than the cap allows.
+    program = (
+        "import sys\n"
+        f"sys.stdout.buffer.write(b'z' * {MAX_LINE_BYTES})\n"
+        "sys.stdout.buffer.write(b'\\nafter\\n')\n"
+    )
+    assert _stream_lines(program) == ["z" * MAX_LINE_BYTES, "after"]
+
+
+def test_the_cut_does_not_split_a_multibyte_character() -> None:
+    # The cap lands between the two bytes of an "e acute" (U+00E9): the half
+    # character is left out instead of showing as a replacement character
+    # before the marker.
+    program = (
+        "import sys\n"
+        f"sys.stdout.buffer.write(b'a' + b'\\xc3\\xa9' * {MAX_LINE_BYTES})\n"
+        "sys.stdout.buffer.write(b'\\nafter\\n')\n"
+    )
+    head = "a" + "é" * ((MAX_LINE_BYTES - 2) // 2)
+    assert _stream_lines(program) == [head + TRUNCATION_MARKER, "after"]
