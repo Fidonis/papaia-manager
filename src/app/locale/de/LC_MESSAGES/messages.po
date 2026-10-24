@@ -451,6 +451,66 @@ msgstr "Keycloak hat eine unlesbare Antwort gesendet"
 msgid "Keycloak created the user but did not say which"
 msgstr "Keycloak hat den Benutzer angelegt, aber nicht gesagt, welchen"
 
+msgid "LITELLM_MASTER_KEY is not set in ai/litellm/.env, so the manager cannot read from LiteLLM."
+msgstr "LITELLM_MASTER_KEY ist in ai/litellm/.env nicht gesetzt, daher kann der Manager nicht aus LiteLLM lesen."
+
+msgid "LiteLLM refused the master key. Check LITELLM_MASTER_KEY in ai/litellm/.env; LiteLLM reads it at start, so it needs a restart after a change."
+msgstr "LiteLLM hat den Master-Key abgelehnt. Prüfen Sie LITELLM_MASTER_KEY in ai/litellm/.env; LiteLLM liest ihn beim Start, nach einer Änderung ist also ein Neustart nötig."
+
+#, python-format
+msgid "LiteLLM is not reachable at %(where)s (%(error)s)."
+msgstr "LiteLLM ist unter %(where)s nicht erreichbar (%(error)s)."
+
+#, python-format
+msgid "LiteLLM answered with an error: %(detail)s"
+msgstr "LiteLLM hat mit einem Fehler geantwortet: %(detail)s"
+
+msgid "LiteLLM sent an answer the manager could not read."
+msgstr "LiteLLM hat eine Antwort gesendet, die der Manager nicht lesen konnte."
+
+msgid "Unknown time window."
+msgstr "Unbekanntes Zeitfenster."
+
+msgid "Enter both dates."
+msgstr "Bitte beide Daten eingeben."
+
+msgid "Dates must look like 2026-10-24."
+msgstr "Das Datum muss so aussehen: 2026-10-24."
+
+msgid "The start date is after the end date."
+msgstr "Das Startdatum liegt nach dem Enddatum."
+
+msgid "The end date can't be in the future."
+msgstr "Das Enddatum darf nicht in der Zukunft liegen."
+
+#, python-format
+msgid "A window can't be longer than %(days)s days."
+msgstr "Ein Zeitfenster darf höchstens %(days)s Tage lang sein."
+
+msgid "Chat"
+msgstr "Chat"
+
+msgid "Embedding"
+msgstr "Embedding"
+
+msgid "Completion"
+msgstr "Completion"
+
+msgid "Image generation"
+msgstr "Bilderzeugung"
+
+msgid "Transcription"
+msgstr "Transkription"
+
+msgid "Speech"
+msgstr "Sprachausgabe"
+
+msgid "Rerank"
+msgstr "Rerank"
+
+msgid "Moderation"
+msgstr "Moderation"
+
 msgid "Check the api-key of this connection."
 msgstr "Prüfen Sie den API-Key dieser Verbindung."
 
@@ -1073,6 +1133,94 @@ msgstr "%(tag)s konnte nicht zur Prüfung ausgecheckt werden. Existiert das Tag?
 
 msgid "could not determine the pending migrations"
 msgstr "Die anstehenden Migrationen konnten nicht ermittelt werden"
+
+msgid "Last 7 days"
+msgstr "Letzte 7 Tage"
+
+msgid "Last 30 days"
+msgstr "Letzte 30 Tage"
+
+msgid "Last 90 days"
+msgstr "Letzte 90 Tage"
+
+msgid "This month"
+msgstr "Dieser Monat"
+
+msgid "Custom"
+msgstr "Eigener"
+
+msgid "Tokens"
+msgstr "Tokens"
+
+msgid "USD"
+msgstr "USD"
+
+msgid "Requests"
+msgstr "Anfragen"
+
+#, python-format
+msgid "%(input)s in · %(output)s out"
+msgstr "%(input)s Eingabe · %(output)s Ausgabe"
+
+msgid "Spend"
+msgstr "Kosten"
+
+#, python-format
+msgid "%(count)s model without a price"
+msgid_plural "%(count)s models without a price"
+msgstr[0] "%(count)s Modell ohne Preis"
+msgstr[1] "%(count)s Modelle ohne Preis"
+
+msgid "USD, as LiteLLM prices it"
+msgstr "USD, wie LiteLLM es berechnet"
+
+#, python-format
+msgid "%(count)s failed"
+msgstr "%(count)s fehlgeschlagen"
+
+msgid "Models used"
+msgstr "Genutzte Modelle"
+
+#, python-format
+msgid "%(used)s of %(total)s"
+msgstr "%(used)s von %(total)s"
+
+#, python-format
+msgid "%(count)s not used"
+msgstr "%(count)s nicht genutzt"
+
+msgid "Nothing was spent in this period."
+msgstr "In diesem Zeitraum sind keine Kosten angefallen."
+
+msgid "Nothing was used in this period."
+msgstr "In diesem Zeitraum wurde nichts genutzt."
+
+msgid "Other"
+msgstr "Sonstiges"
+
+#, python-format
+msgid "Other (%(count)s model)"
+msgid_plural "Other (%(count)s models)"
+msgstr[0] "Sonstiges (%(count)s Modell)"
+msgstr[1] "Sonstiges (%(count)s Modelle)"
+
+msgid "Input tokens"
+msgstr "Eingabe-Tokens"
+
+msgid "Output tokens"
+msgstr "Ausgabe-Tokens"
+
+#, python-format
+msgid "%(start)s to %(end)s · %(count)s day"
+msgid_plural "%(start)s to %(end)s · %(count)s days"
+msgstr[0] "%(start)s bis %(end)s · %(count)s Tag"
+msgstr[1] "%(start)s bis %(end)s · %(count)s Tage"
+
+msgid "Overview"
+msgstr "Übersicht"
+
+msgid "Per model"
+msgstr "Pro Modell"
 
 #, python-format
 msgid "%(FILE_NAME)s cannot be read."
@@ -3674,9 +3822,6 @@ msgstr "Core-Dienste"
 msgid "Add-ons"
 msgstr "Add-ons"
 
-msgid "Other"
-msgstr "Sonstiges"
-
 msgid "This restore point was written by an older core and carries no per-service grouping, so its volumes can only be restored as part of the whole point."
 msgstr "Dieser Wiederherstellungspunkt wurde von einem älteren Core geschrieben und enthält keine Gruppierung nach Diensten, deshalb können seine Volumes nur als Teil des gesamten Punkts wiederhergestellt werden."
 
@@ -3944,6 +4089,9 @@ msgstr "Dashboard"
 msgid "Monitor"
 msgstr "Überwachung"
 
+msgid "Models & Usage"
+msgstr "Modelle & Verbrauch"
+
 msgid "Jobs"
 msgstr "Jobs"
 
@@ -3958,9 +4106,6 @@ msgstr "Verbindungen"
 
 msgid "Collections"
 msgstr "Collections"
-
-msgid "Embedding"
-msgstr "Embedding"
 
 msgid "Ingest Jobs"
 msgstr "Ingest-Jobs"
@@ -4444,9 +4589,6 @@ msgstr "Seite „Embedding“"
 msgid "%(source_title)s → <span class=\"font-mono\">%(collection)s</span> on %(connection)s"
 msgstr "%(source_title)s → <span class=\"font-mono\">%(collection)s</span> auf %(connection)s"
 
-msgid "Overview"
-msgstr "Übersicht"
-
 msgid "Runs"
 msgstr "Läufe"
 
@@ -4813,9 +4955,6 @@ msgstr "Wöchentlich"
 msgid "Monthly"
 msgstr "Monatlich"
 
-msgid "Custom"
-msgstr "Eigener"
-
 #, python-brace-format
 msgid "{name} (stored)"
 msgstr "{name} (gespeichert)"
@@ -5099,6 +5238,16 @@ msgstr "Gestoppt bei {stage}: {reason}"
 
 msgid "The relay accepted the message. It may take a moment to arrive; the status above shows it while it waits."
 msgstr "Das Relay hat die Nachricht angenommen. Bis zur Zustellung kann es einen Moment dauern; der Status oben zeigt sie, solange sie wartet."
+
+#, python-format
+msgid "Models & Usage — %(branding)s"
+msgstr "Modelle & Verbrauch — %(branding)s"
+
+msgid "The models LiteLLM serves and what they consumed"
+msgstr "Die Modelle, die LiteLLM bereitstellt, und was sie verbraucht haben"
+
+msgid "Open LiteLLM"
+msgstr "LiteLLM öffnen"
 
 msgid "Who is told when something needs attention, and what each of them receives"
 msgstr "Wer benachrichtigt wird, wenn etwas Aufmerksamkeit braucht, und was jeder erhält"
@@ -8128,6 +8277,119 @@ msgstr "Geben Sie unten einen Mailserver und eine Absenderadresse ein, um das Re
 msgid "The relay's state could not be read: %(reason)s"
 msgstr "Der Zustand des Relays konnte nicht gelesen werden: %(reason)s"
 
+msgid "Total"
+msgstr "Gesamt"
+
+msgid "Legend"
+msgstr "Legende"
+
+msgid "Measure"
+msgstr "Messgröße"
+
+msgid "Figures per day"
+msgstr "Zahlen pro Tag"
+
+msgid "Day"
+msgstr "Tag"
+
+msgid "Models and usage are not available"
+msgstr "Modelle und Verbrauch sind nicht verfügbar"
+
+msgid "Try again"
+msgstr "Erneut versuchen"
+
+msgid "LiteLLM is reachable"
+msgstr "LiteLLM ist erreichbar"
+
+#, python-format
+msgid "%(count)s model served"
+msgid_plural "%(count)s models served"
+msgstr[0] "%(count)s Modell bereitgestellt"
+msgstr[1] "%(count)s Modelle bereitgestellt"
+
+#, python-format
+msgid "read at %(time)s UTC"
+msgstr "gelesen um %(time)s UTC"
+
+msgid "Reload"
+msgstr "Neu laden"
+
+msgid "Time window"
+msgstr "Zeitfenster"
+
+msgid "Apply"
+msgstr "Anwenden"
+
+#, python-format
+msgid "First and last day, both included, at most %(days)s days."
+msgstr "Erster und letzter Tag, beide eingeschlossen, höchstens %(days)s Tage."
+
+msgid "Days are UTC days. LiteLLM writes its usage in batches, so the newest requests can take a minute to show up."
+msgstr "Tage sind UTC-Tage. LiteLLM schreibt den Verbrauch gebündelt, die neuesten Anfragen können daher eine Minute brauchen, bis sie erscheinen."
+
+msgid "The last 7 days are shown instead."
+msgstr "Stattdessen werden die letzten 7 Tage angezeigt."
+
+msgid "LiteLLM holds more records for this window than the manager reads, so the figures are incomplete. Choose a shorter window."
+msgstr "LiteLLM hält für dieses Zeitfenster mehr Datensätze, als der Manager liest; die Zahlen sind daher unvollständig. Wählen Sie ein kürzeres Zeitfenster."
+
+#, python-format
+msgid "LiteLLM has no model called %(name)s and nothing was used under that name in this window."
+msgstr "LiteLLM kennt kein Modell namens %(name)s, und unter diesem Namen wurde in diesem Zeitfenster nichts genutzt."
+
+msgid "All models"
+msgstr "Alle Modelle"
+
+#, python-format
+msgid "Price per million tokens, input / output: %(price)s"
+msgstr "Preis pro Million Tokens, Eingabe / Ausgabe: %(price)s"
+
+msgid "LiteLLM has no price for this model, so its spend is always $0.00."
+msgstr "LiteLLM kennt für dieses Modell keinen Preis, daher betragen die Kosten immer $0.00."
+
+msgid "LiteLLM does not serve this model any more; the figures are what it consumed."
+msgstr "LiteLLM stellt dieses Modell nicht mehr bereit; die Zahlen zeigen, was es verbraucht hat."
+
+msgid "Model"
+msgstr "Modell"
+
+msgid "Price per 1M tokens (in / out)"
+msgstr "Preis pro 1 Mio. Tokens (Ein / Aus)"
+
+msgid "Tokens per day"
+msgstr "Tokens pro Tag"
+
+msgid "no longer served by LiteLLM"
+msgstr "wird von LiteLLM nicht mehr bereitgestellt"
+
+msgid "no price set"
+msgstr "kein Preis gesetzt"
+
+msgid "LiteLLM has no price for this model"
+msgstr "LiteLLM kennt für dieses Modell keinen Preis"
+
+msgid "no tokens"
+msgstr "keine Tokens"
+
+msgid "not used"
+msgstr "nicht genutzt"
+
+msgid "LiteLLM serves no models."
+msgstr "LiteLLM stellt keine Modelle bereit."
+
+msgid "This model per day"
+msgstr "Dieses Modell pro Tag"
+
+msgid "All models per day"
+msgstr "Alle Modelle pro Tag"
+
+#, python-format
+msgid "Share by model · %(metric)s"
+msgstr "Anteil je Modell · %(metric)s"
+
+msgid "A model without a price shows no spend however much it is used. A price can be set for it in LiteLLM."
+msgstr "Ein Modell ohne Preis zeigt keine Kosten, egal wie oft es genutzt wird. Ein Preis lässt sich in LiteLLM dafür hinterlegen."
+
 msgid "Host needs attention"
 msgstr "Der Host braucht Aufmerksamkeit"
 
@@ -8289,9 +8551,6 @@ msgstr "Manager nicht erreichbar &mdash; Verbindung wird neu aufgebaut&hellip;"
 
 msgid "Your account cannot read the roles yet"
 msgstr "Ihr Konto kann die Rollen noch nicht lesen"
-
-msgid "Try again"
-msgstr "Erneut versuchen"
 
 msgid "Keycloak does not answer"
 msgstr "Keycloak antwortet nicht"
@@ -8602,9 +8861,6 @@ msgstr "Für alle sichtbar"
 
 msgid "Applied to the draft — the dashboard changes when you save."
 msgstr "Auf den Entwurf angewendet — das Dashboard ändert sich, wenn Sie speichern."
-
-msgid "Apply"
-msgstr "Anwenden"
 
 msgid "Add a widget"
 msgstr "Ein Widget hinzufügen"

@@ -26,6 +26,8 @@ Audit (`/audit`) reads, exports and prunes the audit log the other surfaces alre
 
 Host (`/host`) reports memory, CPU, GPU, clock synchronisation, disk space and certificate expiry of the machine underneath the deployment, and what Docker's data takes. It measures nothing itself: it runs the core's `doctor` for the six checks it needs, and in a run of its own for `docker_usage`, and shows the core's verdicts (see the Host health section below). How often it measures is a setting (Settings, "Host monitoring"). Admin-only, like Services; the sidebar status row carries its counts to every role.
 
+Models & Usage (`/models`) shows which models LiteLLM serves and what they consumed: tokens, spend and requests per day and per model, for a window of UTC days that defaults to the last seven, as stacked bars with a metric switch, a share list, a table of every model and a page per model. It reads LiteLLM's HTTP API with its master key and changes nothing there; models, prices, teams and keys stay in LiteLLM's own Admin UI, which the page links to (see the Models and usage section below). Admin-only, like Services and Host.
+
 Settings (`/settings`) holds the manager's own configuration in `$PAPAIA_CONFIG_DIR/manager/settings.yaml`, one section per topic: Branding (the name and second line at the top of the sidebar, and an uploaded logo) and Host monitoring (the interval of the Host page's measurements). Admin-only and CSRF-checked like every other mutating route, with every change audited; the logo is the one thing every role fetches, because the sidebar shows it (see the Settings and branding section below).
 
 Users (`/users`) manages the accounts of the bundled Keycloak: list, create (with roles and a first password), enable and disable, roles, password reset, and the sessions of an account. Its second tab, Roles (`/users/roles`), manages the realm's roles: create, change what a role contains, delete. It is reserved for `MANAGER_IDENTITY_ADMIN_ROLE`, a tier above the admin role, and acts with the signed-in account's own Keycloak token rather than a credential of the manager's own (see the User management section below).
@@ -128,6 +130,14 @@ papaia-manager/
 │       │   ├── docker_usage.py # What Docker's data takes (`docker system df`) via the core's
 │       │   │                   #   `doctor`: its own slower run and cache, never part of the
 │       │   │                   #   host reading; stale-while-revalidate, never raises
+│       │   ├── litellm.py      # Read-only client of LiteLLM's HTTP API (GET only, three routes) and the
+│       │   │                   #   master key from `ai/litellm/.env`; failures as msgid + parameters
+│       │   ├── model_usage.py  # The Models page's numbers: the window, the sums of LiteLLM's day
+│       │   │                   #   entries, the catalogue, colour slots; cached per window, single-flight,
+│       │   │                   #   never raises
+│       │   ├── usage_view.py   # The Models page as data for its templates: the query (the page's
+│       │   │                   #   whole state), the figures, the chart and table rows, all worded
+│       │   ├── charts.py       # Chart geometry and number/date formats; pure functions
 │       │   ├── services.py     # Container status from docker ps, by module label; declared
 │       │   │                   #   vs. live merge; shared snapshot for the addon surfaces
 │       │   ├── inventory.py    # Declared state: compose fragments × profiles, addon manifests
@@ -163,6 +173,9 @@ papaia-manager/
 │       │   ├── ui_config.py    # /settings/modules and /settings/overlay pages and the job strip they share
 │       │   ├── api_mail.py     # /api/v1/mail — the mail relay: settings, apply, probe, test mail
 │       │   ├── ui_mail.py      # /mail/server page (the Mail Server tab) and its status and job partials
+│       │   ├── api_models.py   # /api/v1/models — the served models and their usage (read-only)
+│       │   ├── ui_models.py    # /models page and its /partials/models body
+│       │   ├── models_deps.py  # The transport every call to LiteLLM goes through (tests replace it)
 │       │   ├── api_notifications.py # /api/v1/notifications — recipients, their events, settings, test
 │       │   ├── ui_notifications.py  # /mail page (the Notifications tab), its status strip and log
 │       │   ├── api_tiles.py    # /api/v1/tiles — dashboard tile configuration (links and widgets)
@@ -194,6 +207,7 @@ papaia-manager/
 │       │       ├── ingest_*.html, _ingest_*.html # Ingest jobs: list, job tabs, runs, credentials, leftovers,
 │       │       │                                 #   the editor's dialogs and the scripts the pages share
 │       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
+│       │       ├── models_body.html          # Models & Usage body: figures, charts, table, or why not
 │       │       ├── mail_status.html          # Mail Server tab: the relay's state and queue
 │       │       ├── mail_job_status.html      # Mail Server tab: the job in flight or just finished
 │       │       ├── _mail_tabs.html           # The two tabs of Mail: Notifications, Mail Server
@@ -411,6 +425,23 @@ Consequences worth remembering when touching this area:
 - **`doctor` is in `ALLOWED_PY_COMMANDS`.** It is read-only by the core's own contract; `tests/test_ctl.py` pins the set.
 
 Known limits: no history (that is what an observability stack is for), no GPU figures and no clock state from inside the manager container from a core that cannot read them there, the free space of the Docker data root (it is not mounted; what Docker holds is shown instead), memory and CPU figures that are the host's own (`/proc/meminfo` and the load average are not namespaced) and not those of any container limit, and thresholds that cannot be tuned from here. Memory, CPU and the clock change faster than disk and certificates, but all of them share one run and one interval.
+
+### Models and usage
+
+The Models & Usage page (`/models`, Monitor group, between Host and Jobs) and its API (`/api/v1/models`, `/api/v1/models/usage`) read LiteLLM, the stack's model gateway. `core/litellm.py` is the client, `core/model_usage.py` the numbers, `core/usage_view.py` the page as data, `core/charts.py` the geometry, and `tests/fake_litellm.py` the in-memory LiteLLM (`httpx.MockTransport`, in the shapes of 1.100) that `test_litellm_client.py`, `test_model_usage.py`, `test_ui_models.py` and `test_api_models.py` run against.
+
+- **Read-only, and provably so.** The client has no method that is not a GET and sends to three routes only: `/health/readiness` (no key), `/model/info` and `/user/daily/activity`. `READ_PATHS` is the whole list; anything else raises before a request is made, and the tests record every request the page causes. The master key is the strongest credential of the stack, which is the reason.
+- **The master key is read at request time** from `$PAPAIA_CONFIG_DIR/ai/litellm/.env` (`LITELLM_MASTER_KEY`), like the RAG secrets, so a shell on the host and the manager agree on it and the core needs no change. It goes into one header and nowhere else: not into a message, a log line, an exception text or a page, and `LitellmSecrets` hides it from a `repr`. A message names `host:port` and the exception class, never the address. Without a key nobody is asked anything.
+- **Failure is a state, not an error.** A LiteLLM that is down, a key it refuses, an error status or an answer that makes no sense is a `Reading` with a `problem` (a msgid and parameters, so the cached reading is worded in each account's language); the page shows it and offers to try again, the API answers 503. Nothing here raises into a request.
+- **Days are UTC days, and the grain is a day.** `/user/daily/activity` has no finer grain, so there is no "today" or "24 hours" window. `7d` is today and the six days before it; `30d`, `90d`, `month` (the first until today) and `custom` (`from`/`to` as `YYYY-MM-DD`, both required, `from` not after `to`, not in the future, at most 365 days) are the others. An invalid window is told to the person who typed it and replaced by the default; the API answers 422. LiteLLM writes usage in batches, so the newest requests trail by about a minute.
+- **Paging counts rows, not days.** One day can arrive on several pages and the same model from several keys, so values are added up. A window needing more than `MAX_PAGES` pages is read as far as that and marked incomplete, which the page says.
+- **Model names are the public ones.** Usage is read from `breakdown.model_groups`, the names users call, which are the `model_name` of `/model/info`; several deployments behind one name are one model. A name with usage but no deployment is shown as no longer served; a served model with no usage is listed all the same. LibreChat calls LiteLLM with the master key, so there is no attribution by user or team and the page does not pretend to one.
+- **No price, no spend.** A model without a price in LiteLLM (a local one) counts tokens and requests and has spend 0. The page shows a dash instead of `$0.00` and says so; a price is set in LiteLLM.
+- **One reading per window, shared.** `load_reading` keeps a reading for 60 s (15 s for a failure), runs one fetch at a time per window (concurrent callers share the task), folds a "Reload" inside five seconds of the last reading into it, and keeps at most 16 windows. The cache holds the raw reading, never text.
+- **The page's whole state is its query string** (`range`, `from`, `to`, `metric`, `view`, `model`; `usage_view.Query`). Every control is a link to the same page with one thing changed, which htmx swaps into `#models-body` and records as the address, so a view can be bookmarked and the page works without script. The shell loads its body from the query it was asked with.
+- **Charts are boxes, not an SVG scaled to the width.** Bars are `div`s with a height in percent, so labels keep the size of the page's text on every width; only the table's trend lines are inline SVG. Colours are the theme's `--chart-0` to `--chart-6` and `--chart-other` (`docker/tailwind.app.css`, one set per theme, validated against the card surfaces): a model keeps its slot from one window to the next, and with more than seven models the busiest keep one and the rest are drawn together as "Other". A chart is never the only way to read a number: the legend, a tooltip that is also reachable with the arrow keys, and the table of days say the same. Tooltip text is set with `x-text`, never as markup.
+
+Known limits: no budgets, teams or keys (LiteLLM's own pages), no attribution by account, no live view (a day is the grain), no export, and no download status of local models. The dashboard has no `model-usage` widget yet.
 
 ### Settings and branding
 
@@ -753,6 +784,7 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `PAPAIA_WORKSPACE_DIR` | Path to papAIa workspace (must equal host path in container) |
 | `QDRANT_URL` | Where the manager itself reaches the integrated Qdrant (default: `http://qdrant:6333`, which resolves on the network the manager shares with it). It replaces the stored address of a connection to the integrated Qdrant when connecting and is never written to the connection store |
 | `QDRANT_INGEST_URL` | Where the manager reaches the ingester's REST API (default: `http://qdrant-ingest:8300`, on the same network). Not the ingester's public URL |
+| `LITELLM_URL` | Where the manager reaches LiteLLM's HTTP API for the Models & Usage page (default: `http://litellm:4000`, on the same network). Not the public URL of LiteLLM's Admin UI. The master key is not a setting: it is read from `ai/litellm/.env` at request time, and the link to the Admin UI is built from `LITELLM_PUBLIC_URL` in the stack's `.env` |
 | `INGEST_UPLOAD_TTL_HOURS` | How long an upload that was not embedded successfully stays before it is deleted (default: 24; 1 to 720) |
 | `INGEST_MAX_UPLOAD_MB` / `INGEST_MAX_BATCH_MB` | Size limits of one uploaded file (default: 200; 1 to 10240) and of one upload (default: 2048; 1 to 102400), in MiB |
 | `SSL_CERT_FILE` | Optional path to a custom CA bundle. It is trusted for the OIDC endpoints and, next to the public CAs, for connections to a Qdrant |
@@ -779,7 +811,7 @@ mount.
 
 ## Security boundaries
 
-- **Never log** session secrets, OIDC client secrets, the mail relay's upstream password, catalog tokens, Qdrant api-keys (`QDRANT_JWT_SECRET` and the keys stored in connections), `QI_API_TOKEN`, `QI_CONNECTIONS_SECRET`, the values of ingest credentials, the webhook URLs of notification recipients or the content of overlay files (it can hold an API key). They are never part of a response or an audit entry either.
+- **Never log** session secrets, OIDC client secrets, the mail relay's upstream password, catalog tokens, Qdrant api-keys (`QDRANT_JWT_SECRET` and the keys stored in connections), `QI_API_TOKEN`, `QI_CONNECTIONS_SECRET`, `LITELLM_MASTER_KEY`, the values of ingest credentials, the webhook URLs of notification recipients or the content of overlay files (it can hold an API key). They are never part of a response or an audit entry either.
 - **The signed-in user's access token** (used by the Users page) lives in memory only: never in the session cookie, a response, an audit entry or a log line. Temporary passwords are returned once and are never part of an audit entry or a log line.
 - **docker.sock access is root-equivalent.** The manager container mounts `/var/run/docker.sock`. This is required for Compose operations and is intentional — the manager profile is off by default.
 - **Subprocess inputs are whitelisted.** All calls to `papaia-ctl` go through `core/ctl.py` which validates the verb against an allowlist and uses arg arrays (never `shell=True`). The commands that write, the core's `setup` and `module-purge`, have an allowlist of their own and are reachable only through `run_smtp_setup` and `run_module_setup` (the options of the mail relay or of one optional module) and `run_module_purge` (one module's volumes and settings, never while it is on).
