@@ -37,6 +37,7 @@ from app.core.settings_store import (
     validate_branding,
     validate_refresh_seconds,
 )
+from app.i18n import gettext as _
 
 router = APIRouter()
 
@@ -200,7 +201,7 @@ async def get_logo(
 ) -> Response:
     path = logo_path(settings.papaia_config_dir)
     if path is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no logo set")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_("no logo set"))
     return Response(
         content=path.read_bytes(),
         media_type=logo_media_type(path),
@@ -238,7 +239,7 @@ def _require_current(settings: Settings, revision: str) -> None:
     if revision != settings_revision(settings.papaia_config_dir):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="The settings changed since this page was loaded. Reload and try again.",
+            detail=_("The settings changed since this page was loaded. Reload and try again."),
         )
 
 

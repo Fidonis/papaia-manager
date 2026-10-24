@@ -36,6 +36,7 @@ from apscheduler.triggers.cron import CronTrigger
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from app.core import backups
+from app.i18n import N_, gettext, ngettext
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +60,23 @@ _CADENCE_SAMPLES = 2000
 
 WEEKDAYS: tuple[str, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 WEEKDAY_LABELS: dict[str, str] = {
-    "mon": "Monday",
-    "tue": "Tuesday",
-    "wed": "Wednesday",
-    "thu": "Thursday",
-    "fri": "Friday",
-    "sat": "Saturday",
-    "sun": "Sunday",
+    "mon": N_("Monday"),
+    "tue": N_("Tuesday"),
+    "wed": N_("Wednesday"),
+    "thu": N_("Thursday"),
+    "fri": N_("Friday"),
+    "sat": N_("Saturday"),
+    "sun": N_("Sunday"),
+}
+# The short names of the weekday buttons in the schedule editor.
+WEEKDAY_SHORT: dict[str, str] = {
+    "mon": N_("Mon"),
+    "tue": N_("Tue"),
+    "wed": N_("Wed"),
+    "thu": N_("Thu"),
+    "fri": N_("Fri"),
+    "sat": N_("Sat"),
+    "sun": N_("Sun"),
 }
 # Offered by the hourly preset. Divisors of 24, so the runs are evenly spaced
 # across midnight too.
@@ -119,13 +130,17 @@ def zone(name: str) -> ZoneInfo:
     """
     if not _TZ_NAME.match(name):
         raise ScheduleError(
-            f"Unknown timezone {name!r}. Use an IANA name such as Europe/Berlin or UTC."
+            gettext(
+                "Unknown timezone %(name)r. Use an IANA name such as Europe/Berlin or UTC."
+            ) % {"name": name}
         )
     try:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError, OSError) as exc:
         raise ScheduleError(
-            f"Unknown timezone {name!r}. Use an IANA name such as Europe/Berlin or UTC."
+            gettext(
+                "Unknown timezone %(name)r. Use an IANA name such as Europe/Berlin or UTC."
+            ) % {"name": name}
         ) from exc
 
 
@@ -168,7 +183,9 @@ def _weekday_number(token: str) -> int:
     if token.isdigit() and 0 <= int(token) <= 7:
         return int(token)
     raise ScheduleError(
-        f"Unknown weekday {token!r}. Use mon-sun or the numbers 0-7 (0 and 7 are Sunday)."
+        gettext(
+            "Unknown weekday %(token)r. Use mon-sun or the numbers 0-7 (0 and 7 are Sunday)."
+        ) % {"token": token}
     )
 
 
@@ -186,7 +203,9 @@ def _normalise_weekdays(field: str) -> str:
         step = 1
         if slash:
             if not raw_step.isdigit() or int(raw_step) < 1:
-                raise ScheduleError(f"The step in {part!r} must be a whole number of at least 1.")
+                raise ScheduleError(gettext(
+                    "The step in %(part)r must be a whole number of at least 1."
+                ) % {"part": part})
             step = int(raw_step)
         if body == "*":
             low, high = 0, 6
@@ -196,10 +215,14 @@ def _normalise_weekdays(field: str) -> str:
             if high == 0 and low > 0:
                 high = 7  # mon-sun
             if low > high:
-                raise ScheduleError(f"The weekday range {body!r} runs backwards.")
+                raise ScheduleError(gettext(
+                    "The weekday range %(body)r runs backwards."
+                ) % {"body": body})
         else:
             if slash:
-                raise ScheduleError(f"{part!r}: a step needs '*' or a range in front of it.")
+                raise ScheduleError(gettext(
+                    "%(part)r: a step needs '*' or a range in front of it."
+                ) % {"part": part})
             low = high = _weekday_number(body)
         chosen.update(day % 7 for day in range(low, high + 1, step))
     if len(chosen) == 7:
@@ -212,19 +235,25 @@ def parse_fields(expression: str) -> CronFields:
     parts = expression.split()
     if len(parts) != 5:
         raise ScheduleError(
-            "A cron expression has five fields: minute hour day-of-month month day-of-week."
+            gettext(
+                "A cron expression has five fields: minute hour day-of-month month day-of-week."
+            )
         )
-    labels = ("minute", "hour", "day of the month", "month")
+    labels = (gettext("minute"), gettext("hour"), gettext("day of the month"), gettext("month"))
     for part, label in zip(parts[:4], labels, strict=True):
         if not _PLAIN_FIELD.match(part):
             raise ScheduleError(
-                f"The {label} field {part!r} may only contain digits, '*', ',', '-' and '/'."
+                gettext(
+                    "The %(label)s field %(part)r may only contain digits, '*', ',', '-' and '/'."
+                ) % {"label": label, "part": part}
             )
     fields = CronFields(parts[0], parts[1], parts[2], parts[3], _normalise_weekdays(parts[4]))
     if fields.day != "*" and fields.day_of_week != "*":
         raise ScheduleError(
-            "Restrict either the day of the month or the day of the week, not both: "
-            "cron runs on either, which is rarely what is meant."
+            gettext(
+                "Restrict either the day of the month or the day of the week, not both: cron "
+                "runs on either, which is rarely what is meant."
+            )
         )
     _trigger(fields, UTC)  # the range checks are APScheduler's
     return fields
@@ -241,7 +270,7 @@ def _trigger(fields: CronFields, tz: tzinfo) -> CronTrigger:
             timezone=tz,
         )
     except (ValueError, TypeError) as exc:
-        raise ScheduleError(f"Invalid cron expression: {exc}") from exc
+        raise ScheduleError(gettext("Invalid cron expression: %(exc)s") % {"exc": exc}) from exc
 
 
 def build_trigger(expression: str, timezone: str) -> CronTrigger:
@@ -329,7 +358,7 @@ def analyse_cadence(expression: str, timezone: str, *, now: datetime | None = No
         previous = upcoming
         current = _after(upcoming)
     if len(runs) < 2:
-        raise ScheduleError("This expression runs less than twice in two years.")
+        raise ScheduleError(gettext("This expression runs less than twice in two years."))
     pairs = list(zip(runs, runs[1:], strict=False))
     elapsed = [later.astimezone(UTC) - earlier.astimezone(UTC) for earlier, later in pairs]
     wall_clock = [later - earlier for earlier, later in pairs]
@@ -369,7 +398,7 @@ class Preset:
 def _clock(value: str) -> tuple[int, int]:
     match = _TIME.match(value.strip())
     if match is None:
-        raise ScheduleError("The time must look like 03:00.")
+        raise ScheduleError(gettext("The time must look like 03:00."))
     return int(match.group(1)), int(match.group(2))
 
 
@@ -391,18 +420,21 @@ def compile_preset(
         picked = {day.lower() for day in weekdays}
         unknown = picked - set(WEEKDAYS)
         if unknown:
-            raise ScheduleError(f"Unknown weekday {sorted(unknown)[0]!r}.")
+            raise ScheduleError(gettext(
+                "Unknown weekday %(value)r."
+            ) % {"value": sorted(unknown)[0]})
         if not picked:
-            raise ScheduleError("Pick at least one day of the week.")
+            raise ScheduleError(gettext("Pick at least one day of the week."))
         names = ",".join(day for day in WEEKDAYS if day in picked)
         return f"{minute} {hour} * * {'*' if len(picked) == 7 else names}"
     if mode == "hourly":
         if every_hours not in HOURLY_CHOICES:
             raise ScheduleError(
-                "Every N hours takes one of " + ", ".join(str(n) for n in HOURLY_CHOICES) + "."
+                gettext("Every N hours takes one of %(choices)s.")
+                % {"choices": ", ".join(str(n) for n in HOURLY_CHOICES)}
             )
         return f"{minute} {'*' if every_hours == 1 else f'*/{every_hours}'} * * *"
-    raise ScheduleError(f"Unknown schedule type {mode!r}.")
+    raise ScheduleError(gettext("Unknown schedule type %(mode)r.") % {"mode": mode})
 
 
 def read_preset(expression: str) -> Preset:
@@ -432,16 +464,18 @@ def describe(expression: str) -> str:
     """A sentence for an expression: "Every day at 03:00"."""
     preset = read_preset(expression)
     if preset.mode == "daily":
-        return f"Every day at {preset.time}"
+        return gettext("Every day at %(time)s") % {"time": preset.time}
     if preset.mode == "weekly":
-        days = ", ".join(WEEKDAY_LABELS[day] for day in preset.weekdays)
-        return f"Every {days} at {preset.time}"
+        days = ", ".join(gettext(WEEKDAY_LABELS[day]) for day in preset.weekdays)
+        return gettext("Every %(days)s at %(time)s") % {"days": days, "time": preset.time}
     if preset.mode == "hourly":
         minute = preset.time[3:]
-        if preset.every_hours == 1:
-            return f"Every hour at :{minute}"
-        return f"Every {preset.every_hours} hours at :{minute}"
-    return f"Custom schedule ({preset.cron})"
+        return ngettext(
+            "Every hour at :%(minute)s",
+            "Every %(hours)d hours at :%(minute)s",
+            preset.every_hours,
+        ) % {"hours": preset.every_hours, "minute": minute}
+    return gettext("Custom schedule (%(cron)s)") % {"cron": preset.cron}
 
 
 # ---------------------------------------------------------------------------
@@ -481,16 +515,20 @@ class BackupSchedule(BaseModel):
         cadence = cadence_of(self.cron, self.timezone)
         if cadence.shortest < MIN_INTERVAL:
             raise ScheduleError(
-                "Backups may not run more often than once an hour; this schedule has "
-                f"runs {humanize(cadence.shortest)} apart."
+                gettext(
+                    "Backups may not run more often than once an hour; this schedule has runs "
+                    "%(value)s apart."
+                ) % {"value": humanize(cadence.shortest)}
             )
         if self.retention_days is not None:
             floor = min_retention_days(cadence)
             if self.retention_days < floor:
                 raise ScheduleError(
-                    f"The retention must be at least {floor} days for this schedule: "
-                    "twice the longest gap between two runs, so that at least two "
-                    "restore points are kept."
+                    gettext(
+                        "The retention must be at least %(floor)s days for this schedule: twice "
+                        "the longest gap between two runs, so that at least two restore points "
+                        "are kept."
+                    ) % {"floor": floor}
                 )
         return self
 
@@ -536,17 +574,25 @@ def load_schedule(config_dir: str) -> ScheduleLoad:
         return ScheduleLoad(None)
     except (OSError, yaml.YAMLError) as exc:
         logger.warning("%s cannot be read: %s", path, exc)
-        return ScheduleLoad(None, f"{SCHEDULE_NAME} cannot be read: {exc}")
+        return ScheduleLoad(
+            None,
+            gettext("%(name)s cannot be read: %(error)s") % {"name": SCHEDULE_NAME, "error": exc},
+        )
     if raw is None:
         return ScheduleLoad(None)
     if not isinstance(raw, dict):
         logger.warning("%s does not contain a mapping", path)
-        return ScheduleLoad(None, f"{SCHEDULE_NAME} does not contain a mapping.")
+        return ScheduleLoad(
+            None, gettext("%(name)s does not contain a mapping.") % {"name": SCHEDULE_NAME}
+        )
     try:
         return ScheduleLoad(build_schedule(**raw))
     except ScheduleError as exc:
         logger.warning("%s is invalid: %s", path, exc)
-        return ScheduleLoad(None, f"{SCHEDULE_NAME} is invalid: {exc}")
+        return ScheduleLoad(
+            None,
+            gettext("%(name)s is invalid: %(error)s") % {"name": SCHEDULE_NAME, "error": exc},
+        )
 
 
 def save_schedule(config_dir: str, schedule: BackupSchedule) -> None:
@@ -594,20 +640,29 @@ def humanize(span: timedelta) -> str:
     hours, rest = divmod(rest, 3_600)
     minutes = rest // 60
 
-    def unit(count: int, name: str) -> str:
-        return f"{count} {name}{'' if count == 1 else 's'}"
+    def day_text(count: int) -> str:
+        return ngettext("%(count)d day", "%(count)d days", count) % {"count": count}
+
+    def hour_text(count: int) -> str:
+        return ngettext("%(count)d hour", "%(count)d hours", count) % {"count": count}
+
+    def minute_text(count: int) -> str:
+        return ngettext("%(count)d minute", "%(count)d minutes", count) % {"count": count}
+
+    def pair(first: str, second: str) -> str:
+        return gettext("%(first)s %(second)s") % {"first": first, "second": second}
 
     if days:
         if days >= 7 or not hours:
-            return unit(days, "day")
-        return f"{unit(days, 'day')} {unit(hours, 'hour')}"
+            return day_text(days)
+        return pair(day_text(days), hour_text(hours))
     if hours:
         if not minutes:
-            return unit(hours, "hour")
-        return f"{unit(hours, 'hour')} {unit(minutes, 'minute')}"
+            return hour_text(hours)
+        return pair(hour_text(hours), minute_text(minutes))
     if minutes:
-        return unit(minutes, "minute")
-    return "under a minute"
+        return minute_text(minutes)
+    return gettext("under a minute")
 
 
 def overdue_after(schedule: BackupSchedule) -> timedelta:
@@ -652,14 +707,15 @@ def plan_retention(
     newest = backups.newest_successful(points)
     taken = backups.restore_point_time(newest) if newest else None
     if taken is None:
-        return RetentionPlan(None, "there is no successful restore point yet")
+        return RetentionPlan(None, gettext("there is no successful restore point yet"))
     limit = overdue_after(schedule)
     age = now - taken
     if age > limit:
         return RetentionPlan(
             None,
-            f"the newest successful restore point is {humanize(age)} old "
-            f"(more than {humanize(limit)})",
+            gettext(
+                "the newest successful restore point is %(age)s old (more than %(limit)s)"
+            ) % {"age": humanize(age), "limit": humanize(limit)},
         )
     return RetentionPlan(schedule.retention_days)
 
@@ -768,7 +824,9 @@ def read_state(
         would_delete = backups.count_older_than(points, current.retention_days, now=moment)
         plan = plan_retention(current, points, now=moment)
         if plan.skipped:
-            retention_note = f"Not applied at the moment: {plan.skipped}."
+            retention_note = gettext("Not applied at the moment: %(reason)s.") % {
+                "reason": plan.skipped
+            }
 
     return ScheduleState(
         load=load,

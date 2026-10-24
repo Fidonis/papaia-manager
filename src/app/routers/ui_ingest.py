@@ -28,6 +28,7 @@ from app.core.ingest.jobs_service import (
     JobsService,
 )
 from app.core.schedule import COMMON_TIMEZONES, WEEKDAY_LABELS
+from app.i18n import N_, gettext
 from app.routers.rag_deps import JobsServiceDep, RagAdmin
 from app.routers.ui import _ctx, _no_store
 from app.templating import templates as _templates
@@ -36,25 +37,25 @@ router = APIRouter()
 
 # The statuses a run can have in the ingester, in the words of the filter.
 RUN_STATUS_CHOICES: tuple[tuple[str, str], ...] = (
-    ("running", "Running"),
-    ("success", "Finished"),
-    ("failed", "Failed"),
-    ("interrupted", "Stopped"),
-    ("aborted_guard", "Stopped by a safety check"),
-    ("aborted_lock", "Gave up waiting for the collection"),
+    ("running", N_("Running")),
+    ("success", N_("Finished")),
+    ("failed", N_("Failed")),
+    ("interrupted", N_("Stopped")),
+    ("aborted_guard", N_("Stopped by a safety check")),
+    ("aborted_lock", N_("Gave up waiting for the collection")),
 )
 FILE_STATUS_TEXT: dict[str, str] = {
-    "indexed": "Embedded",
-    "skipped_no_text": "No text found",
-    "skipped_too_large": "Too large",
-    "skipped_unsupported": "Not a supported type",
-    "failed_extract": "Could not be read",
-    "failed_embed": "Could not be embedded",
+    "indexed": N_("Embedded"),
+    "skipped_no_text": N_("No text found"),
+    "skipped_too_large": N_("Too large"),
+    "skipped_unsupported": N_("Not a supported type"),
+    "failed_extract": N_("Could not be read"),
+    "failed_embed": N_("Could not be embedded"),
 }
 FILE_STATUS_HELP: dict[str, str] = {
-    "skipped_no_text": "No text could be read: a scan, an image or an empty file.",
-    "skipped_too_large": "Larger than the size limit, so it was left out.",
-    "skipped_unsupported": "The ingester does not read this type of file.",
+    "skipped_no_text": N_("No text could be read: a scan, an image or an empty file."),
+    "skipped_too_large": N_("Larger than the size limit, so it was left out."),
+    "skipped_unsupported": N_("The ingester does not read this type of file."),
 }
 FILES_PAGE = 50
 
@@ -145,7 +146,7 @@ def _editor(
             editor["state"]["source"]["label"] = ""
             editor["etag"] = ""
     except NotFound:
-        problem = f"The job {job_id or duplicate!r} is not in jobs.yaml."
+        problem = gettext("The job %(job)r is not in jobs.yaml.") % {"job": job_id or duplicate}
     except CatalogRejected as exc:
         problem = str(exc)
     boot = {
@@ -159,12 +160,14 @@ def _editor(
         "sources": jobspec.source_forms(),
         "credentials": service.credential_names(),
         "connections": service.connections(),
-        "modes": list(job_forms.MODE_CHOICES),
-        "strategies": job_forms.STRATEGY_TEXT,
-        "startups": job_forms.STARTUP_TEXT,
-        "presets": list(job_forms.FILTER_PRESETS),
+        "modes": job_forms.translated_modes(),
+        "strategies": job_forms.translated_texts(job_forms.STRATEGY_TEXT),
+        "startups": job_forms.translated_texts(job_forms.STARTUP_TEXT),
+        "presets": [{**p, "title": gettext(p["title"])} for p in job_forms.FILTER_PRESETS],
         "timezones": list(COMMON_TIMEZONES),
-        "weekdays": [{"key": key, "label": label} for key, label in WEEKDAY_LABELS.items()],
+        "weekdays": [
+            {"key": key, "label": gettext(label)} for key, label in WEEKDAY_LABELS.items()
+        ],
     }
     return _page(
         request,
@@ -219,7 +222,7 @@ async def runs_page(
         "ingest_runs.html",
         job_choices=[row.id for row in view.jobs],
         can_delete_runs=view.ingester.has(FEATURE_DELETE_RUNS),
-        status_choices=RUN_STATUS_CHOICES,
+        status_choices=[(key, gettext(label)) for key, label in RUN_STATUS_CHOICES],
         selected_job=job,
         selected_status=status,
         tz=service.timezone(),
@@ -325,7 +328,7 @@ async def partial_job_tab(
             include=list(filters.get("include") or []),
             exclude=list(filters.get("exclude") or []),
             mode_text=next(
-                (c["text"] for c in job_forms.MODE_CHOICES if c["value"] == row.mode), ""
+                (c["text"] for c in job_forms.translated_modes() if c["value"] == row.mode), ""
             ),
             active=row.active_run is not None,
             tz=tz,
@@ -363,8 +366,8 @@ async def partial_job_tab(
             supported=True,
             row=row,
             result=result or {"total": 0, "counts": {}, "items": []},
-            status_text=FILE_STATUS_TEXT,
-            status_help=FILE_STATUS_HELP,
+            status_text={key: gettext(text) for key, text in FILE_STATUS_TEXT.items()},
+            status_help={key: gettext(text) for key, text in FILE_STATUS_HELP.items()},
             rows_only=rows,
             selected_status=status,
             query=q,
@@ -450,7 +453,9 @@ async def partial_run(
     try:
         view = await service.run(run_id)
     except NotFound:
-        problem = "The ingester does not know this run any more. It keeps the latest 200 per job."
+        problem = gettext(
+            "The ingester does not know this run any more. It keeps the latest 200 per job."
+        )
     except IngestError as exc:
         problem = str(exc)
     return _partial(

@@ -7,12 +7,12 @@
 {# The tabs do not wrap: on a narrow screen "Catalog file" broke into two lines and overflowed the
    fixed height of a tab, which showed as a vertical scrollbar next to a horizontal one. #}
 {% macro tabs(active) %}
-<nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="Ingest">
-  <a href="/ingest/jobs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'jobs' else '' }}">Jobs</a>
-  <a href="/ingest/runs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'runs' else '' }}">Runs</a>
-  <a href="/ingest/secrets" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'secrets' else '' }}">Credentials</a>
-  <a href="/ingest/orphans" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'orphans' else '' }}">Leftovers</a>
-  <a href="/ingest/catalog" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'catalog' else '' }}">Catalog file</a>
+<nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="{{ _('Ingest') }}">
+  <a href="/ingest/jobs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'jobs' else '' }}">{% trans %}Jobs{% endtrans %}</a>
+  <a href="/ingest/runs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'runs' else '' }}">{% trans %}Runs{% endtrans %}</a>
+  <a href="/ingest/secrets" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'secrets' else '' }}">{% trans %}Credentials{% endtrans %}</a>
+  <a href="/ingest/orphans" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'orphans' else '' }}">{% trans %}Leftovers{% endtrans %}</a>
+  <a href="/ingest/catalog" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'catalog' else '' }}">{% trans %}Catalog file{% endtrans %}</a>
 </nav>
 {% endmacro %}
 
@@ -22,9 +22,9 @@
 {% macro state_badge(row) %}
 {% if row.state == 'loaded' %}
   {% if row.enabled %}
-  <span class="badge badge-success badge-sm gap-1" title="The ingester serves this job as it is in jobs.yaml">{{ row.state_text }}</span>
+  <span class="badge badge-success badge-sm gap-1" title="{{ _('The ingester serves this job as it is in jobs.yaml') }}">{{ row.state_text }}</span>
   {% else %}
-  <span class="badge badge-ghost badge-sm" title="Switched off: it does not run on its schedule and cannot be started. Its content stays searchable.">Disabled</span>
+  <span class="badge badge-ghost badge-sm" title="{{ _('Switched off: it does not run on its schedule and cannot be started. Its content stays searchable.') }}">{% trans %}Disabled{% endtrans %}</span>
   {% endif %}
 {% elif row.state == 'stale' %}
 <span class="badge badge-warning badge-sm" title="{{ row.note }}">{{ row.state_text }}</span>
@@ -47,14 +47,14 @@
 {% elif view.clean %}
 <span class="badge badge-success badge-sm">{{ view.label }}</span>
 {% elif view.status == 'success' %}
-<span class="badge badge-warning badge-sm" title="The run finished, but some files could not be embedded">{{ view.label }}</span>
+<span class="badge badge-warning badge-sm" title="{{ _('The run finished, but some files could not be embedded') }}">{{ view.label }}</span>
 {% elif view.status == 'failed' %}
 <span class="badge badge-error badge-sm">{{ view.label }}</span>
 {% else %}
 <span class="badge badge-warning badge-sm">{{ view.label }}</span>
 {% endif %}
 {% if view.dry_run %}
-<span class="badge badge-outline badge-sm" title="A dry run reads and plans, but embeds and writes nothing">Dry run</span>
+<span class="badge badge-outline badge-sm" title="{{ _('A dry run reads and plans, but embeds and writes nothing') }}">{% trans %}Dry run{% endtrans %}</span>
 {% endif %}
 {% endmacro %}
 

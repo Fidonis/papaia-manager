@@ -20,6 +20,8 @@ from app.core.vectordb.base import (
     ProbeResult,
 )
 from app.core.vectordb.errors import InvalidConnectionError
+from app.i18n import N_, ngettext
+from app.i18n import gettext as _
 
 MAX_URL_LENGTH = 2048
 
@@ -33,23 +35,27 @@ def validate_url(value: str) -> str:
     """
     url = (value or "").strip()
     if not url:
-        raise InvalidConnectionError("The address is required.")
+        raise InvalidConnectionError(_("The address is required."))
     if len(url) > MAX_URL_LENGTH:
-        raise InvalidConnectionError(f"The address is at most {MAX_URL_LENGTH} characters.")
+        raise InvalidConnectionError(_(
+            "The address is at most %(MAX_URL_LENGTH)s characters."
+        ) % {"MAX_URL_LENGTH": MAX_URL_LENGTH})
     if not url.startswith(("http://", "https://")):
-        raise InvalidConnectionError("The address must start with http:// or https://.")
+        raise InvalidConnectionError(_("The address must start with http:// or https://."))
     if any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in url):
-        raise InvalidConnectionError("The address must not contain spaces or control characters.")
+        raise InvalidConnectionError(
+            _("The address must not contain spaces or control characters.")
+        )
     try:
         parts = urlsplit(url)
         parts.port  # noqa: B018 - raises ValueError for a port that is not a number
     except ValueError:
-        raise InvalidConnectionError("The address is not a valid URL.") from None
+        raise InvalidConnectionError(_("The address is not a valid URL.")) from None
     if not parts.hostname:
-        raise InvalidConnectionError("The address has no host.")
+        raise InvalidConnectionError(_("The address has no host."))
     if "@" in parts.netloc:
         raise InvalidConnectionError(
-            "The address must not contain credentials. Use the api-key field."
+            _("The address must not contain credentials. Use the api-key field.")
         )
     return url
 
@@ -60,17 +66,17 @@ class QdrantType:
     fields: tuple[FieldSpec, ...] = (
         FieldSpec(
             "url",
-            "Address",
+            N_("Address"),
             "url",
             required=True,
-            help="Base address of the Qdrant REST API, as the ingester reaches it.",
+            help=N_("Base address of the Qdrant REST API, as the ingester reaches it."),
             placeholder="http://qdrant:6333",
         ),
         FieldSpec(
             "api_key",
-            "API key",
+            N_("API key"),
             "secret",
-            help="Leave empty for a Qdrant that does not ask for one.",
+            help=N_("Leave empty for a Qdrant that does not ask for one."),
         ),
     )
     capabilities = frozenset({CAPABILITY_COLLECTIONS})
@@ -102,17 +108,25 @@ class QdrantType:
             verify=tls_verify(env.cafile),
             timeout=env.timeout,
             transport=env.transport,
-            refused_hint=f"Check the api-key of the connection {connection.name!r}.",
+            refused_hint=_(
+                "Check the api-key of the connection %(name)r."
+            ) % {"name": connection.name},
         )
         try:
             result = await client.request("GET", "/collections")
         except QdrantUnavailable as exc:
             return ProbeResult(False, exc.detail)
         except QdrantError as exc:
-            return ProbeResult(False, f"Qdrant answered with an error: {exc.detail}")
+            return ProbeResult(False, _(
+                "Qdrant answered with an error: %(detail)s"
+            ) % {"detail": exc.detail})
         finally:
             await client.aclose()
         listed = result.get("collections") if isinstance(result, dict) else None
         count = len(listed) if isinstance(listed, list) else None
-        noun = "" if count is None else f", {count} collection{'' if count == 1 else 's'}"
-        return ProbeResult(True, f"Reachable{noun}", count)
+        if count is None:
+            return ProbeResult(True, _("Reachable"), count)
+        reachable = ngettext(
+            "Reachable, %(count)s collection", "Reachable, %(count)s collections", count
+        )
+        return ProbeResult(True, reachable % {"count": count}, count)

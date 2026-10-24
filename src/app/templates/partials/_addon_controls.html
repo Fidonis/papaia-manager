@@ -24,19 +24,19 @@
     <button class="btn btn-primary btn-sm" :disabled="busy"
             @click="$refs.installModal.showModal()">
       <span style="display:none" x-show="activeVerb === 'install'" class="loading loading-dots loading-xs"></span>
-      <span x-show="activeVerb !== 'install'">{% if s == "inactive" %}Reactivate{% else %}Install{% endif %}</span>
+      <span x-show="activeVerb !== 'install'">{% if s == "inactive" %}{% trans %}Reactivate{% endtrans %}{% else %}{% trans %}Install{% endtrans %}{% endif %}</span>
     </button>
   {% elif s == "installed" %}
     <button class="btn btn-success btn-sm" :disabled="busy"
             @click="busy = true; activeVerb = 'start'; {{ fn }}('{{ addon.name }}', 'start', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
       <span style="display:none" x-show="activeVerb === 'start'" class="loading loading-dots loading-xs"></span>
-      <span x-show="activeVerb !== 'start'">Start</span>
+      <span x-show="activeVerb !== 'start'">{% trans %}Start{% endtrans %}</span>
     </button>
   {% elif s == "running" %}
     <button class="btn btn-warning btn-sm" :disabled="busy"
             @click="busy = true; activeVerb = 'stop'; {{ fn }}('{{ addon.name }}', 'stop', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
       <span style="display:none" x-show="activeVerb === 'stop'" class="loading loading-dots loading-xs"></span>
-      <span x-show="activeVerb !== 'stop'">Stop</span>
+      <span x-show="activeVerb !== 'stop'">{% trans %}Stop{% endtrans %}</span>
     </button>
   {% endif %}
 {% endmacro %}
@@ -53,7 +53,7 @@
 <button class="btn btn-outline btn-sm" :disabled="busy"
         @click="busy = true; activeVerb = 'update'; {{ fn }}('{{ addon.name }}', 'update', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
   <span style="display:none" x-show="activeVerb === 'update'" class="loading loading-dots loading-xs"></span>
-  <span x-show="activeVerb !== 'update'">Update</span>
+  <span x-show="activeVerb !== 'update'">{% trans %}Update{% endtrans %}</span>
 </button>
 {% endif %}
 {% endmacro %}
@@ -66,15 +66,15 @@
 {% macro overflow_actions(addon, s, fn, include_update=True) %}
 {% set wants_update = include_update and addon.update_available %}
 {% if wants_update or addon.installed_version or s in ("installed", "inactive", "running") %}
-{% call overflow_menu(size='sm', label='More actions for ' ~ addon.name) %}
+{% call overflow_menu(size='sm', label=_('More actions for %(name)s', name=addon.name)) %}
   {% if wants_update %}
-  <li><a @click="busy = true; activeVerb = 'update'; {{ fn }}('{{ addon.name }}', 'update', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">Update</a></li>
+  <li><a @click="busy = true; activeVerb = 'update'; {{ fn }}('{{ addon.name }}', 'update', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">{% trans %}Update{% endtrans %}</a></li>
   {% endif %}
   {% if s in ("installed", "inactive", "running") %}
-  <li><a class="text-error" @click="$refs.removeModal.showModal()">Remove</a></li>
+  <li><a class="text-error" @click="$refs.removeModal.showModal()">{% trans %}Remove{% endtrans %}</a></li>
   {% endif %}
   {% if addon.installed_version %}
-  <li><a class="text-error" @click="$refs.uninstallModal.showModal()">Uninstall</a></li>
+  <li><a class="text-error" @click="$refs.uninstallModal.showModal()">{% trans %}Uninstall{% endtrans %}</a></li>
   {% endif %}
 {% endcall %}
 {% endif %}
@@ -84,42 +84,41 @@
 {% if s in ("installed", "inactive", "running") %}
 <dialog x-ref="removeModal" class="modal">
   <div class="modal-box max-w-sm">
-    <h3 class="font-bold text-base mb-1">Remove {{ addon.name }}</h3>
+    <h3 class="font-bold text-base mb-1">{% trans name=addon.name %}Remove {{ name }}{% endtrans %}</h3>
     <p class="text-sm opacity-60 mb-4">
-      Disables the add-on and removes the Docker containers. The add-on can
-      then be reactivated again via <strong>Reactivate</strong>.
+      {% trans %}Disables the add-on and removes the Docker containers. The add-on can then be reactivated again via <strong>Reactivate</strong>.{% endtrans %}
     </p>
     <div class="space-y-1.5 mb-3">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">What happens</p>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">{% trans %}What happens{% endtrans %}</p>
       <div class="flex items-center gap-2 text-sm">
         <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        Docker containers are stopped and removed
+        {% trans %}Docker containers are stopped and removed{% endtrans %}
       </div>
       <div class="flex items-center gap-2 text-sm">
         <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        Compose integration is disabled
+        {% trans %}Compose integration is disabled{% endtrans %}
       </div>
     </div>
     <div class="space-y-1.5 mb-5">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">What is kept</p>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">{% trans %}What is kept{% endtrans %}</p>
       <div class="flex items-center gap-2 text-sm opacity-70">
         <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        Docker volumes (database, uploads, …)
+        {% trans %}Docker volumes (database, uploads, …){% endtrans %}
       </div>
       <div class="flex items-center gap-2 text-sm opacity-70">
         <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        Configuration files on the host
+        {% trans %}Configuration files on the host{% endtrans %}
       </div>
     </div>
     <div class="modal-action mt-0">
-      <button class="btn btn-ghost btn-sm" @click="$refs.removeModal.close()">Cancel</button>
+      <button class="btn btn-ghost btn-sm" @click="$refs.removeModal.close()">{% trans %}Cancel{% endtrans %}</button>
       <button class="btn btn-error btn-sm"
               @click="$refs.removeModal.close(); busy = true; activeVerb = 'remove'; {{ fn }}('{{ addon.name }}', 'remove', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-        Remove
+        {% trans %}Remove{% endtrans %}
       </button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 {% endif %}
 {% endmacro %}
@@ -128,46 +127,45 @@
 {% if addon.installed_version %}
 <dialog x-ref="uninstallModal" class="modal">
   <div class="modal-box max-w-sm">
-    <h3 class="font-bold text-base mb-1">Uninstall {{ addon.name }}</h3>
+    <h3 class="font-bold text-base mb-1">{% trans name=addon.name %}Uninstall {{ name }}{% endtrans %}</h3>
     <p class="text-sm opacity-60 mb-4">
-      Removes the add-on completely, including its configuration package.
-      The add-on must then be reinstalled.
+      {% trans %}Removes the add-on completely, including its configuration package. The add-on must then be reinstalled.{% endtrans %}
     </p>
     <div class="space-y-1.5 mb-3">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">What happens</p>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">{% trans %}What happens{% endtrans %}</p>
       <div class="flex items-center gap-2 text-sm">
         <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        Docker containers are stopped and removed
+        {% trans %}Docker containers are stopped and removed{% endtrans %}
       </div>
       <div class="flex items-center gap-2 text-sm">
         <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        Configuration package (snapshot) is deleted
+        {% trans %}Configuration package (snapshot) is deleted{% endtrans %}
       </div>
       <div class="flex items-center gap-2 text-sm">
         <svg class="h-3.5 w-3.5 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        Entry is removed from the deployment configuration
+        {% trans %}Entry is removed from the deployment configuration{% endtrans %}
       </div>
     </div>
     <div class="space-y-1.5 mb-3">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">What is kept</p>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-40">{% trans %}What is kept{% endtrans %}</p>
       <div class="flex items-center gap-2 text-sm opacity-70">
         <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        Docker volumes (database, uploads, …)
+        {% trans %}Docker volumes (database, uploads, …){% endtrans %}
       </div>
     </div>
     <div class="alert alert-warning py-2 mb-5">
       <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-      <span class="text-xs">This action cannot be undone.</span>
+      <span class="text-xs">{% trans %}This action cannot be undone.{% endtrans %}</span>
     </div>
     <div class="modal-action mt-0">
-      <button class="btn btn-ghost btn-sm" @click="$refs.uninstallModal.close()">Cancel</button>
+      <button class="btn btn-ghost btn-sm" @click="$refs.uninstallModal.close()">{% trans %}Cancel{% endtrans %}</button>
       <button class="btn btn-error btn-sm"
               @click="$refs.uninstallModal.close(); busy = true; activeVerb = 'uninstall'; {{ fn }}('{{ addon.name }}', 'uninstall', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-        Uninstall
+        {% trans %}Uninstall{% endtrans %}
       </button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 {% endif %}
 {% endmacro %}
@@ -179,7 +177,7 @@
 {% set secondary_fields = addon.env_fields | rejectattr('prompt_on_install') | list %}
 <dialog x-ref="installModal" class="modal">
   <div class="modal-box">
-    <h3 class="text-lg font-bold mb-4">Install {{ addon.name }}</h3>
+    <h3 class="text-lg font-bold mb-4">{% trans name=addon.name %}Install {{ name }}{% endtrans %}</h3>
     <form
       @submit.prevent="
         const env = {};
@@ -203,7 +201,7 @@
         <label class="label pb-0.5">
           <span class="label-text font-medium">{{ f.label }}{% if f.required %} <span class="text-error">*</span>{% endif %}</span>
           {% if f.auto_generated %}
-          <span class="badge badge-neutral badge-xs">auto-generated</span>
+          <span class="badge badge-neutral badge-xs">{% trans %}auto-generated{% endtrans %}</span>
           {% elif f.marker == 'replace_with' %}
           <span class="badge badge-warning badge-xs">Keycloak</span>
           {% endif %}
@@ -219,7 +217,7 @@
       {% if secondary_fields %}
       <details class="mb-3">
         <summary class="text-sm opacity-60 cursor-pointer select-none mb-2">
-          More settings ({{ secondary_fields | length }})
+          {% trans count=(secondary_fields | length) %}More settings ({{ count }}){% endtrans %}
         </summary>
         {% for f in secondary_fields %}
         <div class="form-control mb-3">
@@ -237,7 +235,7 @@
 
       <div class="form-control mb-4">
         <label class="label cursor-pointer">
-          <span class="label-text">Start after install</span>
+          <span class="label-text">{% trans %}Start after install{% endtrans %}</span>
           <input type="checkbox" name="start" value="true" checked class="checkbox checkbox-sm">
         </label>
       </div>
@@ -245,13 +243,13 @@
       <div class="modal-action">
         <button type="button" class="btn btn-ghost btn-sm"
                 @click="$refs.installModal.close()">
-          Cancel
+          {% trans %}Cancel{% endtrans %}
         </button>
-        <button type="submit" class="btn btn-primary btn-sm">Install</button>
+        <button type="submit" class="btn btn-primary btn-sm">{% trans %}Install{% endtrans %}</button>
       </div>
     </form>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 {% endif %}
 {% endmacro %}

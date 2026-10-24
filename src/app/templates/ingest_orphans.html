@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% from "partials/_ingest_macros.html" import tabs %}
-{% block title %}Leftovers — Ingest — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Leftovers — Ingest — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Leftovers{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Content the ingester holds for jobs that are no longer in the catalog</p>{% endblock %}
+{% block page_title %}{% trans %}Leftovers{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Content the ingester holds for jobs that are no longer in the catalog{% endtrans %}</p>{% endblock %}
 
 {% block page_actions %}
-<button type="button" class="btn btn-outline btn-sm" onclick="reloadOrphans()">Refresh</button>
+<button type="button" class="btn btn-outline btn-sm" onclick="reloadOrphans()">{% trans %}Refresh{% endtrans %}</button>
 {% endblock %}
 
 {% block content %}
@@ -39,7 +39,7 @@ function deleteOrphan() {
       if (res.handled) return;
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
-      showToast('success', 'Removed ' + res.data.deleted_points + ' points and ' + res.data.deleted_rows + ' records of <b>' + _ragEscape(this.item.job_id) + '</b>');
+      showToast('success', fmtHtml({{ _('Removed {points} points and {rows} records of <b>{job}</b>')|tojson }}, { points: res.data.deleted_points, rows: res.data.deleted_rows, job: this.item.job_id }));
       reloadOrphans();
     },
   };
@@ -49,11 +49,11 @@ document.body.addEventListener('htmx:responseError', function (event) {
   const detail = event.detail || {};
   if (!detail.target || detail.target.id !== 'orphan-list') return;
   if (detail.xhr && detail.xhr.status === 401) return;
-  let reason = 'The leftovers could not be loaded.';
+  let reason = {{ _('The leftovers could not be loaded.')|tojson }};
   try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
   detail.target.innerHTML =
     '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
-    '<p class="text-lg font-semibold">Leftovers are not available</p>' +
+    '<p class="text-lg font-semibold">' + _ragEscape({{ _('Leftovers are not available')|tojson }}) + '</p>' +
     '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p></div>';
 });
 </script>

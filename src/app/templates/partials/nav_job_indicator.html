@@ -10,5 +10,5 @@
    visible text at all, so the dot is the whole message. #}
 {% if active %}
 <span class="h-2 w-2 shrink-0 rounded-full bg-warning"
-      aria-label="{{ active.action }} job running"></span>
+      aria-label="{{ _('%(action)s job running', action=active.action) }}"></span>
 {% endif %}

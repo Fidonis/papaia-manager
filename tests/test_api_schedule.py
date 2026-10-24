@@ -380,7 +380,12 @@ def test_the_schedule_cannot_change_while_a_restore_or_upgrade_runs(
     response = getattr(_admin(client), method)(_URL, **kwargs)
 
     assert response.status_code == 409
-    assert f"a {kind} of the-target is still running" in response.json()["detail"]
+    sentence = (
+        "a restore of the-target is still running"
+        if kind == "restore"
+        else "an upgrade to the-target is still running"
+    )
+    assert sentence in response.json()["detail"]
     assert schedule.load_schedule(str(env.config_dir)).schedule is not None
     assert env.scheduler.applied == []
 

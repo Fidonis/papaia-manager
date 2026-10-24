@@ -30,6 +30,9 @@ from pathlib import Path
 
 import yaml
 
+from app.i18n import N_, ngettext
+from app.i18n import gettext as _
+
 MAX_BYTES = 256 * 1024
 DEFAULT_MODE = 0o600
 
@@ -65,21 +68,21 @@ TARGETS: tuple[OverlayTarget, ...] = (
         label="LibreChat",
         path="ai/librechat/librechat.yaml",
         profile="librechat",
-        description="Endpoints, memory and web search settings of the chat interface.",
+        description=N_("Endpoints, memory and web search settings of the chat interface."),
     ),
     OverlayTarget(
         key="litellm",
         label="LiteLLM",
         path="ai/litellm/config.yaml",
         profile="litellm",
-        description="Models and routing of the LLM gateway.",
+        description=N_("Models and routing of the LLM gateway."),
     ),
     OverlayTarget(
         key="searxng",
         label="SearXNG",
         path="services/searxng/settings.yml",
         profile="librechat-websearch",
-        description="Engines and search behaviour of the meta-search.",
+        description=N_("Engines and search behaviour of the meta-search."),
     ),
 )
 
@@ -93,7 +96,7 @@ class OverlayError(Exception):
 def target(key: str) -> OverlayTarget:
     found = _BY_KEY.get(key)
     if found is None:
-        raise OverlayError("Unknown overlay file.")
+        raise OverlayError(_("Unknown overlay file."))
     return found
 
 
@@ -148,14 +151,16 @@ def read(config_dir: str, key: str) -> OverlayFile:
     a file the operator put somewhere else on purpose."""
     path = path_of(config_dir, key)
     if path.is_symlink():
-        raise OverlayError("This overlay file is a symbolic link. Edit it on the host.")
+        raise OverlayError(_("This overlay file is a symbolic link. Edit it on the host."))
     try:
         raw = path.read_bytes()
         modified = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     except FileNotFoundError:
         return OverlayFile(key, False, None, "", None)
     except OSError as exc:
-        raise OverlayError(f"The overlay file can't be read ({exc.strerror or exc}).") from exc
+        raise OverlayError(_(
+            "The overlay file can't be read (%(value)s)."
+        ) % {"value": exc.strerror or exc}) from exc
     return OverlayFile(key, True, raw, revision_of(raw), modified)
 
 
@@ -166,19 +171,19 @@ def check(content: str) -> list[Problem]:
     own merge is the real validator, and the preview runs it."""
     raw = content.encode("utf-8")
     if len(raw) > MAX_BYTES:
-        return [Problem(f"The file is larger than {MAX_BYTES // 1024} KiB.")]
+        return [Problem(_("The file is larger than %(value)s KiB.") % {"value": MAX_BYTES // 1024})]
     if "\x00" in content:
-        return [Problem("The file contains a NUL character.")]
+        return [Problem(_("The file contains a NUL character."))]
     try:
         document = yaml.safe_load(content)
     except yaml.YAMLError as exc:
         mark = getattr(exc, "problem_mark", None)
-        problem = getattr(exc, "problem", None) or "invalid YAML"
+        problem = getattr(exc, "problem", None) or _("invalid YAML")
         if mark is not None:
             return [Problem(str(problem), mark.line + 1, mark.column + 1)]
         return [Problem(str(problem))]
     if document is not None and not isinstance(document, dict):
-        return [Problem("The top level must be a mapping (key: value).", 1, 1)]
+        return [Problem(_("The top level must be a mapping (key: value)."), 1, 1)]
     return []
 
 
@@ -187,8 +192,12 @@ def summary(content: str) -> str:
     document = yaml.safe_load(content)
     count = len(document) if isinstance(document, dict) else 0
     if not count:
-        return "empty overlay (changes nothing)"
-    return f"top level is a mapping with {count} key{'s' if count != 1 else ''}"
+        return _("empty overlay (changes nothing)")
+    return ngettext(
+        "top level is a mapping with %(count)s key",
+        "top level is a mapping with %(count)s keys",
+        count,
+    ) % {"count": count}
 
 
 def _stage(tmp: Path, data: bytes, mode: int) -> None:
@@ -221,7 +230,7 @@ def write(config_dir: str, key: str, data: bytes, *, expected_revision: str) -> 
             os.replace(tmp, path)
         except OSError as exc:
             raise OverlayError(
-                f"The overlay file can't be written ({exc.strerror or exc})."
+                _("The overlay file can't be written (%(value)s).") % {"value": exc.strerror or exc}
             ) from exc
         finally:
             with contextlib.suppress(OSError):
@@ -240,7 +249,7 @@ def delete(config_dir: str, key: str, *, expected_revision: str) -> bool:
             path.unlink(missing_ok=True)
         except OSError as exc:
             raise OverlayError(
-                f"The overlay file can't be removed ({exc.strerror or exc})."
+                _("The overlay file can't be removed (%(value)s).") % {"value": exc.strerror or exc}
             ) from exc
     return True
 
@@ -265,7 +274,7 @@ def other_files(config_dir: str) -> list[dict[str, str]]:
             continue
         in_directory = any(rel.startswith(f"{t}/") for t in rendered)
         if rel in rendered or in_directory:
-            found.append({"path": rel, "note": "used by the render, not editable here"})
+            found.append({"path": rel, "note": _("used by the render, not editable here")})
         else:
-            found.append({"path": rel, "note": "ignored by the render"})
+            found.append({"path": rel, "note": _("ignored by the render")})
     return found

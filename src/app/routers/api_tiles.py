@@ -40,6 +40,7 @@ from app.core.tiles import (
     validate_config,
 )
 from app.core.widgets import registry as widget_registry
+from app.i18n import gettext as _
 
 router = APIRouter(prefix="/api/v1/tiles")
 
@@ -228,7 +229,7 @@ def _require_current(settings: Settings, revision: str) -> None:
     if revision != current:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="tiles.yaml changed since it was loaded; reload before saving",
+            detail=_("tiles.yaml changed since it was loaded; reload before saving"),
         )
 
 

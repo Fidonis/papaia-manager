@@ -24,6 +24,7 @@ from app.core.audit import redact_params, write_audit_entry
 from app.core.ingest.runs import SourceSpec, StartRequest, browse_root
 from app.core.ingest.uploads import Batch, UploadStore, new_store
 from app.core.rag import documents_dir
+from app.i18n import gettext as _
 from app.routers.rag_deps import EmbeddingServiceDep, RagAdmin
 from app.routers.rag_deps import translated as _translated
 
@@ -162,20 +163,22 @@ async def upload_file(
     if declared.isdigit() and int(declared) > limit:
         raise HTTPException(
             status_code=413,
-            detail=f"The file is larger than the limit of {settings.ingest_max_upload_mb} MiB "
-            "(INGEST_MAX_UPLOAD_MB).",
+            detail=_(
+                "The file is larger than the limit of %(ingest_max_upload_mb)s MiB "
+                "(INGEST_MAX_UPLOAD_MB)."
+            ) % {"ingest_max_upload_mb": settings.ingest_max_upload_mb},
         )
     try:
         async with request.form(max_files=1, max_fields=4, max_part_size=8192) as form:
             upload = form.get("file")
             raw_path = form.get("path")
             if upload is None or isinstance(upload, str):
-                raise HTTPException(status_code=422, detail="The form needs a 'file' part.")
+                raise HTTPException(status_code=422, detail=_("The form needs a 'file' part."))
             name = raw_path if isinstance(raw_path, str) and raw_path else (upload.filename or "")
             with _translated(batch_id):
                 saved = await store.save_file(batch_id, name, upload)
     except MultiPartException as exc:
-        detail = f"The upload could not be read: {exc.message}"
+        detail = _("The upload could not be read: %(message)s") % {"message": exc.message}
         raise HTTPException(status_code=422, detail=detail) from exc
     return {"path": saved.path, "bytes": saved.bytes, "replaced": saved.replaced}
 

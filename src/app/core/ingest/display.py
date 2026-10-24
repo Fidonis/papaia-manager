@@ -10,6 +10,21 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from babel.dates import format_date
+from babel.numbers import format_decimal
+
+from app.i18n import SOURCE_LOCALE, current_locale, gettext, ngettext
+
+
+def _other_locale() -> str | None:
+    """The language to format with, or None for the one the source is written in.
+
+    English keeps its exact wording and layout (`Mon 05 Oct`, `12.4 KB`); every other language
+    gets the dates and numbers of its own conventions from Babel.
+    """
+    locale = current_locale()
+    return None if locale == SOURCE_LOCALE else locale
+
 
 def parse_iso(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
@@ -59,11 +74,15 @@ def local_time(value: object, tz_name: str = "UTC", *, now: datetime | None = No
     today = (now or datetime.now(UTC)).astimezone(zone).date()
     clock = shown.strftime("%H:%M")
     if shown.date() == today:
-        return f"Today {clock}"
+        return gettext("Today %(clock)s") % {"clock": clock}
     if shown.date() == today - timedelta(days=1):
-        return f"Yesterday {clock}"
+        return gettext("Yesterday %(clock)s") % {"clock": clock}
     if shown.date() == today + timedelta(days=1):
-        return f"Tomorrow {clock}"
+        return gettext("Tomorrow %(clock)s") % {"clock": clock}
+    other = _other_locale()
+    if other is not None:
+        pattern = "dd MMM yyyy " if shown.year != today.year else "EEE dd MMM "
+        return format_date(shown, pattern, locale=other) + clock
     if shown.year != today.year:
         return shown.strftime("%d %b %Y ") + clock
     return shown.strftime("%a %d %b ") + clock
@@ -72,14 +91,15 @@ def local_time(value: object, tz_name: str = "UTC", *, now: datetime | None = No
 def _span(seconds: float) -> str:
     seconds = abs(seconds)
     if seconds < 45:
-        return "a moment"
+        return gettext("a moment")
     minutes = round(seconds / 60)
     if minutes < 60:
-        return f"{minutes} min"
+        return gettext("%(minutes)d min") % {"minutes": minutes}
     hours = round(seconds / 3600)
     if hours < 48:
-        return f"{hours} h"
-    return f"{round(seconds / 86400)} days"
+        return gettext("%(hours)d h") % {"hours": hours}
+    days = round(seconds / 86400)
+    return ngettext("%(days)d day", "%(days)d days", days) % {"days": days}
 
 
 def ago(value: object, *, now: datetime | None = None) -> str:
@@ -89,7 +109,9 @@ def ago(value: object, *, now: datetime | None = None) -> str:
         return ""
     delta = (now or datetime.now(UTC)).astimezone(UTC) - moment.astimezone(UTC)
     seconds = delta.total_seconds()
-    return f"{_span(seconds)} ago" if seconds >= 0 else f"in {_span(seconds)}"
+    if seconds >= 0:
+        return gettext("%(span)s ago") % {"span": _span(seconds)}
+    return gettext("in %(span)s") % {"span": _span(seconds)}
 
 
 def duration(start: object, end: object = None, *, now: datetime | None = None) -> str:
@@ -102,10 +124,10 @@ def duration(start: object, end: object = None, *, now: datetime | None = None) 
     hours, rest = divmod(total, 3600)
     minutes, seconds = divmod(rest, 60)
     if hours:
-        return f"{hours} h {minutes:02d} min"
+        return gettext("%(hours)d h %(minutes)02d min") % {"hours": hours, "minutes": minutes}
     if minutes:
-        return f"{minutes} min {seconds:02d} s"
-    return f"{seconds} s"
+        return gettext("%(minutes)d min %(seconds)02d s") % {"minutes": minutes, "seconds": seconds}
+    return gettext("%(seconds)d s") % {"seconds": seconds}
 
 
 def size_text(value: object) -> str:
@@ -115,7 +137,11 @@ def size_text(value: object) -> str:
     size = float(value)
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if size < 1024 or unit == "TB":
-            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+            if unit == "B":
+                return f"{size:.0f} {unit}"
+            other = _other_locale()
+            number = format_decimal(size, "0.0", locale=other) if other else f"{size:.1f}"
+            return f"{number} {unit}"
         size /= 1024
     return ""
 

@@ -5,6 +5,8 @@ import secrets
 
 from fastapi import HTTPException, Request, status
 
+from app.i18n import gettext as _
+
 _SESSION_KEY = "_csrf_token"
 _HEADER_NAME = "x-csrf-token"
 
@@ -29,7 +31,7 @@ def verify_csrf(request: Request, form_token: str | None = None) -> None:
     """
     session_token: str | None = request.session.get(_SESSION_KEY)
     if not session_token:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="csrf token missing")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_("csrf token missing"))
 
     for submitted in (request.headers.get(_HEADER_NAME), form_token):
         # Compared as bytes: `compare_digest` refuses a str with non-ASCII characters, and a
@@ -37,4 +39,4 @@ def verify_csrf(request: Request, form_token: str | None = None) -> None:
         if submitted and secrets.compare_digest(submitted.encode(), session_token.encode()):
             return
 
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="csrf token invalid")
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_("csrf token invalid"))

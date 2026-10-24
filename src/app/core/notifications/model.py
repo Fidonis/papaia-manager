@@ -15,6 +15,8 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.mail.probe import validate_recipient
+from app.i18n import N_
+from app.i18n import gettext as _
 
 MAX_RECIPIENTS = 50
 MAX_NAME_LENGTH = 60
@@ -60,37 +62,37 @@ class EventInfo:
 CATALOGUE: tuple[EventInfo, ...] = (
     EventInfo(
         Event.JOB_FAILED,
-        "Job failed",
-        "Job\nfailed",
-        "a job ended with an error",
+        N_("Job failed"),
+        N_("Job\nfailed"),
+        N_("a job ended with an error"),
         Severity.ERROR,
     ),
     EventInfo(
         Event.BACKUP_OVERDUE,
-        "Backup overdue",
-        "Backup\noverdue",
-        "no good backup within the schedule",
+        N_("Backup overdue"),
+        N_("Backup\noverdue"),
+        N_("no good backup within the schedule"),
         Severity.ERROR,
     ),
     EventInfo(
         Event.SERVICE_UNHEALTHY,
-        "Service unhealthy",
-        "Service\nunhealthy",
-        "a container stopped or reports unhealthy",
+        N_("Service unhealthy"),
+        N_("Service\nunhealthy"),
+        N_("a container stopped or reports unhealthy"),
         Severity.ERROR,
     ),
     EventInfo(
         Event.UPDATE_AVAILABLE,
-        "Update available",
-        "Update\navailable",
-        "a newer papAIa or add-on version exists",
+        N_("Update available"),
+        N_("Update\navailable"),
+        N_("a newer papAIa or add-on version exists"),
         Severity.INFO,
     ),
     EventInfo(
         Event.CERT_EXPIRING,
-        "Certificate expiring",
-        "Certificate\nexpiring",
-        "a TLS certificate runs out soon",
+        N_("Certificate expiring"),
+        N_("Certificate\nexpiring"),
+        N_("a TLS certificate runs out soon"),
         Severity.WARNING,
     ),
 )
@@ -101,9 +103,11 @@ INFO_BY_EVENT: dict[Event, EventInfo] = {info.event: info for info in CATALOGUE}
 def validate_name(value: str) -> str:
     name = " ".join(value.split())
     if not name:
-        raise NotificationsError("Enter a name.")
+        raise NotificationsError(_("Enter a name."))
     if len(name) > MAX_NAME_LENGTH:
-        raise NotificationsError(f"The name is longer than {MAX_NAME_LENGTH} characters.")
+        raise NotificationsError(_(
+            "The name is longer than %(MAX_NAME_LENGTH)s characters."
+        ) % {"MAX_NAME_LENGTH": MAX_NAME_LENGTH})
     return name
 
 
@@ -112,21 +116,21 @@ def validate_webhook_url(value: str) -> str:
     URL that only redirects is a refusal there, not a surprise."""
     url = value.strip()
     if not url:
-        raise NotificationsError("Enter the webhook URL.")
+        raise NotificationsError(_("Enter the webhook URL."))
     if len(url) > MAX_URL_LENGTH or any(ch.isspace() or ord(ch) < 32 for ch in url):
-        raise NotificationsError("The webhook URL is too long or contains spaces.")
+        raise NotificationsError(_("The webhook URL is too long or contains spaces."))
     try:
         parts = urlsplit(url)
         parts.port  # noqa: B018 -- raises ValueError for a port that is not a number
     except ValueError as exc:
-        raise NotificationsError("The webhook URL is not valid.") from exc
+        raise NotificationsError(_("The webhook URL is not valid.")) from exc
     if parts.scheme not in ("http", "https"):
-        raise NotificationsError("The webhook URL must start with http:// or https://.")
+        raise NotificationsError(_("The webhook URL must start with http:// or https://."))
     if not parts.hostname:
-        raise NotificationsError("The webhook URL has no host.")
+        raise NotificationsError(_("The webhook URL has no host."))
     if parts.username is not None or parts.password is not None or "@" in parts.netloc:
         raise NotificationsError(
-            "The webhook URL must not contain a login. Put a secret in the path or the query."
+            _("The webhook URL must not contain a login. Put a secret in the path or the query.")
         )
     return url
 
@@ -136,7 +140,7 @@ def validate_target(kind: Kind, value: str) -> str:
         try:
             return validate_recipient(value)
         except ValueError as exc:
-            raise NotificationsError("Enter an email address like name@example.org.") from exc
+            raise NotificationsError(_("Enter an email address like name@example.org.")) from exc
     return validate_webhook_url(value)
 
 
@@ -170,7 +174,7 @@ class Recipient(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> Recipient:
         if not _ID_RE.match(self.id):
-            raise NotificationsError("A recipient id is lowercase letters, digits and dashes.")
+            raise NotificationsError(_("A recipient id is lowercase letters, digits and dashes."))
         self.name = validate_name(self.name)
         self.target = validate_target(self.kind, self.target)
         self.events = validate_events(self.events)
@@ -202,11 +206,13 @@ class NotificationsConfig(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> NotificationsConfig:
         if len(self.recipients) > MAX_RECIPIENTS:
-            raise NotificationsError(f"There can be at most {MAX_RECIPIENTS} recipients.")
+            raise NotificationsError(_(
+                "There can be at most %(MAX_RECIPIENTS)s recipients."
+            ) % {"MAX_RECIPIENTS": MAX_RECIPIENTS})
         if len({r.id for r in self.recipients}) != len(self.recipients):
-            raise NotificationsError("Two recipients have the same id.")
+            raise NotificationsError(_("Two recipients have the same id."))
         if len({r.name.casefold() for r in self.recipients}) != len(self.recipients):
-            raise NotificationsError("Two recipients have the same name.")
+            raise NotificationsError(_("Two recipients have the same name."))
         return self
 
     def find(self, recipient_id: str) -> Recipient | None:

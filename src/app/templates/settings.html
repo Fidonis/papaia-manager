@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "partials/_settings_tabs.html" import tabs %}
-{% block title %}Settings — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Settings — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Settings{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Configure this manager. Each section is saved on its own.</p>{% endblock %}
+{% block page_title %}{% trans %}Settings{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Configure this manager. Each section is saved on its own.{% endtrans %}</p>{% endblock %}
 
 {% block content %}
 {{ tabs('manager') }}
@@ -39,7 +39,7 @@
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const detail = typeof data.detail === "string" ? data.detail : "Request failed (" + res.status + ")";
+      const detail = typeof data.detail === "string" ? data.detail : fmt({{ _('Request failed ({status})')|tojson }}, { status: res.status });
       showToast("error", detail);
       return null;
     }

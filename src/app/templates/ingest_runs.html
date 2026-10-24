@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% from "partials/_actions.html" import overflow_menu %}
 {% from "partials/_ingest_macros.html" import tabs %}
-{% block title %}Ingest Runs — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Ingest Runs — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Ingest Runs{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">What the ingester did, newest first</p>{% endblock %}
+{% block page_title %}{% trans %}Ingest Runs{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}What the ingester did, newest first{% endtrans %}</p>{% endblock %}
 
 {% block page_actions %}
-<button type="button" class="btn btn-outline btn-sm" onclick="reloadRuns()">Refresh</button>
+<button type="button" class="btn btn-outline btn-sm" onclick="reloadRuns()">{% trans %}Refresh{% endtrans %}</button>
 {% if can_delete_runs %}
-{% call overflow_menu(label='More actions for the runs') %}
-  <li><a class="text-error" onclick="ingestCloseMenu(); openDeleteRuns()">Delete runs…</a></li>
+{% call overflow_menu(label=_('More actions for the runs')) %}
+  <li><a class="text-error" onclick="ingestCloseMenu(); openDeleteRuns()">{% trans %}Delete runs…{% endtrans %}</a></li>
 {% endcall %}
 {% endif %}
 {% endblock %}
@@ -20,9 +20,9 @@
 
 {# The filters sit outside what is swapped, so a refresh while a run works cannot reset them. #}
 <form id="runs-filter" class="mb-3 flex flex-wrap items-center gap-2" onsubmit="return false">
-  <label class="text-sm opacity-60" for="runs-job">Job</label>
+  <label class="text-sm opacity-60" for="runs-job">{% trans %}Job{% endtrans %}</label>
   <select id="runs-job" name="job" class="select select-bordered select-sm font-mono">
-    <option value="">All jobs</option>
+    <option value="">{% trans %}All jobs{% endtrans %}</option>
     {% for id in job_choices %}
     <option value="{{ id }}"{% if id == selected_job %} selected{% endif %}>{{ id }}</option>
     {% endfor %}
@@ -30,9 +30,9 @@
     <option value="{{ selected_job }}" selected>{{ selected_job }}</option>
     {% endif %}
   </select>
-  <label class="ml-2 text-sm opacity-60" for="runs-status">Status</label>
+  <label class="ml-2 text-sm opacity-60" for="runs-status">{% trans %}Status{% endtrans %}</label>
   <select id="runs-status" name="status" class="select select-bordered select-sm">
-    <option value="">Any status</option>
+    <option value="">{% trans %}Any status{% endtrans %}</option>
     {% for value, text in status_choices %}
     <option value="{{ value }}"{% if value == selected_status %} selected{% endif %}>{{ text }}</option>
     {% endfor %}
@@ -80,11 +80,11 @@ document.body.addEventListener('htmx:responseError', function (event) {
   const detail = event.detail || {};
   if (!detail.target || detail.target.id !== 'ingest-runs') return;
   if (detail.xhr && detail.xhr.status === 401) return;
-  let reason = 'The runs could not be loaded.';
+  let reason = {{ _('The runs could not be loaded.')|tojson }};
   try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
   detail.target.innerHTML =
     '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
-    '<p class="text-lg font-semibold">Runs are not available</p>' +
+    '<p class="text-lg font-semibold">' + _ragEscape({{ _('Runs are not available')|tojson }}) + '</p>' +
     '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p></div>';
 });
 </script>

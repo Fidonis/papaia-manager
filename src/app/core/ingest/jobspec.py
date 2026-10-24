@@ -46,6 +46,7 @@ from pydantic.functional_validators import AfterValidator
 
 from app.core.ingest import schedules
 from app.core.schedule import ScheduleError, zone
+from app.i18n import N_, gettext
 
 SLUG_PATTERN = r"^[a-z0-9][a-z0-9_-]{0,63}$"
 COLLECTION_PATTERN = r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
@@ -87,8 +88,10 @@ def secret_name(value: Any) -> str | None:
 def _check_secret(value: str) -> str:
     if _REF_RE.match(value.strip()) is None:
         raise ValueError(
-            "choose a stored credential; a value typed here would end up in jobs.yaml "
-            "(references look like ${env:QI_SECRET_NAME})"
+            gettext(
+                "choose a stored credential; a value typed here would end up in jobs.yaml "
+                "(references look like ${env:QI_SECRET_NAME})"
+            )
         )
     return value.strip()
 
@@ -268,8 +271,8 @@ class TargetSpec(_Strict):
         clashes = RESERVED_PAYLOAD_KEYS.intersection(value)
         if clashes:
             raise ValueError(
-                "extra payload may not use the keys the ingester owns: "
-                + ", ".join(sorted(clashes))
+                gettext("extra payload may not use the keys the ingester owns: %(keys)s")
+                % {"keys": ", ".join(sorted(clashes))}
             )
         return value
 
@@ -285,7 +288,9 @@ class ScheduleSpec(_Strict):
     @model_validator(mode="after")
     def _cron_xor_every(self) -> ScheduleSpec:
         if self.cron is not None and self.every is not None:
-            raise ValueError("a schedule takes either a cron expression or an interval, not both")
+            raise ValueError(gettext(
+                "a schedule takes either a cron expression or an interval, not both"
+            ))
         if self.every is not None:
             problem = schedules.every_error(self.every)
             if problem:
@@ -301,7 +306,7 @@ class ChunkingSpec(_Strict):
     @model_validator(mode="after")
     def _overlap_below_words(self) -> ChunkingSpec:
         if self.overlap >= self.words:
-            raise ValueError("the overlap must be smaller than the chunk size")
+            raise ValueError(gettext("the overlap must be smaller than the chunk size"))
         return self
 
 
@@ -337,7 +342,7 @@ class JobSpec(_Strict):
     @classmethod
     def _placeholders(cls, value: str) -> str:
         if "{rel_path}" not in value or "{label}" not in value:
-            raise ValueError("the source template must contain {label} and {rel_path}")
+            raise ValueError(gettext("the source template must contain {label} and {rel_path}"))
         return value
 
 
@@ -388,15 +393,15 @@ class Issue:
 
 
 _FRIENDLY: dict[str, str] = {
-    "missing": "this is required",
-    "extra_forbidden": "is not a setting the ingester knows",
-    "string_too_short": "this is required",
-    "string_pattern_mismatch": "has a format the ingester does not accept",
-    "int_parsing": "must be a whole number",
-    "float_parsing": "must be a number",
-    "bool_parsing": "must be true or false",
-    "greater_than_equal": "is too small",
-    "less_than_equal": "is too large",
+    "missing": N_("this is required"),
+    "extra_forbidden": N_("is not a setting the ingester knows"),
+    "string_too_short": N_("this is required"),
+    "string_pattern_mismatch": N_("has a format the ingester does not accept"),
+    "int_parsing": N_("must be a whole number"),
+    "float_parsing": N_("must be a number"),
+    "bool_parsing": N_("must be true or false"),
+    "greater_than_equal": N_("is too small"),
+    "less_than_equal": N_("is too large"),
 }
 
 
@@ -413,22 +418,26 @@ def _issue_from(job_id: str | None, error: Mapping[str, Any]) -> Issue:
         tail = path.rsplit(".", 1)[-1]
         if tail in ("id", "label", "connection"):
             text = (
-                "use lowercase letters, digits, '-' and '_' (up to 64, starting with a letter "
-                "or a digit)"
+                gettext(
+                    "use lowercase letters, digits, '-' and '_' (up to 64, starting with a "
+                    "letter or a digit)"
+                )
             )
         elif tail == "collection":
             text = (
-                "use letters, digits, '.', '_' and '-' (up to 128, starting with a letter "
-                "or a digit)"
+                gettext(
+                    "use letters, digits, '.', '_' and '-' (up to 128, starting with a letter or "
+                    "a digit)"
+                )
             )
         else:
-            text = _FRIENDLY[kind]
+            text = gettext(_FRIENDLY[kind])
     elif kind in _FRIENDLY:
-        text = _FRIENDLY[kind]
+        text = gettext(_FRIENDLY[kind])
     elif kind == "value_error":
         text = text.removeprefix("Value error, ")
     elif kind == "literal_error" and loc and loc[-1] == "type":
-        text = "choose one of the source types"
+        text = gettext("choose one of the source types")
     return Issue(job_id, path, text)
 
 
@@ -607,7 +616,9 @@ def _local_path_problem(path: str, root: str) -> str | None:
     mount = posixpath.normpath(root.replace("\\", "/")).rstrip("/")
     normalised = posixpath.normpath(path.replace("\\", "/"))
     if normalised != mount and not normalised.startswith(mount + "/"):
-        return f"local source paths must live under '{mount}' (got '{path}')"
+        return gettext(
+            "local source paths must live under '%(mount)s' (got '%(path)s')"
+        ) % {"mount": mount, "path": path}
     return None
 
 
@@ -635,8 +646,10 @@ def check_job(job_id: str, spec: JobSpec, ctx: RuleContext) -> list[Issue]:
                     Issue(
                         job_id,
                         f"source.{key}",
-                        f"the credential '{name}' does not exist; add it on the Credentials "
-                        "page or choose another",
+                        gettext(
+                            "the credential '%(name)s' does not exist; add it on the Credentials "
+                            "page or choose another"
+                        ) % {"name": name},
                     )
                 )
     if isinstance(spec.source, LocalSource):
@@ -648,7 +661,7 @@ def check_job(job_id: str, spec: JobSpec, ctx: RuleContext) -> list[Issue]:
             Issue(
                 job_id,
                 "embedding.model",
-                "no embedding model: set one for this job or in the catalog defaults",
+                gettext("no embedding model: set one for this job or in the catalog defaults"),
             )
         )
     if ctx.connections is not None and spec.target.connection not in ctx.connections:
@@ -656,7 +669,9 @@ def check_job(job_id: str, spec: JobSpec, ctx: RuleContext) -> list[Issue]:
             Issue(
                 job_id,
                 "target.connection",
-                f"unknown connection '{spec.target.connection}'; add it on the Connections page",
+                gettext(
+                    "unknown connection '%(connection)s'; add it on the Connections page"
+                ) % {"connection": spec.target.connection},
             )
         )
     return issues
@@ -668,7 +683,7 @@ def _cross_job(specs: Iterable[tuple[str, JobSpec]], ctx: RuleContext) -> list[I
     seen: set[str] = set()
     for job_id, _ in ordered:
         if job_id in seen:
-            issues.append(Issue(job_id, "id", "duplicate job id"))
+            issues.append(Issue(job_id, "id", gettext("duplicate job id")))
         seen.add(job_id)
     for job_id, spec in ordered:
         if spec.target.collection in ctx.system_collections:
@@ -676,7 +691,9 @@ def _cross_job(specs: Iterable[tuple[str, JobSpec]], ctx: RuleContext) -> list[I
                 Issue(
                     job_id,
                     "target.collection",
-                    f"'{spec.target.collection}' is a system collection and cannot be a target",
+                    gettext(
+                        "'%(collection)s' is a system collection and cannot be a target"
+                    ) % {"collection": spec.target.collection},
                 )
             )
     enabled = [(job_id, spec) for job_id, spec in ordered if spec.enabled]
@@ -690,9 +707,14 @@ def _cross_job(specs: Iterable[tuple[str, JobSpec]], ctx: RuleContext) -> list[I
                 Issue(
                     job_id,
                     "source.label",
-                    f"the label '{spec.source.label}' already serves the collection "
-                    f"'{spec.target.collection}' in the job '{other}'; labels have to differ "
-                    "per collection",
+                    gettext(
+                        "the label '%(label)s' already serves the collection '%(collection)s' in "
+                        "the job '%(other)s'; labels have to differ per collection"
+                    ) % {
+                        "label": spec.source.label,
+                        "collection": spec.target.collection,
+                        "other": other,
+                    },
                 )
             )
         else:
@@ -709,8 +731,14 @@ def _cross_job(specs: Iterable[tuple[str, JobSpec]], ctx: RuleContext) -> list[I
                     Issue(
                         job_id,
                         "embedding.model",
-                        f"the collection '{spec.target.collection}' is already served with "
-                        f"'{seen_model[0]}' by the job '{seen_model[1]}'; one model per collection",
+                        gettext(
+                            "the collection '%(collection)s' is already served with '%(value)s' "
+                            "by the job '%(value2)s'; one model per collection"
+                        ) % {
+                            "collection": spec.target.collection,
+                            "value": seen_model[0],
+                            "value2": seen_model[1],
+                        },
                     )
                 )
             elif seen_model is None:
@@ -722,9 +750,14 @@ def _cross_job(specs: Iterable[tuple[str, JobSpec]], ctx: RuleContext) -> list[I
                 Issue(
                     job_id,
                     "target.connection",
-                    f"the collection '{spec.target.collection}' is already served over "
-                    f"'{seen_connection[0]}' by the job '{seen_connection[1]}'; one connection "
-                    "per collection",
+                    gettext(
+                        "the collection '%(collection)s' is already served over '%(value)s' by "
+                        "the job '%(value2)s'; one connection per collection"
+                    ) % {
+                        "collection": spec.target.collection,
+                        "value": seen_connection[0],
+                        "value2": seen_connection[1],
+                    },
                 )
             )
         elif seen_connection is None:
@@ -737,22 +770,29 @@ def check_catalog(document: Mapping[str, Any], ctx: RuleContext) -> list[Issue]:
     issues: list[Issue] = []
     version = document.get("version")
     if version != 1:
-        return [Issue(None, "version", f"unsupported catalog version {version!r}; expected 1")]
+        return [Issue(None, "version", gettext(
+            "unsupported catalog version %(version)r; expected 1"
+        ) % {"version": version})]
     defaults = document.get("defaults") or {}
     if not isinstance(defaults, Mapping):
-        return [Issue(None, "defaults", "defaults must be a mapping")]
+        return [Issue(None, "defaults", gettext("defaults must be a mapping"))]
     unknown = set(defaults) - set(DEFAULT_SECTIONS)
     if unknown:
         issues.append(
-            Issue(None, "defaults", "unsupported defaults sections: " + ", ".join(sorted(unknown)))
+            Issue(
+                None,
+                "defaults",
+                gettext("unsupported defaults sections: %(sections)s")
+                % {"sections": ", ".join(sorted(unknown))},
+            )
         )
     jobs = document.get("jobs") or []
     if not isinstance(jobs, list):
-        return [*issues, Issue(None, "jobs", "jobs must be a list")]
+        return [*issues, Issue(None, "jobs", gettext("jobs must be a list"))]
     valid: list[tuple[str, JobSpec]] = []
     for index, raw in enumerate(jobs):
         if not isinstance(raw, Mapping):
-            issues.append(Issue(None, f"jobs[{index}]", "job must be a mapping"))
+            issues.append(Issue(None, f"jobs[{index}]", gettext("job must be a mapping")))
             continue
         spec, problems = parse_job(raw, defaults, label=f"jobs[{index}]")
         issues.extend(problems)
@@ -790,11 +830,11 @@ class FieldForm:
     def as_dict(self) -> dict[str, Any]:
         return {
             "key": self.key,
-            "label": self.label,
+            "label": gettext(self.label),
             "kind": self.kind,
             "required": self.required,
             "default": self.default,
-            "help": self.help,
+            "help": gettext(self.help) if self.help else "",
             "placeholder": self.placeholder,
             "options": list(self.options),
         }
@@ -812,8 +852,8 @@ class SourceForm:
     def as_dict(self) -> dict[str, Any]:
         return {
             "type": self.type,
-            "title": self.title,
-            "blurb": self.blurb,
+            "title": gettext(self.title),
+            "blurb": gettext(self.blurb),
             "remote": self.remote,
             "fields": [item.as_dict() for item in self.fields],
         }
@@ -832,15 +872,15 @@ _VENDORS = (
 SOURCE_FORMS: dict[str, SourceForm] = {
     "local": SourceForm(
         "local",
-        "Folder on the server",
-        "A folder in the documents area. Read in place, nothing is copied.",
+        N_("Folder on the server"),
+        N_("A folder in the documents area. Read in place, nothing is copied."),
         (
             FieldForm(
                 "path",
                 "Folder",
                 "folder",
                 True,
-                help="Below /data/local, which is the documents folder of the RAG module.",
+                help=N_("Below /data/local, which is the documents folder of the RAG module."),
                 placeholder="/data/local/handbook",
             ),
         ),
@@ -848,100 +888,101 @@ SOURCE_FORMS: dict[str, SourceForm] = {
     ),
     "s3": SourceForm(
         "s3",
-        "S3 bucket",
-        "Amazon S3 or any S3-compatible store (MinIO, Wasabi, Ceph ...).",
+        N_("S3 bucket"),
+        N_("Amazon S3 or any S3-compatible store (MinIO, Wasabi, Ceph ...)."),
         (
-            FieldForm("bucket", "Bucket", "text", True, placeholder="acme-reports"),
-            FieldForm("prefix", "Folder inside the bucket", "text", placeholder="published/"),
-            FieldForm("provider", "Provider", "text", default="AWS",
-                      help="AWS, Minio, Wasabi, Ceph, Other ...; the name rclone uses."),
-            FieldForm("region", "Region", "text", placeholder="eu-central-1"),
-            FieldForm("endpoint", "Endpoint", "url", help="Only for a store that is not AWS.",
+            FieldForm("bucket", N_("Bucket"), "text", True, placeholder="acme-reports"),
+            FieldForm("prefix", N_("Folder inside the bucket"), "text", placeholder="published/"),
+            FieldForm("provider", N_("Provider"), "text", default="AWS",
+                      help=N_("AWS, Minio, Wasabi, Ceph, Other ...; the name rclone uses.")),
+            FieldForm("region", N_("Region"), "text", placeholder="eu-central-1"),
+            FieldForm("endpoint", N_("Endpoint"), "url",
+                      help=N_("Only for a store that is not AWS."),
                       placeholder="https://s3.example.com"),
-            FieldForm("access_key_id", "Access key ID", "secret"),
-            FieldForm("secret_access_key", "Secret access key", "secret"),
+            FieldForm("access_key_id", N_("Access key ID"), "secret"),
+            FieldForm("secret_access_key", N_("Secret access key"), "secret"),
         ),
     ),
     "webdav": SourceForm(
         "webdav",
         "WebDAV",
-        "Nextcloud, ownCloud, SharePoint and other WebDAV servers.",
+        N_("Nextcloud, ownCloud, SharePoint and other WebDAV servers."),
         (
-            FieldForm("url", "URL", "url", True,
+            FieldForm("url", N_("URL"), "url", True,
                       placeholder="https://cloud.example.com/remote.php/dav/files/me/Docs"),
-            FieldForm("vendor", "Server type", "select", default="other", options=_VENDORS),
-            FieldForm("user", "User name", "text"),
-            FieldForm("pass", "Password", "secret"),
+            FieldForm("vendor", N_("Server type"), "select", default="other", options=_VENDORS),
+            FieldForm("user", N_("User name"), "text"),
+            FieldForm("pass", N_("Password"), "secret"),
         ),
     ),
     "sftp": SourceForm(
         "sftp",
         "SFTP",
-        "A directory on a server reached over SSH.",
+        N_("A directory on a server reached over SSH."),
         (
-            FieldForm("host", "Host", "text", True, placeholder="sftp.example.com"),
-            FieldForm("port", "Port", "integer", default=22),
-            FieldForm("user", "User name", "text"),
-            FieldForm("pass", "Password", "secret"),
-            FieldForm("key_file", "Private key", "secret",
-                      help="The key itself (PEM text) as a credential, not a path."),
-            FieldForm("path", "Directory", "text", default="/", placeholder="/export/legal"),
+            FieldForm("host", N_("Host"), "text", True, placeholder="sftp.example.com"),
+            FieldForm("port", N_("Port"), "integer", default=22),
+            FieldForm("user", N_("User name"), "text"),
+            FieldForm("pass", N_("Password"), "secret"),
+            FieldForm("key_file", N_("Private key"), "secret",
+                      help=N_("The key itself (PEM text) as a credential, not a path.")),
+            FieldForm("path", N_("Directory"), "text", default="/", placeholder="/export/legal"),
         ),
     ),
     "smb": SourceForm(
         "smb",
-        "SMB share",
-        "A Windows or Samba file share.",
+        N_("SMB share"),
+        N_("A Windows or Samba file share."),
         (
-            FieldForm("host", "Host", "text", True, placeholder="files.example.com"),
-            FieldForm("share", "Share", "text", True, placeholder="documents"),
-            FieldForm("user", "User name", "text"),
-            FieldForm("pass", "Password", "secret"),
-            FieldForm("path", "Folder in the share", "text"),
+            FieldForm("host", N_("Host"), "text", True, placeholder="files.example.com"),
+            FieldForm("share", N_("Share"), "text", True, placeholder="documents"),
+            FieldForm("user", N_("User name"), "text"),
+            FieldForm("pass", N_("Password"), "secret"),
+            FieldForm("path", N_("Folder in the share"), "text"),
         ),
     ),
     "ftp": SourceForm(
         "ftp",
         "FTP",
-        "A directory on an FTP server.",
+        N_("A directory on an FTP server."),
         (
-            FieldForm("host", "Host", "text", True, placeholder="ftp.example.com"),
-            FieldForm("port", "Port", "integer", default=21),
-            FieldForm("user", "User name", "text"),
-            FieldForm("pass", "Password", "secret"),
-            FieldForm("path", "Directory", "text"),
-            FieldForm("tls", "Use explicit TLS", "bool", default=False),
+            FieldForm("host", N_("Host"), "text", True, placeholder="ftp.example.com"),
+            FieldForm("port", N_("Port"), "integer", default=21),
+            FieldForm("user", N_("User name"), "text"),
+            FieldForm("pass", N_("Password"), "secret"),
+            FieldForm("path", N_("Directory"), "text"),
+            FieldForm("tls", N_("Use explicit TLS"), "bool", default=False),
         ),
     ),
     "gdrive": SourceForm(
         "gdrive",
-        "Google Drive",
-        "A Google Drive, read with a service account or a token.",
+        N_("Google Drive"),
+        N_("A Google Drive, read with a service account or a token."),
         (
-            FieldForm("service_account_json", "Service account (JSON)", "secret",
-                      help="The JSON of the service account as a credential."),
-            FieldForm("token", "OAuth token", "secret"),
-            FieldForm("root_folder_id", "Root folder ID", "text",
-                      help="Limits the job to one folder. Leave empty for the whole drive."),
+            FieldForm("service_account_json", N_("Service account (JSON)"), "secret",
+                      help=N_("The JSON of the service account as a credential.")),
+            FieldForm("token", N_("OAuth token"), "secret"),
+            FieldForm("root_folder_id", N_("Root folder ID"), "text",
+                      help=N_("Limits the job to one folder. Leave empty for the whole drive.")),
         ),
     ),
     "azureblob": SourceForm(
         "azureblob",
-        "Azure Blob Storage",
-        "A container in an Azure storage account.",
+        N_("Azure Blob Storage"),
+        N_("A container in an Azure storage account."),
         (
-            FieldForm("account", "Storage account", "text", True),
-            FieldForm("container", "Container", "text", True),
-            FieldForm("key", "Account key", "secret"),
-            FieldForm("sas_url", "SAS URL", "secret"),
-            FieldForm("prefix", "Folder in the container", "text"),
+            FieldForm("account", N_("Storage account"), "text", True),
+            FieldForm("container", N_("Container"), "text", True),
+            FieldForm("key", N_("Account key"), "secret"),
+            FieldForm("sas_url", N_("SAS URL"), "secret"),
+            FieldForm("prefix", N_("Folder in the container"), "text"),
         ),
     ),
     "http": SourceForm(
         "http",
-        "Web directory",
-        "A web server that lists its files (an Apache or nginx index).",
-        (FieldForm("url", "URL", "url", True, placeholder="https://files.example.com/docs/"),),
+        N_("Web directory"),
+        N_("A web server that lists its files (an Apache or nginx index)."),
+        (FieldForm("url", N_("URL"), "url", True, placeholder="https://files.example.com/docs/"),),
     ),
 }
 
@@ -972,14 +1013,19 @@ def id_problem(value: str) -> str | None:
     """Why an id cannot be used for a new job, or None."""
     if not is_valid_id(value):
         return (
-            "use lowercase letters, digits, '-' and '_' (up to 64, starting with a letter "
-            "or a digit)"
+            gettext(
+                "use lowercase letters, digits, '-' and '_' (up to 64, starting with a letter or "
+                "a digit)"
+            )
         )
     if value in RESERVED_IDS:
-        return f"'{value}' is reserved"
+        return gettext("'%(value)s' is reserved") % {"value": value}
     if value.startswith(MANAGED_PREFIX):
         return (
-            f"ids starting with '{MANAGED_PREFIX}' belong to the Embedding page; choose another"
+            gettext(
+                "ids starting with '%(MANAGED_PREFIX)s' belong to the Embedding page; choose "
+                "another"
+            ) % {"MANAGED_PREFIX": MANAGED_PREFIX}
         )
     return None
 

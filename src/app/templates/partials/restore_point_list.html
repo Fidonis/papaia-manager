@@ -2,21 +2,19 @@
 {% if not backup_dir %}
 <div class="alert alert-warning">
   <span>
-    No backup location is configured for this stack. Run
-    <span class="font-mono">papaia-ctl setup --backup-dir=PATH</span> on the host.
+    {% trans %}No backup location is configured for this stack. Run <span class="font-mono">papaia-ctl setup --backup-dir=PATH</span> on the host.{% endtrans %}
   </span>
 </div>
 {% elif not backup_dir_reachable %}
 <div class="alert alert-warning">
   <span>
-    The backup directory <span class="font-mono">{{ backup_dir }}</span> is not
-    reachable from the manager container. It has to be mounted at its host path.
+    {% trans %}The backup directory <span class="font-mono">{{ backup_dir }}</span> is not reachable from the manager container. It has to be mounted at its host path.{% endtrans %}
   </span>
 </div>
 {% elif not restore_points %}
 <div class="flex flex-col items-center py-16 gap-3 opacity-60">
-  <p class="text-lg font-medium">No restore points yet</p>
-  <p class="text-sm">Create a backup to get one.</p>
+  <p class="text-lg font-medium">{% trans %}No restore points yet{% endtrans %}</p>
+  <p class="text-sm">{% trans %}Create a backup to get one.{% endtrans %}</p>
 </div>
 {% else %}
 <div class="flex flex-col gap-3">
@@ -31,7 +29,7 @@
              the result safe, which would close a double-quoted attribute early.
              An id is `\d{4}-..._..-..-..`, so it needs no escaping. #}
           <input type="checkbox" class="checkbox checkbox-sm shrink-0"
-                 aria-label="select restore point {{ p.id }}"
+                 aria-label="{{ _('select restore point %(id)s', id=p.id) }}"
                  :checked="sel.includes('{{ p.id }}')"
                  :disabled="busy"
                  @change.prevent="toggle('{{ p.id }}')">
@@ -40,17 +38,17 @@
             <span class="badge badge-success badge-sm">ok</span>
           {% elif p.result == "partial" %}
             <span class="badge badge-warning badge-sm"
-                  title="Some archives failed during this backup. Check backup.log before relying on it.">partial</span>
+                  title="{{ _('Some archives failed during this backup. Check backup.log before relying on it.') }}">{% trans %}partial{% endtrans %}</span>
           {% elif p.result == "failed" %}
             <span class="badge badge-error badge-sm"
-                  title="No archive could be written during this backup.">failed</span>
+                  title="{{ _('No archive could be written during this backup.') }}">{% trans %}failed{% endtrans %}</span>
           {% else %}
-            <span class="badge badge-ghost badge-sm">{{ p.result or "unknown" }}</span>
+            <span class="badge badge-ghost badge-sm">{% if p.result %}{{ p.result }}{% else %}{% trans %}unknown{% endtrans %}{% endif %}</span>
           {% endif %}
-          <span class="badge badge-ghost badge-sm">{{ p.artifacts }} artifact{{ '' if p.artifacts == 1 else 's' }}</span>
+          <span class="badge badge-ghost badge-sm">{% trans artifacts=p.artifacts %}{{ artifacts }} artifact{% pluralize artifacts %}{{ artifacts }} artifacts{% endtrans %}</span>
           <span class="badge badge-ghost badge-sm">{{ p.size_mb }} MB</span>
           {% if p.papaia_version %}
-          <span class="badge badge-outline badge-sm">core {{ p.papaia_version }}</span>
+          <span class="badge badge-outline badge-sm">{% trans papaia_version=p.papaia_version %}core {{ papaia_version }}{% endtrans %}</span>
           {% endif %}
         </div>
 
@@ -62,19 +60,19 @@
            way there would read as a different operation. #}
         {% call row_actions() %}
           <button class="btn btn-outline btn-xs"
-                  onclick='openRestorePointDetail({{ p.id|tojson }})'>Details</button>
-          {% call overflow_menu(size='xs', label='More actions for restore point ' ~ p.id) %}
+                  onclick='openRestorePointDetail({{ p.id|tojson }})'>{% trans %}Details{% endtrans %}</button>
+          {% call overflow_menu(size='xs', label=_('More actions for restore point %(name)s', name=p.id)) %}
             {% if p.is_usable %}
             <li><a class="text-warning"
-                   onclick='openRestoreModal({{ p.id|tojson }}, {{ p.artifacts|tojson }}, {{ p.result|tojson }})'>Restore</a></li>
+                   onclick='openRestoreModal({{ p.id|tojson }}, {{ p.artifacts|tojson }}, {{ p.result|tojson }})'>{% trans %}Restore{% endtrans %}</a></li>
             {% else %}
-            <li class="disabled"><a title="This backup wrote no archive, so there is nothing to restore from.">Restore</a></li>
+            <li class="disabled"><a title="{{ _('This backup wrote no archive, so there is nothing to restore from.') }}">{% trans %}Restore{% endtrans %}</a></li>
             {% endif %}
             {# Destructive: `text-error`, and it confirms in a dialog. Offered for
                every point, `failed` ones included -- a run that wrote no archive
                is exactly the kind an operator wants to clear. #}
             <li><a class="text-error"
-                   onclick='openDeleteBackupModal([{{ p.id|tojson }}])'>Delete</a></li>
+                   onclick='openDeleteBackupModal([{{ p.id|tojson }}])'>{% trans %}Delete{% endtrans %}</a></li>
           {% endcall %}
         {% endcall %}
       </div>
@@ -82,9 +80,9 @@
       <div class="text-sm opacity-60 mt-1">
         <span>{{ p.created_at }}</span>
         {% if p.addons %}
-        <span class="opacity-70 ml-2">add-ons: {{ p.addons|join(", ") }}</span>
+        <span class="opacity-70 ml-2">{% trans addons=(p.addons|join(", ")) %}add-ons: {{ addons }}{% endtrans %}</span>
         {% else %}
-        <span class="opacity-50 ml-2">no add-ons</span>
+        <span class="opacity-50 ml-2">{% trans %}no add-ons{% endtrans %}</span>
         {% endif %}
       </div>
     </div>

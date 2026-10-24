@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Embedding — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Embedding — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Embedding{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Put files into a collection. The ingester reads them in the background</p>{% endblock %}
+{% block page_title %}{% trans %}Embedding{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Put files into a collection. The ingester reads them in the background{% endtrans %}</p>{% endblock %}
 
 {# Tier 1: the page's one action is starting a run, and that button belongs to the options
    it depends on, so the header carries only the outline secondary. #}
@@ -10,7 +10,7 @@
 <button type="button"
         class="btn btn-outline btn-sm"
         onclick="reloadEmbedding()">
-  Refresh
+  {% trans %}Refresh{% endtrans %}
 </button>
 {% endblock %}
 
@@ -23,15 +23,15 @@
 
   <form id="embed-connection-form" class="mb-4 flex flex-wrap items-center gap-2"
         onsubmit="return false">
-    <label class="text-sm opacity-60" for="embed-connection">Connection</label>
+    <label class="text-sm opacity-60" for="embed-connection">{% trans %}Connection{% endtrans %}</label>
     <select id="embed-connection" name="connection"
             class="select select-bordered select-sm font-mono"
             onchange="history.replaceState(null, '', '/embedding?connection=' + encodeURIComponent(this.value)); reloadEmbedding()">
       {% for option in connection_options %}
-      <option value="{{ option }}"{% if option == selected_connection %} selected{% endif %}>{{ option }}{% if option == default_connection %} (default){% endif %}</option>
+      <option value="{{ option }}"{% if option == selected_connection %} selected{% endif %}>{{ option }}{% if option == default_connection %} {% trans %}(default){% endtrans %}{% endif %}</option>
       {% endfor %}
     </select>
-    <a href="/connections" class="link link-hover text-xs opacity-60">Manage connections</a>
+    <a href="/connections" class="link link-hover text-xs opacity-60">{% trans %}Manage connections{% endtrans %}</a>
   </form>
 
   <div
@@ -50,68 +50,63 @@
      body cannot tear it down while somebody is typing in it. #}
   <dialog id="embed-confirm" class="modal" x-ref="confirm">
     <div class="modal-box">
-      <h3 class="mb-2 text-lg font-bold">Replace <span class="font-mono" x-text="collection"></span>?</h3>
+      <h3 class="mb-2 text-lg font-bold"><span x-html="fmtHtml({{ _('Replace <span class="font-mono">{collection}</span>?')|tojson|forceescape }}, { collection: collection })"></span></h3>
       <p class="mb-2 text-sm">
-        This deletes everything in the collection<span x-show="points !== null" style="display:none">
-        (<span x-text="points"></span> points)</span> and fills it from this selection.
-        Searches in it return nothing, or part of the content, until the run is finished.
-        Its roles and its model record are kept.
+        {% trans %}This deletes everything in the collection{% endtrans %}<span x-show="points !== null" style="display:none">
+        <span x-html="fmtHtml({{ _('({points} points)')|tojson|forceescape }}, { points: points })"></span></span> {% trans %}and fills it from this selection. Searches in it return nothing, or part of the content, until the run is finished. Its roles and its model record are kept.{% endtrans %}
       </p>
       <div x-show="otherJobs.length" style="display:none" class="alert alert-warning mb-3 text-sm" role="alert">
         <div>
-          <p>Other ingest jobs write to this collection and lose their content too:</p>
+          <p>{% trans %}Other ingest jobs write to this collection and lose their content too:{% endtrans %}</p>
           <p class="font-mono" x-text="otherJobs.join(', ')"></p>
           <label class="mt-2 flex items-center gap-2">
             <input type="checkbox" class="checkbox checkbox-sm" x-model="confirmOthers">
-            <span>Replace their content as well</span>
+            <span>{% trans %}Replace their content as well{% endtrans %}</span>
           </label>
         </div>
       </div>
       <form @submit.prevent="submit()">
         <div class="form-control mb-3">
-          <label class="label"><span class="label-text">Type the name of the collection to confirm</span></label>
+          <label class="label"><span class="label-text">{% trans %}Type the name of the collection to confirm{% endtrans %}</span></label>
           <input type="text" class="input input-bordered font-mono" x-model="typed"
                  autocomplete="off" :placeholder="collection">
         </div>
         <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
         <div class="modal-action">
-          <button type="button" class="btn btn-ghost" @click="$refs.confirm.close()">Cancel</button>
+          <button type="button" class="btn btn-ghost" @click="$refs.confirm.close()">{% trans %}Cancel{% endtrans %}</button>
           <button type="submit" class="btn btn-error"
                   :disabled="busy || typed !== collection || (otherJobs.length > 0 && !confirmOthers)">
             <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
-            Replace
+            {% trans %}Replace{% endtrans %}
           </button>
         </div>
       </form>
     </div>
-    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
   </dialog>
 
   {# Discarding an upload deletes files that were never embedded, so it confirms in a dialog
      too, not in the browser's own. It names what goes, from what the list handed over. #}
   <dialog id="embed-discard" class="modal" x-ref="discardDialog">
     <div class="modal-box">
-      <h3 class="mb-2 text-lg font-bold">Discard this upload?</h3>
+      <h3 class="mb-2 text-lg font-bold">{% trans %}Discard this upload?{% endtrans %}</h3>
       <p class="mb-1 text-sm" x-show="discardItem" style="display:none">
-        <span class="font-semibold" x-text="discardItem && discardItem.name"></span>
-        from <span x-text="discardItem && discardItem.owner"></span>:
-        <span x-text="discardItem && discardItem.files"></span>
-        file<span x-show="discardItem && discardItem.files !== 1" style="display:none">s</span>,
+        <span x-html="fmtHtml({{ _('<span class="font-semibold">{name}</span> from {owner}: {files} file')|tojson|forceescape }}, { name: discardItem && discardItem.name, owner: discardItem && discardItem.owner, files: discardItem && discardItem.files })"></span><span x-show="discardItem && discardItem.files !== 1" style="display:none">s</span>,
         <span x-text="discardItem && discardItem.size"></span>.
       </p>
       <p class="mb-3 text-sm">
-        Its files are deleted without being embedded. This cannot be undone.
+        {% trans %}Its files are deleted without being embedded. This cannot be undone.{% endtrans %}
       </p>
       <p style="display:none" x-show="discardError" class="mb-2 text-sm text-error" x-text="discardError"></p>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" @click="$refs.discardDialog.close()">Cancel</button>
+        <button type="button" class="btn btn-ghost" @click="$refs.discardDialog.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="button" class="btn btn-error" :disabled="discardBusy" @click="confirmDiscard()">
           <span x-show="discardBusy" style="display:none" class="loading loading-spinner loading-xs"></span>
-          Discard
+          {% trans %}Discard{% endtrans %}
         </button>
       </div>
     </div>
-    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
   </dialog>
 </div>
 
@@ -138,13 +133,13 @@ document.body.addEventListener('htmx:responseError', function (event) {
   const detail = event.detail || {};
   if (!detail.target || detail.target.id !== 'embed-body') return;
   if (detail.xhr && detail.xhr.status === 401) return;
-  let reason = 'The page could not be loaded.';
+  let reason = {{ _('The page could not be loaded.')|tojson }};
   try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
   detail.target.innerHTML =
     '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
-    '<p class="text-lg font-semibold">Embedding is not available</p>' +
+    '<p class="text-lg font-semibold">' + _ragEscape({{ _('Embedding is not available')|tojson }}) + '</p>' +
     '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p>' +
-    '<a class="link" href="/embedding">Reload the page</a></div>';
+    '<a class="link" href="/embedding">' + _ragEscape({{ _('Reload the page')|tojson }}) + '</a></div>';
 });
 
 function embedPage() {
@@ -265,7 +260,7 @@ function embedPage() {
         let done = 0;
         for (const file of files) {
           const path = file.webkitRelativePath || file.name;
-          this.progress = 'Uploading ' + (done + 1) + ' of ' + files.length;
+          this.progress = fmt({{ _('Uploading {current} of {total}')|tojson }}, { current: done + 1, total: files.length });
           const form = new FormData();
           form.append('file', file);
           form.append('path', path);
@@ -273,7 +268,7 @@ function embedPage() {
           try {
             response = await fetch(url, { method: 'POST', headers: { 'X-CSRF-Token': token }, body: form });
           } catch (_) {
-            this.uploadErrors.push(path + ': the connection was interrupted');
+            this.uploadErrors.push(fmt({{ _('{path}: the connection was interrupted')|tojson }}, { path: path }));
             break;
           }
           if (_authGuard(response)) return;
@@ -304,7 +299,7 @@ function embedPage() {
       if (res.handled) return;
       if (!res.ok) { this.discardError = res.error; return; }
       this.$refs.discardDialog.close();
-      showToast('success', 'Upload discarded');
+      showToast('success', {{ _('Upload discarded')|tojson }});
       if (this.batch === id) this.newUpload();
       this.refreshUploads();
     },
@@ -339,7 +334,7 @@ function embedPage() {
       this.runId = res.data.run_id;
       this.runActive = true;
       this.aborting = false;
-      showToast('success', 'Embedding started for ' + res.data.files + ' file(s)');
+      showToast('success', fmtPlural(res.data.files, {{ _('Embedding started for {count} file')|tojson }}, {{ _('Embedding started for {count} files')|tojson }}));
       this.showStatus();
       this.refreshUploads();
     },
@@ -357,9 +352,9 @@ function embedPage() {
       const res = await _ragRequest('DELETE', '/api/v1/rag/ingest/runs/' + encodeURIComponent(this.runId) +
                                     '?connection=' + encodeURIComponent(this.connection));
       if (res.handled) return;
-      if (!res.ok) { showToast('error', 'The run was not aborted: ' + _ragEscape(res.error)); return; }
+      if (!res.ok) { showToast('error', {{ _('The run was not aborted:')|tojson }} + " " + _ragEscape(res.error)); return; }
       this.aborting = true;
-      showToast('info', 'Abort requested. The ingester stops between documents, so the one it is working on is finished first.');
+      showToast('info', {{ _('Abort requested. The ingester stops between documents, so the one it is working on is finished first.')|tojson }});
       this.showStatus();
     },
     // The status strip tells when the run ends; the upload it read is gone by then.

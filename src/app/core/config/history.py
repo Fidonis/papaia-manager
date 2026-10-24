@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.core.config.overlay import OverlayError, revision_of, target
+from app.i18n import gettext as _
 
 KEEP = 20
 EVENTS = ("apply", "discard", "rollback")
@@ -61,14 +62,14 @@ def valid_id(version_id: str) -> bool:
 
 def _path(config_dir: str, key: str, version_id: str) -> Path:
     if not valid_id(version_id):
-        raise OverlayError("Unknown version.")
+        raise OverlayError(_("Unknown version."))
     return history_dir(config_dir, key) / f"{version_id}{_SUFFIX}"
 
 
 def save(config_dir: str, key: str, data: bytes, event: str, *, now: datetime | None = None) -> str:
     """Copy `data` into the history and return its id. Raises OverlayError when it can't."""
     if event not in EVENTS:
-        raise ValueError(f"unknown event {event!r}")
+        raise ValueError(_("unknown event %(event)r") % {"event": event})
     directory = history_dir(config_dir, key)
     stamp = (now or datetime.now(tz=UTC)).strftime("%Y%m%dT%H%M%SZ")
     try:
@@ -90,7 +91,9 @@ def save(config_dir: str, key: str, data: bytes, event: str, *, now: datetime | 
         os.replace(staged, final)
     except OSError as exc:
         raise OverlayError(
-            f"The previous version can't be saved ({exc.strerror or exc}); nothing was changed."
+            _(
+                "The previous version can't be saved (%(value)s); nothing was changed."
+            ) % {"value": exc.strerror or exc}
         ) from exc
     prune(config_dir, key)
     return version_id
@@ -142,9 +145,11 @@ def read(config_dir: str, key: str, version_id: str) -> bytes:
     try:
         return path.read_bytes()
     except FileNotFoundError as exc:
-        raise OverlayError("Unknown version.") from exc
+        raise OverlayError(_("Unknown version.")) from exc
     except OSError as exc:
-        raise OverlayError(f"The version can't be read ({exc.strerror or exc}).") from exc
+        raise OverlayError(_(
+            "The version can't be read (%(value)s)."
+        ) % {"value": exc.strerror or exc}) from exc
 
 
 def prune(config_dir: str, key: str, *, keep: int = KEEP) -> None:

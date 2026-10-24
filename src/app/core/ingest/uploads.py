@@ -62,6 +62,7 @@ from app.core.ingest.errors import (
     NotFound,
     TooLarge,
 )
+from app.i18n import gettext as _
 
 UPLOADS_DIR = "uploads"
 BATCHES_RELPATH = Path("manager") / "ingest" / "batches"
@@ -151,22 +152,22 @@ class SavedFile:
 def clean_upload_path(raw: str) -> str:
     """The relative path an uploaded file is stored under, or an `InvalidRequest`."""
     if not raw or not raw.strip():
-        raise InvalidRequest("A file needs a name.")
+        raise InvalidRequest(_("A file needs a name."))
     if raw.endswith("/"):
-        raise InvalidRequest("A file name does not end with '/'.")
+        raise InvalidRequest(_("A file name does not end with '/'."))
     cleaned = clean_rel(raw)
     if not cleaned:
-        raise InvalidRequest("A file needs a name.")
+        raise InvalidRequest(_("A file needs a name."))
     for part in cleaned.split("/"):
         if part != part.strip() or part.endswith("."):
-            raise InvalidRequest(f"{part!r} is not a usable file name.")
+            raise InvalidRequest(_("%(part)r is not a usable file name.") % {"part": part})
         if any(unicodedata.category(char) == "Zs" and char != " " for char in part):
-            raise InvalidRequest(f"{part!r} is not a usable file name.")
+            raise InvalidRequest(_("%(part)r is not a usable file name.") % {"part": part})
     refuse_glob(cleaned)
     if len(cleaned.encode("utf-8", "surrogatepass")) > MAX_PATH_BYTES or any(
         len(part.encode("utf-8", "surrogatepass")) > MAX_NAME_BYTES for part in cleaned.split("/")
     ):
-        raise InvalidRequest("That path is too long.")
+        raise InvalidRequest(_("That path is too long."))
     return cleaned
 
 
@@ -261,7 +262,7 @@ class UploadStore:
         if len(label) > MAX_NAME_LENGTH or any(
             unicodedata.category(char).startswith("C") for char in label
         ):
-            raise InvalidRequest("Not a valid name for an upload.")
+            raise InvalidRequest(_("Not a valid name for an upload."))
         owner = owner_slug(owner_name or owner_sub)
         moment = _now()
         batch_id = f"{moment:%Y%m%d-%H%M%S}-{secrets.token_hex(4)}"
@@ -271,8 +272,9 @@ class UploadStore:
             _private_dir(self._uploads / owner / batch_id)
         except OSError as exc:
             raise IngestUnavailable(
-                "The documents folder does not accept uploads "
-                f"({exc.strerror or type(exc).__name__})."
+                _(
+                    "The documents folder does not accept uploads (%(value)s)."
+                ) % {"value": exc.strerror or type(exc).__name__}
             ) from exc
         batch = Batch(
             id=batch_id,
@@ -295,7 +297,7 @@ class UploadStore:
         """
         batch = self.get(batch_id)
         if batch.state == STATE_EMBEDDING:
-            raise Conflict("This upload is being embedded; wait for the run to finish.")
+            raise Conflict(_("This upload is being embedded; wait for the run to finish."))
         rel = clean_upload_path(raw_path)
         directory = self.directory(batch)
         if not directory.is_dir():
@@ -307,18 +309,21 @@ class UploadStore:
             for part in parts[:-1]:
                 current = current / part
                 if current.is_symlink():
-                    raise InvalidRequest("Symbolic links are not followed.")
+                    raise InvalidRequest(_("Symbolic links are not followed."))
                 if current.exists() and not current.is_dir():
-                    raise InvalidRequest(f"{part!r} is a file, so it cannot hold other files.")
+                    raise InvalidRequest(_(
+                        "%(part)r is a file, so it cannot hold other files."
+                    ) % {"part": part})
                 _private_dir(current)
         except OSError as exc:
             raise IngestUnavailable(
-                "The documents folder does not accept uploads "
-                f"({exc.strerror or type(exc).__name__})."
+                _(
+                    "The documents folder does not accept uploads (%(value)s)."
+                ) % {"value": exc.strerror or type(exc).__name__}
             ) from exc
         target = current / parts[-1]
         if target.is_symlink() or target.is_dir():
-            raise InvalidRequest(f"{rel!r} is a folder or a link, not a file.")
+            raise InvalidRequest(_("%(rel)r is a folder or a link, not a file.") % {"rel": rel})
         previous = target.stat().st_size if target.is_file() else None
 
         tmp = current / f".{secrets.token_hex(6)}.part"
@@ -333,13 +338,17 @@ class UploadStore:
                     written += len(chunk)
                     if written > self._max_file:
                         raise TooLarge(
-                            f"{rel!r} is larger than the limit of {self._max_file // 2**20} MiB "
-                            "per file (INGEST_MAX_UPLOAD_MB)."
+                            _(
+                                "%(rel)r is larger than the limit of %(value)s MiB per file "
+                                "(INGEST_MAX_UPLOAD_MB)."
+                            ) % {"rel": rel, "value": self._max_file // 2**20}
                         )
                     if batch.bytes - (previous or 0) + written > self._max_batch:
                         raise TooLarge(
-                            "This upload would be larger than the limit of "
-                            f"{self._max_batch // 2**20} MiB (INGEST_MAX_BATCH_MB)."
+                            _(
+                                "This upload would be larger than the limit of %(value)s MiB "
+                                "(INGEST_MAX_BATCH_MB)."
+                            ) % {"value": self._max_batch // 2**20}
                         )
                     await asyncio.to_thread(handle.write, chunk)
                 handle.flush()
@@ -349,7 +358,9 @@ class UploadStore:
                 os.chmod(target, FILE_MODE)
         except OSError as exc:
             raise IngestUnavailable(
-                f"The file could not be stored ({exc.strerror or type(exc).__name__})."
+                _(
+                    "The file could not be stored (%(value)s)."
+                ) % {"value": exc.strerror or type(exc).__name__}
             ) from exc
         finally:
             with contextlib.suppress(OSError):
@@ -418,8 +429,9 @@ class UploadStore:
                     shutil.rmtree(directory)
             except OSError as exc:
                 raise IngestUnavailable(
-                    f"The staged files of {batch.id} could not be removed "
-                    f"({exc.strerror or type(exc).__name__})."
+                    _(
+                        "The staged files of %(id)s could not be removed (%(value)s)."
+                    ) % {"id": batch.id, "value": exc.strerror or type(exc).__name__}
                 ) from exc
             with contextlib.suppress(OSError):
                 # Only when empty: another upload of the same owner may be in it.
@@ -430,7 +442,7 @@ class UploadStore:
     def discard(self, batch_id: str) -> Batch:
         """Remove an upload on request. Refused while a run is reading it."""
         if self.get(batch_id).state == STATE_EMBEDDING:
-            raise Conflict("This upload is being embedded; abort the run first.")
+            raise Conflict(_("This upload is being embedded; abort the run first."))
         return self.remove(batch_id)
 
     def expired(self, ttl_hours: int, *, keep: frozenset[str] = frozenset()) -> list[Batch]:

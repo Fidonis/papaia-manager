@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.ingest.errors import InvalidRequest, NotFound
+from app.i18n import gettext as _
 
 MAX_LISTING = 2000
 MAX_INCLUDES = 200
@@ -51,17 +52,17 @@ def clean_rel(rel: str | None) -> str:
     if not rel:
         return ""
     if rel.startswith("/") or "\\" in rel:
-        raise InvalidRequest("A path is relative to the folder and uses '/'.")
+        raise InvalidRequest(_("A path is relative to the folder and uses '/'."))
     if len(rel.encode("utf-8", "surrogatepass")) > MAX_PATH_BYTES:
-        raise InvalidRequest("That path is too long.")
+        raise InvalidRequest(_("That path is too long."))
     parts = [part for part in rel.split("/") if part]
     for part in parts:
         if part in (".", ".."):
-            raise InvalidRequest("A path must not contain '.' or '..'.")
+            raise InvalidRequest(_("A path must not contain '.' or '..'."))
         if _has_control_character(part):
-            raise InvalidRequest("A path must not contain control characters.")
+            raise InvalidRequest(_("A path must not contain control characters."))
         if len(part.encode("utf-8", "surrogatepass")) > MAX_NAME_BYTES:
-            raise InvalidRequest("A name in that path is too long.")
+            raise InvalidRequest(_("A name in that path is too long."))
     return "/".join(parts)
 
 
@@ -69,8 +70,10 @@ def refuse_glob(rel: str) -> None:
     """Refuse a name the ingester's include globs cannot match literally."""
     if any(char in rel for char in _GLOB_CHARS):
         raise InvalidRequest(
-            f"{rel!r} contains '*' or '?', which the ingester would read as a wildcard. "
-            "Rename the file or select its folder."
+            _(
+                "%(rel)r contains '*' or '?', which the ingester would read as a wildcard. "
+                "Rename the file or select its folder."
+            ) % {"rel": rel}
         )
 
 
@@ -117,7 +120,7 @@ class Documents:
         cleaned = clean_rel(rel)
         parts = cleaned.split("/") if cleaned else []
         if parts and parts[0] in self._hidden_top:
-            raise InvalidRequest(f"{parts[0]!r} is not available here.")
+            raise InvalidRequest(_("%(value)r is not available here.") % {"value": parts[0]})
         current = self._root
         for part in parts:
             current = current / part
@@ -126,7 +129,7 @@ class Documents:
             except FileNotFoundError as exc:
                 raise NotFound(cleaned) from exc
             if stat.S_ISLNK(mode):
-                raise InvalidRequest("Symbolic links are not followed.")
+                raise InvalidRequest(_("Symbolic links are not followed."))
         return current
 
     def container_path(self, rel: str = "") -> str:
@@ -141,7 +144,7 @@ class Documents:
         cleaned = clean_rel(rel)
         target = self.resolve(cleaned)
         if not target.is_dir():
-            raise InvalidRequest("That is not a folder.")
+            raise InvalidRequest(_("That is not a folder."))
         entries: list[Entry] = []
         truncated = False
         with os.scandir(target) as scan:
@@ -209,7 +212,7 @@ class Documents:
         """
         cleaned = sorted({clean_rel(rel) for rel in rels})
         if not cleaned:
-            raise InvalidRequest("Select at least one file or folder.")
+            raise InvalidRequest(_("Select at least one file or folder."))
         if "" in cleaned:
             return []
         folders: list[str] = []
@@ -225,7 +228,9 @@ class Documents:
                 patterns.append(rel)
         if len(patterns) > MAX_INCLUDES:
             raise InvalidRequest(
-                f"That is {len(patterns)} separate selections; select their folder instead "
-                f"(at most {MAX_INCLUDES})."
+                _(
+                    "That is %(value)s separate selections; select their folder instead (at most "
+                    "%(MAX_INCLUDES)s)."
+                ) % {"value": len(patterns), "MAX_INCLUDES": MAX_INCLUDES}
             )
         return patterns

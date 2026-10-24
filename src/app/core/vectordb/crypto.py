@@ -19,6 +19,8 @@ import hashlib
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from app.i18n import gettext as _
+
 # The scheme version is part of the stored value, so a later change of the cipher stays
 # distinguishable from what is already on disk.
 ENC_PREFIX = "enc:1:"
@@ -30,7 +32,7 @@ class SecretError(Exception):
 
 def _fernet(secret: str) -> Fernet:
     if not secret:
-        raise SecretError("QI_CONNECTIONS_SECRET is not set")
+        raise SecretError(_("QI_CONNECTIONS_SECRET is not set"))
     key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
     return Fernet(key)
 
@@ -52,11 +54,11 @@ def decrypt(stored: str, secret: str) -> str:
     token does not decrypt with this secret.
     """
     if not is_encrypted(stored):
-        raise SecretError("the stored api-key is not an enc:1: token")
+        raise SecretError(_("the stored api-key is not an enc:1: token"))
     token = stored[len(ENC_PREFIX) :]
     try:
         return _fernet(secret).decrypt(token.encode("ascii")).decode("utf-8")
     except (InvalidToken, ValueError) as exc:
         raise SecretError(
-            "the stored api-key could not be decrypted; QI_CONNECTIONS_SECRET may have changed"
+            _("the stored api-key could not be decrypted; QI_CONNECTIONS_SECRET may have changed")
         ) from exc

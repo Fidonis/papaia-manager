@@ -19,31 +19,31 @@
         <span class="loading loading-spinner loading-xs text-warning"></span>
         <p class="text-sm font-semibold">
           {% if job_is_mail %}
-            {% if job.status.value == "queued" %}Applying mail settings: queued{% else %}Applying mail settings{% endif %}
+            {% if job.status.value == "queued" %}{% trans %}Applying mail settings: queued{% endtrans %}{% else %}{% trans %}Applying mail settings{% endtrans %}{% endif %}
           {% else %}
-            {{ job.action }} {{ "queued" if job.status.value == "queued" else "running" }}
+            {% if job.status.value == "queued" %}{% trans action=job.action %}{{ action }} queued{% endtrans %}{% else %}{% trans action=job.action %}{{ action }} running{% endtrans %}{% endif %}
           {% endif %}
         </p>
       {% elif job.status.value == "succeeded" %}
         <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
-        <p class="text-sm font-semibold">Mail settings applied</p>
+        <p class="text-sm font-semibold">{% trans %}Mail settings applied{% endtrans %}</p>
       {% else %}
         <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-error"></span>
-        <p class="text-sm font-semibold">Applying the mail settings failed</p>
+        <p class="text-sm font-semibold">{% trans %}Applying the mail settings failed{% endtrans %}</p>
       {% endif %}
 
       {% if job.finished_at %}
-      <p class="text-xs opacity-50">finished {{ job.finished_at.strftime("%H:%M:%S") }}</p>
+      <p class="text-xs opacity-50">{% trans strftime=job.finished_at.strftime("%H:%M:%S") %}finished {{ strftime }}{% endtrans %}</p>
       {% elif job.started_at %}
-      <p class="text-xs opacity-50">started {{ job.started_at.strftime("%H:%M:%S") }}</p>
+      <p class="text-xs opacity-50">{% trans strftime=job.started_at.strftime("%H:%M:%S") %}started {{ strftime }}{% endtrans %}</p>
       {% endif %}
 
-      <a href="/jobs/{{ job.id }}" class="link link-hover ml-auto text-xs opacity-60">View log</a>
+      <a href="/jobs/{{ job.id }}" class="link link-hover ml-auto text-xs opacity-60">{% trans %}View log{% endtrans %}</a>
     </div>
 
     {% if job_active and not job_is_mail %}
     <p class="mt-1 text-xs opacity-60">
-      The change is queued behind it and starts when that job is done.
+      {% trans %}The change is queued behind it and starts when that job is done.{% endtrans %}
     </p>
     {% endif %}
 

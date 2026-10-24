@@ -119,6 +119,40 @@ uv run uvicorn app.main:create_app --factory --reload --port 8120
 
 The application expects a running Keycloak instance with a configured `papaia-manager` client. The compose file under `docker/` builds and runs the manager only, with the Docker socket and the workspace, config and backup directories mounted; it brings no Keycloak and does not join the stack's Docker network, so addresses such as `QDRANT_URL` and `QDRANT_INGEST_URL` have to be set to something it can reach.
 
+## Add or update a language
+
+The interface is written in English and ships a German catalogue. A language is a directory
+`src/app/locale/<code>/LC_MESSAGES/messages.po`; the application finds it at start-up, lists it in the
+account menu under its own name and uses it for browsers that ask for it. Nothing else names a language,
+so adding one needs no change to the code. See "Internationalisation" in `AGENTS.md` for how texts are
+marked in templates, JavaScript and Python.
+
+All commands run from `src/`:
+
+```bash
+cd src
+
+# 1. Extract every text of the interface into a template (generated, not committed)
+uv run pybabel extract -F babel.cfg --no-location --no-wrap -o app/locale/messages.pot app
+
+# 2. A new language: create its catalogue (use the language code, for example fr or pt_BR)
+uv run pybabel init -i app/locale/messages.pot -d app/locale -l fr
+
+#    An existing language, after the source changed: add the new texts, drop the removed ones
+uv run pybabel update -i app/locale/messages.pot -d app/locale --no-fuzzy-matching --no-wrap
+```
+
+Then translate every `msgstr` in `app/locale/<code>/LC_MESSAGES/messages.po`. Keep the placeholders
+(`%(name)s`, `{name}`) and the HTML tags exactly as they are in the English text, give every plural form
+a translation (the header's `Plural-Forms` line says how many there are), and do not leave `fuzzy`
+entries behind. `tests/test_i18n_catalog.py` runs for every catalogue it finds and fails with the
+texts that are missing, empty, fuzzy, stale or malformed, so a half-translated language does not pass
+CI. Texts that stay in English on purpose (logs, audit entries, notification mails) are listed in
+`AGENTS.md` and are not part of a catalogue.
+
+A change to a text of the interface is a change to every catalogue: extract, update, translate the
+new entries, and run `uv run pytest -q ../tests/test_i18n_catalog.py`.
+
 ## Brand layer
 
 The visual identity of the interface (the daisyUI themes, the self-hosted fonts and the brand mark) is

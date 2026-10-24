@@ -34,6 +34,7 @@ from typing import Any, Literal
 from apscheduler.triggers.cron import CronTrigger
 
 from app.core.schedule import COMMON_TIMEZONES, WEEKDAY_LABELS, ScheduleError, zone
+from app.i18n import gettext, npgettext
 
 # APScheduler's order: index = the number its from_crontab gives the day.
 INGEST_WEEKDAYS: tuple[str, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -161,16 +162,16 @@ def cron_error(expression: str, timezone: str = "UTC") -> str | None:
     except ScheduleError as exc:
         return str(exc)
     except (ValueError, TypeError) as exc:
-        return f"invalid cron expression: {exc}"
+        return gettext("invalid cron expression: %(exc)s") % {"exc": exc}
     return None
 
 
 def every_error(value: str) -> str | None:
     match = _EVERY_RE.match(value)
     if match is None:
-        return "an interval looks like 30s, 15m, 4h or 1d"
+        return gettext("an interval looks like 30s, 15m, 4h or 1d")
     if int(match.group(1)) < 1:
-        return "an interval has to be at least 1"
+        return gettext("an interval has to be at least 1")
     return None
 
 
@@ -243,18 +244,18 @@ def compile_plan(plan: Plan) -> Compiled:
         return Compiled()
     if plan.mode == "interval":
         if plan.every_unit not in EVERY_UNITS:
-            raise ScheduleError("The interval unit is seconds, minutes, hours or days.")
+            raise ScheduleError(gettext("The interval unit is seconds, minutes, hours or days."))
         if plan.every_n < 1:
-            raise ScheduleError("An interval has to be at least 1.")
+            raise ScheduleError(gettext("An interval has to be at least 1."))
         return Compiled(every=f"{plan.every_n}{plan.every_unit}")
     if plan.mode == "hourly":
         if not 0 <= plan.minute <= 59:
-            raise ScheduleError("The minute is between 0 and 59.")
+            raise ScheduleError(gettext("The minute is between 0 and 59."))
         return Compiled(cron=f"{plan.minute} * * * *")
     if plan.mode == "cron":
         expression = normalise_cron(plan.cron)
         if not expression:
-            raise ScheduleError("Enter a cron expression.")
+            raise ScheduleError(gettext("Enter a cron expression."))
         return Compiled(cron=expression)
     hour, minute = _clock(plan.time)
     if plan.mode == "daily":
@@ -263,16 +264,18 @@ def compile_plan(plan: Plan) -> Compiled:
         picked = {day.lower() for day in plan.weekdays}
         unknown = picked - set(INGEST_WEEKDAYS)
         if unknown:
-            raise ScheduleError(f"Unknown weekday {sorted(unknown)[0]!r}.")
+            raise ScheduleError(gettext(
+                "Unknown weekday %(value)r."
+            ) % {"value": sorted(unknown)[0]})
         if not picked:
-            raise ScheduleError("Pick at least one day of the week.")
+            raise ScheduleError(gettext("Pick at least one day of the week."))
         names = "*" if len(picked) == 7 else ",".join(d for d in INGEST_WEEKDAYS if d in picked)
         return Compiled(cron=f"{minute} {hour} * * {names}")
     if plan.mode == "monthly":
         if not 1 <= plan.day_of_month <= 31:
-            raise ScheduleError("The day of the month is between 1 and 31.")
+            raise ScheduleError(gettext("The day of the month is between 1 and 31."))
         return Compiled(cron=f"{minute} {hour} {plan.day_of_month} * *")
-    raise ScheduleError(f"Unknown schedule type {plan.mode!r}.")
+    raise ScheduleError(gettext("Unknown schedule type %(mode)r.") % {"mode": plan.mode})
 
 
 def schedule_block(plan: Plan, *, full: bool = False) -> dict[str, Any]:
@@ -303,7 +306,7 @@ def schedule_block(plan: Plan, *, full: bool = False) -> dict[str, Any]:
 def _clock(value: str) -> tuple[int, int]:
     match = _TIME.match(value.strip())
     if match is None:
-        raise ScheduleError("The time must look like 03:00.")
+        raise ScheduleError(gettext("The time must look like 03:00."))
     return int(match.group(1)), int(match.group(2))
 
 
@@ -320,27 +323,44 @@ def _int(value: Any, default: int) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _plural(n: int, noun: str) -> str:
-    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+def _every(unit: str, n: int) -> str:
+    """"Every minute", "Every 5 minutes": one whole sentence per unit, since the unit is a noun
+    that a translation has to inflect."""
+    # With a context: "Every day" is also the name of a preset, translated as a singular text.
+    if unit == "s":
+        return npgettext("interval", "Every second", "Every %(n)s seconds", n) % {"n": n}
+    if unit == "m":
+        return npgettext("interval", "Every minute", "Every %(n)s minutes", n) % {"n": n}
+    if unit == "h":
+        return npgettext("interval", "Every hour", "Every %(n)s hours", n) % {"n": n}
+    if unit == "d":
+        return npgettext("interval", "Every day", "Every %(n)s days", n) % {"n": n}
+    return gettext("Every %(n)s%(unit)s") % {"n": n, "unit": unit}
 
 
 def describe(plan: Plan) -> str:
     """A sentence for a plan: "Every day at 03:00"."""
     if plan.mode == "manual":
-        return "Only when started by hand"
+        return gettext("Only when started by hand")
     if plan.mode == "interval":
-        noun = EVERY_UNITS.get(plan.every_unit, (plan.every_unit, 1))[0]
-        return "Every " + (noun if plan.every_n == 1 else _plural(plan.every_n, noun))
+        return _every(plan.every_unit, plan.every_n)
     if plan.mode == "hourly":
-        return f"Every hour at :{plan.minute:02d}"
+        return gettext("Every hour at :%(minute)02d") % {"minute": plan.minute}
     if plan.mode == "daily":
-        return f"Every day at {plan.time}"
+        return gettext("Every day at %(time)s") % {"time": plan.time}
     if plan.mode == "weekly":
-        days = ", ".join(WEEKDAY_LABELS[day] for day in plan.weekdays if day in WEEKDAY_LABELS)
-        return f"Every {days or 'week'} at {plan.time}"
+        days = ", ".join(
+            gettext(WEEKDAY_LABELS[day]) for day in plan.weekdays if day in WEEKDAY_LABELS
+        )
+        return gettext("Every %(value)s at %(time)s") % {
+            "value": days or gettext("week"),
+            "time": plan.time,
+        }
     if plan.mode == "monthly":
-        return f"On day {plan.day_of_month} of every month at {plan.time}"
-    return f"Custom schedule ({plan.cron})"
+        return gettext(
+            "On day %(day_of_month)s of every month at %(time)s"
+        ) % {"day_of_month": plan.day_of_month, "time": plan.time}
+    return gettext("Custom schedule (%(cron)s)") % {"cron": plan.cron}
 
 
 def describe_block(schedule: Mapping[str, Any] | None) -> str:
@@ -391,13 +411,18 @@ def preview(
     notes: list[str] = []
     if plan.mode == "monthly" and plan.day_of_month > 28:
         notes.append(
-            f"Months without a day {plan.day_of_month} are skipped, so it does not run every month."
+            gettext(
+                "Months without a day %(day_of_month)s are skipped, so it does not run every "
+                "month."
+            ) % {"day_of_month": plan.day_of_month}
         )
     if compiled.cron is not None and any(ch.isdigit() for ch in compiled.cron.split()[4]):
         # What normalise_cron could not spell as names: a number inside a step.
         notes.append(
-            "Weekday numbers count from Monday here (0 is Monday, 1 is Tuesday), unlike "
-            "standard cron. Names (mon-sun) are unambiguous."
+            gettext(
+                "Weekday numbers count from Monday here (0 is Monday, 1 is Tuesday), unlike "
+                "standard cron. Names (mon-sun) are unambiguous."
+            )
         )
     current = (now or datetime.now(UTC)).astimezone(UTC)
     runs: list[str] = []

@@ -17,6 +17,7 @@ from app.auth.csrf import verify_csrf
 from app.config import Settings, get_settings
 from app.core.keycloak_users import KeycloakRejectedError
 from app.core.users_service import MAX_PAGE_SIZE, PAGE_SIZE, PartiallyCreated
+from app.i18n import gettext as _
 from app.routers.users_deps import UsersAdmin, UsersServiceDep, translated
 from app.routers.users_deps import audit as _audit
 
@@ -247,7 +248,7 @@ async def end_session(
     settings: SettingsDep,
 ) -> Response:
     verify_csrf(request)
-    with translated("that session"):
+    with translated(_("that session was not found")):
         username = await service.end_session(user_id, session_id)
     _audit(settings, user, "user.session.revoke", username, {"session": session_id[:8]})
     return Response(status_code=status.HTTP_204_NO_CONTENT)

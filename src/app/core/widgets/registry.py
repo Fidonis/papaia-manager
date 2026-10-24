@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 from app.config import Settings
 from app.core.tiles import Size, Visibility
 from app.core.widgets.model import VIEWS
+from app.i18n import gettext as _
 
 if TYPE_CHECKING:
     from app.core.jobs import JobQueue
@@ -117,13 +118,19 @@ _TYPES: dict[str, WidgetType] = {}
 def register(widget_type: WidgetType) -> WidgetType:
     """Add a type. A malformed or repeated one is a programming error and raises."""
     if not _ID_RE.match(widget_type.id):
-        raise ValueError(f"widget id {widget_type.id!r} must match {_ID_RE.pattern}")
+        raise ValueError(_(
+            "widget id %(id)r must match %(pattern)s"
+        ) % {"id": widget_type.id, "pattern": _ID_RE.pattern})
     if widget_type.id in _TYPES:
-        raise ValueError(f"widget {widget_type.id!r} is registered twice")
+        raise ValueError(_("widget %(id)r is registered twice") % {"id": widget_type.id})
     if widget_type.icon not in ICONS:
-        raise ValueError(f"widget {widget_type.id!r} uses the unknown icon {widget_type.icon!r}")
+        raise ValueError(_(
+            "widget %(id)r uses the unknown icon %(icon)r"
+        ) % {"id": widget_type.id, "icon": widget_type.icon})
     if widget_type.view not in VIEWS:
-        raise ValueError(f"widget {widget_type.id!r} uses the unknown view {widget_type.view!r}")
+        raise ValueError(_(
+            "widget %(id)r uses the unknown view %(view)r"
+        ) % {"id": widget_type.id, "view": widget_type.view})
     _TYPES[widget_type.id] = widget_type
     return widget_type
 
@@ -153,8 +160,8 @@ def describe(settings: Settings) -> list[dict[str, Any]]:
         described.append(
             {
                 "id": widget_type.id,
-                "name": widget_type.name,
-                "description": widget_type.description,
+                "name": _(widget_type.name),
+                "description": _(widget_type.description),
                 "icon": widget_type.icon,
                 "view": widget_type.view,
                 "size": widget_type.size,

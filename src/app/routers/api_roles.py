@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 from app.auth.csrf import verify_csrf
 from app.config import Settings, get_settings
 from app.core.roles_service import RolePartiallyCreated
+from app.i18n import N_
+from app.i18n import gettext as _
 from app.routers.users_deps import RolesServiceDep, UsersAdmin, audit, translated
 
 router = APIRouter(prefix="/api/v1/roles")
@@ -23,11 +25,11 @@ router = APIRouter(prefix="/api/v1/roles")
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 RoleName = Annotated[str, Path(min_length=1, max_length=255)]
 
-_WRITE_HINT = (
+_WRITE_HINT = N_(
     "Keycloak refuses this for your account: creating, changing and deleting roles needs the "
-    "realm-management role manage-realm. The role {role} has to carry it. Add it in the Keycloak "
-    "Admin Console under Realm roles > {role} > Associated roles (filter by clients), or use a "
-    "papAIa release whose realm gives {role} the right: `papaia-ctl start` then applies it to an "
+    "realm-management role manage-realm. The role %(role)s has to carry it. Add it in the Keycloak "
+    "Admin Console under Realm roles > %(role)s > Associated roles (filter by clients), or use a "
+    "papAIa release whose realm gives %(role)s the right: `papaia-ctl start` then applies it to an "
     "existing installation. Sign in again afterwards."
 )
 
@@ -44,7 +46,7 @@ class UpdateBody(BaseModel):
 
 
 def _hint(settings: Settings) -> str:
-    return _WRITE_HINT.format(role=settings.manager_identity_admin_role)
+    return _(_WRITE_HINT) % {"role": settings.manager_identity_admin_role}
 
 
 @router.get("")
@@ -61,7 +63,7 @@ async def list_roles(user: UsersAdmin, service: RolesServiceDep) -> dict[str, An
 @router.get("/{name}")
 async def get_role(name: RoleName, user: UsersAdmin, service: RolesServiceDep) -> dict[str, Any]:
     """One role with the accounts that hold it: what the delete dialog tells the person."""
-    with translated(f"role {name}"):
+    with translated(_("role %(name)s was not found") % {"name": name}):
         detail = await service.detail(name)
     return detail.as_dict()
 
@@ -104,7 +106,9 @@ async def update_role(
     settings: SettingsDep,
 ) -> dict[str, Any]:
     verify_csrf(request)
-    with translated(f"role {name}", forbidden=_hint(settings)):
+    with translated(
+        _("role %(name)s was not found") % {"name": name}, forbidden=_hint(settings)
+    ):
         change = await service.update(name, description=body.description, members=body.members)
     if change.changed:
         audit(
@@ -135,7 +139,9 @@ async def delete_role(
     settings: SettingsDep,
 ) -> dict[str, Any]:
     verify_csrf(request)
-    with translated(f"role {name}", forbidden=_hint(settings)):
+    with translated(
+        _("role %(name)s was not found") % {"name": name}, forbidden=_hint(settings)
+    ):
         users, more = await service.delete(name)
     audit(settings, user, "role.delete", name, {"accounts": users, "more": more})
     return {"name": name, "accounts": users, "more": more}

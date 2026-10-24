@@ -61,6 +61,8 @@ from app.core import docker_usage
 from app.core.ctl import CtlError, run_py_cli
 from app.core.services import ServiceHealth
 from app.core.settings_store import refresh_interval
+from app.i18n import N_, current_locale, ngettext
+from app.i18n import gettext as _
 
 logger = logging.getLogger(__name__)
 
@@ -104,12 +106,14 @@ RUN_TIMEOUT_SECONDS = 30.0
 STALE_AFTER_SECONDS = 180.0
 STALE_AFTER_INTERVALS = 3.0
 
-_TOO_OLD = "This papAIa core does not provide doctor yet. Upgrade the core to 1.4.0 or newer."
+_TOO_OLD = N_("This papAIa core does not provide doctor yet. Upgrade the core to 1.4.0 or newer.")
+_NO_OUTPUT = N_("doctor exited with status %(code)s and no output")
+_UNEXPECTED = N_("the host check failed unexpectedly")
 
 _DISK_LABELS = {
-    "config_dir": "Config disk",
-    "backup_dir": "Backup disk",
-    "docker_root": "Docker data",
+    "config_dir": N_("Config disk"),
+    "backup_dir": N_("Backup disk"),
+    "docker_root": N_("Docker data"),
 }
 
 # Where the core keeps the certificates it reads, relative to the config
@@ -326,7 +330,7 @@ def _parse_disk(entry: Any) -> HostCheck | None:
     return HostCheck(
         kind="disk",
         key=key,
-        label=_DISK_LABELS.get(key, key),
+        label=_(_DISK_LABELS[key]) if key in _DISK_LABELS else key,
         detail=str(entry.get("path", "")),
         state=_state(entry.get("status")),
         free_bytes=free,
@@ -393,18 +397,23 @@ def _parse_memory(check: dict[str, Any], state: HostState) -> list[HostCheck]:
     swap_used = _int(details.get("swap_used_bytes"))
     used = _number(details.get("used_percent"))
     if total is not None and available is not None:
-        measure = f"{format_bytes(available)} available of {format_bytes(total)}"
+        measure = _("%(available)s available of %(total)s") % {
+            "available": format_bytes(available),
+            "total": format_bytes(total),
+        }
     elif total is not None:
         # No /proc (the core fell back to `docker info`): the total is all there is.
-        measure = f"{format_bytes(total)} total"
+        measure = _("%(total)s total") % {"total": format_bytes(total)}
     else:
         measure = summary
     if swap_total is None or swap_used is None:
         swap = ""
     elif swap_total == 0:
-        swap = "no swap"
+        swap = _("no swap")
     else:
-        swap = f"swap {format_bytes(swap_used)} of {format_bytes(swap_total)} used"
+        swap = _(
+            "swap %(value)s of %(value2)s used"
+        ) % {"value": format_bytes(swap_used), "value2": format_bytes(swap_total)}
     return [
         HostCheck(
             kind="memory",
@@ -415,7 +424,7 @@ def _parse_memory(check: dict[str, Any], state: HostState) -> list[HostCheck]:
             reason=_why(state, summary, measure),
             percent=used,
             measure=measure,
-            figure=f"{used:.0f} % used" if used is not None else "",
+            figure=_("%(used).0f %% used") % {"used": used} if used is not None else "",
         )
     ]
 
@@ -427,10 +436,12 @@ def _parse_cpu(check: dict[str, Any], state: HostState) -> list[HostCheck]:
     per_core = _number(details.get("load_per_core"))
     parts: list[str] = []
     if cores is not None:
-        parts.append(f"{cores} core" if cores == 1 else f"{cores} cores")
+        parts.append(ngettext("%(cores)s core", "%(cores)s cores", cores) % {"cores": cores})
     if load1 is not None and load5 is not None and load15 is not None:
-        parts.append(f"load {load1:.2f} / {load5:.2f} / {load15:.2f}")
-    measure = "load per core, 5 min average" if per_core is not None else summary
+        parts.append(_(
+            "load %(load1).2f / %(load5).2f / %(load15).2f"
+        ) % {"load1": load1, "load5": load5, "load15": load15})
+    measure = _("load per core, 5 min average") if per_core is not None else summary
     return [
         HostCheck(
             kind="cpu",
@@ -442,7 +453,7 @@ def _parse_cpu(check: dict[str, Any], state: HostState) -> list[HostCheck]:
             # One load per core is "full"; the bar stops there however high it goes.
             percent=per_core * 100.0 if per_core is not None else None,
             measure=measure,
-            figure=f"{per_core:.2f} / core" if per_core is not None else "",
+            figure=_("%(load).2f / core") % {"load": per_core} if per_core is not None else "",
         )
     ]
 
@@ -460,7 +471,11 @@ def _parse_gpu(check: dict[str, Any], state: HostState) -> list[HostCheck]:
                 kind="gpu",
                 key="gpu",
                 label="GPU",
-                detail=f"variant {variant}" if isinstance(variant, str) and variant else "",
+                detail=(
+                    _("variant %(variant)s") % {"variant": variant}
+                    if isinstance(variant, str) and variant
+                    else ""
+                ),
                 state=state,
                 measure=summary,
             )
@@ -477,22 +492,24 @@ def _parse_gpu(check: dict[str, Any], state: HostState) -> list[HostCheck]:
         temperature = _number(gpu.get("temperature_c"))
         parts: list[str] = []
         if isinstance(driver, str) and driver:
-            parts.append(f"driver {driver}")
+            parts.append(_("driver %(driver)s") % {"driver": driver})
         if util is not None:
-            parts.append(f"util {util:.0f} %")
+            parts.append(_("util %(util).0f %%") % {"util": util})
         if temperature is not None:
             parts.append(f"{temperature:.0f} °C")
         measure = ""
         if used_mib is not None and total_mib is not None:
-            measure = (
-                f"{format_bytes(int(used_mib * 1024**2))} of "
-                f"{format_bytes(int(total_mib * 1024**2))} VRAM"
-            )
+            measure = _("%(used)s of %(total)s VRAM") % {
+                "used": format_bytes(int(used_mib * 1024**2)),
+                "total": format_bytes(int(total_mib * 1024**2)),
+            }
         rows.append(
             HostCheck(
                 kind="gpu",
                 key=f"gpu{number}",
-                label=name if isinstance(name, str) and name else f"GPU {number}",
+                label=name if isinstance(name, str) and name else _(
+                    "GPU %(number)s"
+                ) % {"number": number},
                 detail=" · ".join(parts),
                 state=state,
                 # The core judges the check, not each device, so every device
@@ -501,7 +518,7 @@ def _parse_gpu(check: dict[str, Any], state: HostState) -> list[HostCheck]:
                 reason=_why(state, summary, "") if position == 0 else "",
                 percent=vram,
                 measure=measure,
-                figure=f"{vram:.0f} % used" if vram is not None else "",
+                figure=_("%(used).0f %% used") % {"used": vram} if vram is not None else "",
             )
         )
     return rows
@@ -513,14 +530,14 @@ def _parse_clock(check: dict[str, Any], state: HostState) -> list[HostCheck]:
     if synchronized is True:
         measure = "synchronized"
     elif synchronized is False:
-        measure = "not synchronized"
+        measure = _("not synchronized")
     else:
         measure = summary
     return [
         HostCheck(
             kind="clock",
             key="time_sync",
-            label="System clock",
+            label=_("System clock"),
             detail="",
             state=state,
             # A boolean says it all; the sentence only helps when there was none.
@@ -536,7 +553,7 @@ _RESOURCE_CHECKS: tuple[tuple[str, str, str, Any], ...] = (
     ("memory", "memory", "Memory", _parse_memory),
     ("cpu", "cpu", "CPU", _parse_cpu),
     ("gpu", "gpu", "GPU", _parse_gpu),
-    ("time_sync", "clock", "System clock", _parse_clock),
+    ("time_sync", "clock", N_("System clock"), _parse_clock),
 )
 
 
@@ -614,11 +631,13 @@ def parse_doctor(stdout: str, *, checked_at: datetime | None = None) -> HostHeal
     try:
         document = json.loads(stdout)
     except ValueError:
-        return unavailable("doctor did not return JSON")
+        return unavailable(_("doctor did not return JSON"))
     if not isinstance(document, dict):
-        return unavailable("doctor did not return a JSON object")
+        return unavailable(_("doctor did not return a JSON object"))
     if document.get("schema_version") != _SUPPORTED_SCHEMA:
-        return unavailable(f"doctor reports schema {document.get('schema_version')!r}, not 1")
+        return unavailable(_(
+            "doctor reports schema %(value)r, not 1"
+        ) % {"value": document.get('schema_version')})
 
     raw = document.get("checks")
     entries = raw if isinstance(raw, list) else []
@@ -626,7 +645,7 @@ def parse_doctor(stdout: str, *, checked_at: datetime | None = None) -> HostHeal
         c["name"]: c for c in entries if isinstance(c, dict) and isinstance(c.get("name"), str)
     }
     if not any(name in by_name for name in _WANTED_CHECKS):
-        return unavailable("doctor reported none of the host checks")
+        return unavailable(_("doctor reported none of the host checks"))
 
     disk_check, cert_check = by_name.get("disk_space"), by_name.get("certs")
     resources = _resource_rows(by_name)
@@ -655,6 +674,14 @@ class _Entry:
     # reading is taken; how long it counts as fresh is not (see `_usable`).
     stale_after: float
     health: HostHealth
+    # What `doctor` printed and the language `health` was written in. The reading is shared by
+    # every account, so it is kept in the form that has no language and put into words again
+    # for an account whose language is another one (see `_in_current_language`).
+    out: str | None = None
+    locale: str = "en"
+    # A run that ended before it had any output explains itself in a sentence of ours; this is
+    # that sentence as (message, values), so it can be put into words again too.
+    reason: tuple[str, dict[str, Any]] | None = None
 
 
 # One manager process serves one deployment, so a single entry is all this needs.
@@ -705,9 +732,13 @@ def _skipped(workspace_dir: str) -> tuple[str, ...]:
     return (*_SKIPPED_CHECKS, *extra)
 
 
-async def _run(config_dir: str, workspace_dir: str) -> HostHealth:
+async def _run(
+    config_dir: str, workspace_dir: str
+) -> tuple[HostHealth, str | None, tuple[str, dict[str, Any]] | None]:
+    """The reading, the raw output it was parsed from (None when there was none) and, for a run
+    that ended without output, the sentence that says why, as (message, values)."""
     if not is_supported(workspace_dir):
-        return unavailable(_TOO_OLD)
+        return unavailable(_(_TOO_OLD)), None, (_TOO_OLD, {})
     try:
         code, out, err = await run_py_cli(
             command="doctor",
@@ -718,28 +749,55 @@ async def _run(config_dir: str, workspace_dir: str) -> HostHealth:
         )
     except CtlError as exc:
         logger.warning("host health: %s", exc)
-        return unavailable(str(exc))
+        return unavailable(str(exc)), None, None
     # Exit 2 with a document is a check that failed -- a result. Exit 2 with
     # nothing on stdout is a refused argument, and stderr says which.
     if not out.strip():
-        return unavailable(_first_line(err) or f"doctor exited with status {code} and no output")
-    return parse_doctor(out)
+        first = _first_line(err)
+        if first:
+            return unavailable(first), None, None
+        return (
+            unavailable(_(_NO_OUTPUT) % {"code": code}),
+            None,
+            (_NO_OUTPUT, {"code": code}),
+        )
+    return parse_doctor(out), out, None
 
 
 async def _measure(config_dir: str, workspace_dir: str, interval: int) -> HostHealth:
     """One run, stored. Never raises: a task nobody awaits would lose the error."""
     global _cache  # noqa: PLW0603
+    reason: tuple[str, dict[str, Any]] | None
     try:
-        health = await _run(config_dir, workspace_dir)
+        health, out, reason = await _run(config_dir, workspace_dir)
     except Exception:
         logger.exception("host health: unexpected failure")
-        health = unavailable("the host check failed unexpectedly")
+        health, out, reason = unavailable(_(_UNEXPECTED)), None, (_UNEXPECTED, {})
     _cache = _Entry(
         at=time.monotonic(),
         stale_after=max(STALE_AFTER_SECONDS, STALE_AFTER_INTERVALS * interval),
         health=health,
+        out=out,
+        locale=current_locale(),
+        reason=reason,
     )
     return health
+
+
+def _in_current_language(entry: _Entry) -> HostHealth:
+    """The cached reading, in the language of the request asking for it.
+
+    The run that took it may have been started by an account that reads another language;
+    the reading is parsed again from the raw output then, which is cheap and runs no check.
+    """
+    if entry.locale == current_locale():
+        return entry.health
+    if entry.out is not None:
+        return parse_doctor(entry.out, checked_at=entry.health.checked_at)
+    if entry.reason is not None:
+        message, values = entry.reason
+        return unavailable(_(message) % values)
+    return entry.health
 
 
 def _usable(*, force: bool, interval: int) -> HostHealth | None:
@@ -757,7 +815,7 @@ def _usable(*, force: bool, interval: int) -> HostHealth | None:
         limit = float(interval)
     else:
         limit = min(FAILURE_TTL_SECONDS, float(interval))
-    return _cache.health if time.monotonic() - _cache.at < limit else None
+    return _in_current_language(_cache) if time.monotonic() - _cache.at < limit else None
 
 
 def _start(config_dir: str, workspace_dir: str, interval: int) -> asyncio.Task[HostHealth]:
@@ -783,14 +841,17 @@ async def load_host_health(
     if hit is not None:
         return hit
     # Shielded: cancelling this request (tab closed) must not cancel the run.
-    return await asyncio.shield(_start(config_dir, workspace_dir, interval))
+    health = await asyncio.shield(_start(config_dir, workspace_dir, interval))
+    # The run may have been started by a request in another language; the entry it stored can
+    # be put into this one's.
+    return _in_current_language(_cache) if _cache is not None else health
 
 
 def cached_host_health() -> HostHealth | None:
     """The last reading if it is not too old to show, else None. Never forks."""
     if _cache is None or time.monotonic() - _cache.at > _cache.stale_after:
         return None
-    return _cache.health
+    return _in_current_language(_cache)
 
 
 def ensure_fresh(*, config_dir: str, workspace_dir: str) -> None:
