@@ -19,6 +19,7 @@ from app.core.catalogs import (
     load_registry,
     materialize_local_addon,
 )
+from app.core.components import components_for
 from app.core.ctl import CtlError, run_addon_verb
 from app.core.envforms import EnvField, build_form, field_to_dict
 from app.core.envvalidate import EnvValidationError, coerce_env_values
@@ -138,6 +139,7 @@ def _addon_summary(
     running: set[str],
     workspace_dir: str,
     *,
+    config_dir: str,
     key: str | None = None,
     shadowed_by: list[str] | None = None,
     is_variant: bool = False,
@@ -162,6 +164,7 @@ def _addon_summary(
         "is_variant": is_variant,
         "update_available": update_available(inst, manifest.get("version")),
         "managed": inst.managed if inst else True,
+        "components": components_for(config_dir, workspace_dir, name, manifest, inst),
     }
 
 
@@ -194,6 +197,7 @@ async def list_addons(
         addons[resolved.key] = _addon_summary(
             resolved.name, resolved.manifest, resolved.catalog, variant_inst, deploy_entry,
             running, settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
             key=resolved.key, shadowed_by=resolved.shadowed_by, is_variant=resolved.is_variant,
         )
 
@@ -204,6 +208,7 @@ async def list_addons(
         addons[addon_name] = _addon_summary(
             addon_name, {}, inst.catalog if inst else None, inst, deploy_entry,
             running, settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
         )
 
     return list(addons.values())
@@ -251,6 +256,7 @@ async def addon_detail(
     summary = _addon_summary(
         name, manifest, catalog_name, variant_inst, deploy_entry,
         running, settings.papaia_workspace_dir,
+        config_dir=settings.papaia_config_dir,
         key=resolved.key if resolved else name,
         shadowed_by=resolved.shadowed_by if resolved else [],
         is_variant=resolved.is_variant if resolved else False,

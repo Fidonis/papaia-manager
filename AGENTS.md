@@ -136,6 +136,7 @@ papaia-manager/
 │       │   ├── envforms.py     # Env-form spec from .env.example + manifest prompts
 │       │   ├── envvalidate.py  # Server-side validation/coercion of add-on env values
 │       │   ├── resolve.py      # Cross-catalog addon dedup: groups same-name hits by version
+│       │   ├── components.py   # The software an add-on bundles (manifest `components`): installed vs catalog, .env overrides
 │       │   ├── keycloak.py     # Idempotent Keycloak admin REST client registration
 │       │   ├── keycloak_users.py # Keycloak Admin API as the signed-in user: users, roles, passwords, sessions
 │       │   ├── users_service.py # The Users page's rules: validation, temporary passwords, lock-out guard, views
@@ -294,6 +295,10 @@ Consequences worth remembering when touching sign-out:
 All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. A scheduled backup is enqueued onto the same queue. Only one mutating job runs at a time. An embedding run is deliberately not a job: it lives in the ingester, and a run of hours must not hold up a backup or an add-on action. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
 
 **Remove.** `papaia-ctl addon remove` only marks an add-on inactive and leaves its containers running, so the Remove job runs `addon stop --clean-up` first (volumes stay) and then `addon remove`; a failing stop leaves the add-on active. The route and the job both refuse (409) when the add-on's `docker-compose.yml` is missing. papaia-ctl pins `-p <add-on>` for its Compose calls, but without that file Compose takes `COMPOSE_PROJECT_NAME` from the core `.env`, and the `down` hits the core stack, this manager included. Stop, restart and uninstall do not have this guard here; the fix for them belongs to the core (`Fidonis/papaia#244`).
+
+### Add-on components
+
+An add-on's `version` counts changes to the bundle, not to the software in it. The catalog states that in the manifest's `components` list (`id`, `name`, `role`, `kind`, `image_var`, `version`, `source`, `pinned: false` for a floating tag), and `core/components.py` turns it into what the gallery card (the primary components next to the add-on version) and the detail page (a table of all of them) show, and into `components` in the add-on JSON of `api_addons`. For an installed add-on each component also carries the version of the managed snapshot (`changed` when the catalog differs, so an update reads "3.0.5 → 3.1.0") and, when the add-on's `.env` in the config directory sets the component's `image_var` to another tag, that tag as `override_version`. The overrides are read from the file, not from `docker compose config`, so the pages need no Docker and no process per view; a different registry with the same tag is not told apart, because the manifest records no repository. The manifest may come from any catalog, so nothing is trusted: entries of the wrong shape are skipped, an unknown role counts as a sidecar, text is cut, at most 32 entries are read and only an `https://` source becomes a link. A catalog without `components` shows nothing extra.
 
 ### Restore model
 

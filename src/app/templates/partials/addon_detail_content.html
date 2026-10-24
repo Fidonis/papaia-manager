@@ -65,6 +65,64 @@
 <p class="mb-6 opacity-80">{{ addon.description }}</p>
 {% endif %}
 
+<!-- Components: what the add-on runs, as opposed to the version of the add-on itself -->
+{% if addon.components %}
+<div class="card bg-base-100 border border-base-300 mb-6">
+  <div class="card-body">
+    <h3 class="card-title text-base mb-2">{% trans %}Components{% endtrans %}</h3>
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>{% trans %}Component{% endtrans %}</th>
+            <th>{% trans %}Version{% endtrans %}</th>
+            <th>{% trans %}Role{% endtrans %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in addon.components %}
+          <tr>
+            <td>
+              {% if c.source %}
+                <a class="link link-hover" href="{{ c.source }}" target="_blank" rel="noopener noreferrer">{{ c.name }}</a>
+              {% else %}
+                {{ c.name }}
+              {% endif %}
+              {% if c.image_var %}<br><span class="font-mono text-xs opacity-50">{{ c.image_var }}</span>{% endif %}
+            </td>
+            <td class="font-mono text-xs">
+              {% if c.changed %}
+                {{ c.installed_version }} → {{ c.version }}
+                <span class="badge badge-accent badge-xs font-sans">{% trans %}update{% endtrans %}</span>
+              {% else %}
+                {{ c.version }}
+              {% endif %}
+              {% if c.floating %}
+                <span class="badge badge-warning badge-outline badge-xs font-sans"
+                      title="{{ _('The tag floats: which version runs depends on when the image was pulled') }}">{% trans %}floating{% endtrans %}</span>
+              {% endif %}
+              {% if c.override_version %}
+                <br>
+                <span class="badge badge-info badge-xs font-sans"
+                      title="{{ c.override_ref }}">{% trans version=c.override_version %}overridden in .env: {{ version }}{% endtrans %}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if c.role == 'primary' %}
+                <span class="badge badge-outline badge-xs">{% trans %}primary{% endtrans %}</span>
+              {% else %}
+                <span class="badge badge-ghost badge-xs">{% trans %}sidecar{% endtrans %}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Configuration -->
 {% if addon.env_fields %}
 {% set editable = s in ("running", "installed", "inactive") and addon.installed_version %}
