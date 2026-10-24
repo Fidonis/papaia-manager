@@ -1,8 +1,11 @@
 """`POST /api/v1/addons/{name}/remove` takes the containers down before it deactivates.
 
 `papaia-ctl addon remove` alone only marks the add-on inactive and leaves its
-containers running, so the job has to run `addon stop --clean-up` first. The
-queue and `run_addon_verb` are replaced, so no Docker daemon or worker is needed.
+containers running, so the job has to run `addon stop --clean-up` first. That
+teardown is only safe while the add-on's `docker-compose.yml` exists: without it
+Compose falls back to the core project and takes the whole stack down, so the
+route and the job refuse. The queue and `run_addon_verb` are replaced, so no
+Docker daemon or worker is needed.
 """
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 _SESSION_SECRET = "test-session-secret-value"
 _CONFIG_DIR = tempfile.mkdtemp(prefix="papaia-addon-remove-config-")
@@ -36,6 +40,7 @@ os.environ.update(
 # PAPAIA_CONFIG_DIR / PAPAIA_WORKSPACE_DIR are set per test by the fixture, for
 # the reason spelled out in test_api_restore_scoped.py.
 
+from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from itsdangerous import TimestampSigner  # noqa: E402
 
@@ -92,8 +97,27 @@ def client(monkeypatch: pytest.MonkeyPatch, queue: _FakeQueue) -> Iterator[TestC
 
 
 @pytest.fixture(autouse=True)
-def _fresh_audit_log() -> None:
+def _fresh_state() -> None:
     Path(_CONFIG_DIR, "manager", "audit.log").unlink(missing_ok=True)
+    Path(_CONFIG_DIR, "deployment.yaml").unlink(missing_ok=True)
+
+
+def _install(path: str, *, compose_in: Path | None) -> None:
+    """Register `n8n` in deployment.yaml, with or without its compose file."""
+    Path(_CONFIG_DIR, "deployment.yaml").write_text(
+        yaml.safe_dump({"addons": [{"name": "n8n", "path": path, "active": True}]}),
+        encoding="utf-8",
+    )
+    if compose_in is not None:
+        compose_in.mkdir(parents=True, exist_ok=True)
+        (compose_in / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+
+
+@pytest.fixture
+def addon_dir(tmp_path: Path) -> Path:
+    path = tmp_path / "n8n"
+    _install(str(path), compose_in=path)
+    return path
 
 
 def _as(client: TestClient, role: str) -> TestClient:
@@ -162,6 +186,7 @@ def _record_verbs(
     return calls
 
 
+@pytest.mark.usefixtures("addon_dir")
 def test_remove_takes_the_containers_down_before_it_deactivates(
     client: TestClient, queue: _FakeQueue, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -184,6 +209,7 @@ def test_remove_takes_the_containers_down_before_it_deactivates(
     assert entry["result"] == "ok"
 
 
+@pytest.mark.usefixtures("addon_dir")
 def test_remove_does_not_deactivate_when_the_containers_cannot_be_removed(
     client: TestClient, queue: _FakeQueue, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -205,3 +231,51 @@ def test_remove_is_denied_to_a_plain_user(client: TestClient, queue: _FakeQueue)
 def test_remove_needs_the_csrf_token(client: TestClient, queue: _FakeQueue) -> None:
     assert _remove(client, csrf=None).status_code == 403
     assert queue.enqueued == []
+
+
+def test_remove_is_refused_while_the_compose_file_is_missing(
+    client: TestClient, queue: _FakeQueue, tmp_path: Path
+) -> None:
+    _install(str(tmp_path / "n8n"), compose_in=None)
+
+    response = _remove(client)
+
+    assert response.status_code == 409
+    assert "docker-compose.yml" in response.json()["detail"]
+    assert queue.enqueued == []
+
+
+def test_remove_of_an_add_on_that_is_not_installed_is_a_404(
+    client: TestClient, queue: _FakeQueue
+) -> None:
+    assert _remove(client).status_code == 404
+    assert queue.enqueued == []
+
+
+def test_remove_resolves_a_relative_path_against_the_workspace(
+    client: TestClient, queue: _FakeQueue
+) -> None:
+    _install("addons/n8n", compose_in=Path(_WORKSPACE_DIR, "addons", "n8n"))
+
+    assert _remove(client).status_code == 202
+    assert len(queue.enqueued) == 1
+
+
+def test_the_job_refuses_when_the_files_are_gone_by_the_time_it_runs(
+    client: TestClient,
+    queue: _FakeQueue,
+    monkeypatch: pytest.MonkeyPatch,
+    addon_dir: Path,
+    tmp_path: Path,
+) -> None:
+    """An install queued ahead of the remove can fail and leave the directory empty."""
+    calls = _record_verbs(monkeypatch)
+
+    assert _remove(client).status_code == 202
+    (addon_dir / "docker-compose.yml").unlink()
+    with pytest.raises(HTTPException) as refused:
+        _run_callback(queue, tmp_path / "job.log")
+
+    assert refused.value.status_code == 409
+    assert calls == []
+    assert [e for e in _audit() if e["action"] == "remove"] == []

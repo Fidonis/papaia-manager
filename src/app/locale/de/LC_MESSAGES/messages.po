@@ -2983,16 +2983,20 @@ msgid "job queue not initialized"
 msgstr "Job-Warteschlange nicht initialisiert"
 
 #, python-format
+msgid "addon %(name)r is not installed"
+msgstr "Das Add-on %(name)r ist nicht installiert"
+
+#, python-format
+msgid "docker-compose.yml of addon %(name)r is missing in %(path)s, so its containers cannot be taken down safely; restore the add-on's files first"
+msgstr "Die Datei docker-compose.yml des Add-ons %(name)r fehlt in %(path)s, daher lassen sich seine Container nicht sicher entfernen. Stellen Sie zuerst die Dateien des Add-ons wieder her"
+
+#, python-format
 msgid "catalog %(catalog)r not found or disabled"
 msgstr "Der Katalog %(catalog)r wurde nicht gefunden oder ist deaktiviert"
 
 #, python-format
 msgid "addon %(name)r not found in catalog %(name2)r"
 msgstr "Das Add-on %(name)r wurde im Katalog %(name2)r nicht gefunden"
-
-#, python-format
-msgid "addon %(name)r is not installed"
-msgstr "Das Add-on %(name)r ist nicht installiert"
 
 msgid "cutoff date is in the future"
 msgstr "Das Stichtagsdatum liegt in der Zukunft"
