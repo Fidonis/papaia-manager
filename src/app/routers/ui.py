@@ -26,6 +26,7 @@ from app.core import (
 )
 from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
+from app.core.components import components_for
 from app.core.envfile import load_env_file
 from app.core.ingest import catalog as ingest_catalog
 from app.core.ingest import runs as ingest_runs
@@ -1691,6 +1692,13 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
                 and variant_inst.manifest_version != resolved.manifest.get("version")
             ),
             "managed": variant_inst.managed if variant_inst else True,
+            "components": components_for(
+                settings.papaia_config_dir,
+                settings.papaia_workspace_dir,
+                resolved.name,
+                resolved.manifest,
+                variant_inst,
+            ),
             "env_fields": _build_env_fields(
                 resolved.name,
                 managed_snapshot_path(
@@ -1728,6 +1736,9 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             "is_variant": False,
             "update_available": False,
             "managed": inst.managed if inst else False,
+            "components": components_for(
+                settings.papaia_config_dir, settings.papaia_workspace_dir, addon_name, {}, inst
+            ),
             "env_fields": _build_env_fields(
                 addon_name,
                 managed_snapshot_path(settings.papaia_workspace_dir, inst.catalog, addon_name)
@@ -1817,6 +1828,9 @@ async def _get_addon(
         ),
         "managed": variant_inst.managed if variant_inst else True,
         "manifest": manifest,
+        "components": components_for(
+            settings.papaia_config_dir, settings.papaia_workspace_dir, name, manifest, variant_inst
+        ),
         "env_fields": env_fields,
     }
 

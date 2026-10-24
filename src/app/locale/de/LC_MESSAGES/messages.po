@@ -6754,6 +6754,34 @@ msgstr "andere Version"
 msgid "Identical version (v%(catalog_version)s) also available in:"
 msgstr "Identische Version (v%(catalog_version)s) auch verfügbar in:"
 
+msgid "Components"
+msgstr "Komponenten"
+
+msgid "Component"
+msgstr "Komponente"
+
+msgid "Version"
+msgstr "Version"
+
+msgid "update"
+msgstr "Update"
+
+msgid "The tag floats: which version runs depends on when the image was pulled"
+msgstr "Der Image-Tag ist nicht festgelegt: Welche Version läuft, hängt davon ab, wann das Image geladen wurde"
+
+msgid "floating"
+msgstr "schwebend"
+
+#, python-format
+msgid "overridden in .env: %(version)s"
+msgstr "in .env überschrieben: %(version)s"
+
+msgid "primary"
+msgstr "primär"
+
+msgid "sidecar"
+msgstr "Begleitdienst"
+
 msgid "Key"
 msgstr "Schlüssel"
 

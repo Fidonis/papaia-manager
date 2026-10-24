@@ -105,6 +105,14 @@
         {{ addon.description if addon.description else '' }}
       </p>
 
+      {# What the add-on runs, as opposed to the version of the add-on itself #}
+      {% set primary = (addon.components or []) | selectattr('role', 'equalto', 'primary') | list %}
+      {% if primary %}
+      <p class="text-xs opacity-60 line-clamp-2">
+        {% for c in primary %}{{ c.name }} {% if c.changed %}{{ c.installed_version }} → {% endif %}{{ c.version }}{% if not loop.last %} · {% endif %}{% endfor %}
+      </p>
+      {% endif %}
+
       {# Tags #}
       <div class="flex flex-wrap gap-1">
         {% if addon.catalog %}
