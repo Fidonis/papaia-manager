@@ -9,7 +9,7 @@
   with qdrant-ingest; see that repo's docs/ui.md.
 #}
 <!doctype html>
-<html lang="en">
+<html lang="{{ html_lang() }}">
 <head>
   <script>
     (function () {
@@ -48,6 +48,48 @@
   <script src="{{ asset_url('htmx.min.js') }}" defer></script>
   <script src="{{ asset_url('alpine.min.js') }}" defer></script>
   <script>
+    // ── Texts ────────────────────────────────────────────────────────────
+    // The sentences the helpers below put on the page, in the language of the page. A whole
+    // sentence each, never pieces glued together: the order of the pieces differs between
+    // languages. `{name}` marks a value that fmt() fills in; fmtHtml() does the same for a
+    // sentence that carries markup and escapes the values.
+    var I18N = {
+      addonFailed: {{ _("The add-on action failed: {detail}")|tojson }},
+      requestRefused: {{ _("The request was refused: {detail}")|tojson }},
+      stackActionFailed: {{ _('The stack action failed &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
+      stackActionFinished: {{ _("The stack action finished.")|tojson }},
+      stackActionStarted: {{ _("The stack action has started — this panel may go down with it.")|tojson }},
+      catalogActionFailed: {{ _("The catalog action failed: {detail}")|tojson }},
+      catalogRefreshed: {{ _('Catalog "{name}" refreshed.')|tojson }},
+      catalogRefreshFailed: {{ _('Catalog "{name}" refresh failed. <a href="{href}" class="link">View log</a>')|tojson }},
+      updateFailed: {{ _("The update failed: {detail}")|tojson }},
+      catalogUpdated: {{ _('Catalog "{name}" updated.')|tojson }},
+      deleteFailed: {{ _("The deletion failed: {detail}")|tojson }},
+      catalogDeleted: {{ _('Catalog "{name}" deleted.')|tojson }},
+    };
+    function _escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+    function fmt(template, values) {
+      return template.replace(/\{(\w+)\}/g, function (m, k) {
+        return Object.prototype.hasOwnProperty.call(values, k) ? values[k] : m;
+      });
+    }
+    // fmtPlural(): picks between the two messages of a counted noun with the browser's plural rules
+    // for the page's language ("one" or everything else) and fills `{count}`. A language with more
+    // plural forms than that needs this extended, together with its catalogue.
+    function fmtPlural(count, one, other, values, html) {
+      var category = new Intl.PluralRules(document.documentElement.lang || undefined).select(count);
+      return (html ? fmtHtml : fmt)(category === "one" ? one : other, Object.assign({ count: count }, values || {}));
+    }
+    function fmtHtml(template, values) {
+      return template.replace(/\{(\w+)\}/g, function (m, k) {
+        return Object.prototype.hasOwnProperty.call(values, k) ? _escapeHtml(values[k]) : m;
+      });
+    }
+
     // ── Sidebar ──────────────────────────────────────────────────────────
     // Three states on <html data-sidebar>: "pinned" (full width, pushes the
     // content), "collapsed" (icon rail, hover peeks it open as an overlay) and
@@ -171,7 +213,7 @@
             const e = await r.json();
             detail = e.detail || JSON.stringify(e);
           } catch (_) {}
-          alert(verb + " failed: " + detail);
+          alert(fmt(I18N.addonFailed, { detail: detail }));
           return null;
         }
         return r.json();
@@ -251,9 +293,9 @@
           _pollJob(data.job_id, job => {
             refreshServices();
             if (job.status === "failed") {
-              showToast("error", action + " failed — <a class='underline' href='/jobs/" + job.id + "'>view log</a>");
+              showToast("error", fmtHtml(I18N.stackActionFailed, { href: "/jobs/" + job.id }));
             } else {
-              showToast("success", action + " finished");
+              showToast("success", I18N.stackActionFinished);
             }
           });
           return true;
@@ -267,7 +309,7 @@
       return _stackPost("/api/v1/stack/" + action, body || {}, action).then(data => {
         if (!data) return false;
         refreshStackRunner();
-        showToast("info", "Stack " + action + " started — this panel may go down with it");
+        showToast("info", I18N.stackActionStarted);
         return true;
       });
     }
@@ -288,7 +330,7 @@
             const e = await r.json();
             detail = e.detail || JSON.stringify(e);
           } catch (_) {}
-          showToast("error", label + " refused: " + detail);
+          showToast("error", fmt(I18N.requestRefused, { detail: detail }));
           return null;
         }
         return r.json();
@@ -335,7 +377,7 @@
             const e = await r.json();
             detail = e.detail || JSON.stringify(e);
           } catch (_) {}
-          showToast("error", verb + " failed: " + detail);
+          showToast("error", fmt(I18N.catalogActionFailed, { detail: detail }));
           return false;
         }
         const data = await r.json();
@@ -344,9 +386,9 @@
           _pollJob(data.job_id, (job) => {
             htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
             if (job.status === "succeeded") {
-              showToast("success", "Catalog \"" + name + "\" refreshed.");
+              showToast("success", fmtHtml(I18N.catalogRefreshed, { name: name }));
             } else {
-              showToast("error", "Catalog \"" + name + "\" refresh failed. <a href=\"/jobs/" + data.job_id + "\" class=\"link\">View log</a>");
+              showToast("error", fmtHtml(I18N.catalogRefreshFailed, { name: name, href: "/jobs/" + data.job_id }));
             }
             resolve(true);
           });
@@ -372,11 +414,11 @@
             const e = await r.json();
             detail = e.detail || JSON.stringify(e);
           } catch (_) {}
-          showToast("error", "update failed: " + detail);
+          showToast("error", fmt(I18N.updateFailed, { detail: detail }));
           return false;
         }
         htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
-        showToast("success", "Catalog \"" + name + "\" updated.");
+        showToast("success", fmtHtml(I18N.catalogUpdated, { name: name }));
         return true;
       });
     }
@@ -396,11 +438,11 @@
             const e = await r.json();
             detail = e.detail || JSON.stringify(e);
           } catch (_) {}
-          showToast("error", "delete failed: " + detail);
+          showToast("error", fmt(I18N.deleteFailed, { detail: detail }));
           return false;
         }
         htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
-        showToast("success", "Catalog \"" + name + "\" deleted.");
+        showToast("success", fmtHtml(I18N.catalogDeleted, { name: name }));
         return true;
       });
     }
@@ -477,13 +519,13 @@
 
          aria-label on every nav row: the visible text is display:none while the
          sidebar is a rail, which also removes it from the accessibility tree. #}
-      <a href="/" aria-label="Dashboard"
+      <a href="/" aria-label="{{ _('Dashboard') }}"
          class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                 {{ 'bg-secondary/15 text-secondary font-semibold' if nav_dashboard else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
         </svg>
-        <span class="sidebar-label">Dashboard</span>
+        <span class="sidebar-label">{% trans %}Dashboard{% endtrans %}</span>
       </a>
 
       {# Administrative surfaces. Hiding them here is presentation only --
@@ -504,27 +546,27 @@
       {% if is_admin %}
       <div class="mt-3 flex flex-col gap-0.5 border-t border-base-300 pt-3">
 
-        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">Monitor</p>
+        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">{% trans %}Monitor{% endtrans %}</p>
 
-        <a href="/services" aria-label="Services"
+        <a href="/services" aria-label="{{ _('Services') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_services else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
           </svg>
-          <span class="sidebar-label">Services</span>
+          <span class="sidebar-label">{% trans %}Services{% endtrans %}</span>
         </a>
 
         {# Disk space and certificates. The dot is positioned rather than placed in
            the flex flow, for the reason the Upgrade one is, and it reads the cache
            only: the status row's poll is what keeps that warm. #}
-        <a href="/host" aria-label="Host"
+        <a href="/host" aria-label="{{ _('Host') }}"
            class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_host else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
           </svg>
-          <span class="sidebar-label">Host</span>
+          <span class="sidebar-label">{% trans %}Host{% endtrans %}</span>
           <span class="absolute right-3 top-1/2 -translate-y-1/2 flex"
                 hx-get="/partials/nav/host-indicator"
                 hx-trigger="load, every 30s"
@@ -539,13 +581,13 @@
            It polls from the sidebar of every admin page, which is the point --
            this is how a backup started on one page stays visible from another.
            The Jobs page itself is where it says what and since when. #}
-        <a href="/jobs" aria-label="Jobs"
+        <a href="/jobs" aria-label="{{ _('Jobs') }}"
            class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_jobs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
           </svg>
-          <span class="sidebar-label">Jobs</span>
+          <span class="sidebar-label">{% trans %}Jobs{% endtrans %}</span>
           <span class="absolute right-3 top-1/2 -translate-y-1/2 flex"
                 hx-get="/partials/nav/job-indicator"
                 hx-trigger="load, every 5s"
@@ -556,24 +598,24 @@
 
       <div class="mt-3 flex flex-col gap-0.5 border-t border-base-300 pt-3">
 
-        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">Extensions</p>
+        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">{% trans %}Extensions{% endtrans %}</p>
 
-        <a href="/addons" aria-label="Add-Ons"
+        <a href="/addons" aria-label="{{ _('Add-Ons') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_addons else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
           </svg>
-          <span class="sidebar-label">Add-Ons</span>
+          <span class="sidebar-label">{% trans %}Add-Ons{% endtrans %}</span>
         </a>
 
-        <a href="/catalogs" aria-label="Catalogs"
+        <a href="/catalogs" aria-label="{{ _('Catalogs') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_catalogs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
           </svg>
-          <span class="sidebar-label">Catalogs</span>
+          <span class="sidebar-label">{% trans %}Catalogs{% endtrans %}</span>
         </a>
 
       </div>
@@ -591,40 +633,40 @@
 
         <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">RAG</p>
 
-        <a href="/connections" aria-label="Connections"
+        <a href="/connections" aria-label="{{ _('Connections') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_connections else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
           </svg>
-          <span class="sidebar-label">Connections</span>
+          <span class="sidebar-label">{% trans %}Connections{% endtrans %}</span>
         </a>
 
-        <a href="/collections" aria-label="Collections"
+        <a href="/collections" aria-label="{{ _('Collections') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_collections else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
           </svg>
-          <span class="sidebar-label">Collections</span>
+          <span class="sidebar-label">{% trans %}Collections{% endtrans %}</span>
         </a>
 
-        <a href="/embedding" aria-label="Embedding"
+        <a href="/embedding" aria-label="{{ _('Embedding') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_embedding else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
           </svg>
-          <span class="sidebar-label">Embedding</span>
+          <span class="sidebar-label">{% trans %}Embedding{% endtrans %}</span>
         </a>
 
-        <a href="/ingest/jobs" aria-label="Ingest Jobs"
+        <a href="/ingest/jobs" aria-label="{{ _('Ingest Jobs') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_ingest_jobs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h10M4 18h6"/>
           </svg>
-          <span class="sidebar-label">Ingest Jobs</span>
+          <span class="sidebar-label">{% trans %}Ingest Jobs{% endtrans %}</span>
         </a>
 
       </div>
@@ -632,18 +674,18 @@
 
       <div class="mt-3 flex flex-col gap-0.5 border-t border-base-300 pt-3">
 
-        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">System</p>
+        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">{% trans %}System{% endtrans %}</p>
 
         {# Archive box rather than the former cog: collapsed to a rail the icon is
            the only thing left of this entry, so it has to carry the meaning the
            label spells out. #}
-        <a href="/backup" aria-label="Backup / Restore"
+        <a href="/backup" aria-label="{{ _('Backup / Restore') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_backup else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
           </svg>
-          <span class="sidebar-label">Backup / Restore</span>
+          <span class="sidebar-label">{% trans %}Backup / Restore{% endtrans %}</span>
         </a>
 
         {# Its own entry rather than a control on Services or Backup: an upgrade
@@ -655,13 +697,13 @@
            and drops its padding, and an `ml-auto` dot would end up against the
            panel edge. Unlike the Jobs dot it costs nothing to poll -- it reads
            the cached check, never git or the network. #}
-        <a href="/upgrade" aria-label="Upgrade"
+        <a href="/upgrade" aria-label="{{ _('Upgrade') }}"
            class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_upgrade else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
           </svg>
-          <span class="sidebar-label">Upgrade</span>
+          <span class="sidebar-label">{% trans %}Upgrade{% endtrans %}</span>
           <span class="absolute right-3 top-1/2 -translate-y-1/2 flex"
                 hx-get="/partials/nav/upgrade-indicator"
                 hx-trigger="load, every 30s"
@@ -672,47 +714,47 @@
            accounts live in the bundled Keycloak (`users_nav`); the page and its API enforce
            the role themselves, so this is presentation. #}
         {% if users_nav() %}
-        <a href="/users" aria-label="Users"
+        <a href="/users" aria-label="{{ _('Users') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_users else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
           </svg>
-          <span class="sidebar-label">Users</span>
+          <span class="sidebar-label">{% trans %}Users{% endtrans %}</span>
         </a>
         {% endif %}
 
         {# The mail relay's settings. Stack-level like Backup and Upgrade, not a setting of
            the manager itself, so it is not a card on Settings. #}
-        <a href="/mail" aria-label="Mail"
+        <a href="/mail" aria-label="{{ _('Mail') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_mail else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
           </svg>
-          <span class="sidebar-label">Mail</span>
+          <span class="sidebar-label">{% trans %}Mail{% endtrans %}</span>
         </a>
 
         {# Shield: this is the one entry that is about the deployment's own
            record-keeping rather than about a service it runs. No indicator --
            unlike a job or an upgrade, there is no single "in flight" state for
            an audit trail to flag from the sidebar. #}
-        <a href="/audit" aria-label="Audit log"
+        <a href="/audit" aria-label="{{ _('Audit log') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_audit else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
           </svg>
-          <span class="sidebar-label">Audit log</span>
+          <span class="sidebar-label">{% trans %}Audit log{% endtrans %}</span>
         </a>
 
-        <a href="/settings" aria-label="Settings"
+        <a href="/settings" aria-label="{{ _('Settings') }}"
            class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
                   {{ 'bg-secondary/15 text-secondary font-semibold' if nav_settings else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
           </svg>
-          <span class="sidebar-label">Settings</span>
+          <span class="sidebar-label">{% trans %}Settings{% endtrans %}</span>
         </a>
 
       </div>
@@ -744,7 +786,7 @@
          which the brand header could not do at 4rem. Which glyph shows is CSS,
          not Alpine, so it is already correct before the bundles boot. #}
       <button type="button" onclick="toggleSidebar()"
-              aria-label="Toggle sidebar"
+              aria-label="{{ _('Toggle sidebar') }}"
               class="sidebar-row flex w-full items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors select-none">
         <svg class="sidebar-icon-collapse h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM10 4v16M7.5 9.5L5.5 12l2 2.5"/>
@@ -752,7 +794,7 @@
         <svg class="sidebar-icon-expand h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM10 4v16M14.5 9.5l2 2.5-2 2.5"/>
         </svg>
-        <span class="sidebar-label">Collapse</span>
+        <span class="sidebar-label">{% trans %}Collapse{% endtrans %}</span>
       </button>
 
       <label
@@ -764,30 +806,55 @@
           localStorage.setItem('papaia-theme', t);
         })"
       >
-        <input type="checkbox" x-model="dark" class="hidden" aria-label="Toggle dark mode">
+        <input type="checkbox" x-model="dark" class="hidden" aria-label="{{ _('Toggle dark mode') }}">
         <svg x-show="dark" class="h-4 w-4 shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
           <path d="M5.64 17l-.71.71a1 1 0 001.41 1.41l.71-.71A1 1 0 005.64 17zM5 12a1 1 0 00-1-1H3a1 1 0 000 2h1a1 1 0 001-1zm7-7a1 1 0 001-1V3a1 1 0 00-2 0v1a1 1 0 001 1zm5.36 2.71a1 1 0 001.41-1.41l-.71-.71a1 1 0 10-1.41 1.41zM17 12a5 5 0 11-5-5 5 5 0 015 5zm4-1h1a1 1 0 010 2h-1a1 1 0 010-2zm-2.36 6.29a1 1 0 00-1.41 1.41l.71.71a1 1 0 001.41-1.41zM12 20a1 1 0 00-1 1v1a1 1 0 002 0v-1a1 1 0 00-1-1z"/>
         </svg>
         <svg x-show="!dark" class="h-4 w-4 shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
           <path d="M21.64 13a1 1 0 00-1.05-.14 8.05 8.05 0 01-3.37.73 8.15 8.15 0 01-8.14-8.14 8.05 8.05 0 01.73-3.37 1 1 0 00-1.32-1.32A10.14 10.14 0 1022.96 14.32 1 1 0 0021.64 13z"/>
         </svg>
-        <span class="sidebar-label" x-text="dark ? 'Light mode' : 'Dark mode'"></span>
+        <span class="sidebar-label" x-text="dark ? {{ _('Light mode')|tojson|forceescape }} : {{ _('Dark mode')|tojson|forceescape }}"></span>
       </label>
 
       {% if user %}
       <div class="dropdown dropdown-top w-full">
-        <div tabindex="0" role="button" aria-label="Account menu for {{ user.preferred_username }}"
+        <div tabindex="0" role="button" aria-label="{{ _('Account menu for %(preferred_username)s', preferred_username=user.preferred_username) }}"
              class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors w-full">
           <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-300 text-base-content text-xs font-bold uppercase">
             {{ user.preferred_username[0] }}
           </span>
           <span class="sidebar-label truncate">{{ user.preferred_username }}</span>
         </div>
+        {# The language of this account, kept on the server and so the same on every computer
+           it signs in from. One small form per choice, like Sign out: it works without script,
+           and the browser's Referer brings the account back to the page it was on (the page's
+           own address is not written into the markup: it can carry values nobody vetted). #}
+        {% set lang = locale_state() %}
         <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-10 w-52 p-2 shadow border border-base-300 mb-1">
+          <li class="menu-title">{% trans %}Language{% endtrans %}</li>
+          <li>
+            <form method="post" action="/account/language">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" name="locale" value="auto" class="w-full text-left"{% if not lang.stored %} aria-current="true"{% endif %}>
+                <span class="inline-block w-4" aria-hidden="true">{% if not lang.stored %}✓{% endif %}</span>{% trans language=locale_name(lang.auto) %}Automatic ({{ language }}){% endtrans %}
+              </button>
+            </form>
+          </li>
+          {% for choice in available_locales() %}
+          <li>
+            <form method="post" action="/account/language">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" name="locale" value="{{ choice.code }}" lang="{{ choice.code|replace('_', '-') }}" class="w-full text-left"{% if lang.stored == choice.code %} aria-current="true"{% endif %}>
+                <span class="inline-block w-4" aria-hidden="true">{% if lang.stored == choice.code %}✓{% endif %}</span>{{ choice.name }}
+              </button>
+            </form>
+          </li>
+          {% endfor %}
+          <li class="menu-title">{% trans %}Account{% endtrans %}</li>
           <li>
             <form method="post" action="/auth/logout">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button type="submit" class="w-full text-left">Sign out</button>
+              <button type="submit" class="w-full text-left">{% trans %}Sign out{% endtrans %}</button>
             </form>
           </li>
         </ul>

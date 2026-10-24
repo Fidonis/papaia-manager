@@ -10,11 +10,9 @@
    templates, so a class assembled from a variable would not survive the purge. #}
 {% if not jobs %}
 <div class="rounded-xl border border-base-300 px-5 py-10 text-center">
-  <p class="text-sm font-semibold">No jobs yet</p>
+  <p class="text-sm font-semibold">{% trans %}No jobs yet{% endtrans %}</p>
   <p class="mt-1 text-sm opacity-60">
-    Installing an add-on, controlling a service group or creating a backup runs
-    as a job and appears here. The list is kept in memory and starts over when
-    the manager restarts.
+    {% trans %}Installing an add-on, controlling a service group or creating a backup runs as a job and appears here. The list is kept in memory and starts over when the manager restarts.{% endtrans %}
   </p>
 </div>
 {% else %}
@@ -22,12 +20,12 @@
   <table class="table table-sm">
     <thead>
       <tr>
-        <th>Status</th>
-        <th>Action</th>
-        <th>Target</th>
-        <th>User</th>
-        <th>Started</th>
-        <th>Finished</th>
+        <th>{% trans %}Status{% endtrans %}</th>
+        <th>{% trans %}Action{% endtrans %}</th>
+        <th>{% trans %}Target{% endtrans %}</th>
+        <th>{% trans %}User{% endtrans %}</th>
+        <th>{% trans %}Started{% endtrans %}</th>
+        <th>{% trans %}Finished{% endtrans %}</th>
         <th></th>
       </tr>
     </thead>
@@ -37,14 +35,14 @@
         <td>
           {% if job.status.value == "running" %}
             <span class="badge badge-info badge-sm gap-1">
-              <span class="loading loading-spinner loading-xs"></span>running
+              <span class="loading loading-spinner loading-xs"></span>{% trans %}running{% endtrans %}
             </span>
           {% elif job.status.value == "succeeded" %}
-            <span class="badge badge-success badge-sm">succeeded</span>
+            <span class="badge badge-success badge-sm">{% trans %}succeeded{% endtrans %}</span>
           {% elif job.status.value == "failed" %}
-            <span class="badge badge-error badge-sm">failed</span>
+            <span class="badge badge-error badge-sm">{% trans %}failed{% endtrans %}</span>
           {% else %}
-            <span class="badge badge-ghost badge-sm">queued</span>
+            <span class="badge badge-ghost badge-sm">{% trans %}queued{% endtrans %}</span>
           {% endif %}
         </td>
         <td class="font-medium">{{ job.action }}</td>
@@ -57,7 +55,7 @@
           {{ job.finished_at.strftime("%H:%M:%S") if job.finished_at else "—" }}
         </td>
         <td class="text-right">
-          <a href="/jobs/{{ job.id }}" class="link link-hover text-xs opacity-60 whitespace-nowrap">View log</a>
+          <a href="/jobs/{{ job.id }}" class="link link-hover text-xs opacity-60 whitespace-nowrap">{% trans %}View log{% endtrans %}</a>
         </td>
       </tr>
       {% endfor %}

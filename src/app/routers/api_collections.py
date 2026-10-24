@@ -24,6 +24,7 @@ from app.core.rag_collections import (
     InvalidInput,
     RoleGrant,
 )
+from app.i18n import gettext as _
 from app.routers.rag_deps import RagAdmin, get_store
 
 router = APIRouter(prefix="/api/v1/rag/collections")
@@ -68,14 +69,19 @@ def _translated(name: str = "") -> Iterator[None]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except CollectionExists as exc:
         raise HTTPException(
-            status_code=409, detail=f"collection {name!r} already exists"
+            status_code=409, detail=_("collection %(name)r already exists") % {"name": name}
         ) from exc
     except CollectionNotFound as exc:
-        raise HTTPException(status_code=404, detail=f"collection {name!r} not found") from exc
+        raise HTTPException(status_code=404, detail=_(
+            "collection %(name)r not found"
+        ) % {"name": name}) from exc
     except QdrantUnavailable as exc:
         raise HTTPException(status_code=503, detail=exc.detail) from exc
     except QdrantError as exc:
-        raise HTTPException(status_code=502, detail=f"Qdrant: {exc.detail}") from exc
+        raise HTTPException(
+            status_code=502,
+            detail=_("Qdrant: %(detail)s") % {"detail": exc.detail},
+        ) from exc
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

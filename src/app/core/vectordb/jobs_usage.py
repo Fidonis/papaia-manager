@@ -19,6 +19,8 @@ from pathlib import Path
 
 import yaml
 
+from app.i18n import gettext as _
+
 JOBS_RELPATH = Path("ai") / "rag" / "catalog" / "jobs.yaml"
 
 
@@ -40,22 +42,24 @@ def jobs_using(config_dir: str | Path) -> JobsUsage:
     except FileNotFoundError:
         return JobsUsage()
     except OSError as exc:
-        return JobsUsage(error=f"jobs.yaml cannot be read ({exc.strerror or type(exc).__name__})")
+        return JobsUsage(error=_(
+            "jobs.yaml cannot be read (%(value)s)"
+        ) % {"value": exc.strerror or type(exc).__name__})
 
     try:
         document = yaml.safe_load(raw)
     except yaml.YAMLError:
-        return JobsUsage(error="jobs.yaml is not valid YAML, so its jobs cannot be listed")
+        return JobsUsage(error=_("jobs.yaml is not valid YAML, so its jobs cannot be listed"))
     if document is None:
         return JobsUsage()
     if not isinstance(document, dict):
-        return JobsUsage(error="jobs.yaml does not hold a mapping, so its jobs cannot be listed")
+        return JobsUsage(error=_("jobs.yaml does not hold a mapping, so its jobs cannot be listed"))
 
     jobs = document.get("jobs")
     if jobs is None:
         return JobsUsage()
     if not isinstance(jobs, list):
-        return JobsUsage(error="jobs in jobs.yaml is not a list, so its jobs cannot be listed")
+        return JobsUsage(error=_("jobs in jobs.yaml is not a list, so its jobs cannot be listed"))
 
     used: dict[str, list[str]] = {}
     for index, job in enumerate(jobs):

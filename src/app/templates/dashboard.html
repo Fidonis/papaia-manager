@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Dashboard — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Dashboard{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Your papAIa applications</p>{% endblock %}
+{% block page_title %}{% trans %}Dashboard{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Your papAIa applications{% endtrans %}</p>{% endblock %}
 
 {% block page_actions %}
 {# Filled out of band by whichever tile partial is loaded: the gallery puts
@@ -70,8 +70,8 @@
       if (Array.isArray(body.detail) && body.detail.length) {
         const first = body.detail[0];
         const where = first.tile === null || first.tile === undefined
-          ? "group " + (first.group + 1)
-          : "group " + (first.group + 1) + ", tile " + (first.tile + 1);
+          ? fmt({{ _('group {group}')|tojson }}, { group: first.group + 1 })
+          : fmt({{ _('group {group}, tile {tile}')|tojson }}, { group: first.group + 1, tile: first.tile + 1 });
         return first.message + " (" + where + ")";
       }
       return body.detail || JSON.stringify(body);
@@ -120,6 +120,7 @@
       linkKeys: [],
       widgetTypes: [],
       widgetIcons: {},
+      defaultIcons: {},
       groups: [],
       dirty: 0,
       preview: false,
@@ -135,10 +136,11 @@
 
       // ── Draft lifecycle ──────────────────────────────────────────────────
 
-      load(draft, revision, linkKeys, widgetTypes, widgetIcons) {
+      load(draft, revision, linkKeys, widgetTypes, widgetIcons, defaultIcons) {
         this._seq = 0;
         this.widgetTypes = widgetTypes || [];
         this.widgetIcons = widgetIcons || {};
+        this.defaultIcons = defaultIcons || {};
         this.groups = (draft.groups || []).map((group) => ({
           _id: this._id(),
           name: group.name,
@@ -213,13 +215,20 @@
         return this.widgetIcons[name] || this.widgetIcons.alert || "";
       },
 
+      // The image a link tile shows: its own icon, else the one bundled for a default
+      // application of that name. The dashboard applies the same rule on the server.
+      iconFor(tile) {
+        const name = (tile.name || "").trim().toLowerCase();
+        return tile.icon || this.defaultIcons[name] || "";
+      },
+
       // "3 applications · 2 widgets", counting each kind in its own words.
       groupCount(group) {
         const widgets = group.tiles.filter((tile) => tile.type === "widget").length;
         const links = group.tiles.length - widgets;
         const parts = [];
-        if (links || !widgets) parts.push(links + (links === 1 ? " application" : " applications"));
-        if (widgets) parts.push(widgets + (widgets === 1 ? " widget" : " widgets"));
+        if (links || !widgets) parts.push(fmtPlural(links, {{ _('{count} application')|tojson }}, {{ _('{count} applications')|tojson }}));
+        if (widgets) parts.push(fmtPlural(widgets, {{ _('{count} widget')|tojson }}, {{ _('{count} widgets')|tojson }}));
         return parts.join(" · ");
       },
 
@@ -238,7 +247,7 @@
       // ── Groups ───────────────────────────────────────────────────────────
 
       addGroup() {
-        this.groups.push({ _id: this._id(), name: "New group", tiles: [] });
+        this.groups.push({ _id: this._id(), name: {{ _('New group')|tojson }}, tiles: [] });
         this.touch();
       },
 
@@ -292,9 +301,9 @@
         if (copy.type === "widget") {
           // A new widget: the server gives it an id of its own on save.
           copy.id = "";
-          copy.title = this.widgetName(source) + " copy";
+          copy.title = fmt({{ _('{name} copy')|tojson }}, { name: this.widgetName(source) });
         } else {
-          copy.name = copy.name + " copy";
+          copy.name = fmt({{ _('{name} copy')|tojson }}, { name: copy.name });
         }
         this.groups[gi].tiles.splice(ti + 1, 0, copy);
         this.touch();
@@ -330,7 +339,7 @@
         document.querySelectorAll("[data-tile-list]").forEach((list) => {
           nextTiles.push([
             list.dataset.listGroup,
-            Array.from(list.querySelectorAll(":scope > [data-tile-id]"))
+            Array.from(list.querySelectorAll(':scope > [data-tile-id]'))
               .map((node) => byId.get(node.dataset.tileId))
               .filter(Boolean),
           ]);
@@ -413,7 +422,7 @@
         const dialog = this.dialog;
         if (!dialog) return;
         if (!dialog.tile.name.trim()) {
-          dialog.nameProblem = "give the tile a name";
+          dialog.nameProblem = {{ _('give the tile a name')|tojson }};
           return;
         }
         if (dialog.problem) return;
@@ -500,11 +509,11 @@
         const dialog = this.widgetDialog;
         if (!dialog || !dialog.tile) return;
         if (!dialog.type) {
-          dialog.problem = "this widget does not exist any more; remove it instead";
+          dialog.problem = {{ _('this widget does not exist any more; remove it instead')|tojson }};
           return;
         }
         if (dialog.tile.title.length > 80) {
-          dialog.problem = "keep the title to 80 characters";
+          dialog.problem = {{ _('keep the title to 80 characters')|tojson }};
           return;
         }
         const tile = Object.assign({}, dialog.tile, { title: dialog.tile.title.trim() });
@@ -568,7 +577,7 @@
         const response = await fetch("/api/v1/tiles/raw", { headers: tilesCsrf() });
         if (_authGuard(response)) return;
         if (!response.ok) {
-          showToast("error", "Could not read tiles.yaml: " + tilesEscape(await tilesDetail(response)));
+          showToast("error", {{ _('Could not read tiles.yaml:')|tojson }} + " " + tilesEscape(await tilesDetail(response)));
           return;
         }
         const data = await response.json();
@@ -597,7 +606,7 @@
           }
           this.raw = null;
           this._closeModal("tiles-raw-modal");
-          showToast("success", "tiles.yaml saved.");
+          showToast("success", {{ _('tiles.yaml saved.')|tojson }});
           tilesEnterEdit();
         } finally {
           this.busy = false;
@@ -640,19 +649,19 @@
           if (response.status === 409) {
             showToast(
               "error",
-              "tiles.yaml changed on disk since the editor opened. Reopen the editor to work from the current file."
+              {{ _('tiles.yaml changed on disk since the editor opened. Reopen the editor to work from the current file.')|tojson }}
             );
             return;
           }
           if (!response.ok) {
-            showToast("error", "Save failed: " + tilesEscape(await tilesDetail(response)));
+            showToast("error", {{ _('Save failed:')|tojson }} + " " + tilesEscape(await tilesDetail(response)));
             return;
           }
 
           const data = await response.json();
           this.revision = data.revision;
           this.dirty = 0;
-          showToast("success", "Dashboard saved.");
+          showToast("success", {{ _('Dashboard saved.')|tojson }});
           tilesExitEdit();
         } finally {
           this.busy = false;
@@ -660,12 +669,12 @@
       },
 
       discard() {
-        if (this.dirty && !confirm("Discard all unsaved dashboard changes?")) return;
+        if (this.dirty && !confirm({{ _('Discard all unsaved dashboard changes?')|tojson }})) return;
         tilesEnterEdit();
       },
 
       leave() {
-        if (this.dirty && !confirm("Leave the editor and discard all unsaved changes?")) return;
+        if (this.dirty && !confirm({{ _('Leave the editor and discard all unsaved changes?')|tojson }})) return;
         tilesExitEdit();
       },
     });

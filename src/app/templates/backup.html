@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "partials/_actions.html" import bulk_bar %}
-{% block title %}Backup / Restore — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Backup / Restore — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Backup / Restore{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Back up and restore the stack</p>{% endblock %}
+{% block page_title %}{% trans %}Backup / Restore{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Back up and restore the stack{% endtrans %}</p>{% endblock %}
 
 {# Tier 1. This is the page's primary action and it used to sit in a card body
    next to a number input, which is about as buried as a primary action gets.
@@ -23,49 +23,45 @@
                jobId: {{ (job.id | tojson) if job_active else "null" }} }'
      @papaia-job-state.window="busy = $event.detail.active; jobId = $event.detail.jobId">
   <a style="display:none" x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
-     class="link link-hover text-xs opacity-60">view log</a>
+     class="link link-hover text-xs opacity-60">{% trans %}view log{% endtrans %}</a>
   <button class="btn btn-primary btn-sm" :disabled="busy"
-          :title="busy ? 'A job is already running' : ''"
+          :title="busy ? {{ _('A job is already running')|tojson|forceescape }} : ''"
           @click="document.getElementById('backup-modal').showModal()">
     <span style="display:none" x-show="busy" class="loading loading-spinner loading-xs"></span>
-    <span x-show="!busy">Create backup</span>
+    <span x-show="!busy">{% trans %}Create backup{% endtrans %}</span>
   </button>
 
   <dialog id="backup-modal" class="modal">
     <div class="modal-box max-w-md">
-      <h3 class="font-bold text-base mb-1">Create backup</h3>
+      <h3 class="font-bold text-base mb-1">{% trans %}Create backup{% endtrans %}</h3>
       <p class="text-sm opacity-60 mb-4">
-        Archives the stack configuration, every core volume, and every active
-        add-on's volumes and data directories. Containers keep running; each one
-        is briefly paused while its volume is archived.
+        {% trans %}Archives the stack configuration, every core volume, and every active add-on's volumes and data directories. Containers keep running; each one is briefly paused while its volume is archived.{% endtrans %}
       </p>
 
       <div class="form-control mb-2">
         <label class="label py-1" for="retention-days">
-          <span class="label-text text-sm">Retention (days, optional)</span>
+          <span class="label-text text-sm">{% trans %}Retention (days, optional){% endtrans %}</span>
         </label>
-        <input id="retention-days" type="number" min="0" step="1" placeholder="keep all"
+        <input id="retention-days" type="number" min="0" step="1" placeholder="{{ _('keep all') }}"
                class="input input-bordered input-sm w-40">
       </div>
 
       <p class="text-xs opacity-50 mb-4">
-        A retention period deletes restore points older than that many days, and
-        their catalogue entries, after the new one is written. Leave it empty to
-        keep every restore point.
+        {% trans %}A retention period deletes restore points older than that many days, and their catalogue entries, after the new one is written. Leave it empty to keep every restore point.{% endtrans %}
       </p>
 
       <div class="modal-action mt-0">
         <button class="btn btn-ghost btn-sm"
-                @click="document.getElementById('backup-modal').close()">Cancel</button>
+                @click="document.getElementById('backup-modal').close()">{% trans %}Cancel{% endtrans %}</button>
         <button class="btn btn-primary btn-sm"
                 @click="document.getElementById('backup-modal').close();
                         busy = true;
                         startBackup(id => jobId = id).then(() => { busy = false; jobId = null })">
-          Create backup
+          {% trans %}Create backup{% endtrans %}
         </button>
       </div>
     </div>
-    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
   </dialog>
 </div>
 {% endblock %}
@@ -93,9 +89,9 @@
      version of the same fact. -->
 {% if backup_dir %}
 <p class="mb-6 text-sm opacity-60">
-  Backup target: <span class="font-mono">{{ backup_dir }}</span>
+  {% trans %}Backup target: <span class="font-mono">{{ backup_dir }}</span>{% endtrans %}
   {% if not backup_dir_reachable %}
-  <span class="badge badge-warning badge-sm ml-2">not reachable</span>
+  <span class="badge badge-warning badge-sm ml-2">{% trans %}not reachable{% endtrans %}</span>
   {% endif %}
 </p>
 {% endif %}
@@ -121,9 +117,9 @@
      x-data="backupSelection()"
      @papaia-backups-deleted.window="sel = []">
 <div class="mb-3 flex items-center justify-between gap-3">
-  <h2 class="font-brand text-lg font-bold">Restore points</h2>
+  <h2 class="font-brand text-lg font-bold">{% trans %}Restore points{% endtrans %}</h2>
   <button class="btn btn-ghost btn-xs btn-square"
-          aria-label="Refresh restore points"
+          aria-label="{{ _('Refresh restore points') }}"
           hx-get="/partials/backup/restore-points"
           hx-target="#restore-point-list"
           hx-swap="innerHTML">
@@ -148,12 +144,11 @@
    exists, so it stays with the list it acts on. #}
 {% call bulk_bar("sel.length") %}
   <span class="text-sm flex-1 min-w-48">
-    <span x-text="sel.length"></span>
-    <span x-text="sel.length === 1 ? 'restore point' : 'restore points'"></span> selected
+    <span x-text="fmtPlural(sel.length, {{ _('{count} restore point selected')|tojson|forceescape }}, {{ _('{count} restore points selected')|tojson|forceescape }})"></span>
   </span>
   <button class="btn btn-error btn-sm" :disabled="busy"
-          @click="openDeleteBackupModal(sel)">Delete selected</button>
-  <button class="btn btn-ghost btn-sm" :disabled="busy" @click="sel = []">Clear</button>
+          @click="openDeleteBackupModal(sel)">{% trans %}Delete selected{% endtrans %}</button>
+  <button class="btn btn-ghost btn-sm" :disabled="busy" @click="sel = []">{% trans %}Clear{% endtrans %}</button>
 {% endcall %}
 </div>
 
@@ -169,8 +164,8 @@
 <dialog id="restore-modal" class="modal">
   <div class="modal-box max-w-2xl">
     <div class="flex items-baseline gap-2 mb-3">
-      <h3 class="text-lg font-bold">Restore <span id="restore-target" class="font-mono"></span></h3>
-      <span id="restore-step-badge" class="badge badge-ghost badge-sm ml-auto">Step 1 of 3</span>
+      <h3 id="restore-title" class="text-lg font-bold"></h3>
+      <span id="restore-step-badge" class="badge badge-ghost badge-sm ml-auto"></span>
     </div>
 
     <!-- ── Step 1: what to restore ───────────────────────── -->
@@ -180,18 +175,16 @@
           <input type="radio" name="restore-scope" value="all" class="radio radio-sm mt-0.5"
                  onchange="setRestoreScope('all')">
           <span class="text-sm">
-            <span class="font-medium">Everything in this restore point</span>
-            <span class="block opacity-60">Replaces the stack configuration and all
-              <span id="restore-artifact-count"></span> archives. The whole stack goes down.</span>
+            <span class="font-medium">{% trans %}Everything in this restore point{% endtrans %}</span>
+            <span id="restore-everything-detail" class="block opacity-60"></span>
           </span>
         </label>
         <label class="flex items-start gap-3 cursor-pointer">
           <input type="radio" name="restore-scope" value="some" class="radio radio-sm mt-0.5"
                  onchange="setRestoreScope('some')">
           <span class="text-sm">
-            <span class="font-medium">Choose what to restore</span>
-            <span class="block opacity-60">Only the selected services are stopped,
-              restored and started again. Everything else keeps running.</span>
+            <span class="font-medium">{% trans %}Choose what to restore{% endtrans %}</span>
+            <span class="block opacity-60">{% trans %}Only the selected services are stopped, restored and started again. Everything else keeps running.{% endtrans %}</span>
           </span>
         </label>
       </div>
@@ -213,67 +206,61 @@
     <div id="restore-step-3" class="hidden">
       <div class="alert alert-warning text-sm mb-4">
         <div>
-          <p class="font-semibold mb-1">This overwrites live data.</p>
+          <p class="font-semibold mb-1">{% trans %}This overwrites live data.{% endtrans %}</p>
           <ul id="restore-confirm-points" class="list-disc list-inside space-y-0.5"></ul>
         </div>
       </div>
 
       <p id="restore-partial-note" class="text-sm text-warning mb-3 hidden">
-        This restore point is marked <span class="font-mono">partial</span> &mdash; some
-        archives failed when it was written. Check <span class="font-mono">backup.log</span>
-        before relying on it.
+        {% trans %}This restore point is marked <span class="font-mono">partial</span> &mdash; some archives failed when it was written. Check <span class="font-mono">backup.log</span> before relying on it.{% endtrans %}
       </p>
 
       <label id="restore-clean-row" class="label cursor-pointer justify-start gap-3 mb-1">
         <input id="restore-clean" type="checkbox" class="checkbox checkbox-warning">
         <span class="label-text text-sm">
-          Delete named volumes first (<span class="font-mono">--restart-clean</span>) &mdash;
-          any volume not contained in this restore point loses its data permanently
+          {% trans %}Delete named volumes first (<span class="font-mono">--restart-clean</span>) &mdash; any volume not contained in this restore point loses its data permanently{% endtrans %}
         </span>
       </label>
 
       <label class="label cursor-pointer justify-start gap-3 mb-2">
         <input id="restore-confirm" type="checkbox" class="checkbox"
                onchange="document.getElementById('restore-go').disabled = !this.checked">
-        <span class="label-text text-sm">I understand and want to restore this point</span>
+        <span class="label-text text-sm">{% trans %}I understand and want to restore this point{% endtrans %}</span>
       </label>
 
       <p id="restore-detach-note" class="text-xs opacity-50 mb-2">
-        The restore runs in its own container, so it completes even though the
-        manager itself is stopped and recreated on the way. Expect this page to be
-        unreachable for a while.
+        {% trans %}The restore runs in its own container, so it completes even though the manager itself is stopped and recreated on the way. Expect this page to be unreachable for a while.{% endtrans %}
       </p>
       <p id="restore-inprocess-note" class="text-xs opacity-50 mb-2 hidden">
-        This runs as an ordinary job with a live log. The manager is not part of
-        the selection, so this page stays reachable throughout.
+        {% trans %}This runs as an ordinary job with a live log. The manager is not part of the selection, so this page stays reachable throughout.{% endtrans %}
       </p>
     </div>
 
     <div class="modal-action">
       <button id="restore-back" type="button" class="btn btn-ghost mr-auto hidden"
-              onclick="restoreStep(-1)">Back</button>
+              onclick="restoreStep(-1)">{% trans %}Back{% endtrans %}</button>
       <button type="button" class="btn btn-ghost"
-              onclick="document.getElementById('restore-modal').close()">Cancel</button>
+              onclick="document.getElementById('restore-modal').close()">{% trans %}Cancel{% endtrans %}</button>
       <button id="restore-next" type="button" class="btn btn-primary"
-              onclick="restoreStep(1)">Continue</button>
+              onclick="restoreStep(1)">{% trans %}Continue{% endtrans %}</button>
       <button id="restore-go" type="button" class="btn btn-warning hidden" disabled
-              onclick="submitRestore()">Restore</button>
+              onclick="submitRestore()">{% trans %}Restore{% endtrans %}</button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 <!-- Restore point detail modal -->
 <dialog id="restore-detail-modal" class="modal">
   <div class="modal-box max-w-3xl">
-    <h3 class="text-lg font-bold mb-3">Restore point <span id="detail-id" class="font-mono"></span></h3>
+    <h3 id="detail-title" class="text-lg font-bold mb-3"></h3>
     <div id="detail-body" class="text-sm"></div>
     <div class="modal-action">
       <button type="button" class="btn btn-ghost"
-              onclick="document.getElementById('restore-detail-modal').close()">Close</button>
+              onclick="document.getElementById('restore-detail-modal').close()">{% trans %}Close{% endtrans %}</button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 <!-- Delete confirmation. Plain DOM, opened by id from openDeleteBackupModal --
@@ -281,25 +268,20 @@
      ids is filled with textContent nodes, never innerHTML. -->
 <dialog id="delete-backup-modal" class="modal">
   <div class="modal-box max-w-md">
-    <h3 class="font-bold text-base mb-1">
-      Delete <span id="delete-backup-count"></span>?
-    </h3>
-    <p class="text-sm opacity-60 mb-3">
-      Removes the snapshot archive and its catalogue entry. Restoring from
-      <span id="delete-backup-which">it</span> will no longer be possible.
-    </p>
+    <h3 id="delete-backup-title" class="font-bold text-base mb-1"></h3>
+    <p id="delete-backup-text" class="text-sm opacity-60 mb-3"></p>
     <ul id="delete-backup-id-list"
         class="rounded-lg border border-base-300 px-4 py-2 mb-4 max-h-48 overflow-y-auto text-sm font-mono"></ul>
     <div class="alert alert-warning py-2 mb-4">
-      <span class="text-xs leading-snug">This cannot be undone.</span>
+      <span class="text-xs leading-snug">{% trans %}This cannot be undone.{% endtrans %}</span>
     </div>
     <div class="modal-action mt-0">
       <button class="btn btn-ghost btn-sm"
-              onclick="document.getElementById('delete-backup-modal').close()">Cancel</button>
-      <button class="btn btn-error btn-sm" onclick="confirmDeleteBackups()">Delete</button>
+              onclick="document.getElementById('delete-backup-modal').close()">{% trans %}Cancel{% endtrans %}</button>
+      <button class="btn btn-error btn-sm" onclick="confirmDeleteBackups()">{% trans %}Delete{% endtrans %}</button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 <script>
@@ -340,7 +322,7 @@ function startBackup(onJobId) {
   }).then(async function (r) {
     if (_authGuard(r)) return false;
     if (!r.ok) {
-      showToast('error', 'Backup failed: ' + (await _apiError(r)));
+      showToast('error', {{ _('Backup failed:')|tojson }} + " " + (await _apiError(r)));
       refreshBackupJobStatus();
       return false;
     }
@@ -353,10 +335,9 @@ function startBackup(onJobId) {
                   { target: '#restore-point-list', swap: 'innerHTML' });
         refreshBackupJobStatus();
         if (job.status === 'succeeded') {
-          showToast('success', 'Backup complete.');
+          showToast('success', {{ _('Backup complete.')|tojson }});
         } else {
-          showToast('error', 'Backup failed. <a href="/jobs/' + data.job_id +
-                             '" class="link">View log</a>');
+          showToast('error', fmtHtml({{ _('Backup failed. <a href="/jobs/{job_id}" class="link">View log</a>')|tojson }}, { job_id: data.job_id }));
         }
         resolve(true);
       });
@@ -388,10 +369,12 @@ function openDeleteBackupModal(ids) {
   if (_pendingDeleteIds.length === 0) return;
 
   var many = _pendingDeleteIds.length > 1;
-  _el('delete-backup-count').textContent = many
-    ? _pendingDeleteIds.length + ' restore points'
-    : 'restore point ' + _pendingDeleteIds[0];
-  _el('delete-backup-which').textContent = many ? 'them' : 'it';
+  _el('delete-backup-title').textContent = many
+    ? fmt({{ _('Delete {count} restore points?')|tojson }}, { count: _pendingDeleteIds.length })
+    : fmt({{ _('Delete restore point {id}?')|tojson }}, { id: _pendingDeleteIds[0] });
+  _el('delete-backup-text').textContent = many
+    ? {{ _('Removes the snapshot archives and their catalogue entries. Restoring from them will no longer be possible.')|tojson }}
+    : {{ _('Removes the snapshot archive and its catalogue entry. Restoring from it will no longer be possible.')|tojson }};
 
   var list = _el('delete-backup-id-list');
   list.textContent = '';
@@ -416,7 +399,7 @@ function confirmDeleteBackups() {
   }).then(async function (r) {
     if (_authGuard(r)) return;
     if (!r.ok) {
-      showToast('error', 'Delete failed: ' + (await _apiError(r)));
+      showToast('error', {{ _('Delete failed:')|tojson }} + " " + (await _apiError(r)));
       refreshBackupJobStatus();
       return;
     }
@@ -429,11 +412,10 @@ function confirmDeleteBackups() {
       if (job.status === 'succeeded') {
         window.dispatchEvent(new CustomEvent('papaia-backups-deleted'));
         showToast('success', ids.length > 1
-          ? ids.length + ' restore points deleted.'
-          : 'Restore point deleted.');
+          ? fmt({{ _('{count} restore points deleted.')|tojson }}, { count: ids.length })
+          : {{ _('Restore point deleted.')|tojson }});
       } else {
-        showToast('error', 'Delete failed. <a href="/jobs/' + data.job_id +
-                           '" class="link">View log</a>');
+        showToast('error', fmtHtml({{ _('Delete failed. <a href="/jobs/{job_id}" class="link">View log</a>')|tojson }}, { job_id: data.job_id }));
       }
     });
   });
@@ -477,8 +459,9 @@ function _node(tag, className, text) {
 
 function openRestoreModal(id, artifacts, result) {
   _scope = _freshScope(id, artifacts, result);
-  _el('restore-target').textContent = id;
-  _el('restore-artifact-count').textContent = artifacts;
+  _el('restore-title').innerHTML = fmtHtml({{ _('Restore <span class="font-mono">{id}</span>')|tojson }}, { id: id });
+  _el('restore-everything-detail').textContent = fmt(
+    {{ _('Replaces the stack configuration and all {count} archives. The whole stack goes down.')|tojson }}, { count: artifacts });
   _el('restore-partial-note').classList.toggle('hidden', result !== 'partial');
   _el('restore-clean').checked = false;
   _el('restore-confirm').checked = false;
@@ -529,14 +512,14 @@ function _renderPicker() {
   // the row that was just clicked once the list is longer than the panel.
   var scrollTop = box.scrollTop;
 
-  var headings = { config: 'Stack', module: 'Core services', addon: 'Add-ons' };
+  var headings = { config: {{ _('Stack')|tojson }}, module: {{ _('Core services')|tojson }}, addon: {{ _('Add-ons')|tojson }} };
   var lastKind = '';
   _scope.groups.forEach(function (group) {
     if (group.kind !== lastKind) {
       lastKind = group.kind;
       box.appendChild(_node('div',
         'px-3 py-1.5 text-xs uppercase tracking-wide opacity-50 bg-base-200',
-        headings[group.kind] || 'Other'));
+        headings[group.kind] || {{ _('Other')|tojson }}));
     }
     box.appendChild(_groupRow(group));
   });
@@ -545,8 +528,7 @@ function _renderPicker() {
   // and the note says what it does not offer.
   if (!_scope.supported) {
     box.appendChild(_node('p', 'px-3 py-3 text-sm opacity-70 border-t border-base-300',
-      'This restore point was written by an older core and carries no per-service ' +
-      'grouping, so its volumes can only be restored as part of the whole point.'));
+      {{ _('This restore point was written by an older core and carries no per-service grouping, so its volumes can only be restored as part of the whole point.')|tojson }}));
   }
 
   box.scrollTop = scrollTop;
@@ -584,7 +566,7 @@ function _groupRow(group) {
   head.appendChild(text);
 
   head.appendChild(_node('div', 'text-xs opacity-50 text-right whitespace-nowrap',
-    group.archives + (group.archives === 1 ? ' archive' : ' archives')));
+    fmtPlural(group.archives, {{ _('{count} archive')|tojson }}, {{ _('{count} archives')|tojson }})));
   wrap.appendChild(head);
 
   if (group.requires_config && _scope.selected.has(group.selector)) {
@@ -592,10 +574,10 @@ function _groupRow(group) {
     var inner = _node('div', '');
     inner.appendChild(_node('span', 'font-semibold block',
       group.kind === 'config'
-        ? 'Restoring the configuration restores the whole point.'
-        : group.label + ' brings the stack configuration with it.'));
+        ? {{ _('Restoring the configuration restores the whole point.')|tojson }}
+        : fmt({{ _('{label} brings the stack configuration with it.')|tojson }}, { label: group.label })));
     group.hazards.forEach(function (h) { inner.appendChild(_node('span', 'block', h)); });
-    inner.appendChild(_node('span', 'block mt-1', 'This therefore runs as a full restore.'));
+    inner.appendChild(_node('span', 'block mt-1', {{ _('This therefore runs as a full restore.')|tojson }}));
     alert.appendChild(inner);
     wrap.appendChild(alert);
   }
@@ -603,7 +585,7 @@ function _groupRow(group) {
   if (group.items.length > 1) {
     var open = _scope.expanded.has(group.selector);
     var toggle = _node('button', 'btn btn-ghost btn-xs mt-1 ml-7',
-                       open ? 'Hide volumes' : 'Show volumes');
+                       open ? {{ _('Hide volumes')|tojson }} : {{ _('Show volumes')|tojson }});
     toggle.type = 'button';
     var list = _node('div', 'ml-7 mt-1 pl-3 border-l border-base-300' + (open ? '' : ' hidden'));
     group.items.forEach(function (item) { list.appendChild(_itemRow(group, item)); });
@@ -613,7 +595,7 @@ function _groupRow(group) {
       if (_scope.expanded.has(group.selector)) _scope.expanded.delete(group.selector);
       else _scope.expanded.add(group.selector);
       var hidden = list.classList.toggle('hidden');
-      toggle.textContent = hidden ? 'Show volumes' : 'Hide volumes';
+      toggle.textContent = hidden ? {{ _('Show volumes')|tojson }} : {{ _('Hide volumes')|tojson }};
     });
     wrap.appendChild(toggle);
     wrap.appendChild(list);
@@ -668,8 +650,8 @@ function _updateTally() {
       : g.items.filter(function (i) { return _scope.selected.has(i.selector); }).length;
   });
   _el('restore-tally').textContent = groups.length
-    ? count + (count === 1 ? ' item' : ' items') + ' selected'
-    : 'Nothing selected yet.';
+    ? fmtPlural(count, {{ _('{count} item selected')|tojson }}, {{ _('{count} items selected')|tojson }})
+    : {{ _('Nothing selected yet.')|tojson }};
   _updateNextButton();
 }
 
@@ -690,7 +672,7 @@ function _renderStep() {
   [1, 2, 3].forEach(function (n) {
     _el('restore-step-' + n).classList.toggle('hidden', n !== _scope.step);
   });
-  _el('restore-step-badge').textContent = 'Step ' + _scope.step + ' of 3';
+  _el('restore-step-badge').textContent = fmt({{ _('Step {step} of 3')|tojson }}, { step: _scope.step });
   _el('restore-back').classList.toggle('hidden', _scope.step === 1);
   _el('restore-next').classList.toggle('hidden', _scope.step === 3);
   _el('restore-go').classList.toggle('hidden', _scope.step !== 3);
@@ -715,17 +697,16 @@ function _renderImpact() {
     else (g.profiles || []).forEach(function (p) { profiles[p] = true; });
   });
 
-  var over = _section('Overwritten — current contents are deleted first');
+  var over = _section({{ _('Overwritten — current contents are deleted first')|tojson }});
   if (full) {
     over.body.appendChild(_node('p', 'text-sm',
-      'The stack configuration and all ' + _scope.artifacts +
-      ' archives in this restore point.'));
+      fmt({{ _('The stack configuration and all {count} archives in this restore point.')|tojson }}, { count: _scope.artifacts })));
   } else {
     var list = _node('div', 'flex flex-col gap-0.5');
     groups.forEach(function (g) {
       if (_scope.selected.has(g.selector)) {
         list.appendChild(_node('span', 'text-sm',
-          g.label + ' — ' + g.archives + (g.archives === 1 ? ' archive' : ' archives')));
+          g.label + ' — ' + fmtPlural(g.archives, {{ _('{count} archive')|tojson }}, {{ _('{count} archives')|tojson }})));
       } else {
         g.items.forEach(function (i) {
           if (_scope.selected.has(i.selector)) {
@@ -742,12 +723,12 @@ function _renderImpact() {
   // Built from profiles, not from the modules that were ticked: a profile is
   // what actually stops. Selecting SearXNG stops librechat-websearch, which is
   // nine containers across four modules.
-  var restarted = _section('Stopped and recreated', 'flex flex-wrap gap-1');
-  var running = _section('Keeps running — untouched by this restore', 'flex flex-wrap gap-1');
+  var restarted = _section({{ _('Stopped and recreated')|tojson }}, 'flex flex-wrap gap-1');
+  var running = _section({{ _('Keeps running — untouched by this restore')|tojson }}, 'flex flex-wrap gap-1');
   if (full) {
     restarted.body.appendChild(_node('span', 'text-sm',
-      'Every core and add-on container, this panel included.'));
-    running.body.appendChild(_node('span', 'text-sm opacity-60', 'Nothing.'));
+      {{ _('Every core and add-on container, this panel included.')|tojson }}));
+    running.body.appendChild(_node('span', 'text-sm opacity-60', {{ _('Nothing.')|tojson }}));
   } else {
     _scope.services.forEach(function (svc) {
       var hit = (svc.profiles || []).some(function (p) { return profiles[p] === true; });
@@ -759,7 +740,7 @@ function _renderImpact() {
     });
     if (!restarted.body.childNodes.length) {
       restarted.body.appendChild(_node('span', 'text-sm opacity-60',
-        'Nothing — the selection touches no running container.'));
+        {{ _('Nothing — the selection touches no running container.')|tojson }}));
     }
   }
   _el('impact-restarted').textContent = '';
@@ -773,8 +754,7 @@ function _renderImpact() {
   groups.forEach(function (g) {
     (g.hazards || []).forEach(function (h) { if (seen.indexOf(h) === -1) seen.push(h); });
   });
-  seen.push('Everything these archives recorded after the snapshot is discarded. ' +
-            'Take a backup first if you might want it back.');
+  seen.push({{ _('Everything these archives recorded after the snapshot is discarded. Take a backup first if you might want it back.')|tojson }});
   seen.forEach(function (text) {
     var alert = _node('div', 'alert alert-warning text-xs mb-2 py-2');
     alert.appendChild(_node('span', '', text));
@@ -787,16 +767,16 @@ function _renderConfirm() {
   var points = _el('restore-confirm-points');
   points.textContent = '';
   if (full) {
-    points.appendChild(_node('li', '', 'The stack configuration directory is replaced.'));
+    points.appendChild(_node('li', '', {{ _('The stack configuration directory is replaced.')|tojson }}));
     points.appendChild(_node('li', '',
-      _scope.artifacts + ' archived volumes and directories are replaced.'));
+      fmt({{ _('{count} archived volumes and directories are replaced.')|tojson }}, { count: _scope.artifacts })));
     points.appendChild(_node('li', '',
-      'All core and add-on containers are removed and recreated.'));
+      {{ _('All core and add-on containers are removed and recreated.')|tojson }}));
   } else {
     _selectedGroups().forEach(function (g) {
-      points.appendChild(_node('li', '', g.label + ' is replaced from the snapshot.'));
+      points.appendChild(_node('li', '', fmt({{ _('{label} is replaced from the snapshot.')|tojson }}, { label: g.label })));
     });
-    points.appendChild(_node('li', '', 'Everything outside the selection keeps running.'));
+    points.appendChild(_node('li', '', {{ _('Everything outside the selection keeps running.')|tojson }}));
   }
   _el('restore-clean-row').classList.toggle('hidden', !full);
   if (!full) _el('restore-clean').checked = false;
@@ -824,12 +804,12 @@ function _submitFullRestore() {
   }).then(async function (r) {
     if (_authGuard(r)) return;
     if (!r.ok) {
-      showToast('error', 'Restore could not be started: ' + (await _apiError(r)));
+      showToast('error', {{ _('Restore could not be started:')|tojson }} + " " + (await _apiError(r)));
       _el('restore-go').disabled = false;
       return;
     }
     _el('restore-modal').close();
-    showToast('success', 'Restore started.');
+    showToast('success', {{ _('Restore started.')|tojson }});
     // Load the status panel, which then polls itself across the restart.
     htmx.ajax('GET', '/partials/backup/restore-status',
               { target: '#restore-status-slot', swap: 'innerHTML' });
@@ -848,24 +828,22 @@ function _submitScopedRestore() {
   }).then(async function (r) {
     if (_authGuard(r)) return;
     if (!r.ok) {
-      showToast('error', 'Restore could not be started: ' + (await _apiError(r)));
+      showToast('error', {{ _('Restore could not be started:')|tojson }} + " " + (await _apiError(r)));
       _el('restore-go').disabled = false;
       return;
     }
     var data = await r.json();
     _el('restore-modal').close();
-    showToast('success', 'Restore started. <a href="/jobs/' + data.job_id +
-                         '" class="link">View log</a>');
+    showToast('success', fmtHtml({{ _('Restore started. <a href="/jobs/{job_id}" class="link">View log</a>')|tojson }}, { job_id: data.job_id }));
     refreshBackupJobStatus();
     _pollJob(data.job_id, function (job) {
       refreshBackupJobStatus();
       htmx.ajax('GET', '/partials/backup/restore-points',
                 { target: '#restore-point-list', swap: 'innerHTML' });
       if (job.status === 'succeeded') {
-        showToast('success', 'Restore complete.');
+        showToast('success', {{ _('Restore complete.')|tojson }});
       } else {
-        showToast('error', 'Restore failed. <a href="/jobs/' + data.job_id +
-                           '" class="link">View log</a>');
+        showToast('error', fmtHtml({{ _('Restore failed. <a href="/jobs/{job_id}" class="link">View log</a>')|tojson }}, { job_id: data.job_id }));
       }
     });
   });
@@ -880,7 +858,7 @@ function acknowledgeRestore() {
   }).then(async function (r) {
     if (_authGuard(r)) return;
     if (!r.ok) {
-      showToast('error', 'Could not dismiss the restore: ' + (await _apiError(r)));
+      showToast('error', {{ _('Could not dismiss the restore:')|tojson }} + " " + (await _apiError(r)));
       return;
     }
     htmx.ajax('GET', '/partials/backup/restore-status',
@@ -894,15 +872,15 @@ function acknowledgeRestore() {
 // the API as text and is written via textContent / DOM nodes, never innerHTML.
 function openRestorePointDetail(id) {
   var body = document.getElementById('detail-body');
-  document.getElementById('detail-id').textContent = id;
-  body.textContent = 'Loading…';
+  document.getElementById('detail-title').innerHTML = fmtHtml({{ _('Restore point <span class="font-mono">{id}</span>')|tojson }}, { id: id });
+  body.textContent = {{ _('Loading…')|tojson }};
   document.getElementById('restore-detail-modal').showModal();
 
   fetch('/api/v1/maintenance/restore-points/' + encodeURIComponent(id))
     .then(async function (r) {
       if (_authGuard(r)) return;
       if (!r.ok) {
-        body.textContent = 'Could not load details: ' + (await _apiError(r));
+        body.textContent = {{ _('Could not load details:')|tojson }} + " " + (await _apiError(r));
         return;
       }
       var data = await r.json();
@@ -910,16 +888,16 @@ function openRestorePointDetail(id) {
 
       var meta = document.createElement('p');
       meta.className = 'opacity-60 mb-3';
-      meta.textContent = data.created_at + ' · ' + data.size_mb + ' MB · ' +
-                         data.artifacts + ' artifacts · result ' + data.result +
-                         (data.papaia_version ? ' · core ' + data.papaia_version : '');
+      meta.textContent = fmt({{ _('{created} · {size} MB · {artifacts} artifacts · result {result}')|tojson }},
+                             { created: data.created_at, size: data.size_mb, artifacts: data.artifacts, result: data.result }) +
+                         (data.papaia_version ? ' · ' + fmt({{ _('core {version}')|tojson }}, { version: data.papaia_version }) : '');
       body.appendChild(meta);
 
       var list = data.artifact_list || [];
       if (!list.length) {
         var empty = document.createElement('p');
         empty.className = 'opacity-60';
-        empty.textContent = 'No manifest found for this restore point.';
+        empty.textContent = {{ _('No manifest found for this restore point.')|tojson }};
         body.appendChild(empty);
         return;
       }
@@ -928,7 +906,7 @@ function openRestorePointDetail(id) {
       table.className = 'table table-zebra table-xs';
       var head = document.createElement('thead');
       var headRow = document.createElement('tr');
-      ['Kind', 'Target', 'Owner'].forEach(function (label) {
+      [{{ _('Kind')|tojson }}, {{ _('Target')|tojson }}, {{ _('Owner')|tojson }}].forEach(function (label) {
         var th = document.createElement('th');
         th.textContent = label;
         headRow.appendChild(th);
@@ -964,11 +942,9 @@ function openRestorePointDetail(id) {
      is exactly what the preview showed. -->
 <dialog id="schedule-modal" class="modal">
   <div class="modal-box max-w-xl">
-    <h3 class="font-bold text-base mb-1">Backup schedule</h3>
+    <h3 class="font-bold text-base mb-1">{% trans %}Backup schedule{% endtrans %}</h3>
     <p class="text-sm opacity-60 mb-4">
-      Starts a backup by itself at these times, the same way the Create backup button
-      does. A run is held back while a restore, an upgrade or another job is running,
-      and tried again a few minutes later.
+      {% trans %}Starts a backup by itself at these times, the same way the Create backup button does. A run is held back while a restore, an upgrade or another job is running, and tried again a few minutes later.{% endtrans %}
     </p>
 
     <form id="schedule-form" onsubmit="return false"
@@ -979,36 +955,36 @@ function openRestorePointDetail(id) {
 
       <label class="label cursor-pointer justify-start gap-3 mb-2">
         <input id="schedule-enabled" type="checkbox" class="checkbox checkbox-sm">
-        <span class="label-text text-sm">Schedule is active</span>
+        <span class="label-text text-sm">{% trans %}Schedule is active{% endtrans %}</span>
       </label>
 
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="form-control">
-          <label class="label py-1" for="schedule-mode"><span class="label-text text-sm">Repeat</span></label>
+          <label class="label py-1" for="schedule-mode"><span class="label-text text-sm">{% trans %}Repeat{% endtrans %}</span></label>
           <select id="schedule-mode" name="mode" class="select select-bordered select-sm"
                   onchange="scheduleModeChanged()">
-            <option value="daily">Every day</option>
-            <option value="weekly">On chosen days</option>
-            <option value="hourly">Every few hours</option>
-            <option value="custom">Cron expression</option>
+            <option value="daily">{% trans %}Every day{% endtrans %}</option>
+            <option value="weekly">{% trans %}On chosen days{% endtrans %}</option>
+            <option value="hourly">{% trans %}Every few hours{% endtrans %}</option>
+            <option value="custom">{% trans %}Cron expression{% endtrans %}</option>
           </select>
         </div>
 
         <div id="schedule-time-row" class="form-control">
-          <label class="label py-1" for="schedule-time"><span class="label-text text-sm">At</span></label>
+          <label class="label py-1" for="schedule-time"><span class="label-text text-sm">{% trans %}At{% endtrans %}</span></label>
           <input id="schedule-time" name="time" type="time" value="03:00"
                  class="input input-bordered input-sm">
         </div>
 
         <div id="schedule-hours-row" class="form-control hidden">
-          <label class="label py-1" for="schedule-every-hours"><span class="label-text text-sm">Every</span></label>
+          <label class="label py-1" for="schedule-every-hours"><span class="label-text text-sm">{% trans %}Every{% endtrans %}</span></label>
           <select id="schedule-every-hours" name="every_hours" class="select select-bordered select-sm">
-            {% for n in hourly_choices %}<option value="{{ n }}">{{ n }} hour{{ "" if n == 1 else "s" }}</option>{% endfor %}
+            {% for n in hourly_choices %}<option value="{{ n }}">{% trans n=n %}{{ n }} hour{% pluralize n %}{{ n }} hours{% endtrans %}</option>{% endfor %}
           </select>
         </div>
 
         <div id="schedule-minute-row" class="form-control hidden">
-          <label class="label py-1" for="schedule-minute"><span class="label-text text-sm">Minute past the hour</span></label>
+          <label class="label py-1" for="schedule-minute"><span class="label-text text-sm">{% trans %}Minute past the hour{% endtrans %}</span></label>
           <input id="schedule-minute" name="minute" type="number" min="0" max="59" value="0"
                  class="input input-bordered input-sm">
         </div>
@@ -1027,7 +1003,7 @@ function openRestorePointDetail(id) {
 
       <div id="schedule-cron-row" class="form-control mt-3 hidden">
         <label class="label py-1" for="schedule-cron">
-          <span class="label-text text-sm">Cron expression (minute hour day month weekday)</span>
+          <span class="label-text text-sm">{% trans %}Cron expression (minute hour day month weekday){% endtrans %}</span>
         </label>
         <input id="schedule-cron" name="cron" type="text" placeholder="0 3 * * *" autocomplete="off"
                class="input input-bordered input-sm font-mono">
@@ -1035,7 +1011,7 @@ function openRestorePointDetail(id) {
 
       <div class="grid gap-3 sm:grid-cols-2 mt-3">
         <div class="form-control">
-          <label class="label py-1" for="schedule-timezone"><span class="label-text text-sm">Timezone</span></label>
+          <label class="label py-1" for="schedule-timezone"><span class="label-text text-sm">{% trans %}Timezone{% endtrans %}</span></label>
           <input id="schedule-timezone" name="timezone" type="text" list="schedule-tz-list" autocomplete="off"
                  class="input input-bordered input-sm">
           <datalist id="schedule-tz-list">
@@ -1044,36 +1020,34 @@ function openRestorePointDetail(id) {
         </div>
 
         <div class="form-control">
-          <label class="label py-1" for="schedule-retention"><span class="label-text text-sm">Keep restore points for (days)</span></label>
-          <input id="schedule-retention" name="retention_days" type="number" min="1" step="1" placeholder="keep all"
+          <label class="label py-1" for="schedule-retention"><span class="label-text text-sm">{% trans %}Keep restore points for (days){% endtrans %}</span></label>
+          <input id="schedule-retention" name="retention_days" type="number" min="1" step="1" placeholder="{{ _('keep all') }}"
                  class="input input-bordered input-sm">
         </div>
       </div>
 
       <label class="label cursor-pointer justify-start gap-3 mt-2">
         <input id="schedule-catchup" type="checkbox" class="checkbox checkbox-sm">
-        <span class="label-text text-sm">Make up a missed run after the manager restarts</span>
+        <span class="label-text text-sm">{% trans %}Make up a missed run after the manager restarts{% endtrans %}</span>
       </label>
     </form>
 
     <p class="text-xs opacity-50 mt-1">
-      Older restore points are deleted after each scheduled backup. The deletion is
-      held back while the newest successful restore point is overdue, so a run of
-      failed backups cannot wipe out the good ones.
+      {% trans %}Older restore points are deleted after each scheduled backup. The deletion is held back while the newest successful restore point is overdue, so a run of failed backups cannot wipe out the good ones.{% endtrans %}
     </p>
 
     <div id="schedule-preview" class="mt-4 rounded-lg border border-base-300 px-4 py-3 text-sm"></div>
 
     <div class="modal-action">
       <button id="schedule-remove" type="button" class="btn btn-ghost btn-sm text-error mr-auto hidden"
-              onclick="removeSchedule()">Remove schedule</button>
+              onclick="removeSchedule()">{% trans %}Remove schedule{% endtrans %}</button>
       <button type="button" class="btn btn-ghost btn-sm"
-              onclick="document.getElementById('schedule-modal').close()">Cancel</button>
+              onclick="document.getElementById('schedule-modal').close()">{% trans %}Cancel{% endtrans %}</button>
       <button id="schedule-save" type="button" class="btn btn-primary btn-sm" disabled
-              onclick="saveSchedule()">Save schedule</button>
+              onclick="saveSchedule()">{% trans %}Save schedule{% endtrans %}</button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 <script>
@@ -1124,7 +1098,7 @@ function openScheduleModal() {
   fetch('/api/v1/maintenance/schedule').then(async function (r) {
     if (_authGuard(r)) return;
     if (!r.ok) {
-      showToast('error', 'Could not load the schedule: ' + (await _apiError(r)));
+      showToast('error', {{ _('Could not load the schedule:')|tojson }} + " " + (await _apiError(r)));
       return;
     }
     _fillScheduleForm(await r.json());
@@ -1149,7 +1123,7 @@ document.addEventListener('htmx:afterSwap', function (e) {
 
 function saveSchedule() {
   if (!document.querySelector('#schedule-preview [data-valid="true"]')) {
-    showToast('error', 'Fix the schedule first.');
+    showToast('error', {{ _('Fix the schedule first.')|tojson }});
     return;
   }
   var raw = _el('schedule-retention').value.trim();
@@ -1168,12 +1142,12 @@ function saveSchedule() {
   }).then(async function (r) {
     if (_authGuard(r)) return;
     if (!r.ok) {
-      showToast('error', 'The schedule was not saved: ' + (await _apiError(r)));
+      showToast('error', {{ _('The schedule was not saved:')|tojson }} + " " + (await _apiError(r)));
       _el('schedule-save').disabled = false;
       return;
     }
     _el('schedule-modal').close();
-    showToast('success', body.enabled ? 'Schedule saved.' : 'Schedule saved and paused.');
+    showToast('success', body.enabled ? {{ _('Schedule saved.')|tojson }} : {{ _('Schedule saved and paused.')|tojson }});
     refreshScheduleStrip();
   });
 }
@@ -1186,12 +1160,12 @@ var _removeScheduleTimer = null;
 function _disarmRemoveSchedule() {
   clearTimeout(_removeScheduleTimer);
   _removeScheduleTimer = null;
-  _el('schedule-remove').textContent = 'Remove schedule';
+  _el('schedule-remove').textContent = {{ _('Remove schedule')|tojson }};
 }
 
 function removeSchedule() {
   if (_removeScheduleTimer === null) {
-    _el('schedule-remove').textContent = 'Click again to remove';
+    _el('schedule-remove').textContent = {{ _('Click again to remove')|tojson }};
     _removeScheduleTimer = setTimeout(_disarmRemoveSchedule, 4000);
     return;
   }
@@ -1202,11 +1176,11 @@ function removeSchedule() {
   }).then(async function (r) {
     if (_authGuard(r)) return;
     if (!r.ok) {
-      showToast('error', 'The schedule was not removed: ' + (await _apiError(r)));
+      showToast('error', {{ _('The schedule was not removed:')|tojson }} + " " + (await _apiError(r)));
       return;
     }
     _el('schedule-modal').close();
-    showToast('success', 'Schedule removed.');
+    showToast('success', {{ _('Schedule removed.')|tojson }});
     refreshScheduleStrip();
   });
 }

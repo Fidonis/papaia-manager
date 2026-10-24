@@ -24,38 +24,38 @@
 <!-- Status bar -->
 <div class="flex items-center gap-3 mb-6 flex-wrap">
   {% if s == "running" %}
-    <span class="badge badge-success">running</span>
+    <span class="badge badge-success">{% trans %}running{% endtrans %}</span>
   {% elif s == "installed" %}
-    <span class="badge badge-info">installed</span>
+    <span class="badge badge-info">{% trans %}installed{% endtrans %}</span>
   {% elif s == "inactive" %}
-    <span class="badge badge-warning">inactive</span>
+    <span class="badge badge-warning">{% trans %}inactive{% endtrans %}</span>
   {% elif s == "unmanaged" %}
-    <span class="badge badge-neutral">unmanaged</span>
+    <span class="badge badge-neutral">{% trans %}unmanaged{% endtrans %}</span>
   {% else %}
-    <span class="badge badge-ghost">available</span>
+    <span class="badge badge-ghost">{% trans %}available{% endtrans %}</span>
   {% endif %}
 
   {% if addon.update_available %}
-    <span class="badge badge-warning">update available</span>
+    <span class="badge badge-warning">{% trans %}update available{% endtrans %}</span>
   {% endif %}
 
   <span class="text-sm opacity-60">
-    {% if addon.catalog %}catalog: {{ addon.catalog }}{% endif %}
+    {% if addon.catalog %}{% trans catalog=addon.catalog %}catalog: {{ catalog }}{% endtrans %}{% endif %}
     {% if addon.catalog_version %} &middot; v{{ addon.catalog_version }}{% endif %}
     {% if addon.installed_version and addon.installed_version != addon.catalog_version %}
-      &middot; installed: v{{ addon.installed_version }}
+      {% trans installed_version=addon.installed_version %}&middot; installed: v{{ installed_version }}{% endtrans %}
     {% endif %}
   </span>
 
   {% if addon.is_variant %}
-    <span class="badge badge-outline badge-sm" title="This version is available alongside the main variant">other version</span>
+    <span class="badge badge-outline badge-sm" title="{{ _('This version is available alongside the main variant') }}">{% trans %}other version{% endtrans %}</span>
   {% endif %}
 </div>
 
 {% if addon.shadowed_by %}
 <div class="alert alert-info py-2 mb-4 text-sm">
   <span>
-    Identical version (v{{ addon.catalog_version }}) also available in:
+    {% trans catalog_version=addon.catalog_version %}Identical version (v{{ catalog_version }}) also available in:{% endtrans %}
     {% for other in addon.shadowed_by %}<span class="badge badge-outline badge-xs">{{ other }}</span>{% endfor %}
   </span>
 </div>
@@ -65,29 +65,87 @@
 <p class="mb-6 opacity-80">{{ addon.description }}</p>
 {% endif %}
 
+<!-- Components: what the add-on runs, as opposed to the version of the add-on itself -->
+{% if addon.components %}
+<div class="card bg-base-100 border border-base-300 mb-6">
+  <div class="card-body">
+    <h3 class="card-title text-base mb-2">{% trans %}Components{% endtrans %}</h3>
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>{% trans %}Component{% endtrans %}</th>
+            <th>{% trans %}Version{% endtrans %}</th>
+            <th>{% trans %}Role{% endtrans %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in addon.components %}
+          <tr>
+            <td>
+              {% if c.source %}
+                <a class="link link-hover" href="{{ c.source }}" target="_blank" rel="noopener noreferrer">{{ c.name }}</a>
+              {% else %}
+                {{ c.name }}
+              {% endif %}
+              {% if c.image_var %}<br><span class="font-mono text-xs opacity-50">{{ c.image_var }}</span>{% endif %}
+            </td>
+            <td class="font-mono text-xs">
+              {% if c.changed %}
+                {{ c.installed_version }} → {{ c.version }}
+                <span class="badge badge-accent badge-xs font-sans">{% trans %}update{% endtrans %}</span>
+              {% else %}
+                {{ c.version }}
+              {% endif %}
+              {% if c.floating %}
+                <span class="badge badge-warning badge-outline badge-xs font-sans"
+                      title="{{ _('The tag floats: which version runs depends on when the image was pulled') }}">{% trans %}floating{% endtrans %}</span>
+              {% endif %}
+              {% if c.override_version %}
+                <br>
+                <span class="badge badge-info badge-xs font-sans"
+                      title="{{ c.override_ref }}">{% trans version=c.override_version %}overridden in .env: {{ version }}{% endtrans %}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if c.role == 'primary' %}
+                <span class="badge badge-outline badge-xs">{% trans %}primary{% endtrans %}</span>
+              {% else %}
+                <span class="badge badge-ghost badge-xs">{% trans %}sidecar{% endtrans %}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Configuration -->
 {% if addon.env_fields %}
 {% set editable = s in ("running", "installed", "inactive") and addon.installed_version %}
 <div class="card bg-base-100 border border-base-300 mb-6" x-data="{ editMode: false, dirty: false, busy: false }">
   <div class="card-body">
     <div class="flex items-center justify-between mb-2">
-      <h3 class="card-title text-base">Configuration</h3>
+      <h3 class="card-title text-base">{% trans %}Configuration{% endtrans %}</h3>
       {% if editable %}
       <div class="flex gap-2">
         <button class="btn btn-outline btn-sm" x-show="!editMode"
-                @click="editMode = true">Edit</button>
+                @click="editMode = true">{% trans %}Edit{% endtrans %}</button>
         <button class="btn btn-ghost btn-sm" x-show="editMode" style="display:none"
                 @click="
                   $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
                     el.value = el.dataset.isSecret === '1' ? '' : (el.dataset.initial ?? '');
                   });
                   editMode = false; dirty = false;
-                ">Cancel</button>
+                ">{% trans %}Cancel{% endtrans %}</button>
         <button class="btn btn-primary btn-sm" x-show="editMode" style="display:none"
                 :disabled="!dirty || busy"
                 @click="$refs.saveConfigModal.showModal()">
           <span style="display:none" x-show="busy" class="loading loading-dots loading-xs"></span>
-          <span x-show="!busy">Save</span>
+          <span x-show="!busy">{% trans %}Save{% endtrans %}</span>
         </button>
       </div>
       {% endif %}
@@ -96,9 +154,9 @@
       <table class="table table-sm">
         <thead>
           <tr>
-            <th>Key</th>
-            <th>Value</th>
-            <th>Status</th>
+            <th>{% trans %}Key{% endtrans %}</th>
+            <th>{% trans %}Value{% endtrans %}</th>
+            <th>{% trans %}Status{% endtrans %}</th>
           </tr>
         </thead>
         <tbody>
@@ -109,7 +167,7 @@
               <!-- read-only display -->
               <div x-show="!editMode">
                 {% if f.auto_handled %}
-                  <span class="opacity-50 italic">auto (Keycloak)</span>
+                  <span class="opacity-50 italic">{% trans %}auto (Keycloak){% endtrans %}</span>
                 {% elif f.current_set %}
                   {% if f.is_secret %}
                     <span class="opacity-50">••••</span>
@@ -130,11 +188,11 @@
             </td>
             <td>
               {% if f.auto_handled %}
-                <span class="badge badge-neutral badge-xs">auto</span>
+                <span class="badge badge-neutral badge-xs">{% trans %}auto{% endtrans %}</span>
               {% elif f.current_set %}
-                <span class="badge badge-success badge-xs">set</span>
+                <span class="badge badge-success badge-xs">{% trans %}set{% endtrans %}</span>
               {% elif f.required %}
-                <span class="badge badge-error badge-xs">required</span>
+                <span class="badge badge-error badge-xs">{% trans %}required{% endtrans %}</span>
               {% endif %}
             </td>
           </tr>
@@ -146,13 +204,13 @@
     {% if editable %}
     <dialog x-ref="saveConfigModal" class="modal">
       <div class="modal-box max-w-sm">
-        <h3 class="font-bold text-base mb-2">Save configuration</h3>
+        <h3 class="font-bold text-base mb-2">{% trans %}Save configuration{% endtrans %}</h3>
         <p class="text-sm opacity-70 mb-4">
-          Should the add-on be restarted after saving so the changes take effect?
+          {% trans %}Should the add-on be restarted after saving so the changes take effect?{% endtrans %}
         </p>
         <div class="modal-action">
           <button class="btn btn-ghost btn-sm"
-                  @click="$refs.saveConfigModal.close()">Cancel</button>
+                  @click="$refs.saveConfigModal.close()">{% trans %}Cancel{% endtrans %}</button>
           <button class="btn btn-outline btn-sm"
                   @click="
                     const env = {};
@@ -167,7 +225,7 @@
                       if (!data) { busy = false; return; }
                       _pollJob(data.job_id, () => htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' }));
                     });
-                  ">No</button>
+                  ">{% trans %}No{% endtrans %}</button>
           <button class="btn btn-primary btn-sm"
                   @click="
                     const env = {};
@@ -182,10 +240,10 @@
                       if (!data) { busy = false; return; }
                       _pollJob(data.job_id, () => htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' }));
                     });
-                  ">Yes, restart</button>
+                  ">{% trans %}Yes, restart{% endtrans %}</button>
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+      <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
     </dialog>
     {% endif %}
   </div>

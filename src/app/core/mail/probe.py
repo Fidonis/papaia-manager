@@ -29,6 +29,8 @@ from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 
 from app.core.mail.settings import RELAY_HOST, RELAY_PORT
+from app.i18n import N_
+from app.i18n import gettext as _
 
 PROBE_TIMEOUT_SECONDS = 8.0
 SEND_TIMEOUT_SECONDS = 15.0
@@ -44,7 +46,7 @@ class ProbeResult:
     ok: bool
     stage: str
     reason: str = ""
-    login: str = "not tested"  # "ok" | "not tested" | "not needed"
+    login: str = N_("not tested")  # "ok" | "not tested" | "not needed"
 
     def as_json(self) -> dict[str, object]:
         return {"ok": self.ok, "stage": self.stage, "reason": self.reason, "login": self.login}
@@ -89,20 +91,26 @@ def probe_upstream(
             stage = "starttls"
             smtp.starttls(context=context)
             smtp.ehlo()
-        login = "not needed"
+        login = _("not needed")
         if user and security != "none":
             stage = "auth"
             smtp.login(user, password)
             login = "ok"
         return ProbeResult(True, "ok", login=login)
     except socket.gaierror as exc:
-        return ProbeResult(False, "resolve", f"cannot resolve {host}: {_short(exc)}")
+        return ProbeResult(False, "resolve", _(
+            "cannot resolve %(host)s: %(value)s"
+        ) % {"host": host, "value": _short(exc)})
     except ssl.SSLError as exc:
-        return ProbeResult(False, stage, f"TLS handshake failed: {_short(exc)}")
+        return ProbeResult(False, stage, _(
+            "TLS handshake failed: %(value)s"
+        ) % {"value": _short(exc)})
     except smtplib.SMTPNotSupportedError as exc:
-        return ProbeResult(False, stage, f"server does not offer it: {_short(exc)}")
+        return ProbeResult(False, stage, _(
+            "server does not offer it: %(value)s"
+        ) % {"value": _short(exc)})
     except smtplib.SMTPAuthenticationError as exc:
-        return ProbeResult(False, "auth", f"login refused: {_short(exc)}")
+        return ProbeResult(False, "auth", _("login refused: %(value)s") % {"value": _short(exc)})
     except (smtplib.SMTPException, OSError) as exc:
         return ProbeResult(False, stage, _short(exc))
     finally:
@@ -115,7 +123,9 @@ def validate_recipient(value: str) -> str:
     """The address of a test mail. A plain `name@domain.tld`: no display name, no list."""
     address = value.strip()
     if len(address) > 254 or not _RECIPIENT_RE.match(address):
-        raise ValueError(f"'{value}' is not a valid address (expected name@example.org).")
+        raise ValueError(_(
+            "'%(value)s' is not a valid address (expected name@example.org)."
+        ) % {"value": value})
     return address
 
 
@@ -164,15 +174,23 @@ def send_message(
             smtp.send_message(message)
     except smtplib.SMTPRecipientsRefused as exc:
         code, text = next(iter(exc.recipients.values()), (0, b""))
-        return SendResult(False, f"the relay refused the recipient: {code} {_text(text)}")
+        return SendResult(False, _(
+            "the relay refused the recipient: %(code)s %(value)s"
+        ) % {"code": code, "value": _text(text)})
     except smtplib.SMTPSenderRefused as exc:
         return SendResult(
-            False, f"the relay refused the sender address: {exc.smtp_code} {_text(exc.smtp_error)}"
+            False, _(
+                "the relay refused the sender address: %(smtp_code)s %(value)s"
+            ) % {"smtp_code": exc.smtp_code, "value": _text(exc.smtp_error)}
         )
     except smtplib.SMTPResponseException as exc:
-        return SendResult(False, f"the relay answered {exc.smtp_code} {_text(exc.smtp_error)}")
+        return SendResult(False, _(
+            "the relay answered %(smtp_code)s %(value)s"
+        ) % {"smtp_code": exc.smtp_code, "value": _text(exc.smtp_error)})
     except socket.gaierror:
-        return SendResult(False, f"cannot resolve {host}: the relay is not on this network")
+        return SendResult(False, _(
+            "cannot resolve %(host)s: the relay is not on this network"
+        ) % {"host": host})
     except (smtplib.SMTPException, OSError) as exc:
         return SendResult(False, _short(exc))
     return SendResult(True)

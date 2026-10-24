@@ -22,10 +22,10 @@
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
   </svg>
-  <p class="text-lg font-semibold">Your account cannot manage users yet</p>
+  <p class="text-lg font-semibold">{% trans %}Your account cannot manage users yet{% endtrans %}</p>
   <p class="max-w-xl text-sm">{{ view.reason }}</p>
   <button type="button" class="btn btn-outline btn-sm"
-          hx-get="/partials/users" hx-target="#user-list" hx-swap="innerHTML" hx-disabled-elt="this">Try again</button>
+          hx-get="/partials/users" hx-target="#user-list" hx-swap="innerHTML" hx-disabled-elt="this">{% trans %}Try again{% endtrans %}</button>
 </div>
 
 {% elif view.state == 'unavailable' %}
@@ -33,10 +33,10 @@
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728M5.636 18.364a9 9 0 010-12.728M15.536 8.464a5 5 0 010 7.072M8.464 15.536a5 5 0 010-7.072M13 12a1 1 0 11-2 0 1 1 0 012 0z"/>
   </svg>
-  <p class="text-lg font-semibold">Keycloak does not answer</p>
+  <p class="text-lg font-semibold">{% trans %}Keycloak does not answer{% endtrans %}</p>
   <p class="max-w-xl text-sm">{{ view.reason }}</p>
   <button type="button" class="btn btn-outline btn-sm"
-          hx-get="/partials/users" hx-target="#user-list" hx-swap="innerHTML" hx-disabled-elt="this">Try again</button>
+          hx-get="/partials/users" hx-target="#user-list" hx-swap="innerHTML" hx-disabled-elt="this">{% trans %}Try again{% endtrans %}</button>
 </div>
 
 {% else %}
@@ -47,11 +47,11 @@
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
   </svg>
   {% if view.search %}
-  <p class="text-lg font-semibold">No user matches “{{ view.search }}”</p>
-  <p class="text-sm">Try a part of the name, the username or the email address.</p>
+  <p class="text-lg font-semibold">{% trans search=view.search %}No user matches “{{ search }}”{% endtrans %}</p>
+  <p class="text-sm">{% trans %}Try a part of the name, the username or the email address.{% endtrans %}</p>
   {% else %}
-  <p class="text-lg font-semibold">No users yet</p>
-  <p class="text-sm">Create the first account with “New user”.</p>
+  <p class="text-lg font-semibold">{% trans %}No users yet{% endtrans %}</p>
+  <p class="text-sm">{% trans %}Create the first account with “New user”.{% endtrans %}</p>
   {% endif %}
 </div>
 
@@ -60,11 +60,11 @@
   <table class="table">
     <thead>
       <tr>
-        <th>Account</th>
-        <th>Status</th>
-        <th>Roles</th>
-        <th class="hidden md:table-cell">Created</th>
-        <th class="w-px"><span class="sr-only">Actions</span></th>
+        <th>{% trans %}Account{% endtrans %}</th>
+        <th>{% trans %}Status{% endtrans %}</th>
+        <th>{% trans %}Roles{% endtrans %}</th>
+        <th class="hidden md:table-cell">{% trans %}Created{% endtrans %}</th>
+        <th class="w-px"><span class="sr-only">{% trans %}Actions{% endtrans %}</span></th>
       </tr>
     </thead>
     <tbody>
@@ -85,7 +85,7 @@
                 <span class="font-semibold font-mono text-sm opacity-60">{{ u.username }}</span>
                 {% endif %}
                 {% if u.is_self %}
-                <span class="badge badge-primary badge-outline badge-sm">You</span>
+                <span class="badge badge-primary badge-outline badge-sm">{% trans %}You{% endtrans %}</span>
                 {% endif %}
               </div>
               {% if u.display_name or u.email %}
@@ -99,13 +99,13 @@
         <td>
           <div class="flex flex-col items-start gap-1">
             {% if u.enabled %}
-            <span class="badge badge-success badge-sm">Active</span>
+            <span class="badge badge-success badge-sm">{% trans %}Active{% endtrans %}</span>
             {% else %}
-            <span class="badge badge-ghost badge-sm">Disabled</span>
+            <span class="badge badge-ghost badge-sm">{% trans %}Disabled{% endtrans %}</span>
             {% endif %}
             {% if u.password_change_pending %}
             <span class="badge badge-warning badge-outline badge-sm whitespace-nowrap"
-                  title="The account has to choose a new password at its next sign-in">Must change password</span>
+                  title="{{ _('The account has to choose a new password at its next sign-in') }}">{% trans %}Must change password{% endtrans %}</span>
             {% endif %}
           </div>
         </td>
@@ -114,7 +114,7 @@
           <div class="flex flex-wrap items-center gap-1">
             {% for role in u.roles[:3] %}
             {% if role == view.identity_role %}
-            <span class="badge badge-secondary badge-sm font-mono" title="May manage users and roles">{{ role }}</span>
+            <span class="badge badge-secondary badge-sm font-mono" title="{{ _('May manage users and roles') }}">{{ role }}</span>
             {% else %}
             <span class="badge badge-outline badge-sm font-mono">{{ role }}</span>
             {% endif %}
@@ -124,7 +124,7 @@
             {% endif %}
           </div>
           {% else %}
-          <span class="text-xs opacity-40">No roles</span>
+          <span class="text-xs opacity-40">{% trans %}No roles{% endtrans %}</span>
           {% endif %}
         </td>
         <td class="hidden whitespace-nowrap text-xs opacity-70 md:table-cell">
@@ -137,15 +137,15 @@
              absolutely positioned one would be clipped by the scroll container. #}
           {% call row_actions() %}
             <button type="button" class="btn btn-outline btn-xs"
-                    @click='$dispatch("user-roles", {{ {"id": u.id, "username": u.username}|tojson }})'>Roles</button>
+                    @click='$dispatch("user-roles", {{ {"id": u.id, "username": u.username}|tojson }})'>{% trans %}Roles{% endtrans %}</button>
             <button type="button" class="btn btn-outline btn-xs"
-                    @click='$dispatch("user-sessions", {{ {"id": u.id, "username": u.username}|tojson }})'>Sessions</button>
-            {% call overflow_menu(size='xs', label='More actions for ' ~ u.username, float=True) %}
-              <li><a @click='$dispatch("user-password", {{ {"id": u.id, "username": u.username, "email": u.email}|tojson }})'>Reset password…</a></li>
+                    @click='$dispatch("user-sessions", {{ {"id": u.id, "username": u.username}|tojson }})'>{% trans %}Sessions{% endtrans %}</button>
+            {% call overflow_menu(size='xs', label=_('More actions for %(name)s', name=u.username), float=True) %}
+              <li><a @click='$dispatch("user-password", {{ {"id": u.id, "username": u.username, "email": u.email}|tojson }})'>{% trans %}Reset password…{% endtrans %}</a></li>
               {% if not u.enabled %}
-              <li><a @click='$dispatch("user-toggle", {{ {"id": u.id, "username": u.username, "enabled": false}|tojson }})'>Enable account</a></li>
+              <li><a @click='$dispatch("user-toggle", {{ {"id": u.id, "username": u.username, "enabled": false}|tojson }})'>{% trans %}Enable account{% endtrans %}</a></li>
               {% elif not u.is_self %}
-              <li><a class="text-error" @click='$dispatch("user-toggle", {{ {"id": u.id, "username": u.username, "enabled": true}|tojson }})'>Disable account…</a></li>
+              <li><a class="text-error" @click='$dispatch("user-toggle", {{ {"id": u.id, "username": u.username, "enabled": true}|tojson }})'>{% trans %}Disable account…{% endtrans %}</a></li>
               {% endif %}
             {% endcall %}
           {% endcall %}
@@ -158,20 +158,20 @@
 
 <div class="mt-3 flex items-center justify-between">
   <p class="text-xs opacity-60">
-    {{ view.first + 1 }}–{{ view.first + (view.users | length) }} of {{ view.total }}
+    {% trans first=view.first + 1, count=(view.first + (view.users | length)), total=view.total %}{{ first }}–{{ count }} of {{ total }}{% endtrans %}
   </p>
   <div class="flex gap-2">
     <button type="button" class="btn btn-ghost btn-sm" {{ "disabled" if view.first == 0 }}
             hx-get="/partials/users" hx-target="#user-list" hx-swap="innerHTML"
             hx-include="#user-search-form"
             hx-vals='{"first": {{ [view.first - view.limit, 0] | max }}, "limit": {{ view.limit }}}'>
-      Prev
+      {% trans %}Prev{% endtrans %}
     </button>
     <button type="button" class="btn btn-ghost btn-sm" {{ "disabled" if view.first + view.limit >= view.total }}
             hx-get="/partials/users" hx-target="#user-list" hx-swap="innerHTML"
             hx-include="#user-search-form"
             hx-vals='{"first": {{ view.first + view.limit }}, "limit": {{ view.limit }}}'>
-      Next
+      {% trans %}Next{% endtrans %}
     </button>
   </div>
 </div>

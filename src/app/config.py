@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     ingest_max_upload_mb: int = Field(default=200, ge=1, le=10_240)
     ingest_max_batch_mb: int = Field(default=2_048, ge=1, le=102_400)
 
+    # The interface language for an account that has not chosen one and whose browser asks for
+    # none that is shipped (a directory under app/locale, or `en`). A value that names no
+    # shipped language is the same as `en`.
+    manager_default_locale: str = "en"
+
     # TLS (optional — path to custom CA bundle)
     ssl_cert_file: str | None = None
 

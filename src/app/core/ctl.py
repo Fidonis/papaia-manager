@@ -13,6 +13,7 @@ other way round.
 from __future__ import annotations
 
 import asyncio
+import codecs
 import logging
 import os
 import re
@@ -23,6 +24,7 @@ from urllib.parse import urlsplit
 
 from app.core.inventory import SELF_PROFILE
 from app.core.services import invalidate_snapshot
+from app.i18n import gettext as _
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +158,12 @@ SETUP_TIMEOUT_SECONDS = 120.0
 # shell's `timeout` uses.
 TIMEOUT_EXIT_CODE = 124
 
+# The longest line `_stream_subprocess` hands on whole. A longer one is cut here and
+# ends in the marker, because every yielded line goes verbatim into the job log; what
+# the pipe still delivers up to the next newline is dropped.
+MAX_LINE_BYTES = 1024 * 1024
+TRUNCATION_MARKER = "... [truncated]"
+
 _ADDON_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
 # Restore selectors, mirroring the grammar in the core's tools/lib/backup.py.
@@ -197,11 +205,13 @@ async def run_addon_verb(
     """
     if verb not in ALLOWED_VERBS:
         raise ValueError(
-            f"verb {verb!r} is not in the allowed set {sorted(ALLOWED_VERBS)}"
+            _(
+                "verb %(verb)r is not in the allowed set %(value)s"
+            ) % {"verb": verb, "value": sorted(ALLOWED_VERBS)}
         )
     if not _ADDON_NAME_RE.match(name):
         raise ValueError(
-            f"addon name {name!r} does not match ^[a-z0-9][a-z0-9-]{{0,31}}$"
+            _("addon name %(name)r does not match ^[a-z0-9][a-z0-9-]{0,31}$") % {"name": name}
         )
 
     cmd: list[str] = [
@@ -242,18 +252,22 @@ def profiles_flag(names: Iterable[str], *, allowed: Collection[str]) -> str:
     """
     ordered = sorted(set(names))
     if not ordered:
-        raise ValueError("no service group given")
+        raise ValueError(_("no service group given"))
     for name in ordered:
         if not _PROFILE_RE.match(name):
             raise ValueError(
-                f"profile {name!r} does not match ^[a-z0-9][a-z0-9-]{{0,31}}$"
+                _("profile %(name)r does not match ^[a-z0-9][a-z0-9-]{0,31}$") % {"name": name}
             )
         if name == SELF_PROFILE:
             raise ValueError(
-                f"profile {name!r} runs this panel and cannot be controlled from it"
+                _(
+                    "profile %(name)r runs this panel and cannot be controlled from it"
+                ) % {"name": name}
             )
         if name not in allowed:
-            raise ValueError(f"profile {name!r} is not a service group of this deployment")
+            raise ValueError(_(
+                "profile %(name)r is not a service group of this deployment"
+            ) % {"name": name})
     return f"--profiles={','.join(ordered)}"
 
 
@@ -270,22 +284,30 @@ def selection_flag(selectors: Iterable[str], *, allowed: Collection[str]) -> str
     """
     ordered = sorted(set(selectors))
     if not ordered:
-        raise ValueError("no selection given")
+        raise ValueError(_("no selection given"))
     if len(ordered) > MAX_SELECTORS:
-        raise ValueError(f"at most {MAX_SELECTORS} selectors, got {len(ordered)}")
+        raise ValueError(_(
+            "at most %(MAX_SELECTORS)s selectors, got %(value)s"
+        ) % {"MAX_SELECTORS": MAX_SELECTORS, "value": len(ordered)})
     for selector in ordered:
         if not (
             _MODULE_SELECTOR_RE.match(selector) or _VOLUME_SELECTOR_RE.match(selector)
         ):
             raise ValueError(
-                f"selector {selector!r} is not module:NAME, addon:NAME or volume:NAME"
+                _(
+                    "selector %(selector)r is not module:NAME, addon:NAME or volume:NAME"
+                ) % {"selector": selector}
             )
         if selector == f"module:{SELF_PROFILE}":
             raise ValueError(
-                f"selector {selector!r} runs this panel and cannot be restored from it"
+                _(
+                    "selector %(selector)r runs this panel and cannot be restored from it"
+                ) % {"selector": selector}
             )
         if selector not in allowed:
-            raise ValueError(f"selector {selector!r} is not part of this restore point")
+            raise ValueError(_(
+                "selector %(selector)r is not part of this restore point"
+            ) % {"selector": selector})
     return f"--only={','.join(ordered)}"
 
 
@@ -303,7 +325,9 @@ async def run_core_verb(
     """
     if verb not in ALLOWED_CORE_VERBS:
         raise ValueError(
-            f"verb {verb!r} is not in the allowed set {sorted(ALLOWED_CORE_VERBS)}"
+            _(
+                "verb %(verb)r is not in the allowed set %(value)s"
+            ) % {"verb": verb, "value": sorted(ALLOWED_CORE_VERBS)}
         )
 
     cmd: list[str] = [
@@ -354,7 +378,9 @@ async def run_py_cli(
     """
     if command not in ALLOWED_PY_COMMANDS:
         raise ValueError(
-            f"command {command!r} is not in the allowed set {sorted(ALLOWED_PY_COMMANDS)}"
+            _(
+                "command %(command)r is not in the allowed set %(value)s"
+            ) % {"command": command, "value": sorted(ALLOWED_PY_COMMANDS)}
         )
     return await _run_py(
         command=command,
@@ -392,7 +418,7 @@ class SmtpSetup:
 
 def _plain(label: str, value: str) -> str:
     if not value or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
-        raise ValueError(f"{label} must be a non-empty single line")
+        raise ValueError(_("%(label)s must be a non-empty single line") % {"label": label})
     return value
 
 
@@ -416,20 +442,22 @@ def smtp_setup_flags(spec: SmtpSetup) -> list[str]:
     )
     if spec.enable is False:
         if spec.no_auth or any(value is not None for value in given):
-            raise ValueError("switching the relay off takes no other setting")
+            raise ValueError(_("switching the relay off takes no other setting"))
         return flags
     if not spec.no_auth and all(value is None for value in given):
         if spec.enable is None:
-            raise ValueError("there is nothing to store")
+            raise ValueError(_("there is nothing to store"))
         return flags  # switch on with the settings the core stored
     if spec.no_auth and (spec.user or spec.password):
-        raise ValueError("a mail server without login takes neither a login nor a password")
+        raise ValueError(_("a mail server without login takes neither a login nor a password"))
     if spec.host is None or spec.security is None or spec.port is None or spec.sender is None:
-        raise ValueError("host, security, port and sender address are required")
+        raise ValueError(_("host, security, port and sender address are required"))
     if spec.security not in SMTP_SECURITY_MODES:
-        raise ValueError(f"security must be one of {', '.join(SMTP_SECURITY_MODES)}")
+        raise ValueError(_(
+            "security must be one of %(value)s"
+        ) % {"value": ', '.join(SMTP_SECURITY_MODES)})
     if not 1 <= spec.port <= 65535:
-        raise ValueError("port must be between 1 and 65535")
+        raise ValueError(_("port must be between 1 and 65535"))
     flags.append(f"--smtp-host={_plain('host', spec.host)}")
     flags.append(f"--smtp-port={spec.port}")
     flags.append(f"--smtp-security={spec.security}")
@@ -456,7 +484,7 @@ async def run_smtp_setup(
     written then. The password goes in the environment of the child and only there.
     """
     if "setup" not in ALLOWED_PY_WRITE_COMMANDS:  # pragma: no cover - the set is a constant
-        raise ValueError("setup is not an allowed write command")
+        raise ValueError(_("setup is not an allowed write command"))
     return await _run_py(
         command="setup",
         workspace_dir=workspace_dir,
@@ -492,21 +520,23 @@ def public_url(value: str) -> str:
     something else. `setup` takes the value as it is, so the check is here."""
     text = value.strip()
     if not text or len(text) > MAX_URL_LENGTH:
-        raise ValueError(f"the URL must have 1-{MAX_URL_LENGTH} characters")
+        raise ValueError(_(
+            "the URL must have 1-%(MAX_URL_LENGTH)s characters"
+        ) % {"MAX_URL_LENGTH": MAX_URL_LENGTH})
     if any(ord(ch) < 33 or ord(ch) == 127 or ch in "#$\"'\\`" for ch in text):
         raise ValueError(
-            "the URL may not contain spaces, control characters or any of # $ \" ' \\ `"
+            _("the URL may not contain spaces, control characters or any of # $ \" ' \\ `")
         )
     try:
         parts = urlsplit(text)
         host = parts.hostname
         parts.port  # noqa: B018 - raises ValueError for a port that is not a number
     except ValueError as exc:
-        raise ValueError("this is not a valid URL (expected https://host:port)") from exc
+        raise ValueError(_("this is not a valid URL (expected https://host:port)")) from exc
     if parts.scheme not in ("http", "https") or not host:
-        raise ValueError("the URL must start with http:// or https:// and name a host")
+        raise ValueError(_("the URL must start with http:// or https:// and name a host"))
     if parts.username is not None or parts.password is not None or parts.query or parts.fragment:
-        raise ValueError("the URL may not contain a login, a query or a fragment")
+        raise ValueError(_("the URL may not contain a login, a query or a fragment"))
     return text.rstrip("/") if parts.path in ("", "/") else text
 
 
@@ -514,25 +544,29 @@ def module_setup_flags(spec: ModuleSetup) -> list[str]:
     """The `setup` options for `spec`. Raises ValueError for a spec that is not coherent."""
     flag = MODULE_SETUP_FLAGS.get(spec.module)
     if flag is None:
-        raise ValueError(f"module {spec.module!r} cannot be switched from here")
+        raise ValueError(_(
+            "module %(module)r cannot be switched from here"
+        ) % {"module": spec.module})
     flags = [f"{flag}={'true' if spec.enable else 'false'}"]
     if spec.public_url is not None:
         url_flag = MODULE_URL_FLAGS.get(spec.module)
         if url_flag is None:
-            raise ValueError(f"{spec.module} takes no public URL")
+            raise ValueError(_("%(module)s takes no public URL") % {"module": spec.module})
         if not spec.enable:
-            raise ValueError("switching a module off takes no public URL")
+            raise ValueError(_("switching a module off takes no public URL"))
         flags.append(f"{url_flag}={public_url(spec.public_url)}")
     if spec.module != "localai":
         if spec.variant is not None:
-            raise ValueError("only LocalAI takes an image variant")
+            raise ValueError(_("only LocalAI takes an image variant"))
         return flags
     if not spec.enable:
         if spec.variant is not None:
-            raise ValueError("switching LocalAI off takes no variant")
+            raise ValueError(_("switching LocalAI off takes no variant"))
         return flags
     if spec.variant not in LOCALAI_VARIANTS:
-        raise ValueError(f"variant must be one of {', '.join(LOCALAI_VARIANTS)}")
+        raise ValueError(_(
+            "variant must be one of %(value)s"
+        ) % {"value": ', '.join(LOCALAI_VARIANTS)})
     flags.append(f"--localai-variant={spec.variant}")
     return flags
 
@@ -549,7 +583,7 @@ async def run_module_setup(
     Exit 3 with `ERROR: ...` on stderr is the core refusing a value; nothing is written then.
     """
     if "setup" not in ALLOWED_PY_WRITE_COMMANDS:  # pragma: no cover - the set is a constant
-        raise ValueError("setup is not an allowed write command")
+        raise ValueError(_("setup is not an allowed write command"))
     return await _run_py(
         command="setup",
         workspace_dir=workspace_dir,
@@ -561,7 +595,9 @@ async def run_module_setup(
 
 def _purge_module(name: str) -> str:
     if name not in PURGE_MODULES:
-        raise ValueError(f"module {name!r} is not one of {', '.join(sorted(PURGE_MODULES))}")
+        raise ValueError(_(
+            "module %(name)r is not one of %(value)s"
+        ) % {"name": name, "value": ', '.join(sorted(PURGE_MODULES))})
     return name
 
 
@@ -592,9 +628,9 @@ async def run_module_purge(
     Exit 3 with `ERROR: ...` on stderr is the core refusing (the module is still on, or its
     settings were asked for without its data); nothing is deleted then."""
     if "module-purge" not in ALLOWED_PY_WRITE_COMMANDS:  # pragma: no cover - the set is a constant
-        raise ValueError("module-purge is not an allowed write command")
+        raise ValueError(_("module-purge is not an allowed write command"))
     if not (data or config):
-        raise ValueError("name what to delete: the data, the settings or both")
+        raise ValueError(_("name what to delete: the data, the settings or both"))
     flags = [f"--module={_purge_module(name)}"]
     if data:
         flags.append("--data")
@@ -670,6 +706,16 @@ async def _run_py(
     )
 
 
+def _clip_line(head: bytes) -> str:
+    """The first `MAX_LINE_BYTES` of an over-long line, ending in the marker."""
+    # `final=False` holds back a multi-byte character the cut split in two, so the
+    # marker is not preceded by a replacement character.
+    text = codecs.getincrementaldecoder("utf-8")(errors="replace").decode(
+        head, final=False
+    )
+    return text + TRUNCATION_MARKER
+
+
 async def _stream_subprocess(
     cmd: list[str],
     env: dict[str, str],
@@ -683,8 +729,59 @@ async def _stream_subprocess(
     )
 
     assert proc.stdout is not None
-    async for raw in proc.stdout:
-        yield raw.decode(errors="replace").rstrip()
+    # `asyncio` readers split on newlines with a 64 KiB limit and raise
+    # LimitOverrunError ("Separator is not found, and chunk exceed the limit")
+    # on anything longer -- the classic docker builder emits exactly such
+    # lines as ANSI-escaped pull progress without a trailing newline. Read
+    # fixed-size chunks instead and reassemble lines locally, so the line
+    # length cannot break the job.
+    #
+    # The pending bytes live in a `bytearray` (amortised append) and the
+    # newline search starts where the previous one stopped, so a very long
+    # line costs one scan per chunk instead of re-scanning the whole buffer
+    # and copying it on every `+=`. A single line is also capped: past
+    # MAX_LINE_BYTES the head is emitted with TRUNCATION_MARKER and the rest of
+    # that line is dropped, so an endless progress meter cannot grow the buffer
+    # (or the job log) without bound (#154). The cap applies wherever the
+    # newline arrives, not only to a line still unterminated after a chunk.
+    pending = bytearray()
+    search_from = 0
+    dropping = False
+    while True:
+        raw = await proc.stdout.read(65536)
+        if not raw:
+            break
+        pending += raw
+        while True:
+            newline = pending.find(b"\n", search_from)
+            if dropping:
+                if newline == -1:
+                    # Still inside the discarded tail of an over-long line.
+                    del pending[:]
+                    search_from = 0
+                    break
+                del pending[: newline + 1]
+                dropping = False
+                search_from = 0
+                continue
+            if newline == -1:
+                if len(pending) > MAX_LINE_BYTES:
+                    yield _clip_line(bytes(pending[:MAX_LINE_BYTES]))
+                    del pending[:]
+                    dropping = True
+                    search_from = 0
+                else:
+                    search_from = len(pending)
+                break
+            line = bytes(pending[:newline])
+            del pending[: newline + 1]
+            search_from = 0
+            if len(line) > MAX_LINE_BYTES:
+                yield _clip_line(line[:MAX_LINE_BYTES])
+            else:
+                yield line.decode(errors="replace").rstrip()
+    if pending and not dropping:
+        yield pending.decode(errors="replace").rstrip()
 
     await proc.wait()
     # Every verb reachable from here -- install, start, stop, remove, uninstall,

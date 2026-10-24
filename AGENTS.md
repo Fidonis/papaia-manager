@@ -52,6 +52,9 @@ papaia-manager/
 │       ├── main.py         # FastAPI application factory; startup checks
 │       ├── config.py       # Pydantic Settings; all env-var configuration
 │       ├── templating.py   # Shared Jinja2 environment
+│       ├── i18n/           # Languages: catalogues found under locale/, the request's language,
+│       │                   #   gettext functions, Jinja install, LocaleMiddleware
+│       ├── locale/<code>/LC_MESSAGES/messages.po   # One directory per language (de today)
 │       ├── auth/
 │       │   ├── oidc.py     # OIDC Authorization Code + PKCE client; ends the provider's session on sign-out
 │       │   ├── roles.py    # Authorization policy: which realm role grants what
@@ -63,7 +66,8 @@ papaia-manager/
 │       │   ├── ctl.py          # Whitelisted subprocess wrapper for papaia-ctl
 │       │   │                   #   (separate allowlists for addon verbs, core verbs,
 │       │   │                   #    the core's read-only python sub-commands and the two
-│       │   │                   #    that write: setup, module-purge)
+│       │   │                   #    that write: setup, module-purge); streams the output
+│       │   │                   #    in chunks and cuts a line at 1 MiB
 │       │   ├── backups.py      # Read-only backup.yaml / manifest.yaml catalogue access
 │       │   ├── restore_scope.py # What a restore point offers to restore in part, and what that would stop
 │       │   ├── backup_run.py   # Starting a backup: the enqueue path the button and the schedule share
@@ -77,7 +81,7 @@ papaia-manager/
 │       │   │                   #   add-on gate, migration plan, runner-log phases
 │       │   ├── catalogs.py     # catalogs.yaml CRUD + git clone/fetch operations
 │       │   ├── tiles.py        # tiles.yaml: dashboard tiles (links and widgets), visibility filtering,
-│       │   │                   #   validation, widget ids
+│       │   │                   #   validation, widget ids, the bundled icons of the default tiles
 │       │   ├── widgets/        # Dashboard widgets: model (the payload every widget produces and the
 │       │   │                   #   parser that refuses what the contract does not allow), registry (the
 │       │   │                   #   types and the closed icon set), runtime (cache, single flight, a
@@ -105,6 +109,7 @@ papaia-manager/
 │       │   │                   #   a run), client (the ingester's REST), runs (start, follow, clean up),
 │       │   │                   #   watcher (the background clean-up), errors
 │       │   ├── settings_store.py # settings.yaml (one section per topic: branding, host) + logo files
+│       │   ├── user_prefs.py   # preferences.yaml: what each account chose (its language), by OIDC subject
 │       │   ├── config/         # Settings > Modules and Overlay: modules (the optional modules and their
 │       │   │                   #   state), overlay (the three editable files, compare-and-swap writes),
 │       │   │                   #   history (the saved versions), preview (the core's render-preview),
@@ -132,6 +137,7 @@ papaia-manager/
 │       │   ├── envforms.py     # Env-form spec from .env.example + manifest prompts
 │       │   ├── envvalidate.py  # Server-side validation/coercion of add-on env values
 │       │   ├── resolve.py      # Cross-catalog addon dedup: groups same-name hits by version
+│       │   ├── components.py   # The software an add-on bundles (manifest `components`): installed vs catalog, .env overrides
 │       │   ├── keycloak.py     # Idempotent Keycloak admin REST client registration
 │       │   ├── keycloak_users.py # Keycloak Admin API as the signed-in user: users, roles, passwords, sessions
 │       │   ├── users_service.py # The Users page's rules: validation, temporary passwords, lock-out guard, views
@@ -150,6 +156,7 @@ papaia-manager/
 │       │   ├── api_audit.py    # /api/v1/audit — read, export, prune
 │       │   ├── api_stack.py    # /api/v1/stack — service groups and whole-stack actions
 │       │   ├── api_settings.py # /api/v1/settings — branding, host monitoring; GET /brand/logo
+│       │   ├── account.py      # POST /account/language — the signed-in account's own language
 │       │   ├── api_users.py    # /api/v1/users — accounts, roles, passwords and sessions of the realm
 │       │   ├── api_roles.py    # /api/v1/roles — list, create, change and delete realm roles
 │       │   ├── api_config.py   # /api/v1/config — optional modules and the overlay: check, preview, apply, versions
@@ -205,8 +212,9 @@ papaia-manager/
 │       │       ├── tile_editor.html          # Dashboard editor (admin-only, client-side draft)
 │       │       ├── tile_gallery.html         # Dashboard tile grid, visibility-filtered
 │       │       └── widgets/card.html         # One widget card: its state, its view, its link
-│       └── static/             # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build)
-├── tests/                  # pytest suite (sibling to src/)
+│       └── static/             # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build),
+│                               #   icons/ (the default tiles' logos with NOTICE.txt: sources and licences)
+├── tests/                  # pytest suite (sibling to src/); i18n_scan.py is the template lint's lexer
 └── docker/
     ├── Dockerfile          # Multi-stage build; installs Docker CLI + compose plugin
     ├── docker-compose.yml  # Local development compose
@@ -287,6 +295,14 @@ Consequences worth remembering when touching sign-out:
 ### Job model
 
 All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. A scheduled backup is enqueued onto the same queue. Only one mutating job runs at a time. An embedding run is deliberately not a job: it lives in the ingester, and a run of hours must not hold up a backup or an add-on action. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
+
+**Remove.** `papaia-ctl addon remove` only marks an add-on inactive and leaves its containers running, so the Remove job runs `addon stop --clean-up` first (volumes stay) and then `addon remove`; a failing stop leaves the add-on active. The route and the job both refuse (409) when the add-on's `docker-compose.yml` is missing. papaia-ctl pins `-p <add-on>` for its Compose calls, but without that file Compose takes `COMPOSE_PROJECT_NAME` from the core `.env`, and the `down` hits the core stack, this manager included. Stop, restart and uninstall do not have this guard here; the fix for them belongs to the core (`Fidonis/papaia#244`, merged for the release after 1.6.0, so a core up to 1.6.0 still has the hazard).
+
+**Output streaming.** `_stream_subprocess` in `core/ctl.py` reads the child's output in 64 KiB chunks and puts the lines together itself, because `async for` over the pipe raises when one line is longer than the reader's 64 KiB limit, and a classic image build prints its pull progress as one line of escape sequences without a newline (`Separator is not found, and chunk exceed the limit` failed the job). The pending bytes are a `bytearray` searched from where the last search stopped. A line past `MAX_LINE_BYTES` (1 MiB) is yielded cut at that length with `TRUNCATION_MARKER` appended (the cut never leaves half a multi-byte character before it) and the rest of that line, up to its newline, is dropped, wherever the newline arrives. Every yielded line goes verbatim into the job log, so the cap also bounds the log. `tests/test_ctl_stream.py` pins the chunking, the cap and the order of the output.
+
+### Add-on components
+
+An add-on's `version` counts changes to the bundle, not to the software in it. The catalog states that in the manifest's `components` list (`id`, `name`, `role`, `kind`, `image_var`, `version`, `source`, `pinned: false` for a floating tag), and `core/components.py` turns it into what the gallery card (the primary components next to the add-on version) and the detail page (a table of all of them) show, and into `components` in the add-on JSON of `api_addons`. For an installed add-on each component also carries the version of the managed snapshot (`changed` when the catalog differs, so an update reads "3.0.5 → 3.1.0") and, when the add-on's `.env` in the config directory sets the component's `image_var` to another tag, that tag as `override_version`. The overrides are read from the file, not from `docker compose config`, so the pages need no Docker and no process per view; a different registry with the same tag is not told apart, because the manifest records no repository. The manifest may come from any catalog, so nothing is trusted: entries of the wrong shape are skipped, an unknown role counts as a sidecar, text is cut, at most 32 entries are read and only an `https://` source becomes a link. A catalog without `components` shows nothing extra.
 
 ### Restore model
 
@@ -509,6 +525,32 @@ Consequences worth remembering when touching this area:
 
 Known limits: no reminders while a problem persists and no "recovered" notice, no per-recipient thresholds, a service has to be seen deployed by one pass before its loss can be reported (a pass runs right after every job of the manager, so a start and a stop made there are seen; one started and stopped outside it within one check interval is missed, and so is one while the manager was down for the whole of its run), certificates are only the ones `doctor` scans (the configuration directory's `certs/` and Let's Encrypt's `live/`, not a custom certificate uploaded into Nginx Proxy Manager), `backup_overdue` needs a backup schedule, add-on updates need a catalog refresh, and the email is plain text that names the manager's address without linking to a particular page.
 
+### Internationalisation
+
+The interface is English in the source and German in `src/app/locale/de/`. A **language is a directory**: `src/app/locale/<code>/LC_MESSAGES/messages.po` is discovered at start-up (`app/i18n/catalog.py`), listed in the account menu under its own name (`Locale.parse(code).get_display_name(code)`, so "Deutsch") and used for `Accept-Language` matching (`de-AT` finds `de`). No code, list or setting names the languages. The source language `en` needs no catalogue. The catalogues are read with Babel and compiled in memory; there is no `.mo` build step.
+
+**Which language a request gets** (`i18n/middleware.py`, `i18n/negotiate.py`): the account's stored choice, else the browser's `Accept-Language`, else `MANAGER_DEFAULT_LOCALE`, else `en`. The choice is `POST /account/language` (a plain form with the CSRF field, so it works without JavaScript; `auto` removes the choice). It is stored by OIDC `sub` in `$PAPAIA_CONFIG_DIR/manager/preferences.yaml` (`core/user_prefs.py`), not in a cookie or `localStorage`, so it follows the account to every computer and browser and travels with a backup. The file is separate from `settings.yaml` on purpose: that document has a global revision and answers 409 on a stale write, which a user changing their language must not trigger for an administrator. A damaged file reads as "no preference" and is never overwritten (the change answers 503). The manager does not delete accounts, so an entry of an account removed in Keycloak is harmless and simply stays. The language is a `ContextVar` set by `LocaleMiddleware` (registered before `SessionMiddleware`, so it runs inside it and can read the session), which is why it is also right in macros imported without context, in exception handlers, in HTMX partials and in `/api/*` error messages. `Content-Language` and `<html lang>` carry it.
+
+**Rules when writing a text the user reads:**
+
+- **Templates.** Prose goes in `{% trans %}…{% endtrans %}` (`ext.i18n.trimmed` collapses the whitespace; plurals with `{% pluralize %}`; a variable is named in the tag, `{% trans name=x %}`). An attribute or an expression uses `{{ _('…') }}`. For Alpine, JavaScript and `title`/`x-text` use `{{ _('…')|tojson|forceescape }}`. In `_()` a literal `%` is written `%%`.
+- **JavaScript** gets its messages from the `I18N` object in `base.html` or from `tojson`, with `{name}` placeholders filled by `fmt`, `fmtHtml` and `fmtPlural` (which knows `one` and `other`). Never assemble a sentence from pieces (`action + " finished"`): a translator needs the whole sentence.
+- **Python, at the place the text is produced**: `from app.i18n import gettext as _`, named placeholders and never an f-string: `_("%(n)s files") % {"n": n}`. Plurals use `ngettext`. A message in an exception or a `HTTPException` is translated where it is raised.
+- **Tables at module level** (labels, enum descriptions) use `N_("…")`, which marks the text and returns it unchanged. Translate it where it is shown (`_(label)`). `tests/test_i18n_static.py` fails on `_()` at module level, in a class body or in a default argument, because that runs once at import, in English, and is then shown to everybody.
+- **Caches that are read by several people** must not hold a translated text: the widgets' runtime key includes the language, and `host_health` keeps the raw reading and parses it per request.
+- **Not translated, on purpose:** log lines, audit parameters, job titles and job logs, notification emails and webhooks, upgrade runner markers, anything the operator or an add-on catalog supplies (tile and branding defaults seeded into a file, add-on descriptions), and what Keycloak or `papaia-ctl` return. Code outside a request runs in English because nothing sets the language there.
+- **Never build a sentence from translated words.** If one part of a sentence varies, give each variant its own whole sentence.
+
+**Checks that keep it honest** (`tests/test_i18n_*.py`): `test_i18n_catalog.py` extracts every text from the source with `src/babel.cfg` and, for every shipped language other than `en`, demands that nothing is missing, empty, fuzzy or stale, that placeholders and markup survive, and that plurals have the language's number of forms; a language added later is checked without touching the test. `test_i18n_templates_coverage.py` lints the templates for English text outside `{% trans %}` and `_()` (words that are not prose, such as product names, are in `ALLOWED_WORDS` in `tests/i18n_scan.py`). `test_i18n_static.py` forbids translation at import time. `test_i18n_routes.py` covers the picker, the store across two "computers" with the same `sub`, `next` validation, HTMX partials, the 403 page, `/api/*` errors and a render of every page in German.
+
+**Changing a text**, adding a text or adding a language: see "Add or update a language" in `CONTRIBUTING.md`. After any change to a user-visible text, extract and update the catalogues, translate what is new, and run `tests/test_i18n_*.py`.
+
+### Default tile icons
+
+The default tiles carry an icon that ships with the manager, so the dashboard never loads an image from another site for them. `DEFAULT_ICONS` in `core/tiles.py` maps the casefolded tile name (LibreChat, LiteLLM, Keycloak, NGINX Proxy Manager, Qdrant) to a file under `src/app/static/icons/`, and `default_icon(name)` reads it. The seed (`_DEFAULT_TILES`) writes the path into a new `tiles.yaml`; `_resolve_tile` falls back to it by name for a stored tile without an icon, so an installation whose `tiles.yaml` was seeded earlier (the file is seeded once and never rewritten) gets the icons too; an `icon` set on the tile wins. The computed Qdrant tile (`core/rag.py`) sets it itself, and the editor receives `default_icons` in its draft payload so its store (`iconFor`) shows the same icons. A tile the operator renames loses the fallback, because the match is by name.
+
+The directory is the one place for third-party files. `NOTICE.txt` needs an entry for every `.svg` (the file name alone at the start of a line, the source pinned to a commit or tag, the licence, the owner of the mark), `LICENSE-dashboard-icons.txt` holds the licence text, and `tests/test_icon_assets.py` fails for a file without an entry and for one that is not a plain vector graphic (a script, an embedded image or a link to another host). Both documents are `.txt` because `.dockerignore` drops `*.md` from the image. `THIRD_PARTY_LICENSES.md` is generated and lists Python packages only, so icons do not go there. Take a file unchanged from its source and check it individually: the collection states Apache-2.0 for its icon files but says nothing about the marks, and `litellm.svg` is the Twemoji "high-speed train" (CC BY 4.0), not LiteLLM's logo. `TRADEMARK.md` and `CONTRIBUTING.md` carry the rule for contributors.
+
 ### Dashboard widgets
 
 A group on the dashboard holds links and **widgets**: cards that show one piece of live state and link to the page that explains it. `core/widgets/` owns the feature (`model` the payload every widget produces, `registry` the types that can be placed, `runtime` how a reading is taken and kept, `builtin` the types that ship with the manager, `view` what the dashboard's placeholders need), `routers/ui_widgets.py` serves the cards, `templates/partials/widgets/card.html` draws them, and `tests/test_widgets_*.py`, `tests/test_tiles_widgets.py` and `tests/test_ui_widgets.py` pin it.
@@ -714,6 +756,7 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `INGEST_UPLOAD_TTL_HOURS` | How long an upload that was not embedded successfully stays before it is deleted (default: 24; 1 to 720) |
 | `INGEST_MAX_UPLOAD_MB` / `INGEST_MAX_BATCH_MB` | Size limits of one uploaded file (default: 200; 1 to 10240) and of one upload (default: 2048; 1 to 102400), in MiB |
 | `SSL_CERT_FILE` | Optional path to a custom CA bundle. It is trusted for the OIDC endpoints and, next to the public CAs, for connections to a Qdrant |
+| `MANAGER_DEFAULT_LOCALE` | Language for an account that has not chosen one and whose browser asks for none that is shipped: a directory under `src/app/locale`, or `en` (default). Anything else means `en` |
 | `LOG_LEVEL` | Log level of the application (default: `INFO`) |
 
 The RAG pages read the rest of their settings from the RAG

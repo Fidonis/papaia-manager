@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth.deps import AdminUser
 from app.config import Settings, get_settings
 from app.core.jobs import JobQueue
+from app.i18n import gettext as _
 
 router = APIRouter(prefix="/api/v1/jobs")
 
@@ -38,7 +39,9 @@ async def get_job(
 ) -> dict[str, Any]:
     job = queue.get_job(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail=f"job {job_id!r} not found")
+        raise HTTPException(status_code=404, detail=_(
+            "job %(job_id)r not found"
+        ) % {"job_id": job_id})
     return _job_dict(job)
 
 
@@ -50,7 +53,9 @@ async def get_job_log(
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, str]:
     if queue.get_job(job_id) is None:
-        raise HTTPException(status_code=404, detail=f"job {job_id!r} not found")
+        raise HTTPException(status_code=404, detail=_(
+            "job %(job_id)r not found"
+        ) % {"job_id": job_id})
     return {"log": queue.read_log(job_id, offset=offset)}
 
 

@@ -12,6 +12,85 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [1.5.0] - 2026-10-24
+
+### Added
+- German and English interface with a language per account. Every account chooses **Automatic**,
+  **English** or **Deutsch** in the account menu at the bottom of the sidebar. The choice is stored
+  on the server by the account's OIDC subject in `$PAPAIA_CONFIG_DIR/manager/preferences.yaml`
+  (part of a backup), so it is the same on every computer and browser the account signs in from.
+  **Automatic**, which is also what an account has before it chooses, follows the browser's
+  language and falls back to the new optional setting `MANAGER_DEFAULT_LOCALE` (`en` by default).
+  Another language is one catalogue file, `src/app/locale/<code>/LC_MESSAGES/messages.po`, and needs
+  no change to the code; `CONTRIBUTING.md` describes how to add or update one, and a test fails
+  for a catalogue that is incomplete. Log lines, the audit log, job logs and the emails and
+  webhooks of notifications stay in English
+  ([#156](https://github.com/Fidonis/papaia-manager/pull/156); closes
+  [#155](https://github.com/Fidonis/papaia-manager/issues/155)).
+- The dashboard shows an icon for the default tiles: LibreChat, LiteLLM, Keycloak, NGINX Proxy
+  Manager and Qdrant. The files are bundled with the manager, so nothing is loaded from another
+  site. A tile in an existing `tiles.yaml` that has no icon of its own picks the bundled one up by
+  its name without the file being rewritten, and an icon an operator set always wins. The sources
+  and licences of the files are in `src/app/static/icons/NOTICE.txt`, and `TRADEMARK.md` says that
+  the logos stay the property of their owners
+  ([#153](https://github.com/Fidonis/papaia-manager/pull/153); closes
+  [#152](https://github.com/Fidonis/papaia-manager/issues/152)).
+- The add-on pages show the software an add-on bundles, not only the add-on's own version. The
+  gallery card lists the primary components (`Paperless-ngx 3.0.5 → 3.1.0` when an update changes
+  one), and the detail page has a **Components** table with each component's role and version, the
+  version an update brings, tags the catalog leaves floating, and tags an operator pinned in the
+  add-on's `.env`. The same list is `components` in the add-on summary of `GET /api/v1/addons` and
+  `GET /api/v1/addons/{name}`. It reads the `components` key of the catalog manifests
+  (`Fidonis/papaia-addons#47`, released in papaia-addons 1.2.0); a catalog without it shows
+  nothing new
+  ([#161](https://github.com/Fidonis/papaia-manager/pull/161); closes
+  [#160](https://github.com/Fidonis/papaia-manager/issues/160)).
+- New optional setting `MANAGER_DEFAULT_LOCALE`, documented in both `.env.example` files
+  ([#156](https://github.com/Fidonis/papaia-manager/pull/156)).
+
+### Changed
+- A single line of `papaia-ctl` output is cut at 1 MiB and ends in `... [truncated]`; the rest of
+  that line up to the next newline is dropped. The pending output is kept in a growable buffer that
+  is searched from where the last read stopped, so a line that never ends no longer costs memory
+  and time that grow with every chunk, and no longer fills the job log
+  ([#157](https://github.com/Fidonis/papaia-manager/pull/157); closes
+  [#154](https://github.com/Fidonis/papaia-manager/issues/154)).
+- `babel` is a runtime dependency. It reads the language catalogues at start-up and supplies the
+  language names; there is no build step and the Docker image is built as before
+  ([#156](https://github.com/Fidonis/papaia-manager/pull/156)).
+
+### Fixed
+- **Remove** now stops and removes the add-on's containers, as its dialog says. `papaia-ctl addon
+  remove` only marks an add-on inactive and left its containers running, and an inactive add-on
+  offers neither Stop nor Remove. The job runs `addon stop --clean-up` first (the volumes stay) and
+  then `addon remove`; if the stop fails the add-on stays active. Remove is refused with a 409
+  (404 for an add-on that is not installed) while the add-on's `docker-compose.yml` is missing, and
+  the job checks again before it stops anything
+  ([#159](https://github.com/Fidonis/papaia-manager/pull/159); closes
+  [#158](https://github.com/Fidonis/papaia-manager/issues/158)).
+- A job no longer fails with `Separator is not found, and chunk exceed the limit` when
+  `papaia-ctl` prints a line longer than 64 KiB, for example the progress of a local image build.
+  The output is read in chunks and lines are put together by the manager
+  ([#151](https://github.com/Fidonis/papaia-manager/pull/151); closes
+  [#150](https://github.com/Fidonis/papaia-manager/issues/150)).
+
+### Notes
+- **Behavior change:** Remove takes the add-on's containers down. Before, they kept running after
+  the add-on was marked inactive.
+- Without an add-on's `docker-compose.yml`, `papaia-ctl` aims its Compose call at the core project
+  instead of the add-on's, so a stop, restart or uninstall of such an add-on can take down the core
+  stack, this manager included (`Fidonis/papaia#244`). Only Remove is guarded here. The core fix is
+  merged into the branch of the papAIa release after 1.6.0 and is not part of 1.6.0; until then,
+  restore the add-on's files before stopping or uninstalling it.
+- The language preference lives in its own file, `manager/preferences.yaml`, and is not part of
+  `settings.yaml`, so a user changing their language never makes an administrator's save fail as
+  stale. A damaged file reads as "no preference" and is never overwritten.
+- The icons for the default tiles are third-party files. `NOTICE.txt` records the source, the
+  licence and the owner of the mark for each of them; the LiteLLM tile shows the emoji its project
+  uses, not its logo.
+- No new requirement on the core: 1.5.0 asks for the same papAIa releases as 1.4.0 (see the notes
+  there).
+
 ## [1.4.0] - 2026-10-19
 
 ### Added
@@ -584,6 +663,8 @@ based on merged pull requests; this file mirrors the published releases.
   with same-version duplicates collapsed and annotated with the catalogs that
   shadow the primary one.
 
+[1.5.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.5.0
+
 [1.4.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.4.0
 
 [1.3.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v1.3.0
@@ -606,4 +687,4 @@ based on merged pull requests; this file mirrors the published releases.
 
 [0.1.0]: https://github.com/Fidonis/papaia-manager/releases/tag/v0.1.0
 
-[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Fidonis/papaia-manager/compare/v1.5.0...HEAD

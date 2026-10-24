@@ -4,38 +4,37 @@
 <section class="card bg-base-100 border border-base-300">
   <div class="card-body gap-5">
     <div>
-      <h2 class="font-brand text-lg font-bold">Branding</h2>
-      <p class="text-sm opacity-60">Name, second line and logo shown at the top of the sidebar.</p>
+      <h2 class="font-brand text-lg font-bold">{% trans %}Branding{% endtrans %}</h2>
+      <p class="text-sm opacity-60">{% trans %}Name, second line and logo shown at the top of the sidebar.{% endtrans %}</p>
     </div>
 
     <form id="branding-form" class="space-y-4" onsubmit="saveBranding(event)">
       <label class="form-control w-full">
-        <span class="label-text mb-1 text-sm font-medium">Name</span>
+        <span class="label-text mb-1 text-sm font-medium">{% trans %}Name{% endtrans %}</span>
         <input id="branding-name" type="text" maxlength="40" class="input input-bordered w-full"
                value="{{ stored.branding.name or '' }}" placeholder="{{ default_name }}">
-        <span class="label-text-alt mt-1 opacity-60">Leave empty to use “{{ default_name }}”.</span>
+        <span class="label-text-alt mt-1 opacity-60">{% trans %}Leave empty to use “{{ default_name }}”.{% endtrans %}</span>
       </label>
 
       <label class="form-control w-full">
-        <span class="label-text mb-1 text-sm font-medium">Second line</span>
+        <span class="label-text mb-1 text-sm font-medium">{% trans %}Second line{% endtrans %}</span>
         <input id="branding-tagline" type="text" maxlength="60" class="input input-bordered w-full"
                value="{{ stored.branding.tagline if stored.branding.tagline is not none else '' }}"
                placeholder="{{ default_tagline }}">
         <span class="label-text-alt mt-1 opacity-60">
-          Default is “{{ default_tagline }}”. Leave the field empty to keep the default,
-          or tick the box below to show no second line.
+          {% trans %}Default is “{{ default_tagline }}”. Leave the field empty to keep the default, or tick the box below to show no second line.{% endtrans %}
         </span>
       </label>
 
       <label class="flex items-center gap-2 text-sm cursor-pointer">
         <input id="branding-hide-tagline" type="checkbox" class="checkbox checkbox-sm"
                {% if stored.branding.tagline == "" %}checked{% endif %}>
-        Hide the second line
+        {% trans %}Hide the second line{% endtrans %}
       </label>
 
       <div class="flex flex-wrap gap-2">
-        <button type="submit" class="btn btn-primary btn-sm">Save</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="resetBranding()">Reset to defaults</button>
+        <button type="submit" class="btn btn-primary btn-sm">{% trans %}Save{% endtrans %}</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="resetBranding()">{% trans %}Reset to defaults{% endtrans %}</button>
       </div>
     </form>
 
@@ -43,30 +42,29 @@
 
     <div class="space-y-3">
       <div>
-        <h3 class="text-sm font-semibold">Logo</h3>
+        <h3 class="text-sm font-semibold">{% trans %}Logo{% endtrans %}</h3>
         <p class="text-sm opacity-60">
-          PNG, JPEG, WebP or SVG, up to 512&nbsp;KB. It is scaled to fit the sidebar header,
-          keeping its proportions.
+          {% trans %}PNG, JPEG, WebP or SVG, up to 512&nbsp;KB. It is scaled to fit the sidebar header, keeping its proportions.{% endtrans %}
         </p>
       </div>
 
       <div class="flex items-center gap-4">
         <div class="flex h-14 w-40 items-center justify-center rounded-lg border border-base-300 bg-base-200 px-3">
           {% if current.logo_url %}
-          <img id="logo-preview" src="{{ current.logo_url }}" alt="Current logo"
+          <img id="logo-preview" src="{{ current.logo_url }}" alt="{{ _('Current logo') }}"
                class="h-8 w-auto max-w-full object-contain">
           {% else %}
-          <span id="logo-preview" class="text-xs opacity-50">Built-in logo</span>
+          <span id="logo-preview" class="text-xs opacity-50">{% trans %}Built-in logo{% endtrans %}</span>
           {% endif %}
         </div>
         <div class="flex flex-wrap gap-2">
           <label class="btn btn-sm btn-outline">
-            Upload logo
+            {% trans %}Upload logo{% endtrans %}
             <input id="logo-file" type="file" class="hidden"
                    accept="image/png,image/jpeg,image/webp,image/svg+xml" onchange="uploadLogo(this)">
           </label>
           {% if current.logo_url %}
-          <button type="button" class="btn btn-sm btn-ghost" onclick="removeLogo()">Remove logo</button>
+          <button type="button" class="btn btn-sm btn-ghost" onclick="removeLogo()">{% trans %}Remove logo{% endtrans %}</button>
           {% endif %}
         </div>
       </div>
@@ -76,20 +74,19 @@
 
 <dialog id="reset-branding-modal" class="modal">
   <div class="modal-box">
-    <h3 class="text-lg font-bold">Reset branding?</h3>
+    <h3 class="text-lg font-bold">{% trans %}Reset branding?{% endtrans %}</h3>
     <p class="py-4 text-sm opacity-70">
-      The name and second line return to “{{ default_name }}” / “{{ default_tagline }}”
-      and the uploaded logo is deleted. This cannot be undone.
+      {% trans %}The name and second line return to “{{ default_name }}” / “{{ default_tagline }}” and the uploaded logo is deleted. This cannot be undone.{% endtrans %}
     </p>
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-ghost btn-sm">Cancel</button>
+        <button class="btn btn-ghost btn-sm">{% trans %}Cancel{% endtrans %}</button>
       </form>
       <button id="reset-branding-confirm" type="button" class="btn btn-error btn-sm"
-              onclick="confirmResetBranding()">Reset to defaults</button>
+              onclick="confirmResetBranding()">{% trans %}Reset to defaults{% endtrans %}</button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button aria-label="Close">close</button></form>
+  <form method="dialog" class="modal-backdrop"><button aria-label="{{ _('Close') }}">{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 <script>
@@ -106,7 +103,7 @@
         tagline: hide ? "" : (tagline === "" ? null : tagline),
       },
     });
-    if (data) reloadAfter("Branding saved");
+    if (data) reloadAfter({{ _('Branding saved')|tojson }});
   }
 
   function resetBranding() {
@@ -122,7 +119,7 @@
     });
     button.disabled = false;
     modal.close();
-    if (data) reloadAfter("Branding reset");
+    if (data) reloadAfter({{ _('Branding reset')|tojson }});
   }
 
   async function uploadLogo(input) {
@@ -131,11 +128,11 @@
     form.append("file", input.files[0]);
     const data = await settingsRequest("/api/v1/settings/branding/logo", { body: form });
     input.value = "";
-    if (data) reloadAfter("Logo updated");
+    if (data) reloadAfter({{ _('Logo updated')|tojson }});
   }
 
   async function removeLogo() {
     const data = await settingsRequest("/api/v1/settings/branding/logo", { method: "DELETE" });
-    if (data) reloadAfter("Logo removed");
+    if (data) reloadAfter({{ _('Logo removed')|tojson }});
   }
 </script>

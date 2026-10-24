@@ -32,11 +32,15 @@ function ingestOutcome(result, what) {
   let level = 'success';
   if (!result.verified) {
     level = 'warning';
-    text += ' (the ingester could not be asked' + (result.note ? ': ' + _ragEscape(result.note) : '') + ')';
+    text = result.note
+      ? fmt({{ _('{what} (the ingester could not be asked: {note})')|tojson }}, { what: what, note: _ragEscape(result.note) })
+      : fmt({{ _('{what} (the ingester could not be asked)')|tojson }}, { what: what });
   } else if (!result.applied) {
     level = 'warning';
-    text += '. It is saved but not active yet: ' +
-      (result.elsewhere.length ? _ragEscape(result.elsewhere.join('; ')) : 'the ingester did not apply the catalog');
+    text = fmt({{ _('{what}. It is saved but not active yet: {why}')|tojson }}, {
+      what: what,
+      why: result.elsewhere.length ? _ragEscape(result.elsewhere.join('; ')) : {{ _('the ingester did not apply the catalog')|tojson }},
+    });
   }
   return { level: level, text: text };
 }
@@ -46,7 +50,9 @@ async function ingestToggle(id, enable, after) {
   if (res.handled) return;
   const label = '<b>' + _ragEscape(id) + '</b>';
   if (!res.ok) { showToast('error', label + ': ' + _ragEscape(res.error)); return; }
-  const out = ingestOutcome(res.data, 'Job ' + label + (enable ? ' enabled' : ' disabled'));
+  const out = ingestOutcome(res.data, fmtHtml(enable
+    ? {{ _('Job <b>{id}</b> enabled')|tojson }}
+    : {{ _('Job <b>{id}</b> disabled')|tojson }}, { id: id }));
   showToast(out.level, out.text);
   if (after) after();
 }
@@ -55,7 +61,7 @@ async function ingestResume(id, after) {
   const res = await _ragRequest('POST', _ingJob(id) + '/resume');
   if (res.handled) return;
   if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
-  showToast('success', 'Scheduling of <b>' + _ragEscape(id) + '</b> resumed');
+  showToast('success', fmtHtml({{ _('Scheduling of <b>{id}</b> resumed')|tojson }}, { id: id }));
   if (after) after();
 }
 
@@ -64,7 +70,7 @@ async function ingestReloadCatalog(after) {
   if (res.handled) return;
   if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
   showToast(res.data.refused ? 'warning' : 'success',
-            res.data.refused ? 'The ingester read jobs.yaml and found problems' : 'The ingester read jobs.yaml');
+            res.data.refused ? {{ _('The ingester read jobs.yaml and found problems')|tojson }} : {{ _('The ingester read jobs.yaml')|tojson }});
   if (after) after();
 }
 
@@ -72,7 +78,7 @@ async function ingestAbort(runId, after) {
   const res = await _ragRequest('DELETE', _ING + '/job-runs/' + encodeURIComponent(runId));
   if (res.handled) return;
   if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
-  showToast('info', 'Abort requested. The run stops after the file it is working on.');
+  showToast('info', {{ _('Abort requested. The run stops after the file it is working on.')|tojson }});
   if (after) after();
 }
 
@@ -158,8 +164,8 @@ function deleteJobDialog() {
     },
     runsText() {
       if (this.runs === null) return '';
-      if (this.runs === 0) return 'The job has no finished runs.';
-      return this.runs + (this.runs === 1 ? ' run' : ' runs') + ' will be deleted.';
+      if (this.runs === 0) return {{ _('The job has no finished runs.')|tojson }};
+      return fmtPlural(this.runs, {{ _('{count} run will be deleted.')|tojson }}, {{ _('{count} runs will be deleted.')|tojson }});
     },
     canSubmit() { return !this.busy && (!this.purge || this.typed === this.job.id); },
     async submit() {
@@ -171,11 +177,11 @@ function deleteJobDialog() {
       if (res.handled) return;
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
-      let text = 'Job <b>' + _ragEscape(this.job.id) + '</b> deleted';
+      let text = fmtHtml({{ _('Job <b>{id}</b> deleted')|tojson }}, { id: this.job.id });
       if (res.data.deleted_runs) {
-        text += '; ' + res.data.deleted_runs + (res.data.deleted_runs === 1 ? ' run' : ' runs') + ' deleted';
+        text += '; ' + fmtPlural(res.data.deleted_runs, {{ _('{count} run deleted')|tojson }}, {{ _('{count} runs deleted')|tojson }});
       }
-      if (res.data.purged) text += '; ' + res.data.deleted_points + ' points removed from the collection';
+      if (res.data.purged) text += '; ' + fmt({{ _('{count} points removed from the collection')|tojson }}, { count: res.data.deleted_points });
       if (res.data.note) text += '. ' + _ragEscape(res.data.note);
       // The job's page is gone, so the answer has to be read on the list; a toast does not survive
       // the navigation, so it waits in the session until the next page shows it.
@@ -223,7 +229,7 @@ function deleteRunsDialog() {
       this.error = ''; this.count = null;
       if (!this.jobId) return;
       if (this.since && this.until && this.since > this.until) {
-        this.error = 'The first day is after the last day.';
+        this.error = {{ _('The first day is after the last day.')|tojson }};
         return;
       }
       this.counting = true;
@@ -235,15 +241,18 @@ function deleteRunsDialog() {
       this.count = res.data;
     },
     previewText() {
-      if (this.counting || !this.count) return 'Counting the runs ...';
+      if (this.counting || !this.count) return {{ _('Counting the runs ...')|tojson }};
       const c = this.count;
       let text = c.matched === 0
-        ? 'No finished run in this period.'
-        : c.matched + (c.matched === 1 ? ' run' : ' runs') + ' (' + c.matched_events +
-          (c.matched_events === 1 ? ' log line' : ' log lines') + ') will be deleted.';
+        ? {{ _('No finished run in this period.')|tojson }}
+        : fmt({{ _('{runs} ({events}) will be deleted.')|tojson }}, {
+            runs: fmtPlural(c.matched, {{ _('{count} run')|tojson }}, {{ _('{count} runs')|tojson }}),
+            events: fmtPlural(c.matched_events, {{ _('{count} log line')|tojson }}, {{ _('{count} log lines')|tojson }}),
+          });
       if (c.skipped_running) {
-        text += ' ' + c.skipped_running + (c.skipped_running === 1 ? ' run is' : ' runs are') +
-          ' still working and will be kept.';
+        text += ' ' + fmtPlural(c.skipped_running,
+          {{ _('{count} run is still working and will be kept.')|tojson }},
+          {{ _('{count} runs are still working and will be kept.')|tojson }});
       }
       return text;
     },
@@ -251,7 +260,9 @@ function deleteRunsDialog() {
       return !this.busy && this.hasRuns() && (!this.unbounded() || this.typed === this.jobId);
     },
     submitText() {
-      return this.hasRuns() ? 'Delete ' + this.count.matched + (this.count.matched === 1 ? ' run' : ' runs') : 'Delete';
+      return this.hasRuns()
+        ? fmtPlural(this.count.matched, {{ _('Delete {count} run')|tojson }}, {{ _('Delete {count} runs')|tojson }})
+        : {{ _('Delete')|tojson }};
     },
     async submit() {
       if (!this.canSubmit()) return;
@@ -263,8 +274,9 @@ function deleteRunsDialog() {
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
       const n = res.data.deleted_runs;
-      let text = n + (n === 1 ? ' run' : ' runs') + ' of <b>' + _ragEscape(this.jobId) + '</b> deleted';
-      if (res.data.skipped_running) text += '. A run that is still working was kept';
+      let text = fmtPlural(n, {{ _('{count} run of <b>{jobId}</b> deleted')|tojson }}, {{ _('{count} runs of <b>{jobId}</b> deleted')|tojson }},
+                           { jobId: this.jobId }, true);
+      if (res.data.skipped_running) text += '. ' + {{ _('A run that is still working was kept')|tojson }};
       showToast(res.data.skipped_running ? 'warning' : 'success', text);
       // Whichever page this is shows runs somewhere: its own refresh, else a reload.
       if (typeof reloadRuns === 'function') reloadRuns();

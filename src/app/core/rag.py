@@ -35,7 +35,8 @@ from pathlib import Path
 
 from app.core.envfile import load_env_file
 from app.core.inventory import profiles_in
-from app.core.tiles import Tile, TileGroup, WidgetTile, check_value
+from app.core.tiles import Tile, TileGroup, WidgetTile, check_value, default_icon
+from app.i18n import gettext
 
 RAG_PROFILE = "rag"
 
@@ -164,10 +165,15 @@ def _first_set(
     clash = next(((key, value) for key, value in set_values[1:] if value != chosen), None)
     if clash is None:
         return chosen, None
-    return chosen, (
-        f"{chosen_key} is {chosen!r} but {clash[0]} is {clash[1]!r}. The MCP server and the "
+    return chosen, gettext(
+        "%(first_key)s is %(first)r but %(second_key)s is %(second)r. The MCP server and the "
         "ingester must use the same name; the manager follows the first."
-    )
+    ) % {
+        "first_key": chosen_key,
+        "first": chosen,
+        "second_key": clash[0],
+        "second": clash[1],
+    }
 
 
 def rag_backend(config_dir: str) -> RagBackend:
@@ -275,23 +281,31 @@ def documents_dir(config_dir: str, workspace_dir: str = "") -> DocumentsDir:
         if "$" in mount:
             return DocumentsDir(
                 None,
-                f"{_LOCAL_MOUNT_KEY} in ai/rag/.env contains a variable, which the manager does "
-                "not expand. Write the folder out in full.",
+                gettext(
+                    "%(key)s in ai/rag/.env contains a variable, which the manager does "
+                    "not expand. Write the folder out in full."
+                )
+                % {"key": _LOCAL_MOUNT_KEY},
             )
         chosen = Path(mount)
         visible = [Path(config_dir), *([Path(workspace_dir)] if workspace_dir else [])]
         if not any(_inside(chosen, base) for base in visible):
             return DocumentsDir(
                 None,
-                f"{_LOCAL_MOUNT_KEY} points to {mount}, which the manager cannot see: it "
-                "mounts only its configuration and workspace directories. Embedding from the "
-                "manager needs the documents folder inside one of them.",
+                gettext(
+                    "%(key)s points to %(mount)s, which the manager cannot see: it "
+                    "mounts only its configuration and workspace directories. Embedding from the "
+                    "manager needs the documents folder inside one of them."
+                )
+                % {"key": _LOCAL_MOUNT_KEY, "mount": mount},
             )
     if not chosen.is_dir():
         return DocumentsDir(
             None,
-            f"The documents folder {chosen} does not exist. Create it (the stack's setup does "
-            "when the RAG system is chosen) and start the RAG services again.",
+            gettext(
+                "The documents folder %(chosen)s does not exist. Create it (the stack's setup "
+                "does when the RAG system is chosen) and start the RAG services again."
+            ) % {"chosen": chosen},
         )
     return DocumentsDir(chosen, writable=os.access(chosen, os.W_OK))
 
@@ -316,7 +330,13 @@ def with_rag_tiles(groups: list[TileGroup], env: Mapping[str, str]) -> list[Tile
     shown = [tile for group in groups for tile in group.tiles if isinstance(tile, Tile)]
     names = {tile.name.casefold() for tile in shown}
     tiles: list[Tile | WidgetTile] = [
-        Tile(name=item.tile_name, href=item.href, description=item.description, visibility="admin")
+        Tile(
+            name=item.tile_name,
+            href=item.href,
+            description=item.description,
+            icon=default_icon(item.tile_name),
+            visibility="admin",
+        )
         for item in offered
         if item.tile_name.casefold() not in names
         and not any(_same_target(item.href, tile.href) for tile in shown)

@@ -6,7 +6,7 @@
    record of what it did stays. #}
 {% if not entries %}
 <p class="text-sm opacity-60 px-4 py-3">
-  No upgrade has been recorded for this installation yet.
+  {% trans %}No upgrade has been recorded for this installation yet.{% endtrans %}
 </p>
 {% else %}
 <ul class="divide-y divide-base-300">
@@ -15,7 +15,7 @@
     {% if entry.result == "ok" %}
       <span class="badge badge-success badge-sm">ok</span>
     {% elif entry.result == "failed" %}
-      <span class="badge badge-error badge-sm">failed</span>
+      <span class="badge badge-error badge-sm">{% trans %}failed{% endtrans %}</span>
     {% else %}
       {# `checkout` is written between the two phases. On its own -- with no
          later line for the same attempt -- it means the upgrade never got past
@@ -26,13 +26,13 @@
     <span class="text-sm font-mono">{{ entry.from_version }} &rarr; {{ entry.to_version }}</span>
 
     {% if entry.stage %}
-    <span class="text-xs opacity-60">stopped at {{ entry.stage }}</span>
+    <span class="text-xs opacity-60">{% trans stage=entry.stage %}stopped at {{ stage }}{% endtrans %}</span>
     {% endif %}
     {% if entry.details.id %}
     <span class="text-xs opacity-60 font-mono">{{ entry.details.id }}</span>
     {% endif %}
     {% if entry.details.migrations %}
-    <span class="text-xs opacity-50">{{ entry.details.migrations }} migration(s)</span>
+    <span class="text-xs opacity-50">{% trans migrations=entry.details.migrations %}{{ migrations }} migration(s){% endtrans %}</span>
     {% endif %}
 
     <span class="grow"></span>

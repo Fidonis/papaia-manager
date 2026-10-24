@@ -7,11 +7,10 @@
 <div class="rounded-xl border border-error bg-error/10 px-5 py-3">
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
     <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-error"></span>
-    <p class="text-sm font-semibold">The notification settings cannot be used</p>
+    <p class="text-sm font-semibold">{% trans %}The notification settings cannot be used{% endtrans %}</p>
   </div>
   <p class="mt-1 text-xs opacity-70">
-    {{ strip.error }} No notifications are sent until the file is repaired or removed
-    (<span class="font-mono">manager/notifications.yaml</span> in the configuration directory).
+    {% trans error=strip.error %}{{ error }} No notifications are sent until the file is repaired or removed (<span class="font-mono">manager/notifications.yaml</span> in the configuration directory).{% endtrans %}
   </p>
 </div>
 
@@ -19,10 +18,10 @@
 <div class="rounded-xl border border-warning bg-warning/10 px-5 py-3">
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
     <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-warning"></span>
-    <p class="text-sm font-semibold">This papAIa core has no mail relay</p>
+    <p class="text-sm font-semibold">{% trans %}This papAIa core has no mail relay{% endtrans %}</p>
   </div>
   <p class="mt-1 text-xs opacity-70">
-    Email needs the relay, which comes with papAIa 1.6.0. Webhook recipients work without it.
+    {% trans %}Email needs the relay, which comes with papAIa 1.6.0. Webhook recipients work without it.{% endtrans %}
   </p>
 </div>
 
@@ -30,11 +29,11 @@
 <div class="rounded-xl border border-warning bg-warning/10 px-5 py-3">
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
     <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-warning"></span>
-    <p class="text-sm font-semibold">The Mail Server isn't set up yet</p>
-    <a href="/mail/server" class="btn btn-outline btn-sm ml-auto">Set up Mail Server</a>
+    <p class="text-sm font-semibold">{% trans %}The Mail Server isn't set up yet{% endtrans %}</p>
+    <a href="/mail/server" class="btn btn-outline btn-sm ml-auto">{% trans %}Set up Mail Server{% endtrans %}</a>
   </div>
   <p class="mt-1 text-xs opacity-70">
-    Email recipients are saved, but no email goes out until it is. Webhook recipients work already.
+    {% trans %}Email recipients are saved, but no email goes out until it is. Webhook recipients work already.{% endtrans %}
   </p>
 </div>
 
@@ -42,10 +41,10 @@
 <div class="rounded-xl border border-warning bg-warning/10 px-5 py-3">
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
     <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-warning"></span>
-    <p class="text-sm font-semibold">Notifications are not being sent</p>
+    <p class="text-sm font-semibold">{% trans %}Notifications are not being sent{% endtrans %}</p>
   </div>
   <p class="mt-1 text-xs opacity-70">
-    The background task did not start. The manager's log says why; restarting the manager tries again.
+    {% trans %}The background task did not start. The manager's log says why; restarting the manager tries again.{% endtrans %}
   </p>
 </div>
 
@@ -53,24 +52,22 @@
 <div class="rounded-xl border border-base-300 bg-base-100 px-5 py-3">
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
     <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-base-content/30"></span>
-    <p class="text-sm font-semibold">Nobody receives notifications yet</p>
+    <p class="text-sm font-semibold">{% trans %}Nobody receives notifications yet{% endtrans %}</p>
   </div>
-  <p class="mt-1 text-xs opacity-60">Add a recipient and tick what it should receive.</p>
+  <p class="mt-1 text-xs opacity-60">{% trans %}Add a recipient and tick what it should receive.{% endtrans %}</p>
 </div>
 
 {% else %}
 <div class="rounded-xl border border-success bg-success/10 px-5 py-3">
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
     <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
-    <p class="text-sm font-semibold">Notifications are on</p>
+    <p class="text-sm font-semibold">{% trans %}Notifications are on{% endtrans %}</p>
     <p class="text-xs opacity-70">
-      {{ strip.subscribed }} recipient{{ "" if strip.subscribed == 1 else "s" }}
+      {% trans subscribed=strip.subscribed %}{{ subscribed }} recipient{% pluralize subscribed %}{{ subscribed }} recipients{% endtrans %}
     </p>
   </div>
   <p class="mt-1 text-xs opacity-70">
-    A failed job is reported at once; the rest is checked every {{ strip.interval }}
-    minute{{ "" if strip.interval == 1 else "s" }}{% if strip.last_pass %}, last
-    {{ strip.last_pass | ingest_ago }}{% else %}, the first time shortly after the manager started{% endif %}.
+    {% trans interval=strip.interval %}A failed job is reported at once; the rest is checked every {{ interval }} minute{% pluralize interval %}A failed job is reported at once; the rest is checked every {{ interval }} minutes{% endtrans %}{% if strip.last_pass %}{% trans last_pass=(strip.last_pass | ingest_ago) %}, last {{ last_pass }}{% endtrans %}{% else %}{% trans %}, the first time shortly after the manager started{% endtrans %}{% endif %}.
   </p>
 </div>
 {% endif %}

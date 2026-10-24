@@ -11,37 +11,35 @@
 
   <div class="alert alert-info text-sm" role="status">
     <span>
-      When a job is deleted or renamed, what it embedded stays in its collection, and the ingester keeps its
-      records of it. They are listed here until you remove them. Removing deletes the points from the
-      collection and cannot be undone.
+      {% trans %}When a job is deleted or renamed, what it embedded stays in its collection, and the ingester keeps its records of it. They are listed here until you remove them. Removing deletes the points from the collection and cannot be undone.{% endtrans %}
     </span>
   </div>
 
   {% if not orphans and not problem %}
   <div class="flex flex-col items-center py-16 gap-2 opacity-70 text-center">
-    <p class="text-lg font-medium">Nothing is left over</p>
-    <p class="text-sm">Every job the ingester has content for is in the catalog.</p>
+    <p class="text-lg font-medium">{% trans %}Nothing is left over{% endtrans %}</p>
+    <p class="text-sm">{% trans %}Every job the ingester has content for is in the catalog.{% endtrans %}</p>
   </div>
   {% elif orphans %}
   <div class="overflow-x-auto rounded-xl border border-base-300 bg-base-100">
     <table class="table table-sm">
-      <thead><tr class="text-xs uppercase opacity-60"><th>Job</th><th>Collection</th><th>Files</th><th>Points</th><th class="text-right"><span class="sr-only">Actions</span></th></tr></thead>
+      <thead><tr class="text-xs uppercase opacity-60"><th>{% trans %}Job{% endtrans %}</th><th>{% trans %}Collection{% endtrans %}</th><th>{% trans %}Files{% endtrans %}</th><th>{% trans %}Points{% endtrans %}</th><th class="text-right"><span class="sr-only">{% trans %}Actions{% endtrans %}</span></th></tr></thead>
       <tbody>
         {% for item in orphans %}
         <tr>
           <td class="align-top font-mono text-sm font-semibold">
             {{ item.job_id }}
-            {% if item.in_file %}<span class="badge badge-warning badge-sm ml-1" title="The job is in jobs.yaml but the ingester does not load it">still in jobs.yaml</span>{% endif %}
+            {% if item.in_file %}<span class="badge badge-warning badge-sm ml-1" title="{{ _('The job is in jobs.yaml but the ingester does not load it') }}">{% trans %}still in jobs.yaml{% endtrans %}</span>{% endif %}
           </td>
           <td class="align-top font-mono text-sm">{{ item.collection }}</td>
           <td class="align-top text-sm">{{ item.state_rows }}</td>
           <td class="align-top text-sm">{{ '{:,}'.format(item.points or 0) }}</td>
           <td class="align-top text-right">
             {% if item.in_file %}
-            <a href="/ingest/jobs/{{ item.job_id }}" class="btn btn-outline btn-xs">Repair the job</a>
+            <a href="/ingest/jobs/{{ item.job_id }}" class="btn btn-outline btn-xs">{% trans %}Repair the job{% endtrans %}</a>
             {% else %}
             <button type="button" class="btn btn-outline btn-error btn-xs"
-                    @click='$dispatch("orphan-delete", {{ {"job_id": item.job_id, "collection": item.collection, "points": item.points}|tojson }})'>Remove</button>
+                    @click='$dispatch("orphan-delete", {{ {"job_id": item.job_id, "collection": item.collection, "points": item.points}|tojson }})'>{% trans %}Remove{% endtrans %}</button>
             {% endif %}
           </td>
         </tr>
@@ -54,26 +52,24 @@
 
 <dialog id="orphan-delete" class="modal" x-data="deleteOrphan()" @orphan-delete.window="open($event.detail)">
   <div class="modal-box">
-    <h3 class="mb-2 text-lg font-bold">Remove what <span class="font-mono" x-text="item.job_id"></span> left?</h3>
+    <h3 class="mb-2 text-lg font-bold"><span x-html="fmtHtml({{ _('Remove what <span class="font-mono">{job_id}</span> left?')|tojson|forceescape }}, { job_id: item.job_id })"></span></h3>
     <p class="mb-3 text-sm">
-      This deletes its points (<span x-text="(item.points || 0).toLocaleString()"></span>) from
-      <span class="font-mono" x-text="item.collection"></span> and the ingester's records of its files.
-      It cannot be undone.
+      <span x-html="fmtHtml({{ _('This deletes its points ({points}) from <span class="font-mono">{collection}</span> and the ingester\'s records of its files. It cannot be undone.')|tojson|forceescape }}, { points: (item.points || 0).toLocaleString(), collection: item.collection })"></span>
     </p>
     <form @submit.prevent="submit()" class="flex flex-col gap-3">
       <div class="form-control">
-        <label class="label py-1" for="orphan-typed"><span class="label-text">Type the id of the job to confirm</span></label>
+        <label class="label py-1" for="orphan-typed"><span class="label-text">{% trans %}Type the id of the job to confirm{% endtrans %}</span></label>
         <input id="orphan-typed" type="text" class="input input-bordered input-sm font-mono" x-model="typed" autocomplete="off" :placeholder="item.job_id">
       </div>
       <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
       <div class="modal-action mt-1">
-        <button type="button" class="btn btn-ghost" @click="$root.close()">Cancel</button>
+        <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-error" :disabled="busy || typed !== item.job_id">
           <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
-          Remove
+          {% trans %}Remove{% endtrans %}
         </button>
       </div>
     </form>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>

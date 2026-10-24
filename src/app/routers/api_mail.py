@@ -48,6 +48,7 @@ from app.core.mail.settings import (
     validate_security,
     validate_user,
 )
+from app.i18n import gettext as _
 from app.routers.stack_guard import require_idle_stack
 
 router = APIRouter(prefix="/api/v1/mail")
@@ -86,7 +87,7 @@ def _queue() -> JobQueue:
     from app.main import _job_queue  # noqa: PLC0415
 
     if _job_queue is None:
-        raise HTTPException(status_code=503, detail="job queue not initialized")
+        raise HTTPException(status_code=503, detail=_("job queue not initialized"))
     return _job_queue
 
 
@@ -99,21 +100,23 @@ async def _body[T: BaseModel](request: Request, model: type[T]) -> T:
     try:
         payload = await request.json()
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail="The body is not valid JSON.") from exc
+        raise HTTPException(status_code=422, detail=_("The body is not valid JSON.")) from exc
     try:
         return model.model_validate(payload)
     except ValidationError as exc:
         problems = "; ".join(
             f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}" for err in exc.errors()
         )
-        raise HTTPException(status_code=422, detail=problems or "The body is not valid.") from exc
+        raise HTTPException(
+            status_code=422, detail=problems or _("The body is not valid.")
+        ) from exc
 
 
 def _require_supported(settings: Settings) -> None:
     if not supported(settings.papaia_workspace_dir):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This papAIa core has no mail relay (it comes with papAIa 1.6.0).",
+            detail=_("This papAIa core has no mail relay (it comes with papAIa 1.6.0)."),
         )
 
 
@@ -121,7 +124,7 @@ def _require_current(current: MailSettings, revision: str) -> None:
     if revision != current.revision:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="The mail settings changed since this page was loaded. Reload and try again.",
+            detail=_("The mail settings changed since this page was loaded. Reload and try again."),
         )
 
 
@@ -175,8 +178,10 @@ async def put_mail(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "This papAIa core can't store the settings with the relay off (it needs 1.6.0)."
-                " Switch the relay on with papaia-ctl, or upgrade the core."
+                _(
+                    "This papAIa core can't store the settings with the relay off (it needs "
+                    "1.6.0). Switch the relay on with papaia-ctl, or upgrade the core."
+                )
             ),
         )
     try:
@@ -239,7 +244,7 @@ async def probe_mail(
             else (current.user if body.user is None else "")
         )
         if login and mode == "none":
-            raise MailError("The login would be sent unencrypted: use starttls or tls.")
+            raise MailError(_("The login would be sent unencrypted: use starttls or tls."))
         password = _probe_password(
             body.password,
             current,
@@ -282,13 +287,13 @@ async def send_test_message(
     if not (current.profile_on and current.configured):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="The mail relay is not switched on and configured.",
+            detail=_("The mail relay is not switched on and configured."),
         )
     waited = time.monotonic() - _last_test_message
     if waited < TEST_MESSAGE_INTERVAL_SECONDS:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="A test mail was sent a moment ago. Wait a few seconds.",
+            detail=_("A test mail was sent a moment ago. Wait a few seconds."),
         )
     _last_test_message = time.monotonic()
 
@@ -312,15 +317,15 @@ def _probe_password(
     with. Anything else is a refusal rather than a quiet attempt without it."""
     if not user:
         if typed:
-            raise MailError("A password needs a login: enter the login, or clear the password.")
+            raise MailError(_("A password needs a login: enter the login, or clear the password."))
         return ""
     if typed:
         return validate_password(typed)
     if not stored_secret_applies(current, host=host, port=port, user=user):
         raise MailError(
-            "There is no stored password for this mail server and login: enter the password."
+            _("There is no stored password for this mail server and login: enter the password.")
         )
     password = read_password(config_dir)
     if not password:
-        raise MailError("The stored password cannot be read: enter the password.")
+        raise MailError(_("The stored password cannot be read: enter the password."))
     return password

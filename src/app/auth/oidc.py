@@ -17,6 +17,8 @@ import httpx
 from jose import jwt
 from jose.exceptions import ExpiredSignatureError, JWTError
 
+from app.i18n import gettext as _
+
 logger = logging.getLogger(__name__)
 
 # Only asymmetric algorithms accepted; HS* and 'none' are explicitly excluded
@@ -220,13 +222,17 @@ class OIDCClient:
                     },
                 )
         except httpx.HTTPError as exc:
-            raise OIDCError(f"logout request failed: {exc.__class__.__name__}") from exc
+            raise OIDCError(_(
+                "logout request failed: %(__name__)s"
+            ) % {"__name__": exc.__class__.__name__}) from exc
         if response.status_code in (200, 204):
             return True
         if response.status_code == 400 and _error_code(response) == "invalid_grant":
             return True
         logger.warning("logout endpoint returned HTTP %d", response.status_code)
-        raise OIDCError(f"logout request failed with HTTP {response.status_code}")
+        raise OIDCError(_(
+            "logout request failed with HTTP %(status_code)s"
+        ) % {"status_code": response.status_code})
 
     async def _token_request(self, data: dict[str, str]) -> dict[str, Any]:
         async with httpx.AsyncClient(
@@ -235,14 +241,16 @@ class OIDCClient:
             response = await client.post(self._token_endpoint, data=data)
         if response.status_code != 200:
             logger.warning("token endpoint returned HTTP %d", response.status_code)
-            raise OIDCError(f"token request failed with HTTP {response.status_code}")
+            raise OIDCError(_(
+                "token request failed with HTTP %(status_code)s"
+            ) % {"status_code": response.status_code})
         result: dict[str, Any] = response.json()
         return result
 
     async def _token_set_from_response(self, token_response: dict[str, Any]) -> TokenSet:
         id_token = token_response.get("id_token")
         if not isinstance(id_token, str) or not id_token:
-            raise OIDCError("Token response missing id_token")
+            raise OIDCError(_("Token response missing id_token"))
         access_token: str | None = token_response.get("access_token") or None
         claims = await self._validate_id_token(id_token, access_token=access_token)
         claims = self._apply_role_fallback(claims, access_token)
@@ -289,11 +297,11 @@ class OIDCClient:
         try:
             header = jwt.get_unverified_header(id_token)
         except JWTError as exc:
-            raise OIDCError("malformed id_token header") from exc
+            raise OIDCError(_("malformed id_token header")) from exc
 
         kid = header.get("kid")
         if not isinstance(kid, str) or not kid:
-            raise OIDCError("id_token header missing kid")
+            raise OIDCError(_("id_token header missing kid"))
 
         key = await self._resolve_key(kid)
         alg = _algorithm_for_key(key)
@@ -312,7 +320,7 @@ class OIDCClient:
                 },
             )
         except ExpiredSignatureError as exc:
-            raise OIDCError("id_token expired") from exc
+            raise OIDCError(_("id_token expired")) from exc
         except JWTError as exc:
             logger.warning(
                 "id_token validation failed: %s: %s (client_id=%r)",
@@ -320,7 +328,7 @@ class OIDCClient:
                 exc,
                 self._client_id,
             )
-            raise OIDCError("id_token validation failed") from exc
+            raise OIDCError(_("id_token validation failed")) from exc
 
         return _extract_claims(payload, self._role_claim)
 
@@ -332,7 +340,7 @@ class OIDCClient:
             jwks = await self._get_jwks(force_refresh=True)
             key = _find_jwk(jwks, kid)
         if key is None:
-            raise OIDCError("signing key not found in JWKS")
+            raise OIDCError(_("signing key not found in JWKS"))
         return key
 
     async def _get_jwks(self, *, force_refresh: bool = False) -> dict[str, Any]:
@@ -403,9 +411,9 @@ def _algorithm_for_key(key: dict[str, Any]) -> str:
             return "RS256"
         if kty == "EC":
             return "ES256"
-        raise OIDCError(f"unsupported JWK key type: {kty!r}")
+        raise OIDCError(_("unsupported JWK key type: %(kty)r") % {"kty": kty})
     if alg not in _ALLOWED_ALGS:
-        raise OIDCError(f"JWK algorithm not permitted: {alg!r}")
+        raise OIDCError(_("JWK algorithm not permitted: %(alg)r") % {"alg": alg})
     return str(alg)
 
 
@@ -430,7 +438,7 @@ def _roles_from_unverified_jwt(token: str, claim_paths: list[str]) -> list[str]:
 def _extract_claims(payload: dict[str, Any], role_claim: str) -> OIDCClaims:
     sub = payload.get("sub")
     if not isinstance(sub, str) or not sub:
-        raise OIDCError("id_token missing required sub claim")
+        raise OIDCError(_("id_token missing required sub claim"))
 
     # Support dotted paths like "realm_access.roles"
     node: Any = payload
@@ -443,7 +451,7 @@ def _extract_claims(payload: dict[str, Any], role_claim: str) -> OIDCClaims:
 
     exp = payload.get("exp")
     if not isinstance(exp, (int, float)):
-        raise OIDCError("id_token missing exp claim")
+        raise OIDCError(_("id_token missing exp claim"))
 
     preferred_username = str(payload.get("preferred_username", sub))
 

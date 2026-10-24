@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "partials/_mail_tabs.html" import tabs %}
-{% block title %}Mail — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Mail — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Mail{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">The mail server this deployment sends its mail through</p>{% endblock %}
+{% block page_title %}{% trans %}Mail{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}The mail server this deployment sends its mail through{% endtrans %}</p>{% endblock %}
 
 {% block content %}
 {{ tabs('server') }}
@@ -11,10 +11,9 @@
 {% if not mail_supported %}
 {# The core predates the relay. Nothing below could work, so say what is missing and stop. #}
 <div class="max-w-3xl rounded-xl border border-warning bg-warning/10 px-5 py-4 text-sm">
-  <p class="font-semibold">This papAIa core has no mail relay.</p>
+  <p class="font-semibold">{% trans %}This papAIa core has no mail relay.{% endtrans %}</p>
   <p class="mt-1 opacity-70">
-    The relay (the <code>smtp</code> profile) comes with papAIa 1.6.0. Upgrade the deployment
-    to use it; this page then sets it up.
+    {% trans %}The relay (the <code>smtp</code> profile) comes with papAIa 1.6.0. Upgrade the deployment to use it; this page then sets it up.{% endtrans %}
   </p>
 </div>
 {% else %}
@@ -36,91 +35,85 @@
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-5">
       <div>
-        <h2 class="font-brand text-lg font-bold">Mail Server</h2>
+        <h2 class="font-brand text-lg font-bold">{% trans %}Mail Server{% endtrans %}</h2>
         <p class="text-sm opacity-60">
-          The stack sends mail through one internal relay. It holds the credentials of your
-          mail server and forwards to it, so no other service needs them. Keycloak uses it
-          for password mails, and the Users page offers “email a link” once it is on.
+          {% trans %}The stack sends mail through one internal relay. It holds the credentials of your mail server and forwards to it, so no other service needs them. Keycloak uses it for password mails, and the Users page offers “email a link” once it is on.{% endtrans %}
         </p>
       </div>
 
       {% if not mail.enabled %}
       <div class="rounded-lg border border-base-300 bg-base-200 px-4 py-3 text-sm" role="note">
-        The relay is <strong>off</strong>. Saving stores these settings and changes nothing in
-        the running stack. Switch the relay on in
-        <a href="/settings/modules" class="link link-secondary">Settings › Modules</a>
-        {% if mail.configured %}when you are ready{% else %}once they are saved{% endif %}.
+        {% trans %}The relay is <strong>off</strong>. Saving stores these settings and changes nothing in the running stack. Switch the relay on in <a href="/settings/modules" class="link link-secondary">Settings › Modules</a>{% endtrans %}
+        {% if mail.configured %}{% trans %}when you are ready{% endtrans %}{% else %}{% trans %}once they are saved{% endtrans %}{% endif %}.
       </div>
       {% endif %}
 
       <form id="mail-form" class="space-y-4" onsubmit="saveMail(event)" novalidate>
         <div class="grid gap-4 sm:grid-cols-[1fr_9rem_7rem]">
           <div class="form-control w-full">
-            <label for="mail-host" class="label-text mb-1 text-sm font-medium">Mail Server</label>
+            <label for="mail-host" class="label-text mb-1 text-sm font-medium">{% trans %}Mail Server{% endtrans %}</label>
             <input id="mail-host" type="text" class="input input-bordered w-full"
-                   autocomplete="off" spellcheck="false" placeholder="smtp.example.org"
+                   autocomplete="off" spellcheck="false" placeholder="{{ _('smtp.example.org') }}"
                    value="{{ mail.host }}">
           </div>
           <div class="form-control w-full">
-            <label for="mail-security" class="label-text mb-1 text-sm font-medium">Connection</label>
+            <label for="mail-security" class="label-text mb-1 text-sm font-medium">{% trans %}Connection{% endtrans %}</label>
             <select id="mail-security" class="select select-bordered w-full">
               {% for mode in security_modes %}
               <option value="{{ mode }}" {% if mode == mail.security %}selected{% endif %}>
-                {{ {"starttls": "STARTTLS", "tls": "TLS", "none": "No encryption"}[mode] }}
+                {{ {"starttls": "STARTTLS", "tls": "TLS", "none": _("No encryption")}[mode] }}
               </option>
               {% endfor %}
             </select>
           </div>
           <div class="form-control w-full">
-            <label for="mail-port" class="label-text mb-1 text-sm font-medium">Port</label>
+            <label for="mail-port" class="label-text mb-1 text-sm font-medium">{% trans %}Port{% endtrans %}</label>
             <input id="mail-port" type="number" min="1" max="65535" inputmode="numeric"
                    class="input input-bordered w-full" data-mode="{{ mail.security }}"
                    value="{{ mail.port }}">
           </div>
         </div>
         <p class="-mt-2 text-xs opacity-60">
-          STARTTLS (port 587) and TLS (port 465) verify the server's certificate. Without
-          encryption (port 25) no login is possible: it would cross the network in the clear.
+          {% trans %}STARTTLS (port 587) and TLS (port 465) verify the server's certificate. Without encryption (port 25) no login is possible: it would cross the network in the clear.{% endtrans %}
         </p>
 
         <div class="form-control">
           <label class="flex cursor-pointer items-center gap-3">
             <input id="mail-login" type="checkbox" class="checkbox checkbox-sm"
                    onchange="syncMailLogin()" {% if login_on %}checked{% endif %}>
-            <span class="text-sm font-medium">The mail server needs a login</span>
+            <span class="text-sm font-medium">{% trans %}The mail server needs a login{% endtrans %}</span>
           </label>
         </div>
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="form-control w-full">
-            <label for="mail-user" class="label-text mb-1 text-sm font-medium">Login</label>
+            <label for="mail-user" class="label-text mb-1 text-sm font-medium">{% trans %}Login{% endtrans %}</label>
             <input id="mail-user" type="text" class="input input-bordered w-full"
                    autocomplete="off" spellcheck="false" value="{{ mail.user }}">
           </div>
           <div class="form-control w-full">
-            <label for="mail-password" class="label-text mb-1 text-sm font-medium">Password</label>
+            <label for="mail-password" class="label-text mb-1 text-sm font-medium">{% trans %}Password{% endtrans %}</label>
             <input id="mail-password" type="password" class="input input-bordered w-full"
                    autocomplete="new-password"
-                   placeholder="{% if mail.has_password %}stored; leave empty to keep it{% endif %}">
+                   placeholder="{% if mail.has_password %}{{ _('stored; leave empty to keep it') }}{% endif %}">
           </div>
         </div>
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="form-control w-full">
-            <label for="mail-from" class="label-text mb-1 text-sm font-medium">Sender address</label>
+            <label for="mail-from" class="label-text mb-1 text-sm font-medium">{% trans %}Sender address{% endtrans %}</label>
             <input id="mail-from" type="email" class="input input-bordered w-full"
-                   autocomplete="off" spellcheck="false" placeholder="noreply@example.org"
+                   autocomplete="off" spellcheck="false" placeholder="{{ _('noreply@example.org') }}"
                    value="{{ mail.from_address }}" aria-describedby="mail-from-hint">
           </div>
           <div class="form-control w-full">
-            <label for="mail-from-name" class="label-text mb-1 text-sm font-medium">Sender name</label>
+            <label for="mail-from-name" class="label-text mb-1 text-sm font-medium">{% trans %}Sender name{% endtrans %}</label>
             <input id="mail-from-name" type="text" class="input input-bordered w-full"
                    autocomplete="off" value="{{ mail.from_name }}">
           </div>
         </div>
         <p id="mail-from-hint" class="-mt-2 text-xs opacity-60">
-          Your provider may only accept addresses it knows: a verified identity, a mailbox or
-          an alias. The relay sends only from the domain of this address.
+          {% trans %}Your provider may only accept addresses it knows: a verified identity, a mailbox or an alias. The relay sends only from the domain of this address.{% endtrans %}
         </p>
 
         <div id="mail-probe-result" class="hidden rounded-lg border px-4 py-2 text-sm"
@@ -128,10 +121,10 @@
 
         <div class="flex flex-wrap gap-2">
           <button id="mail-save" type="submit" class="btn btn-primary btn-sm">
-            {% if mail.enabled %}Save and apply{% else %}Save settings{% endif %}
+            {% if mail.enabled %}{% trans %}Save and apply{% endtrans %}{% else %}{% trans %}Save settings{% endtrans %}{% endif %}
           </button>
           <button id="mail-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeMail()">
-            Test Connection
+            {% trans %}Test Connection{% endtrans %}
           </button>
         </div>
       </form>
@@ -141,28 +134,27 @@
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-4">
       <div>
-        <h2 class="font-brand text-lg font-bold">Test Mail</h2>
+        <h2 class="font-brand text-lg font-bold">{% trans %}Test Mail{% endtrans %}</h2>
         <p class="text-sm opacity-60">
-          Sends one message through the relay. “Sent” means the relay took it; it is
-          delivered, or retried for a day, from there.
+          {% trans %}Sends one message through the relay. “Sent” means the relay took it; it is delivered, or retried for a day, from there.{% endtrans %}
         </p>
       </div>
       <form class="flex flex-wrap items-end gap-2" onsubmit="sendTestMail(event)" novalidate>
         <div class="form-control min-w-0 flex-1">
-          <label for="mail-test-to" class="label-text mb-1 text-sm font-medium">Send to</label>
+          <label for="mail-test-to" class="label-text mb-1 text-sm font-medium">{% trans %}Send to{% endtrans %}</label>
           <input id="mail-test-to" type="email" class="input input-bordered w-full"
-                 autocomplete="off" spellcheck="false" placeholder="you@example.org"
+                 autocomplete="off" spellcheck="false" placeholder="{{ _('you@example.org') }}"
                  {% if not (mail.enabled and mail.configured) %}disabled{% endif %}>
         </div>
         <button id="mail-test-send" type="submit" class="btn btn-sm"
                 {% if not (mail.enabled and mail.configured) %}disabled{% endif %}>
-          Send Test Mail
+          {% trans %}Send Test Mail{% endtrans %}
         </button>
       </form>
       {% if not (mail.enabled and mail.configured) %}
       <p class="text-xs opacity-60">
-        Switch the relay on in <a href="/settings/modules" class="link link-secondary">Settings › Modules</a>
-        {% if not mail.configured %}(after saving the mail server above) {% endif %}to send a test mail.
+        {% trans %}Switch the relay on in <a href="/settings/modules" class="link link-secondary">Settings › Modules</a>{% endtrans %}
+        {% if not mail.configured %}{% trans %}(after saving the mail server above){% endtrans %} {% endif %}{% trans %}to send a test mail.{% endtrans %}
       </p>
       {% endif %}
       <p id="mail-test-result" class="hidden text-sm" role="status" aria-live="polite"></p>
@@ -171,16 +163,12 @@
 
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-2">
-      <h2 class="font-brand text-lg font-bold">Good To Know</h2>
+      <h2 class="font-brand text-lg font-bold">{% trans %}Good To Know{% endtrans %}</h2>
       <ul class="list-disc space-y-1 pl-5 text-sm opacity-70">
-        <li>The relay accepts and queues mail. If the mail server is down, messages wait and
-            are retried for a day; the status above shows how many are waiting.</li>
-        <li>The password is never shown. Leave the field empty to keep the stored one, which is
-            only used for the same server, port and login it was stored with.</li>
-        <li>Any container on a network the relay is attached to can send mail from the sender
-            domain without a login.</li>
-        <li>There is one sender domain. The relay is switched on and off in
-            Settings › Modules, which also offers to delete these settings with it.</li>
+        <li>{% trans %}The relay accepts and queues mail. If the mail server is down, messages wait and are retried for a day; the status above shows how many are waiting.{% endtrans %}</li>
+        <li>{% trans %}The password is never shown. Leave the field empty to keep the stored one, which is only used for the same server, port and login it was stored with.{% endtrans %}</li>
+        <li>{% trans %}Any container on a network the relay is attached to can send mail from the sender domain without a login.{% endtrans %}</li>
+        <li>{% trans %}There is one sender domain. The relay is switched on and off in Settings › Modules, which also offers to delete these settings with it.{% endtrans %}</li>
       </ul>
     </div>
   </section>
@@ -255,7 +243,7 @@
     }
     // The password has done its job; it does not stay in the field while the job runs.
     mailEl("mail-password").value = "";
-    showToast("info", MAIL.enabled ? "Applying the mail settings …" : "Saving the mail settings …");
+    showToast("info", MAIL.enabled ? {{ _('Applying the mail settings …')|tojson }} : {{ _('Saving the mail settings …')|tojson }});
     htmx.ajax("GET", "/partials/mail/job-status", { target: "#mail-job-status", swap: "outerHTML" });
     followMailJob(reply.data.job_id);
   }
@@ -265,8 +253,8 @@
   function followMailJob(jobId) {
     mailFollowing = true;
     _pollJob(jobId, (job) => {
-      if (job.status === "succeeded") showToast("success", MAIL.enabled ? "Mail settings applied" : "Mail settings saved");
-      else showToast("error", "Applying the mail settings failed. The log is above.");
+      if (job.status === "succeeded") showToast("success", MAIL.enabled ? {{ _('Mail settings applied')|tojson }} : {{ _('Mail settings saved')|tojson }});
+      else showToast("error", {{ _('Applying the mail settings failed. The log is above.')|tojson }});
       setTimeout(() => window.location.reload(), 900);
     });
   }
@@ -274,7 +262,7 @@
   async function probeMail() {
     const button = mailEl("mail-probe");
     button.disabled = true;
-    showResult("mail-probe-result", true, "Connecting …");
+    showResult("mail-probe-result", true, {{ _('Connecting …')|tojson }});
     const reply = await _ragRequest("POST", "/api/v1/mail/probe", mailValues());
     button.disabled = false;
     if (!reply.ok) {
@@ -284,10 +272,10 @@
     }
     const r = reply.data;
     if (r.ok) {
-      const login = r.login === "ok" ? "login accepted" : "no login needed";
-      showResult("mail-probe-result", true, "The mail server answered (" + login + "). No mail was sent.");
+      const login = r.login === "ok" ? {{ _('login accepted')|tojson }} : {{ _('no login needed')|tojson }};
+      showResult("mail-probe-result", true, fmt({{ _('The mail server answered ({login}). No mail was sent.')|tojson }}, { login: login }));
     } else {
-      showResult("mail-probe-result", false, "Stopped at " + r.stage + ": " + r.reason);
+      showResult("mail-probe-result", false, fmt({{ _('Stopped at {stage}: {reason}')|tojson }}, { stage: r.stage, reason: r.reason }));
     }
   }
 
@@ -301,7 +289,7 @@
       if (!reply.handled) showResult("mail-test-result", false, reply.error);
       return;
     }
-    if (reply.data.ok) showResult("mail-test-result", true, "The relay accepted the message. It may take a moment to arrive; the status above shows it while it waits.");
+    if (reply.data.ok) showResult("mail-test-result", true, {{ _('The relay accepted the message. It may take a moment to arrive; the status above shows it while it waits.')|tojson }});
     else showResult("mail-test-result", false, reply.data.reason);
   }
 

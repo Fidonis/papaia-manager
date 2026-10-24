@@ -44,6 +44,15 @@ the VM boundary.
 
 ## How it works
 
+**Language.** The interface is available in English and German. Every account chooses its
+own language in the account menu at the bottom of the sidebar (**Automatic**, **English** or
+**Deutsch**). The choice is stored on the server with the account, not in the browser, so it is
+the same on every computer the account signs in from. **Automatic**, which is also what an account has before
+it chooses, follows the browser's language and falls back to the installation's default
+(`MANAGER_DEFAULT_LOCALE`, English unless set). Another language is a catalogue file under
+`src/app/locale/` and needs no change to the code; see [CONTRIBUTING.md](CONTRIBUTING.md). Log
+lines, the audit log, job logs and the emails and webhooks of notifications stay in English.
+
 **Settings and branding.** Administrators open **Settings** to change the
 name and second line shown at the top of the sidebar (defaults: "papAIa
 manager" / "by Fidonis") and to upload their own logo (PNG, JPEG, WebP or SVG,
@@ -110,7 +119,12 @@ drop reordering, a live preview of each tile, and one **Save changes** that
 writes the whole file. Hand editing the file keeps working, but a save from the
 UI rewrites the document, so comments are not preserved; a concurrent change on
 the host is detected and refused rather than overwritten. The raw file is also
-editable from the editor's overflow menu. `{{KEY}}` placeholders in tile links
+editable from the editor's overflow menu. The default tiles (LibreChat, LiteLLM,
+Keycloak, NGINX Proxy Manager and Qdrant) show an icon that ships with the
+manager; a tile of an older `tiles.yaml` without an icon gets it by its name, and
+an `icon` set on the tile always wins. The files, their sources and licences are
+listed in `src/app/static/icons/NOTICE.txt`; the logos stay the property of their
+owners (see [TRADEMARK.md](TRADEMARK.md)). `{{KEY}}` placeholders in tile links
 resolve against the core `.env`, and each tile's `visibility: all | admin` is
 filtered server-side, so an admin-only tile is absent from a regular user's
 response rather than hidden by CSS. Authorization is enforced by the route
@@ -504,10 +518,29 @@ If the same add-on name exists in more than one enabled catalog, each
 distinct version is surfaced as its own entry rather than one silently
 hiding the other.
 
+**Add-on components.** An add-on's own version counts changes to its bundle,
+not to the software in it. When the catalog's manifest lists the bundled
+`components`, the gallery card names the primary ones (`Paperless-ngx 3.0.5`,
+or `3.0.5 → 3.1.0` when an update changes one) and the detail page has a table
+of all of them: role, version, the version an update brings, a badge for a tag
+the catalog leaves floating and one for a tag the operator pinned in the
+add-on's `.env`. The pinned tags are read from that file, so the pages need no
+Docker. The list is also `components` in the JSON of an add-on. A catalog whose
+manifests have no `components` shows nothing new.
+
 **Jobs.** Installs, updates, and lifecycle verbs that shell out to
 `papaia-ctl` can take minutes (image pulls, container starts). These run as
 queued `Job` objects processed one at a time by a single worker; the UI
-polls for live status and streamed log output.
+polls for live status and streamed log output. A line of output longer than
+1 MiB is cut and ends in `... [truncated]`, so a progress meter that never
+prints a newline cannot grow the job log without bound.
+
+**Remove.** *Remove* takes an add-on's containers down and then marks it
+inactive; its volumes and configuration stay. `papaia-ctl addon remove` alone
+only marks it inactive and leaves the containers running, so the job stops them
+first (`addon stop --clean-up`) and leaves the add-on active if that fails. It is
+refused (409) while the add-on's `docker-compose.yml` is missing: `papaia-ctl`
+then aims its Compose call at the core project instead of the add-on's.
 
 **Backup / Restore.** A separate, admin-only section for stack-level operations,
 served at `/backup` — it was called "Maintenance" up to 0.2.0 and `/maintenance`
@@ -676,14 +709,14 @@ PUT    /api/v1/rag/ingest/catalog/raw      # {text, revision}
 GET    /api/v1/rag/ingest/catalog/defaults # the defaults every job inherits
 PUT    /api/v1/rag/ingest/catalog/defaults # {defaults}
 
-GET  /api/v1/addons
+GET  /api/v1/addons                        # each add-on with its status and its bundled `components`
 GET  /api/v1/addons/{name}
 GET  /api/v1/addons/{name}/env-form
 POST /api/v1/addons/{name}/install         # → 202
 POST /api/v1/addons/{name}/start           # → 202
 POST /api/v1/addons/{name}/stop            # {clean_up?} → 202
 POST /api/v1/addons/{name}/restart         # {clean_up?} stop then start → 202
-POST /api/v1/addons/{name}/remove          # → 202
+POST /api/v1/addons/{name}/remove          # stop and remove the containers, then deactivate → 202; 409 without its docker-compose.yml
 POST /api/v1/addons/{name}/uninstall       # → 202
 POST /api/v1/addons/{name}/update          # → 202
 POST /api/v1/addons/{name}/save-config     # → 202
@@ -737,6 +770,8 @@ DELETE /api/v1/settings/branding/logo        # remove the logo
 POST   /api/v1/settings/branding/reset       # {revision} back to the defaults, logo removed
 PUT    /api/v1/settings/host                 # {revision, refresh_seconds} 10 to 3600
 GET    /brand/logo                           # the stored logo, for any signed-in user
+POST   /account/language                     # form fields locale (auto or a shipped language), csrf_token, next?: the
+                                             #   signed-in account's own language, for every role; 303 back to the page
 
 GET    /api/v1/users                         # ?search&first&limit: a page of accounts with their roles
 GET    /api/v1/users/roles                   # the roles a new account can be given
@@ -803,9 +838,13 @@ papaia-manager/
 │   └── app/
 │       ├── main.py         # FastAPI application factory
 │       ├── config.py       # Pydantic Settings
+│       ├── i18n/           # Languages found under locale/, the request's language, Jinja install
+│       ├── locale/         # One directory per language: <code>/LC_MESSAGES/messages.po
 │       ├── auth/           # OIDC + PKCE login, CSRF, role dependencies, the user's own token
 │       ├── core/           # ctl (whitelisted papaia-ctl calls), papaia_lib (core handshake),
 │       │                   # catalogs, snapshots, status, env-forms, jobs, audit, tiles,
+│       │                   # components (the software an add-on bundles),
+│       │                   # user_prefs (what each account chose: its language),
 │       │                   # keycloak, keycloak_users + users_service + roles_service (the Users page),
 │       │                   # resolve (cross-catalog add-on dedup),
 │       │                   # services (container status), inventory (declared state),
@@ -836,9 +875,10 @@ papaia-manager/
 │       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store),
 │       │                   # api_users, api_roles, users_deps (identity role, Keycloak client),
 │       │                   # api_config, ui_config, api_mail, ui_mail, api_notifications,
-│       │                   # ui_notifications, ui_widgets
+│       │                   # ui_notifications, ui_widgets, account (the account's language)
 │       ├── templates/      # Jinja2 pages + HTMX partials
-│       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build)
+│       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build),
+│                           # icons/ (the default tiles' logos, with NOTICE.txt)
 ├── tests/                  # pytest suite (sibling to src/)
 └── docker/
     ├── Dockerfile          # multi-stage build; installs Docker CLI + compose plugin

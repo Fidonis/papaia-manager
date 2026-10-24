@@ -35,6 +35,8 @@ from app.core.keycloak_users import (
     KeycloakUsers,
 )
 from app.core.users_service import InvalidInput, is_technical_role, require_known_roles
+from app.i18n import N_
+from app.i18n import gettext as _
 
 # The roles of the realm template: what the stack's services are configured with.
 BUILT_IN_ROLES = frozenset(
@@ -63,7 +65,7 @@ _LOOKUPS_AT_ONCE = 8
 # A realm's roles are few; this only keeps a pathological graph from running away.
 _MAX_WALK = 500
 
-_FORBIDDEN_HINT = (
+_FORBIDDEN_HINT = N_(
     "Your account cannot read the realm's roles. The role {role} has to carry the roles "
     "view-realm and manage-realm of the realm-management client. Add them in the Keycloak "
     "Admin Console under Realm roles > {role} > Associated roles (filter by clients), or use a "
@@ -79,8 +81,10 @@ class RolePartiallyCreated(Exception):  # noqa: N818 - a state of the role, not 
         self.name = name
         self.cause = cause
         self.message = (
-            f"The role {name} was created, but giving it its roles failed ({cause.detail}). "
-            "Open it to finish."
+            _(
+                "The role %(name)s was created, but giving it its roles failed (%(detail)s). "
+                "Open it to finish."
+            ) % {"name": name, "detail": cause.detail}
         )
         super().__init__(self.message)
 
@@ -166,13 +170,17 @@ def validate_role(name: str, description: str, *, creating: bool = True) -> None
     if creating:
         if not _NAME.match(name):
             raise InvalidInput(
-                "A role name needs 1 to 127 letters, digits or . _ : - and must start with a "
-                "letter or digit."
+                _(
+                    "A role name needs 1 to 127 letters, digits or . _ : - and must start with a "
+                    "letter or digit."
+                )
             )
         if is_technical_role(name):
-            raise InvalidInput(f"{name} is one of Keycloak's own roles.")
+            raise InvalidInput(_("%(name)s is one of Keycloak's own roles.") % {"name": name})
     if len(description) > MAX_DESCRIPTION:
-        raise InvalidInput(f"The description is limited to {MAX_DESCRIPTION} characters.")
+        raise InvalidInput(_(
+            "The description is limited to %(MAX_DESCRIPTION)s characters."
+        ) % {"MAX_DESCRIPTION": MAX_DESCRIPTION})
 
 
 class RolesService:
@@ -232,7 +240,7 @@ class RolesService:
             raise
         except KeycloakForbiddenError:
             return view(
-                state="forbidden", reason=_FORBIDDEN_HINT.format(role=self._identity_role)
+                state="forbidden", reason=_(_FORBIDDEN_HINT).format(role=self._identity_role)
             )
         except KeycloakError as exc:
             return view(state="unavailable", reason=exc.detail)
@@ -272,14 +280,16 @@ class RolesService:
     @staticmethod
     def _require_shown(name: str) -> None:
         if is_technical_role(name):
-            raise InvalidInput(f"{name} is one of Keycloak's own roles.")
+            raise InvalidInput(_("%(name)s is one of Keycloak's own roles.") % {"name": name})
 
     def _require_editable(self, name: str) -> None:
         self._require_shown(name)
         if name in self._built_in:
             raise InvalidInput(
-                f"{name} is a built-in role of the stack: services refer to it by name, so it "
-                "is not changed or deleted here."
+                _(
+                    "%(name)s is a built-in role of the stack: services refer to it by name, so "
+                    "it is not changed or deleted here."
+                ) % {"name": name}
             )
 
     async def _reaches(self, start: str, target: str) -> bool:
@@ -305,7 +315,9 @@ class RolesService:
         chosen = sorted(set(members or []))
         known = await self._known()
         if name in known:
-            raise KeycloakConflictError(409, f"A role named {name} already exists.")
+            raise KeycloakConflictError(409, _(
+                "A role named %(name)s already exists."
+            ) % {"name": name})
         # Checked before anything is written: a mistyped member must not leave a role behind.
         require_known_roles(chosen, known)
 
@@ -331,7 +343,7 @@ class RolesService:
         validate_role(name, description, creating=False)
         known = await self._known()
         if name not in known:
-            raise KeycloakNotFoundError(404, f"Role {name} was not found.")
+            raise KeycloakNotFoundError(404, _("Role %(name)s was not found.") % {"name": name})
         chosen = set(members)
         require_known_roles(sorted(chosen), known)
 
@@ -345,14 +357,14 @@ class RolesService:
         to_remove = sorted(current - chosen)
         for member in to_add:
             if await self._reaches(member, name):
-                raise InvalidInput(
-                    f"{name} cannot contain {member}: "
-                    + (
-                        "a role cannot contain itself."
-                        if member == name
-                        else f"{member} already contains {name}, which would make a loop."
+                if member == name:
+                    reason = _("%(name)s cannot contain %(member)s: a role cannot contain itself.")
+                else:
+                    reason = _(
+                        "%(name)s cannot contain %(member)s: %(member)s already contains "
+                        "%(name)s, which would make a loop."
                     )
-                )
+                raise InvalidInput(reason % {"name": name, "member": member})
 
         description_changed = description != _text(rep.get("description"))
         if description_changed:
@@ -369,7 +381,7 @@ class RolesService:
         self._require_editable(name)
         known = await self._known()
         if name not in known:
-            raise KeycloakNotFoundError(404, f"Role {name} was not found.")
+            raise KeycloakNotFoundError(404, _("Role %(name)s was not found.") % {"name": name})
         users = await self._client.role_users(name, limit=USERS_SHOWN + 1)
         await self._client.delete_role(name)
         return min(len(users), USERS_SHOWN), len(users) > USERS_SHOWN

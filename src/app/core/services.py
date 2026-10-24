@@ -64,6 +64,7 @@ from app.core.inventory import (
     module_display_name,
 )
 from app.core.state import deployment_addons_by_name, load_deployment_yaml
+from app.i18n import N_, gettext, ngettext
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ _HOST_PORT_RE = re.compile(r":(\d+)->")
 
 # What a declared-but-absent service reports instead of Docker's status text.
 _MISSING_STATE = "missing"
-_MISSING_STATUS_TEXT = "not deployed"
+_MISSING_STATUS_TEXT = N_("not deployed")
 
 
 class ServiceHealth(StrEnum):
@@ -169,6 +170,12 @@ class ServiceContainer:
         """
         return self.name or self.service
 
+    @property
+    def status_display(self) -> str:
+        """What the page shows: Docker's own text, except for a container that does not exist,
+        whose text is ours and so is translated."""
+        return gettext(_MISSING_STATUS_TEXT) if self.state == _MISSING_STATE else self.status_text
+
 
 @dataclass
 class ServiceModule:
@@ -197,20 +204,29 @@ class ServiceModule:
         missing = sum(1 for c in self.containers if c.health == ServiceHealth.MISSING)
         stopped = sum(1 for c in self.containers if c.health == ServiceHealth.STOPPED)
         if missing == total and total:
-            return "not deployed"
+            return gettext("not deployed")
         if missing and stopped:
-            return f"{missing + stopped} of {total} containers missing or stopped"
+            return gettext("%(count)s of %(total)s containers missing or stopped") % {
+                "count": missing + stopped,
+                "total": total,
+            }
         if missing:
-            return f"{missing} of {total} containers not deployed"
+            return gettext("%(count)s of %(total)s containers not deployed") % {
+                "count": missing,
+                "total": total,
+            }
         if stopped:
-            return f"{stopped} of {total} containers stopped"
+            return gettext("%(count)s of %(total)s containers stopped") % {
+                "count": stopped,
+                "total": total,
+            }
         if self.health == ServiceHealth.UNHEALTHY:
-            return "healthcheck failing"
+            return gettext("healthcheck failing")
         if self.health == ServiceHealth.STARTING:
-            return "starting"
+            return gettext("starting")
         if self.health == ServiceHealth.COMPLETED:
-            return "completed"
-        return f"{total} container" if total == 1 else f"{total} containers"
+            return gettext("completed")
+        return ngettext("%(total)s container", "%(total)s containers", total) % {"total": total}
 
 
 @dataclass

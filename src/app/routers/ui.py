@@ -26,6 +26,7 @@ from app.core import (
 )
 from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
+from app.core.components import components_for
 from app.core.envfile import load_env_file
 from app.core.ingest import catalog as ingest_catalog
 from app.core.ingest import runs as ingest_runs
@@ -63,6 +64,7 @@ from app.core.state import (
     load_deployment_yaml,
 )
 from app.core.tiles import (
+    DEFAULT_ICONS,
     TileGroup,
     TilesFileError,
     config_to_json,
@@ -74,6 +76,7 @@ from app.core.tiles import (
 from app.core.users_service import MAX_PAGE_SIZE, PAGE_SIZE
 from app.core.vectordb.service import DEFAULT_NAME as DEFAULT_CONNECTION
 from app.core.widgets import registry as widget_registry
+from app.i18n import gettext as _
 from app.routers.api_connections import state_payload
 from app.routers.rag_deps import (
     ConnectionServiceDep,
@@ -323,7 +326,7 @@ async def backup_page(
             backup_dir=str(backup_dir) if backup_dir else None,
             backup_dir_reachable=backups.is_reachable(backup_dir),
             common_timezones=schedule.COMMON_TIMEZONES,
-            weekdays=[(day, schedule.WEEKDAY_LABELS[day][:3]) for day in schedule.WEEKDAYS],
+            weekdays=[(day, _(schedule.WEEKDAY_SHORT[day])) for day in schedule.WEEKDAYS],
             hourly_choices=schedule.HOURLY_CHOICES,
             **_backup_panel_ctx(_queue()),
         ),
@@ -805,7 +808,7 @@ async def partial_embedding_tree(
     except InvalidRequest as exc:
         reason = str(exc)
     except NotFound:
-        reason = "That folder is gone."
+        reason = _("That folder is gone.")
     except IngestError as exc:
         reason = str(exc)
     return _no_store(
@@ -869,7 +872,7 @@ async def partial_embedding_status(
             if not view.active:
                 await ingest_runs.reconcile(settings, transport=transport)
     except NotFound:
-        problem = "The ingester no longer has this run."
+        problem = _("The ingester no longer has this run.")
     except IngestError as exc:
         problem = str(exc)
     history: list[Any] = []
@@ -1236,14 +1239,14 @@ def _schedule_preview(
         if mode == "hourly":
             # The hourly preset has no time of day, only a minute past the hour.
             if not minute.strip().isdigit() or int(minute) > 59:
-                raise schedule.ScheduleError("The minute must be between 0 and 59.")
+                raise schedule.ScheduleError(_("The minute must be between 0 and 59."))
             time = f"00:{int(minute):02d}"
         expression = schedule.compile_preset(
             mode, time=time, weekdays=weekdays, every_hours=every_hours, cron=cron
         )
         raw_retention = retention_days.strip()
         if raw_retention and not raw_retention.isdigit():
-            raise schedule.ScheduleError("The retention must be a whole number of days.")
+            raise schedule.ScheduleError(_("The retention must be a whole number of days."))
         retention = int(raw_retention) if raw_retention else None
         chosen = schedule.build_schedule(
             cron=expression,
@@ -1612,11 +1615,13 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
     groups, and an editor that could not show a group it had just created
     would be unusable.
     """
-    # The widget types the gallery offers, and the closed icon set they are drawn with. The
-    # editor draws a widget's card from these; the live data comes from the preview route.
-    widgets = {
+    # What the editor draws its cards from. The widget types the gallery offers, and the closed
+    # icon set they are drawn with; the live data comes from the preview route. And the icons a
+    # link tile without one of its own gets on the dashboard, so a card shows what the page shows.
+    lookups = {
         "widget_types": widget_registry.describe(settings),
         "widget_icons": widget_registry.ICON_PATHS,
+        "default_icons": DEFAULT_ICONS,
     }
     try:
         config = load_tiles(settings.papaia_config_dir)
@@ -1626,7 +1631,7 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
             "revision": "",
             "draft": {"version": 1, "groups": []},
             "link_keys": [],
-            **widgets,
+            **lookups,
         }
 
     core_env = load_env_file(Path(settings.papaia_config_dir) / ".env")
@@ -1635,7 +1640,7 @@ def _gather_tile_draft(settings: Settings) -> dict[str, Any]:
         "revision": tiles_revision(settings.papaia_config_dir),
         "draft": config_to_json(config),
         "link_keys": link_placeholder_keys(core_env),
-        **widgets,
+        **lookups,
     }
 
 
@@ -1687,6 +1692,13 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
                 and variant_inst.manifest_version != resolved.manifest.get("version")
             ),
             "managed": variant_inst.managed if variant_inst else True,
+            "components": components_for(
+                settings.papaia_config_dir,
+                settings.papaia_workspace_dir,
+                resolved.name,
+                resolved.manifest,
+                variant_inst,
+            ),
             "env_fields": _build_env_fields(
                 resolved.name,
                 managed_snapshot_path(
@@ -1724,6 +1736,9 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             "is_variant": False,
             "update_available": False,
             "managed": inst.managed if inst else False,
+            "components": components_for(
+                settings.papaia_config_dir, settings.papaia_workspace_dir, addon_name, {}, inst
+            ),
             "env_fields": _build_env_fields(
                 addon_name,
                 managed_snapshot_path(settings.papaia_workspace_dir, inst.catalog, addon_name)
@@ -1813,6 +1828,9 @@ async def _get_addon(
         ),
         "managed": variant_inst.managed if variant_inst else True,
         "manifest": manifest,
+        "components": components_for(
+            settings.papaia_config_dir, settings.papaia_workspace_dir, name, manifest, variant_inst
+        ),
         "env_fields": env_fields,
     }
 

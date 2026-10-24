@@ -25,6 +25,7 @@ from app.core.audit import write_audit_entry
 from app.core.ctl import SmtpSetup, run_core_verb, run_smtp_setup
 from app.core.jobs import JobCallback, JobContext
 from app.core.mail.settings import PROFILE, MailInput, MailSettings
+from app.i18n import gettext as _
 
 APPLY_ACTION = "mail-apply"
 TARGET = "smtp-relay"
@@ -172,8 +173,10 @@ def apply_callback(
                 result="partial",
             )
             raise RealmNotUpdatedError(
-                f"The relay is running, but Keycloak was not given its mail server ({problem}). "
-                "Apply again once that is fixed."
+                _(
+                    "The relay is running, but Keycloak was not given its mail server "
+                    "(%(problem)s). Apply again once that is fixed."
+                ) % {"problem": problem}
             )
         write_audit_entry(
             config_dir,

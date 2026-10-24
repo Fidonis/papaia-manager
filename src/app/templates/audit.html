@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "partials/_actions.html" import overflow_menu %}
-{% block title %}Audit log — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Audit log — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Audit log{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Who did what, newest first</p>{% endblock %}
+{% block page_title %}{% trans %}Audit log{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Who did what, newest first{% endtrans %}</p>{% endblock %}
 
 {# Tier 1: no filled primary here -- nothing is "created" from this page. Export
    is the outline secondary; the one destructive action goes into the overflow
@@ -12,10 +12,10 @@
    from a menu click alone. #}
 {% block page_actions %}
 <div class="flex items-center gap-2">
-  <a id="audit-export-csv" href="/api/v1/audit/export?format=csv" class="btn btn-outline btn-sm">Export</a>
-  {% call overflow_menu(label='More actions') %}
-  <li><a id="audit-export-jsonl" href="/api/v1/audit/export?format=jsonl">Export as JSONL</a></li>
-  <li><a class="text-error" @click="document.getElementById('audit-prune-modal').showModal(); auditPruneOpened()">Delete old entries…</a></li>
+  <a id="audit-export-csv" href="/api/v1/audit/export?format=csv" class="btn btn-outline btn-sm">{% trans %}Export{% endtrans %}</a>
+  {% call overflow_menu(label=_('More actions')) %}
+  <li><a id="audit-export-jsonl" href="/api/v1/audit/export?format=jsonl">{% trans %}Export as JSONL{% endtrans %}</a></li>
+  <li><a class="text-error" @click="document.getElementById('audit-prune-modal').showModal(); auditPruneOpened()">{% trans %}Delete old entries…{% endtrans %}</a></li>
   {% endcall %}
 </div>
 {% endblock %}
@@ -35,39 +35,39 @@
       hx-trigger="change, submit, keyup changed delay:400ms from:input[name='target']"
       onsubmit="return false">
   <div class="form-control">
-    <label class="label py-1" for="audit-filter-user"><span class="label-text text-xs">User</span></label>
+    <label class="label py-1" for="audit-filter-user"><span class="label-text text-xs">{% trans %}User{% endtrans %}</span></label>
     <select id="audit-filter-user" name="user" class="select select-bordered select-sm">
-      <option value="">All</option>
+      <option value="">{% trans %}All{% endtrans %}</option>
     </select>
   </div>
   <div class="form-control">
-    <label class="label py-1" for="audit-filter-action"><span class="label-text text-xs">Action</span></label>
+    <label class="label py-1" for="audit-filter-action"><span class="label-text text-xs">{% trans %}Action{% endtrans %}</span></label>
     <select id="audit-filter-action" name="action" class="select select-bordered select-sm">
-      <option value="">All</option>
+      <option value="">{% trans %}All{% endtrans %}</option>
     </select>
   </div>
   <div class="form-control">
-    <label class="label py-1" for="audit-filter-result"><span class="label-text text-xs">Result</span></label>
+    <label class="label py-1" for="audit-filter-result"><span class="label-text text-xs">{% trans %}Result{% endtrans %}</span></label>
     <select id="audit-filter-result" name="result" class="select select-bordered select-sm">
-      <option value="">All</option>
+      <option value="">{% trans %}All{% endtrans %}</option>
     </select>
   </div>
   <div class="form-control">
-    <label class="label py-1" for="audit-filter-target"><span class="label-text text-xs">Target</span></label>
+    <label class="label py-1" for="audit-filter-target"><span class="label-text text-xs">{% trans %}Target{% endtrans %}</span></label>
     <input id="audit-filter-target" name="target" type="text" value="{{ filter_target }}"
-           placeholder="substring" class="input input-bordered input-sm">
+           placeholder="{{ _('substring') }}" class="input input-bordered input-sm">
   </div>
   <div class="form-control">
-    <label class="label py-1" for="audit-filter-since"><span class="label-text text-xs">From</span></label>
+    <label class="label py-1" for="audit-filter-since"><span class="label-text text-xs">{% trans %}From{% endtrans %}</span></label>
     <input id="audit-filter-since" name="since" type="date" value="{{ filter_since[:10] }}"
            class="input input-bordered input-sm">
   </div>
   <div class="form-control">
-    <label class="label py-1" for="audit-filter-before"><span class="label-text text-xs">Before</span></label>
+    <label class="label py-1" for="audit-filter-before"><span class="label-text text-xs">{% trans %}Before{% endtrans %}</span></label>
     <input id="audit-filter-before" name="before" type="date" value="{{ filter_before[:10] }}"
            class="input input-bordered input-sm">
   </div>
-  <button type="button" class="btn btn-ghost btn-sm" onclick="window.location = '/audit'">Reset</button>
+  <button type="button" class="btn btn-ghost btn-sm" onclick="window.location = '/audit'">{% trans %}Reset{% endtrans %}</button>
 </form>
 
 <div
@@ -86,15 +86,14 @@
      page; this one stays plain DOM for the same reason. -->
 <dialog id="audit-prune-modal" class="modal">
   <div class="modal-box max-w-md">
-    <h3 class="font-bold text-base mb-1">Delete old entries</h3>
+    <h3 class="font-bold text-base mb-1">{% trans %}Delete old entries{% endtrans %}</h3>
     <p class="text-sm opacity-60 mb-4">
-      Permanently removes every entry older than the chosen date. This cannot
-      be undone; export the range first if you might need it later.
+      {% trans %}Permanently removes every entry older than the chosen date. This cannot be undone; export the range first if you might need it later.{% endtrans %}
     </p>
 
     <div class="form-control mb-2">
       <label class="label py-1" for="audit-prune-date">
-        <span class="label-text text-sm">Delete entries before</span>
+        <span class="label-text text-sm">{% trans %}Delete entries before{% endtrans %}</span>
       </label>
       <input id="audit-prune-date" type="date" class="input input-bordered input-sm w-48"
              oninput="auditPrunePreview()">
@@ -110,11 +109,11 @@
     <p id="audit-prune-export-link" class="text-sm mb-4"></p>
 
     <div class="modal-action mt-0">
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('audit-prune-modal').close()">Cancel</button>
-      <button id="audit-prune-go" class="btn btn-error btn-sm" disabled onclick="auditPruneConfirm()">Delete</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('audit-prune-modal').close()">{% trans %}Cancel{% endtrans %}</button>
+      <button id="audit-prune-go" class="btn btn-error btn-sm" disabled onclick="auditPruneConfirm()">{% trans %}Delete{% endtrans %}</button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
 <script>
@@ -213,22 +212,21 @@ function auditPrunePreview() {
     body: JSON.stringify({ before: date, dry_run: true }),
   }).then(async function (r) {
     if (!r.ok) {
-      preview.textContent = 'Could not preview: ' + (await _apiError(r));
+      preview.textContent = {{ _('Could not preview:')|tojson }} + " " + (await _apiError(r));
       go.disabled = true;
       return;
     }
     var data = await r.json();
     if (data.removed === 0) {
-      preview.textContent = 'No entries are older than this date.';
+      preview.textContent = {{ _('No entries are older than this date.')|tojson }};
       link.textContent = '';
       go.disabled = true;
       return;
     }
-    preview.textContent = data.removed + ' of ' + (data.removed + data.kept) +
-      ' entries (oldest ' + data.oldest_removed + ', newest ' + data.newest_removed +
-      ') will be permanently deleted.';
-    link.innerHTML = '<a class="link" href="/api/v1/audit/export?format=csv&before=' +
-      encodeURIComponent(date) + '">Export them first</a>';
+    preview.textContent = fmt({{ _('{removed} of {total} entries (oldest {oldest}, newest {newest}) will be permanently deleted.')|tojson }},
+      { removed: data.removed, total: data.removed + data.kept, oldest: data.oldest_removed, newest: data.newest_removed });
+    link.innerHTML = fmtHtml({{ _('<a class="link" href="/api/v1/audit/export?format=csv&before={before}">Export them first</a>')|tojson }},
+      { before: encodeURIComponent(date) });
     go.disabled = false;
   });
 }
@@ -243,13 +241,13 @@ function auditPruneConfirm() {
     body: JSON.stringify({ before: date, dry_run: false }),
   }).then(async function (r) {
     if (!r.ok) {
-      showToast('error', 'Delete failed: ' + (await _apiError(r)));
+      showToast('error', {{ _('Delete failed:')|tojson }} + " " + (await _apiError(r)));
       go.disabled = false;
       return;
     }
     var data = await r.json();
     document.getElementById('audit-prune-modal').close();
-    showToast('success', data.removed + (data.removed === 1 ? ' entry' : ' entries') + ' deleted.');
+    showToast('success', fmtPlural(data.removed, {{ _('{count} entry deleted.')|tojson }}, {{ _('{count} entries deleted.')|tojson }}));
     htmx.ajax('GET', '/partials/audit?' + _auditFilterQuery().toString(),
               { target: '#audit-list', swap: 'innerHTML' });
   });

@@ -61,6 +61,7 @@ from app.core.vectordb.ingest_file import (
     remove_entry,
 )
 from app.core.vectordb.jobs_usage import JobsUsage, jobs_using
+from app.i18n import N_, gettext
 
 logger = logging.getLogger(__name__)
 
@@ -72,16 +73,20 @@ _seed_failed_at: dict[str, float] = {}
 _seed_lock = threading.Lock()
 
 _NO_CONNECTIONS_SECRET = (
-    "QI_CONNECTIONS_SECRET is not set in ai/rag/.env, so no api-key can be stored or read. "
-    "Connections without a key still work."
+    N_(
+        "QI_CONNECTIONS_SECRET is not set in ai/rag/.env, so no api-key can be stored or read. "
+        "Connections without a key still work."
+    )
 )
 _NO_API_KEY = (
-    "QDRANT_JWT_SECRET is not set in ai/rag/.env, so the manager has no api-key for Qdrant."
+    N_("QDRANT_JWT_SECRET is not set in ai/rag/.env, so the manager has no api-key for Qdrant.")
 )
 
 NAME_RULE = (
-    "A connection name starts with a lowercase letter or digit and contains only lowercase "
-    "letters, digits, '-' and '_' (at most 64 characters)."
+    N_(
+        "A connection name starts with a lowercase letter or digit and contains only lowercase "
+        "letters, digits, '-' and '_' (at most 64 characters)."
+    )
 )
 
 
@@ -235,7 +240,9 @@ class ConnectionService:
                 entry = ConnectionEntry.model_validate(raw)
             except ValueError:
                 raise UnknownConnectionError(
-                    f"The connection {name!r} is not valid in connections.yaml."
+                    gettext(
+                        "The connection %(name)r is not valid in connections.yaml."
+                    ) % {"name": name}
                 ) from None
             plain, key_state = self._read_key(entry.api_key, secrets)
             return _Stored(
@@ -265,7 +272,9 @@ class ConnectionService:
                 ),
             )
         reason = f" ({snapshot.structural_error})" if snapshot.structural_error else ""
-        raise UnknownConnectionError(f"There is no connection named {name!r}{reason}.")
+        raise UnknownConnectionError(gettext(
+            "There is no connection named %(name)r%(reason)s."
+        ) % {"name": name, "reason": reason})
 
     def resolve(self, name: str) -> Connection:
         """The connection to use for `name`, with its key decrypted."""
@@ -345,9 +354,9 @@ class ConnectionService:
         """Point the default connection at the integrated Qdrant again, with the stack's key."""
         secrets = rag_secrets(self._config_dir)
         if not secrets.connections_secret:
-            raise SecretMissingError(_NO_CONNECTIONS_SECRET)
+            raise SecretMissingError(gettext(_NO_CONNECTIONS_SECRET))
         if not secrets.api_key:
-            raise SecretMissingError(_NO_API_KEY)
+            raise SecretMissingError(gettext(_NO_API_KEY))
         token = crypto.encrypt(secrets.api_key, secrets.connections_secret)
         _, snapshot = self._put_default(token, replace=True)
         return self._view_in(snapshot, DEFAULT_NAME)
@@ -369,7 +378,9 @@ class ConnectionService:
 
         def mutate(document: dict[str, Any]) -> None:
             if find_entry(document, name) is not None:
-                raise ConnectionExistsError(f"A connection named {name!r} already exists.")
+                raise ConnectionExistsError(gettext(
+                    "A connection named %(name)r already exists."
+                ) % {"name": name})
             document["connections"].append(ctype.to_entry(name, clean, token))
 
         return self._view_in(self._repo.update(mutate), name)
@@ -388,16 +399,23 @@ class ConnectionService:
         clean = ctype.validate(values)
         new_token = self._encrypt(api_key)
         if new_token is not None and clear_api_key:
-            raise InvalidConnectionError("Enter a new api-key or remove the stored one, not both.")
+            raise InvalidConnectionError(gettext(
+                "Enter a new api-key or remove the stored one, not both."
+            ))
         usage = jobs_using(self._config_dir)
 
         def mutate(document: dict[str, Any]) -> None:
             entry = find_entry(document, name)
             if entry is None:
-                raise UnknownConnectionError(f"There is no connection named {name!r}.")
+                raise UnknownConnectionError(gettext(
+                    "There is no connection named %(name)r."
+                ) % {"name": name})
             if entry_etag(entry) != etag:
                 raise StaleConnectionError(
-                    f"The connection {name!r} was changed by somebody else. Reload and try again."
+                    gettext(
+                        "The connection %(name)r was changed by somebody else. Reload and try "
+                        "again."
+                    ) % {"name": name}
                 )
             stored = entry.get("api_key")
             has_key = isinstance(stored, str) and bool(stored)
@@ -406,20 +424,26 @@ class ConnectionService:
             )
             if moved and has_key and new_token is None and not clear_api_key:
                 raise InvalidConnectionError(
-                    "The stored api-key belongs to the old address and is never sent to a "
-                    "different one. Enter the api-key for the new address, or remove the "
-                    "stored key."
+                    gettext(
+                        "The stored api-key belongs to the old address and is never sent to a "
+                        "different one. Enter the api-key for the new address, or remove the "
+                        "stored key."
+                    )
                 )
             if moved and not confirm_jobs:
                 if usage.error is not None:
                     raise ConnectionInUseError(
-                        f"{usage.error} Confirm to change the address anyway."
+                        gettext(
+                            "%(error)s Confirm to change the address anyway."
+                        ) % {"error": usage.error}
                     )
                 jobs = usage.jobs_of(name)
                 if jobs:
                     raise ConnectionInUseError(
-                        f"The jobs {', '.join(jobs)} write to this connection and would write "
-                        "to the new address. Confirm to change it.",
+                        gettext(
+                            "The jobs %(value)s write to this connection and would write to the "
+                            "new address. Confirm to change it."
+                        ) % {"value": ', '.join(jobs)},
                         jobs,
                     )
             if new_token is not None:
@@ -437,28 +461,39 @@ class ConnectionService:
     def delete(self, name: str, *, etag: str) -> None:
         if name == DEFAULT_NAME:
             raise ProtectedConnectionError(
-                "The default connection cannot be deleted. It can be edited, or reset to the "
-                "integrated Qdrant."
+                gettext(
+                    "The default connection cannot be deleted. It can be edited, or reset to the "
+                    "integrated Qdrant."
+                )
             )
         usage = jobs_using(self._config_dir)
         if usage.error is not None:
             raise ConnectionInUseError(
-                f"{usage.error} The connection is not deleted while that cannot be checked."
+                gettext(
+                    "%(error)s The connection is not deleted while that cannot be checked."
+                ) % {"error": usage.error}
             )
         jobs = usage.jobs_of(name)
         if jobs:
             raise ConnectionInUseError(
-                f"The jobs {', '.join(jobs)} write to this connection. Change their target first.",
+                gettext(
+                    "The jobs %(value)s write to this connection. Change their target first."
+                ) % {"value": ', '.join(jobs)},
                 jobs,
             )
 
         def mutate(document: dict[str, Any]) -> None:
             entry = find_entry(document, name)
             if entry is None:
-                raise UnknownConnectionError(f"There is no connection named {name!r}.")
+                raise UnknownConnectionError(gettext(
+                    "There is no connection named %(name)r."
+                ) % {"name": name})
             if entry_etag(entry) != etag:
                 raise StaleConnectionError(
-                    f"The connection {name!r} was changed by somebody else. Reload and try again."
+                    gettext(
+                        "The connection %(name)r was changed by somebody else. Reload and try "
+                        "again."
+                    ) % {"name": name}
                 )
             remove_entry(document, name)
 
@@ -506,14 +541,18 @@ class ConnectionService:
         else:
             if supplied and not same_address(supplied, stored.stored_address):
                 raise InvalidConnectionError(
-                    "Enter the api-key to test a different address. A stored key is only "
-                    "used for the address it was stored with."
+                    gettext(
+                        "Enter the api-key to test a different address. A stored key is only "
+                        "used for the address it was stored with."
+                    )
                 )
             if stored.connection.key_state == "unreadable":
                 return ProbeResult(
                     False,
-                    "The stored api-key cannot be decrypted with the current "
-                    "QI_CONNECTIONS_SECRET. Enter the key again.",
+                    gettext(
+                        "The stored api-key cannot be decrypted with the current "
+                        "QI_CONNECTIONS_SECRET. Enter the key again."
+                    ),
                 )
             connection = stored.connection
         return await ctype.probe(connection, env)
@@ -523,7 +562,7 @@ class ConnectionService:
     @staticmethod
     def _valid_name(name: str) -> str:
         if not isinstance(name, str) or not is_valid_name(name):
-            raise InvalidConnectionError(NAME_RULE)
+            raise InvalidConnectionError(gettext(NAME_RULE))
         return name
 
     def _encrypt(self, api_key: str | None) -> str | None:
@@ -532,7 +571,7 @@ class ConnectionService:
             return None
         secret = rag_secrets(self._config_dir).connections_secret
         if not secret:
-            raise SecretMissingError(_NO_CONNECTIONS_SECRET)
+            raise SecretMissingError(gettext(_NO_CONNECTIONS_SECRET))
         return crypto.encrypt(value, secret)
 
     def _view_in(self, snapshot: FileSnapshot, name: str) -> ConnectionView:
@@ -549,7 +588,9 @@ class ConnectionService:
                 view = self._view(raw, secrets, usage)
                 if view is not None:
                     return view
-        raise UnknownConnectionError(f"There is no connection named {name!r}.")
+        raise UnknownConnectionError(gettext(
+            "There is no connection named %(name)r."
+        ) % {"name": name})
 
 
 def audit_key_action(api_key: str | None, clear: bool) -> str:

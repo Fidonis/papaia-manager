@@ -5,9 +5,9 @@
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
     <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
   </svg>
-  <p class="text-lg font-semibold">No add-ons found</p>
-  <p class="text-sm">Add a catalog and refresh it to browse add-ons.</p>
-  <a href="/catalogs" class="btn btn-outline btn-sm">Manage catalogs</a>
+  <p class="text-lg font-semibold">{% trans %}No add-ons found{% endtrans %}</p>
+  <p class="text-sm">{% trans %}Add a catalog and refresh it to browse add-ons.{% endtrans %}</p>
+  <a href="/catalogs" class="btn btn-outline btn-sm">{% trans %}Manage catalogs{% endtrans %}</a>
 </div>
 {% else %}
 
@@ -26,25 +26,25 @@
    reader. Classes are spelled out per figure; nothing is assembled. #}
 <div class="grid grid-cols-2 lg:grid-cols-4 overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l lg:first:border-l-0">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Add-Ons</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Add-Ons{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
       <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ cnt_total }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Active</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Active{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-success">
       <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span>{{ cnt_running }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 lg:border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Disabled</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Disabled{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-warning">
       <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>{{ cnt_inactive }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">Available</p>
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Available{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
       <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ cnt_avail }}
     </p>
@@ -55,7 +55,7 @@
    The catalog link that used to sit here is the page's secondary action and
    lives in the header now, next to every other page's actions. #}
 <div class="flex items-center justify-between mb-4">
-  <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">Add-Ons &nbsp;·&nbsp; {{ cnt_total }} modules</p>
+  <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">{% trans %}Add-Ons &nbsp;·&nbsp; {{ cnt_total }} modules{% endtrans %}</p>
 </div>
 
 {# The monogram is decoration, so it takes a neutral surface. It used to cycle
@@ -81,21 +81,21 @@
             <p class="font-semibold leading-snug truncate">{{ addon.name }}</p>
             {% set s = addon.status %}
             {% if s == "running" %}
-              <span class="badge badge-success badge-sm shrink-0">Active</span>
+              <span class="badge badge-success badge-sm shrink-0">{% trans %}Active{% endtrans %}</span>
             {% elif s == "installed" %}
-              <span class="badge badge-info badge-sm shrink-0">Installed</span>
+              <span class="badge badge-info badge-sm shrink-0">{% trans %}Installed{% endtrans %}</span>
             {% elif s == "inactive" %}
-              <span class="badge badge-warning badge-sm shrink-0">Disabled</span>
+              <span class="badge badge-warning badge-sm shrink-0">{% trans %}Disabled{% endtrans %}</span>
             {% elif s == "unmanaged" %}
-              <span class="badge badge-neutral badge-sm shrink-0">Unmanaged</span>
+              <span class="badge badge-neutral badge-sm shrink-0">{% trans %}Unmanaged{% endtrans %}</span>
             {% else %}
-              <span class="badge badge-ghost badge-sm shrink-0">Available</span>
+              <span class="badge badge-ghost badge-sm shrink-0">{% trans %}Available{% endtrans %}</span>
             {% endif %}
           </div>
           <p class="text-xs opacity-50 mt-0.5 truncate">
             {% if addon.catalog_version %}v{{ addon.catalog_version }}{% endif %}
             {% if addon.catalog %} · {{ addon.catalog }}{% endif %}
-            {% if addon.is_variant %} · other version{% endif %}
+            {% if addon.is_variant %} {% trans %}· other version{% endtrans %}{% endif %}
           </p>
         </div>
       </div>
@@ -104,6 +104,14 @@
       <p class="text-sm opacity-70 line-clamp-2 min-h-[2.5rem]">
         {{ addon.description if addon.description else '' }}
       </p>
+
+      {# What the add-on runs, as opposed to the version of the add-on itself #}
+      {% set primary = (addon.components or []) | selectattr('role', 'equalto', 'primary') | list %}
+      {% if primary %}
+      <p class="text-xs opacity-60 line-clamp-2">
+        {% for c in primary %}{{ c.name }} {% if c.changed %}{{ c.installed_version }} → {% endif %}{{ c.version }}{% if not loop.last %} · {% endif %}{% endfor %}
+      </p>
+      {% endif %}
 
       {# Tags #}
       <div class="flex flex-wrap gap-1">
@@ -114,10 +122,10 @@
           <span class="badge badge-outline badge-xs">v{{ addon.catalog_version }}</span>
         {% endif %}
         {% if addon.update_available %}
-          <span class="badge badge-accent badge-xs">Update</span>
+          <span class="badge badge-accent badge-xs">{% trans %}Update{% endtrans %}</span>
         {% endif %}
         {% if addon.shadowed_by %}
-          <span class="badge badge-outline badge-xs" title="Same version also in: {{ addon.shadowed_by | join(', ') }}">also in {{ addon.shadowed_by | join(', ') }}</span>
+          <span class="badge badge-outline badge-xs" title="{{ _('Same version also in: %(shadowed_by)s', shadowed_by=addon.shadowed_by | join(', ')) }}">{% trans shadowed_by=(addon.shadowed_by | join(', ')) %}also in {{ shadowed_by }}{% endtrans %}</span>
         {% endif %}
       </div>
 
@@ -133,7 +141,7 @@
         {% call row_actions() %}
         <a href="/addons/{{ addon.name }}{% if addon.is_variant %}?catalog={{ addon.catalog }}{% endif %}"
            class="btn btn-ghost btn-sm btn-square"
-           aria-label="Settings for {{ addon.name }}">
+           aria-label="{{ _('Settings for %(name)s', name=addon.name) }}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>

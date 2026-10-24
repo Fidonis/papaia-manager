@@ -30,12 +30,13 @@ from app.core.widgets import registry, runtime
 from app.core.widgets.model import WidgetResult
 from app.core.widgets.registry import WidgetContext, WidgetType
 from app.core.widgets.view import title_of
+from app.i18n import N_, gettext
 from app.routers.ui import _ctx, _no_store, _queue
 from app.templating import templates as _templates
 
 router = APIRouter()
 
-_NOT_FOUND = "no such widget"
+_NOT_FOUND = N_("no such widget")
 
 WidgetId = Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{1,40}$")]
 
@@ -81,12 +82,12 @@ async def widget_preview(
     """
     widget_type = registry.get(widget_type_id)
     if widget_type is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=gettext(_NOT_FOUND))
     result = await _read(widget_type, settings)
     return _card(
         request,
         user,
-        title=title.strip() or widget_type.name,
+        title=title.strip() or gettext(widget_type.name),
         icon=widget_type.icon,
         result=result,
     )
@@ -105,15 +106,18 @@ async def widget_card(
             None, load_tiles, settings.papaia_config_dir
         )
     except TilesFileError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=gettext(_NOT_FOUND)
+        ) from exc
 
     tile = find_widget(config, widget_id)
     if tile is None or not (is_admin(user, settings) or tile.visibility == "all"):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=gettext(_NOT_FOUND))
 
     widget_type = registry.get(tile.widget)
     if widget_type is None:
-        result = WidgetResult("unavailable", reason=f"No widget called {tile.widget!r} exists.")
+        reason = gettext("No widget called %(widget)r exists.") % {"widget": tile.widget}
+        result = WidgetResult("unavailable", reason=reason)
         return _card(request, user, title=title_of(tile), icon="alert", result=result)
 
     return _card(

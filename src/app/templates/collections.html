@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Collections — {{ branding().name }}{% endblock %}
+{% block title %}{% trans branding=branding().name %}Collections — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}Collections{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">Qdrant collections of the selected connection and the Keycloak roles that may use them</p>{% endblock %}
+{% block page_title %}{% trans %}Collections{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Qdrant collections of the selected connection and the Keycloak roles that may use them{% endtrans %}</p>{% endblock %}
 
 {# Tier 1: one filled primary, one outline secondary. The dialogs live in the
    list partial, so the button finds none while Qdrant cannot be reached. The
@@ -16,7 +16,7 @@
         hx-target="#collection-list"
         hx-swap="innerHTML"
         hx-disabled-elt="this">
-  Refresh
+  {% trans %}Refresh{% endtrans %}
 </button>
 <button type="button"
         class="btn btn-primary btn-sm"
@@ -24,7 +24,7 @@
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
   </svg>
-  New collection
+  {% trans %}New collection{% endtrans %}
 </button>
 {% endblock %}
 
@@ -38,15 +38,15 @@
       hx-target="#collection-list"
       hx-swap="innerHTML"
       onsubmit="return false">
-  <label class="text-sm opacity-60" for="collection-connection">Connection</label>
+  <label class="text-sm opacity-60" for="collection-connection">{% trans %}Connection{% endtrans %}</label>
   <select id="collection-connection" name="connection"
           class="select select-bordered select-sm font-mono"
           onchange="history.replaceState(null, '', '/collections?connection=' + encodeURIComponent(this.value))">
     {% for option in connection_options %}
-    <option value="{{ option }}"{% if option == selected_connection %} selected{% endif %}>{{ option }}{% if option == default_connection %} (default){% endif %}</option>
+    <option value="{{ option }}"{% if option == selected_connection %} selected{% endif %}>{{ option }}{% if option == default_connection %} {% trans %}(default){% endtrans %}{% endif %}</option>
     {% endfor %}
   </select>
-  <a href="/connections" class="link link-hover text-xs opacity-60">Manage connections</a>
+  <a href="/connections" class="link link-hover text-xs opacity-60">{% trans %}Manage connections{% endtrans %}</a>
 </form>
 
 <div
@@ -88,13 +88,13 @@ document.body.addEventListener('htmx:responseError', function (event) {
   const detail = event.detail || {};
   if (!detail.target || detail.target.id !== 'collection-list') return;
   if (detail.xhr && detail.xhr.status === 401) return;
-  let reason = 'The list could not be loaded.';
+  let reason = {{ _('The list could not be loaded.')|tojson }};
   try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
   detail.target.innerHTML =
     '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
-    '<p class="text-lg font-semibold">Collections are not available</p>' +
+    '<p class="text-lg font-semibold">' + _ragEscape({{ _('Collections are not available')|tojson }}) + '</p>' +
     '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p>' +
-    '<a class="link" href="/collections">Reload the page</a></div>';
+    '<a class="link" href="/collections">' + _ragEscape({{ _('Reload the page')|tojson }}) + '</a></div>';
 });
 
 // The role rows of a dialog: blank rows are dropped, names are trimmed.
@@ -124,7 +124,7 @@ function newCollection() {
       if (res.handled) return;
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
-      showToast('success', 'Collection <b>' + _ragEscape(name) + '</b> created');
+      showToast('success', fmtHtml({{ _('Collection <b>{name}</b> created')|tojson }}, { name: name }));
       reloadCollections();
     },
   };
@@ -151,7 +151,7 @@ function editRoles() {
       if (res.handled) return;
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
-      showToast('success', 'Roles of <b>' + _ragEscape(this.name) + '</b> saved');
+      showToast('success', fmtHtml({{ _('Roles of <b>{name}</b> saved')|tojson }}, { name: this.name }));
       reloadCollections();
     },
   };
@@ -175,7 +175,7 @@ function deleteCollection() {
       if (res.handled) return;
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
-      showToast('success', 'Collection <b>' + _ragEscape(this.name) + '</b> deleted');
+      showToast('success', fmtHtml({{ _('Collection <b>{name}</b> deleted')|tojson }}, { name: this.name }));
       reloadCollections();
     },
   };
@@ -187,7 +187,7 @@ async function createOperatorGrant(button) {
   if (res.handled) return;
   if (!res.ok) {
     button.disabled = false;
-    showToast('error', 'The grant was not created: ' + _ragEscape(res.error));
+    showToast('error', {{ _('The grant was not created:')|tojson }} + " " + _ragEscape(res.error));
     return;
   }
   reloadCollections();

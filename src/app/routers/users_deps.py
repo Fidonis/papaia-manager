@@ -27,12 +27,14 @@ from app.core.keycloak_users import (
 from app.core.qdrant import tls_verify
 from app.core.roles_service import RolesService
 from app.core.users_service import InvalidInput, UsersService
+from app.i18n import N_
+from app.i18n import gettext as _
 
-_NOT_KEYCLOAK = (
+_NOT_KEYCLOAK = N_(
     "Users are managed in your identity provider: this deployment does not use the "
     "bundled Keycloak."
 )
-_NO_ENDPOINT = (
+_NO_ENDPOINT = N_(
     "The manager cannot tell where the Keycloak Admin API is: OIDC_ISSUER_KC_TOKEN is not "
     "the token endpoint of a Keycloak realm."
 )
@@ -49,7 +51,7 @@ def require_users_enabled(
     administrator learns that the page does not exist here.
     """
     if not settings.is_internal_keycloak:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_KEYCLOAK)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_(_NOT_KEYCLOAK))
     return user
 
 
@@ -97,7 +99,7 @@ async def get_user_token(request: Request, _user: UsersAdmin) -> str:
         return await user_access_token(request)
     except UserTokenUnavailable as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="session expired"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=_("session expired")
         ) from exc
 
 
@@ -117,7 +119,7 @@ async def get_keycloak(
     """
     endpoint = admin_endpoint(settings.oidc_issuer_kc_token)
     if endpoint is None:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=_NO_ENDPOINT)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=_(_NO_ENDPOINT))
     client = KeycloakUsers(
         endpoint,
         token,
@@ -173,29 +175,31 @@ RolesServiceDep = Annotated[RolesService, Depends(get_roles_service)]
 
 
 @contextmanager
-def translated(what: str = "", *, forbidden: str = "") -> Iterator[None]:
+def translated(not_found: str = "", *, forbidden: str = "") -> Iterator[None]:
     """Answer a failure of the Users API with the status code the other admin routes use.
 
-    `forbidden` replaces the text of a refusal by Keycloak, for a route that knows which right
-    is missing."""
+    `not_found` is the whole sentence for a missing thing (already translated, since it names
+    it); `forbidden` replaces the text of a refusal by Keycloak, for a route that knows which
+    right is missing."""
     try:
         yield
     except InvalidInput as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except KeycloakUnauthorizedError as exc:
-        raise HTTPException(status_code=401, detail="session expired") from exc
+        raise HTTPException(status_code=401, detail=_("session expired")) from exc
     except KeycloakForbiddenError as exc:
-        raise HTTPException(
-            status_code=403,
-            detail=forbidden
-            or (
-                "Keycloak refused this for your account"
-                + (f": {exc.detail}" if exc.detail and not exc.detail.startswith("HTTP ") else ".")
-            ),
-        ) from exc
+        if forbidden:
+            refusal = forbidden
+        elif exc.detail and not exc.detail.startswith("HTTP "):
+            refusal = _("Keycloak refused this for your account: %(detail)s") % {
+                "detail": exc.detail
+            }
+        else:
+            refusal = _("Keycloak refused this for your account.")
+        raise HTTPException(status_code=403, detail=refusal) from exc
     except KeycloakNotFoundError as exc:
         raise HTTPException(
-            status_code=404, detail=f"{what or 'that account'} was not found"
+            status_code=404, detail=not_found or _("that account was not found")
         ) from exc
     except KeycloakConflictError as exc:
         raise HTTPException(status_code=409, detail=exc.detail) from exc
