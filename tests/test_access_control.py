@@ -174,6 +174,7 @@ ADMIN_WRITE_APIS = [
     "/api/v1/stack/restart",
     "/api/v1/stack/runner/clear",
     "/api/v1/addons/paperless/restart",
+    "/api/v1/addons/paperless/remove",
     "/api/v1/audit/prune",
     "/api/v1/config/modules/localai/enable",
     "/api/v1/config/modules/localai/disable",

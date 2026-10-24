@@ -558,6 +558,24 @@ async def remove(
     _username = _user_id(user)
 
     async def _callback(ctx: JobContext) -> None:
+        # `papaia-ctl addon remove` only deactivates the add-on; its containers
+        # keep running, and once it is inactive the page offers neither Stop nor
+        # Remove for them. The dialog promises they are gone, so take them down
+        # first. Volumes stay (`down` without `-v`), and a failure raises before
+        # the add-on is marked inactive. It has to be this order: `remove` drops
+        # the add-on's generated overrides, and `down` should see the same
+        # compose files as the `up` that created the containers.
+        ctx.log(f"[ctl] papaia-ctl addon stop {name} --clean-up")
+        gen = await run_addon_verb(
+            verb="stop",
+            name=name,
+            workspace_dir=settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
+            extra_flags=["--clean-up"],
+        )
+        async for line in gen:
+            ctx.log(line)
+
         ctx.log(f"[ctl] papaia-ctl addon remove {name}")
         gen = await run_addon_verb(
             verb="remove",
