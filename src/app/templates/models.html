@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{% trans branding=branding().name %}Models & Usage — {{ branding }}{% endtrans %}{% endblock %}
+
+{% block page_title %}{% trans %}Models & Usage{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}The models LiteLLM serves and what they consumed{% endtrans %}</p>{% endblock %}
+
+{# Reading only: models, prices, teams and keys are changed in LiteLLM itself, which
+   the link opens when the stack knows where it is. #}
+{% block page_actions %}
+{% if litellm_ui_url %}
+<a href="{{ litellm_ui_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">
+  {% trans %}Open LiteLLM{% endtrans %}
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{# The body is fetched from the same query string the page was asked with, so a window
+   or a model in the address bar survives a reload. The links inside it swap this element
+   in place and push the page address; `htmx-request` is on it while one is under way, and
+   the figures dim rather than vanish. #}
+<div
+  id="models-body"
+  class="transition-opacity [&.htmx-request]:opacity-60"
+  hx-get="{{ first.partial }}"
+  hx-trigger="load"
+  hx-swap="innerHTML"
+>
+  <div class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+</div>
+{% endblock %}

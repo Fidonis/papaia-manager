@@ -503,6 +503,24 @@ tenth interval and no sooner than every 5 minutes, and a slow or failing
 measurement leaves the rest of the page as it is. The Host entry in the sidebar carries a
 dot while a check warns or has failed.
 
+**Models & Usage.** An admin-only page at `/models`, in the *Monitor* group after Host, that
+shows which models LiteLLM serves and what they consumed. A window of days is chosen at the top:
+the last 7 days (the default), 30 or 90 days, this month, or a custom range of up to a year. The
+**Overview** tab adds up all models: tokens (with input and output), spend in USD and requests,
+as a bar per day stacked by model, with a switch between the three, a tooltip per day (also with
+the arrow keys), a legend and each model's share. The **Per model** tab lists every model
+LiteLLM serves, including the ones nobody used, with its type, its price per million tokens, its
+figures and a small trend line, and a click opens a page for that model with input and output
+tokens apart. A table of the days is under every chart. The page only reads: models, prices,
+teams, budgets and keys are changed in LiteLLM's own Admin UI, which the page links to when the
+stack knows its address. Days are UTC days, because that is the finest grain LiteLLM keeps, and
+the newest requests can take about a minute to show up. A model without a price in LiteLLM (a
+local one) counts tokens and requests but no spend. The manager reads LiteLLM at `LITELLM_URL`
+(default `http://litellm:4000`) with the master key from `ai/litellm/.env`, which it never shows,
+logs or sends anywhere else; a LiteLLM that is down, or a key it refuses, is a message on the
+page and not an error. A reading is kept for a minute and shared between everyone who has the
+page open.
+
 **Catalogs.** A catalog is a source of add-ons — a public or private Git
 repository, or a local directory — registered at runtime (not versioned in
 this repo). Each catalog is scanned for top-level `papaia-app.yaml`
@@ -769,6 +787,11 @@ POST   /api/v1/settings/branding/logo        # multipart file: PNG, JPEG, WebP o
 DELETE /api/v1/settings/branding/logo        # remove the logo
 POST   /api/v1/settings/branding/reset       # {revision} back to the defaults, logo removed
 PUT    /api/v1/settings/host                 # {revision, refresh_seconds} 10 to 3600
+
+GET    /api/v1/models                        # the models LiteLLM serves: type, host, price per million tokens
+GET    /api/v1/models/usage                  # ?range=7d|30d|90d|month|custom&from=&to= (UTC days):
+                                             #   totals, per day and per model; 422 for a window that
+                                             #   makes no sense, 503 when LiteLLM cannot be read
 GET    /brand/logo                           # the stored logo, for any signed-in user
 POST   /account/language                     # form fields locale (auto or a shipped language), csrf_token, next?: the
                                              #   signed-in account's own language, for every role; 303 back to the page
