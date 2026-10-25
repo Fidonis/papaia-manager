@@ -457,8 +457,9 @@ function _node(tag, className, text) {
   return el;
 }
 
-function openRestoreModal(id, artifacts, result) {
+function openRestoreModal(id, artifacts, result, scope) {
   _scope = _freshScope(id, artifacts, result);
+  var scoped = !!(scope && scope.length);
   _el('restore-title').innerHTML = fmtHtml({{ _('Restore <span class="font-mono">{id}</span>')|tojson }}, { id: id });
   _el('restore-everything-detail').textContent = fmt(
     {{ _('Replaces the stack configuration and all {count} archives. The whole stack goes down.')|tojson }}, { count: artifacts });
@@ -469,8 +470,17 @@ function openRestoreModal(id, artifacts, result) {
   _el('restore-picker').textContent = '';
   _el('restore-notes').textContent = '';
   _el('restore-tally').textContent = '';
-  document.querySelector('input[name=restore-scope][value=all]').checked = true;
-  document.querySelector('input[name=restore-scope][value=some]').checked = false;
+  // A scoped restore point has no configuration directory and no core volumes,
+  // so it cannot be restored as a whole: the choice is made for the operator.
+  var allRadio = document.querySelector('input[name=restore-scope][value=all]');
+  allRadio.checked = !scoped;
+  allRadio.disabled = scoped;
+  document.querySelector('input[name=restore-scope][value=some]').checked = scoped;
+  if (scoped) {
+    _scope.mode = 'some';
+    _el('restore-everything-detail').textContent = fmt(
+      {{ _('This restore point only holds {scope}, so it can be restored by selection only.')|tojson }}, { scope: scope.join(', ') });
+  }
   _renderStep();
   _el('restore-modal').showModal();
 

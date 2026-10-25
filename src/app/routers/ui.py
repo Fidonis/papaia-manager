@@ -24,6 +24,12 @@ from app.core import (
     schedule,
     upgrade,
 )
+from app.core.addon_upgrades import (
+    core_requirement_message,
+    core_supports_upgrades,
+    outdated_count,
+    version_state,
+)
 from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.components import components_for
@@ -36,7 +42,7 @@ from app.core.inventory import SELF_PROFILE
 from app.core.jobs import Job, JobQueue
 from app.core.rag import documents_dir, with_rag_tiles
 from app.core.rag_collections import CollectionStore
-from app.core.resolve import resolve_catalog_addons
+from app.core.resolve import resolve_catalog_addons, update_available
 from app.core.services import (
     ServiceHealth,
     StackSnapshot,
@@ -56,7 +62,7 @@ from app.core.settings_store import (
     refresh_interval,
     settings_revision,
 )
-from app.core.snapshots import load_installed, managed_snapshot_path
+from app.core.snapshots import installed_addon_dir, load_installed
 from app.core.state import (
     AddonStatus,
     compute_status,
@@ -181,6 +187,28 @@ async def addons_page(
     user: AdminUser,
 ) -> HTMLResponse:
     return _templates.TemplateResponse(request, "addons.html", _ctx(request, user))
+
+
+@router.get("/addons/{name}/upgrade", response_class=HTMLResponse)
+async def addon_upgrade_page(
+    request: Request,
+    name: str,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The review of an upgrade: the plan is fetched by the page, nothing is staged here."""
+    supported = core_supports_upgrades(settings.papaia_workspace_dir)
+    return _templates.TemplateResponse(
+        request,
+        "addon_upgrade.html",
+        _ctx(
+            request,
+            user,
+            addon_name=name,
+            upgrades_supported=supported,
+            core_requirement="" if supported else core_requirement_message(),
+        ),
+    )
 
 
 @router.get("/addons/{name}", response_class=HTMLResponse)
@@ -1517,6 +1545,26 @@ async def partial_upgrade_log(
     return resp
 
 
+@router.get("/partials/nav/addon-upgrades", response_class=HTMLResponse)
+async def partial_nav_addon_upgrades(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The dot on the Add-Ons nav entry: whether a catalog on disk offers a higher version.
+
+    No git and no network, only the catalogs as they are, and a minute of cache, because it
+    renders in the sidebar of every admin page."""
+    count = await asyncio.get_running_loop().run_in_executor(
+        None, outdated_count, settings.papaia_config_dir, settings.papaia_workspace_dir
+    )
+    resp = _templates.TemplateResponse(
+        request, "partials/nav_addon_upgrades.html", _ctx(request, user, count=count)
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @router.get("/partials/nav/upgrade-indicator", response_class=HTMLResponse)
 async def partial_nav_upgrade_indicator(
     request: Request,
@@ -1685,12 +1733,7 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             "installed_version": variant_inst.manifest_version if variant_inst else None,
             "shadowed_by": resolved.shadowed_by,
             "is_variant": resolved.is_variant,
-            "update_available": (
-                variant_inst is not None
-                and variant_inst.managed
-                and resolved.manifest.get("version") is not None
-                and variant_inst.manifest_version != resolved.manifest.get("version")
-            ),
+            "update_available": update_available(variant_inst, resolved.manifest.get("version")),
             "managed": variant_inst.managed if variant_inst else True,
             "components": components_for(
                 settings.papaia_config_dir,
@@ -1698,11 +1741,15 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
                 resolved.name,
                 resolved.manifest,
                 variant_inst,
+                deploy_entry,
             ),
             "env_fields": _build_env_fields(
                 resolved.name,
-                managed_snapshot_path(
-                    settings.papaia_workspace_dir, variant_inst.catalog, resolved.name
+                installed_addon_dir(
+                    deploy_entry,
+                    settings.papaia_workspace_dir,
+                    variant_inst.catalog,
+                    resolved.name,
                 )
                 if variant_inst
                 else resolved.clone / resolved.name,
@@ -1737,11 +1784,18 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             "update_available": False,
             "managed": inst.managed if inst else False,
             "components": components_for(
-                settings.papaia_config_dir, settings.papaia_workspace_dir, addon_name, {}, inst
+                settings.papaia_config_dir,
+                settings.papaia_workspace_dir,
+                addon_name,
+                {},
+                inst,
+                deploy_entry,
             ),
             "env_fields": _build_env_fields(
                 addon_name,
-                managed_snapshot_path(settings.papaia_workspace_dir, inst.catalog, addon_name)
+                installed_addon_dir(
+                    deploy_entry, settings.papaia_workspace_dir, inst.catalog, addon_name
+                )
                 if inst
                 else None,
                 settings,
@@ -1802,8 +1856,8 @@ async def _get_addon(
 
     addon_path = None
     if variant_inst:
-        addon_path = managed_snapshot_path(
-            settings.papaia_workspace_dir, variant_inst.catalog, name
+        addon_path = installed_addon_dir(
+            deploy_entry, settings.papaia_workspace_dir, variant_inst.catalog, name
         )
     elif catalog_addon_dir:
         addon_path = catalog_addon_dir
@@ -1820,18 +1874,21 @@ async def _get_addon(
         "installed_version": variant_inst.manifest_version if variant_inst else None,
         "shadowed_by": resolved.shadowed_by if resolved else [],
         "is_variant": resolved.is_variant if resolved else False,
-        "update_available": (
-            variant_inst is not None
-            and variant_inst.managed
-            and manifest.get("version") is not None
-            and variant_inst.manifest_version != manifest.get("version")
-        ),
+        "update_available": update_available(variant_inst, manifest.get("version")),
         "managed": variant_inst.managed if variant_inst else True,
         "manifest": manifest,
         "components": components_for(
-            settings.papaia_config_dir, settings.papaia_workspace_dir, name, manifest, variant_inst
+            settings.papaia_config_dir,
+            settings.papaia_workspace_dir,
+            name,
+            manifest,
+            variant_inst,
+            deploy_entry,
         ),
         "env_fields": env_fields,
+        **version_state(
+            settings.papaia_config_dir, settings.papaia_workspace_dir, variant_inst, deploy_entry
+        ),
     }
 
 

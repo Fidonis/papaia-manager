@@ -13,24 +13,39 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
+from app.core.addon_upgrades import (
+    UpgradeError,
+    answerable_keys,
+    changelog_between,
+    core_requirement_message,
+    core_supports_upgrades,
+    deployment_entry,
+    fetch_plan,
+    invalidate_outdated_count,
+    next_history,
+    previous_version,
+    prune_after,
+    stage_revision,
+    sync_installed_after_rollback,
+    sync_installed_after_upgrade,
+    write_answers_file,
+)
 from app.core.audit import write_audit_entry
 from app.core.catalogs import (
     catalog_scan_path,
     load_registry,
-    materialize_local_addon,
 )
 from app.core.components import components_for
 from app.core.ctl import CtlError, run_addon_verb
 from app.core.envforms import EnvField, build_form, field_to_dict
 from app.core.envvalidate import EnvValidationError, coerce_env_values
 from app.core.jobs import JobContext, JobQueue
-from app.core.resolve import resolve_catalog_addons, update_available
+from app.core.resolve import outdated_addons, resolve_catalog_addons, update_available
 from app.core.services import load_snapshot
 from app.core.snapshots import (
-    catalog_clone_path,
+    installed_addon_dir,
     load_installed,
-    managed_snapshot_path,
-    materialize_snapshot,
+    prune_snapshots,
     record_installed,
     remove_installed,
 )
@@ -64,8 +79,25 @@ class RestartBody(BaseModel):
     clean_up: bool = False
 
 
-class UpdateBody(BaseModel):
+class UpgradeBody(BaseModel):
+    # Values for the keys the new version asks about; nothing else is accepted.
     env: dict[str, str] = {}
+    # The version the operator reviewed (the `revision` of the plan). If the catalog has moved on
+    # the upgrade is refused instead of applying something that was not shown.
+    revision: str | None = None
+    # A restore point of the add-on is taken first. Turning it off is for an operator who has a
+    # backup of their own.
+    backup: bool = True
+
+
+class UpgradePlanBody(BaseModel):
+    revision: str | None = None
+
+
+class RollbackBody(BaseModel):
+    # False: the add-on goes back to the old code and keeps today's data. True: the data of the
+    # restore point taken before the upgrade is restored too, and what was written since is lost.
+    restore_data: bool = False
 
 
 class SaveConfigBody(BaseModel):
@@ -164,7 +196,7 @@ def _addon_summary(
         "is_variant": is_variant,
         "update_available": update_available(inst, manifest.get("version")),
         "managed": inst.managed if inst else True,
-        "components": components_for(config_dir, workspace_dir, name, manifest, inst),
+        "components": components_for(config_dir, workspace_dir, name, manifest, inst, deploy_entry),
     }
 
 
@@ -212,6 +244,35 @@ async def list_addons(
         )
 
     return list(addons.values())
+
+
+@router.get("/upgrades")
+async def list_upgrades(
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """The installed add-ons for which a catalog on disk offers a higher version.
+
+    Reads the catalogs as they are; a catalog is refreshed by hand (the catalogs API), never
+    by this. Whether the compatibility gate accepts a version is not decided here: that is
+    `upgrade-plan`, which asks papaia-ctl."""
+    found = outdated_addons(
+        load_registry(settings.papaia_config_dir),
+        settings.papaia_workspace_dir,
+        load_installed(settings.papaia_config_dir),
+    )
+    return {
+        "supported": core_supports_upgrades(settings.papaia_workspace_dir),
+        "upgrades": [
+            {
+                "name": u.name,
+                "installed": u.installed,
+                "available": u.available,
+                "catalog": u.catalog,
+            }
+            for u in found
+        ],
+    }
 
 
 @router.get("/{name}")
@@ -274,8 +335,11 @@ async def env_form(
     inst = installed_map.get(name)
 
     if inst:
-        addon_path: Path | None = managed_snapshot_path(
-            settings.papaia_workspace_dir, inst.catalog, name
+        addon_path: Path | None = installed_addon_dir(
+            deployment_entry(settings.papaia_config_dir, name),
+            settings.papaia_workspace_dir,
+            inst.catalog,
+            name,
         )
     else:
         registry = load_registry(settings.papaia_config_dir)
@@ -334,8 +398,6 @@ async def install(
 
     queue = _queue()
     _cat = catalog.name
-    _is_local = catalog.type == "local"
-    _src = clone / name
     _start = body.start
     _username = _user_id(user)
 
@@ -347,19 +409,15 @@ async def install(
     )
 
     async def _callback(ctx: JobContext) -> None:
-        dest = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
         ctx.log(f"[info] materializing snapshot for {name!r} from {_cat!r}")
-        if _is_local:
-            sha = await materialize_local_addon(_src, dest)
-        else:
-            sha = await materialize_snapshot(
-                catalog_clone=catalog_clone_path(settings.papaia_workspace_dir, _cat),
-                addon_subdir=name,
-                dest=dest,
+        try:
+            staged = await stage_revision(
+                catalog=catalog, workspace_dir=settings.papaia_workspace_dir, name=name
             )
-        ctx.log(f"[info] snapshot at {dest} (revision {sha[:12]})")
-
-        ver = _manifest_version(dest)
+        except UpgradeError as exc:
+            raise RuntimeError(str(exc)) from exc
+        dest, sha, ver = staged.path, staged.commit, staged.version
+        ctx.log(f"[info] snapshot at {dest} (revision {staged.revision})")
 
         if _env:
             # papaia-ctl treats the config bundle's .env as canonical: seed_addon_env
@@ -393,14 +451,19 @@ async def install(
         async for line in gen:
             ctx.log(line)
 
+        before = load_installed(settings.papaia_config_dir).get(name)
         record_installed(
             settings.papaia_config_dir,
             name=name,
             catalog=_cat,
             commit=sha,
             manifest_version=ver,
+            history=next_history(before, sha),
         )
         ctx.log(f"[info] recorded in installed.yaml (version {ver})")
+        prune_after(
+            settings.papaia_config_dir, settings.papaia_workspace_dir, name=name, catalog=_cat
+        )
 
         if _start:
             ctx.log(f"[ctl] papaia-ctl addon start {name}")
@@ -644,6 +707,8 @@ async def uninstall(
     queue = _queue()
     _username = _user_id(user)
     _clean = body.clean_up
+    _recorded = load_installed(settings.papaia_config_dir).get(name)
+    _catalog = _recorded.catalog if _recorded is not None else None
 
     async def _callback(ctx: JobContext) -> None:
         ctx.log(f"[ctl] papaia-ctl addon uninstall {name}")
@@ -659,6 +724,11 @@ async def uninstall(
             ctx.log(line)
         remove_installed(settings.papaia_config_dir, name)
         ctx.log("[info] removed from installed.yaml")
+        if _catalog is not None:
+            prune_snapshots(
+                settings.papaia_workspace_dir, _catalog, name, keep=[]
+            )
+            ctx.log("[info] snapshots deleted")
         write_audit_entry(
             settings.papaia_config_dir,
             user=_username,
@@ -675,127 +745,312 @@ async def uninstall(
     return {"job_id": job.id, "status": "queued"}
 
 
-@router.post("/{name}/update", status_code=status.HTTP_202_ACCEPTED)
-async def update(
-    name: str,
-    body: UpdateBody,
-    request: Request,
-    user: AdminUser,
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> dict[str, str]:
-    verify_csrf(request)
-    installed_map = load_installed(settings.papaia_config_dir)
-    inst = installed_map.get(name)
+def _require_core_upgrades(settings: Settings) -> None:
+    """Upgrading and rolling back are verbs of papaia-ctl; an older core does not have them."""
+    if not core_supports_upgrades(settings.papaia_workspace_dir):
+        raise HTTPException(status_code=409, detail=core_requirement_message())
+
+
+def _upgradable(name: str, settings: Settings) -> tuple[Any, dict[str, Any], Any]:
+    """The installed record, the registration and the catalog an upgrade of `name` comes from.
+
+    Refuses what papaia-ctl would refuse later, so the operator hears it before anything is
+    staged: an add-on this manager did not install, one that is not active, a catalog that is
+    gone or disabled."""
+    inst = load_installed(settings.papaia_config_dir).get(name)
     if inst is None:
         raise HTTPException(status_code=404, detail=gettext(
             "addon %(name)r is not installed"
         ) % {"name": name})
+    if not inst.managed:
+        raise HTTPException(status_code=409, detail=gettext(
+            "addon %(name)r is not managed by this panel"
+        ) % {"name": name})
+    entry = deployment_entry(settings.papaia_config_dir, name)
+    if entry is None or not entry.get("active", False):
+        raise HTTPException(status_code=409, detail=gettext(
+            "addon %(name)r is not active; reactivate it before upgrading"
+        ) % {"name": name})
+    catalog = next(
+        (
+            c
+            for c in load_registry(settings.papaia_config_dir).catalogs
+            if c.name == inst.catalog and c.enabled
+        ),
+        None,
+    )
+    if catalog is None:
+        raise HTTPException(status_code=409, detail=gettext(
+            "catalog %(catalog)r not found or disabled"
+        ) % {"catalog": inst.catalog})
+    return inst, entry, catalog
+
+
+async def _stage_and_plan(
+    name: str, revision: str | None, settings: Settings
+) -> tuple[Any, Any, Any, dict[str, Any]]:
+    """Stage the catalog's version of `name` and ask papaia-ctl what upgrading to it would do."""
+    inst, entry, catalog = _upgradable(name, settings)
+    try:
+        staged = await stage_revision(
+            catalog=catalog,
+            workspace_dir=settings.papaia_workspace_dir,
+            name=name,
+            revision=revision,
+        )
+        plan = await fetch_plan(
+            name=name,
+            candidate=staged.path,
+            workspace_dir=settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
+        )
+    except UpgradeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return inst, entry, staged, plan
+
+
+@router.post("/{name}/upgrade-plan")
+async def upgrade_plan(
+    name: str,
+    body: UpgradePlanBody,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """What upgrading `name` to the catalog's version would change, without changing it.
+
+    A POST because it writes: the version is staged to a directory of its own (the one the
+    upgrade then uses, so what is reviewed is what is applied) and the older ones are pruned.
+    The plan is papaia-ctl's (`addon upgrade --dry-run --json`) with the manager's view of the
+    components added."""
+    verify_csrf(request)
+    _require_core_upgrades(settings)
+    inst, entry, staged, plan = await _stage_and_plan(name, body.revision, settings)
+    prune_after(
+        settings.papaia_config_dir,
+        settings.papaia_workspace_dir,
+        name=name,
+        catalog=inst.catalog,
+        extra=staged.path,
+    )
+    fields = _addon_fields(name, staged.path, settings)
+    asked = answerable_keys(plan)
+    current = str((plan.get("current") or {}).get("version", inst.manifest_version))
+    candidate = str((plan.get("candidate") or {}).get("version", staged.version))
+    return {
+        "revision": staged.revision,
+        "plan": plan,
+        "installed_version": inst.manifest_version,
+        "form": [field_to_dict(f) for f in fields if f.key in asked],
+        "changelog": [
+            {"version": c.version, "date": c.date, "body": c.body}
+            for c in changelog_between(staged.path, current, candidate)
+        ],
+    }
+
+
+@router.post("/{name}/upgrade", status_code=status.HTTP_202_ACCEPTED)
+async def upgrade(
+    name: str,
+    body: UpgradeBody,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
+    """Move `name` to the catalog's version with `papaia-ctl addon upgrade`.
+
+    The version is staged first and the plan checked here, so a refusal (the compatibility gate,
+    a value the new version needs and was not given) is an error of this request and not a failed
+    job. The job then runs the upgrade and records the result in installed.yaml."""
+    verify_csrf(request)
+    _require_core_upgrades(settings)
+    inst, entry, staged, plan = await _stage_and_plan(name, body.revision, settings)
+
+    if plan.get("blocked"):
+        reason = (plan.get("compat") or {}).get("reason") or gettext(
+            "this core does not accept the new version"
+        )
+        raise HTTPException(status_code=409, detail=reason)
+    if plan.get("in_place"):
+        raise HTTPException(status_code=409, detail=gettext(
+            "addon %(name)r already runs from this directory"
+        ) % {"name": name})
+
+    asked = answerable_keys(plan)
+    unknown = sorted(set(body.env) - asked)
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "field": unknown[0],
+                "message": gettext("this upgrade does not ask for a value for this key"),
+            },
+        )
+    fields = [f for f in _addon_fields(name, staged.path, settings) if f.key in asked]
+    answers = _validate_env(fields, dict(body.env)) if body.env else {}
+    missing = [key for key in plan.get("needs_input", []) if not answers.get(key)]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"field": missing[0], "message": gettext("a value is required")},
+        )
 
     queue = _queue()
     _username = _user_id(user)
-    _cat = inst.catalog
-    _was_running = name in _current_running(settings)
-
-    # The catalog may since have been removed from the registry. Git catalogs
-    # keep working off their workspace clone in that case, so only switch to
-    # the local path when the registry still says the catalog is local.
-    _catalog = next(
-        (c for c in load_registry(settings.papaia_config_dir).catalogs if c.name == _cat),
-        None,
-    )
-    _is_local = _catalog is not None and _catalog.type == "local"
-    _src = (
-        catalog_scan_path(_catalog, settings.papaia_workspace_dir) / name
-        if _catalog is not None
-        else None
-    )
-
-    if body.env:
-        _cur_path = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
-        _env = _validate_env(_addon_fields(name, _cur_path, settings), dict(body.env))
-    else:
-        _env = {}
+    _backup = body.backup
+    _from = inst.manifest_version
+    _params = {
+        "catalog": inst.catalog,
+        "from": _from,
+        "to": staged.version,
+        "revision": staged.revision,
+        "backup": _backup,
+        "answered": sorted(answers),
+    }
 
     async def _callback(ctx: JobContext) -> None:
-        dest = managed_snapshot_path(settings.papaia_workspace_dir, _cat, name)
-        ctx.log(f"[info] updating snapshot for {name!r} from {_cat!r}")
-        if _is_local and _src is not None:
-            sha = await materialize_local_addon(_src, dest)
-        else:
-            sha = await materialize_snapshot(
-                catalog_clone=catalog_clone_path(settings.papaia_workspace_dir, _cat),
-                addon_subdir=name,
-                dest=dest,
-            )
-        ctx.log(f"[info] snapshot at {dest} (revision {sha[:12]})")
-
-        ver = _manifest_version(dest)
-
-        if _env:
-            # papaia-ctl treats the config bundle's .env as canonical: seed_addon_env
-            # only fills keys not already present there (sticky), and every start
-            # copies bundle -> checkout via materialize_addon_env, overwriting
-            # anything written to dest/.env directly. Write overrides to the bundle
-            # so they survive both seeding and the copy-back on start.
-            bundle_env_dir = Path(settings.papaia_config_dir) / "addons" / name
-            bundle_env_dir.mkdir(parents=True, exist_ok=True)
-            env_file = bundle_env_dir / ".env"
-            existing = (
-                _parse_env_file(env_file.read_text(encoding="utf-8"))
-                if env_file.exists()
-                else {}
-            )
-            existing.update(_env)
-            env_file.write_text(
-                "\n".join(f"{k}={v}" for k, v in existing.items()) + "\n",
-                encoding="utf-8",
-            )
-            ctx.log(f"[info] wrote {len(_env)} env value(s) to config bundle .env")
-
-        ctx.log(f"[ctl] papaia-ctl addon install {name}")
-        gen = await run_addon_verb(
-            verb="install",
-            name=name,
-            workspace_dir=settings.papaia_workspace_dir,
-            config_dir=settings.papaia_config_dir,
-            extra_flags=[f"--path={dest}"],
-        )
-        async for line in gen:
-            ctx.log(line)
-
-        record_installed(
-            settings.papaia_config_dir,
-            name=name,
-            catalog=_cat,
-            commit=sha,
-            manifest_version=ver,
-        )
-        ctx.log(f"[info] updated installed.yaml to version {ver}")
-
-        if _was_running:
-            ctx.log(f"[ctl] papaia-ctl addon start {name}")
+        answers_file = write_answers_file(answers) if answers else None
+        flags = [f"--path={staged.path}", "-y"]
+        if not _backup:
+            flags.append("--no-backup")
+        if answers_file is not None:
+            flags.append(f"--answers-file={answers_file}")
+        ctx.log(f"[info] upgrading {name!r} from {_from} to {staged.version} ({staged.revision})")
+        ctx.log(f"[ctl] papaia-ctl addon upgrade {name}")
+        try:
             gen = await run_addon_verb(
-                verb="start",
+                verb="upgrade",
                 name=name,
                 workspace_dir=settings.papaia_workspace_dir,
                 config_dir=settings.papaia_config_dir,
+                extra_flags=flags,
             )
             async for line in gen:
                 ctx.log(line)
+        finally:
+            if answers_file is not None:
+                answers_file.unlink(missing_ok=True)
+            # The registration may have moved even when the command failed (the new version
+            # could not be started), so installed.yaml follows deployment.yaml, not the exit.
+            if sync_installed_after_upgrade(
+                settings.papaia_config_dir,
+                settings.papaia_workspace_dir,
+                name=name,
+                inst=inst,
+                staged=staged,
+            ):
+                ctx.log(f"[info] recorded in installed.yaml (version {staged.version})")
+            prune_after(
+                settings.papaia_config_dir,
+                settings.papaia_workspace_dir,
+                name=name,
+                catalog=inst.catalog,
+            )
+            invalidate_outdated_count()
 
         write_audit_entry(
             settings.papaia_config_dir,
             user=_username,
-            action="update",
+            action="upgrade",
             target=name,
-            params={"catalog": _cat},
+            params=_params,
             job_id=ctx.job.id,
         )
         ctx.log("[info] done")
 
     job = await queue.enqueue(
-        action="update", target=name, user=_username,
-        params={"catalog": _cat}, callback=_callback,
+        action="upgrade", target=name, user=_username, params=_params, callback=_callback,
+    )
+    return {"job_id": job.id, "status": "queued", "revision": staged.revision}
+
+
+@router.post("/{name}/rollback", status_code=status.HTTP_202_ACCEPTED)
+async def rollback(
+    name: str,
+    body: RollbackBody,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
+    """One step back, with `papaia-ctl addon rollback`.
+
+    The code and configuration of the version before the last upgrade are registered again;
+    the data is left as it is unless `restore_data` asks for the restore point taken before
+    the upgrade, which discards what the add-on wrote since."""
+    verify_csrf(request)
+    _require_core_upgrades(settings)
+    inst = load_installed(settings.papaia_config_dir).get(name)
+    entry = deployment_entry(settings.papaia_config_dir, name)
+    if inst is None or entry is None:
+        raise HTTPException(status_code=404, detail=gettext(
+            "addon %(name)r is not installed"
+        ) % {"name": name})
+    previous = previous_version(settings.papaia_config_dir, settings.papaia_workspace_dir, entry)
+    if previous is None:
+        raise HTTPException(status_code=409, detail=gettext(
+            "addon %(name)r has no earlier version to go back to"
+        ) % {"name": name})
+    if not previous.available:
+        raise HTTPException(status_code=409, detail=gettext(
+            "the files of the earlier version of %(name)r are gone"
+        ) % {"name": name})
+    if body.restore_data and not previous.restore_point_available:
+        raise HTTPException(status_code=409, detail=gettext(
+            "the restore point taken before the upgrade no longer exists"
+        ))
+
+    queue = _queue()
+    _username = _user_id(user)
+    _restore = body.restore_data
+    _was = installed_addon_dir(entry, settings.papaia_workspace_dir, inst.catalog, name)
+    _params = {
+        "from": inst.manifest_version,
+        "to": previous.version,
+        "restore_data": _restore,
+        "restore_point": previous.restore_point if _restore else None,
+    }
+
+    async def _callback(ctx: JobContext) -> None:
+        flags = ["-y"] + (["--restore-data"] if _restore else [])
+        ctx.log(f"[ctl] papaia-ctl addon rollback {name}")
+        try:
+            gen = await run_addon_verb(
+                verb="rollback",
+                name=name,
+                workspace_dir=settings.papaia_workspace_dir,
+                config_dir=settings.papaia_config_dir,
+                extra_flags=flags,
+            )
+            async for line in gen:
+                ctx.log(line)
+        finally:
+            if sync_installed_after_rollback(
+                settings.papaia_config_dir,
+                settings.papaia_workspace_dir,
+                name=name,
+                inst=inst,
+                was=_was,
+            ):
+                ctx.log("[info] installed.yaml follows the earlier version")
+            prune_after(
+                settings.papaia_config_dir,
+                settings.papaia_workspace_dir,
+                name=name,
+                catalog=inst.catalog,
+            )
+            invalidate_outdated_count()
+        write_audit_entry(
+            settings.papaia_config_dir,
+            user=_username,
+            action="rollback",
+            target=name,
+            params=_params,
+            job_id=ctx.job.id,
+        )
+        ctx.log("[info] done")
+
+    job = await queue.enqueue(
+        action="rollback", target=name, user=_username, params=_params, callback=_callback,
     )
     return {"job_id": job.id, "status": "queued"}
 
@@ -889,7 +1144,12 @@ def _resolve_addon_path(name: str, settings: Settings) -> Path | None:
     installed_map = load_installed(settings.papaia_config_dir)
     inst = installed_map.get(name)
     if inst:
-        p = managed_snapshot_path(settings.papaia_workspace_dir, inst.catalog, name)
+        p = installed_addon_dir(
+            deployment_entry(settings.papaia_config_dir, name),
+            settings.papaia_workspace_dir,
+            inst.catalog,
+            name,
+        )
         if p.exists():
             return p
     registry = load_registry(settings.papaia_config_dir)

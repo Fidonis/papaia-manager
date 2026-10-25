@@ -308,6 +308,56 @@ def test_delete_is_refused_while_a_restore_runner_is_active(
 
 
 # ---------------------------------------------------------------------------
+# restore -- scoped restore points
+# ---------------------------------------------------------------------------
+
+
+def test_a_scoped_restore_point_cannot_be_restored_as_a_whole(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalogue = Path(_BACKUP_DIR, "backup.yaml")
+    data = yaml.safe_load(catalogue.read_text(encoding="utf-8"))
+    data["backups"][0]["scope"] = ["addon:paperless"]
+    catalogue.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    started: list[object] = []
+
+    async def _fake_start_restore(**kwargs: Any) -> None:
+        started.append(kwargs)
+
+    monkeypatch.setattr(api_maintenance.runner, "start_restore", _fake_start_restore)
+
+    response = _admin(client).post(
+        "/api/v1/maintenance/restore",
+        json={"restore_point": _POINTS[0]},
+        headers={"X-CSRF-Token": _CSRF},
+    )
+    assert response.status_code == 409
+    assert "addon:paperless" in response.json()["detail"]
+    assert "restore/scoped" in response.json()["detail"]
+    # Refused before the detached runner container is started.
+    assert started == []
+
+
+def test_the_restore_point_list_marks_a_scoped_point_and_hands_its_scope_to_the_wizard(
+    client: TestClient,
+) -> None:
+    catalogue = Path(_BACKUP_DIR, "backup.yaml")
+    data = yaml.safe_load(catalogue.read_text(encoding="utf-8"))
+    data["backups"][0]["scope"] = ["addon:paperless"]
+    catalogue.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    response = _admin(client).get("/partials/backup/restore-points")
+
+    assert response.status_code == 200
+    html = response.text
+    assert "only addon:paperless" in html
+    assert html.count('["addon:paperless"]') == 1
+    # The other two points are whole-stack backups and keep an empty scope.
+    assert html.count(", []);") + html.count(", [])'") >= 2
+
+
+# ---------------------------------------------------------------------------
 # restore -- audit trail
 # ---------------------------------------------------------------------------
 

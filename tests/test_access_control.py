@@ -54,6 +54,7 @@ _UID = "11111111-1111-1111-1111-111111111111"
 ADMIN_PAGES = [
     "/addons",
     "/addons/paperless",
+    "/addons/paperless/upgrade",
     "/audit",
     "/backup",
     "/catalogs",
@@ -108,6 +109,7 @@ ADMIN_PARTIALS = [
     "/partials/mail/status",
     "/partials/models",
     "/partials/nav/host-indicator",
+    "/partials/nav/addon-upgrades",
     "/partials/nav/job-indicator",
     "/partials/nav/upgrade-indicator",
     "/partials/notifications/log",
@@ -124,6 +126,7 @@ ADMIN_PARTIALS = [
 ]
 ADMIN_APIS = [
     "/api/v1/addons",
+    "/api/v1/addons/upgrades",
     "/api/v1/audit",
     "/api/v1/audit/export",
     "/api/v1/catalogs",
@@ -179,6 +182,9 @@ ADMIN_WRITE_APIS = [
     "/api/v1/stack/runner/clear",
     "/api/v1/addons/paperless/restart",
     "/api/v1/addons/paperless/remove",
+    "/api/v1/addons/paperless/upgrade",
+    "/api/v1/addons/paperless/upgrade-plan",
+    "/api/v1/addons/paperless/rollback",
     "/api/v1/audit/prune",
     "/api/v1/config/modules/localai/enable",
     "/api/v1/config/modules/localai/disable",

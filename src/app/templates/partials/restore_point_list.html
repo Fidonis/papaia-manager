@@ -50,6 +50,10 @@
           {% if p.papaia_version %}
           <span class="badge badge-outline badge-sm">{% trans papaia_version=p.papaia_version %}core {{ papaia_version }}{% endtrans %}</span>
           {% endif %}
+          {% if p.is_scoped %}
+          <span class="badge badge-info badge-sm"
+                title="{{ _('This restore point holds only part of the stack and can be restored by selection only.') }}">{% trans scope=(p.scope|join(", ")) %}only {{ scope }}{% endtrans %}</span>
+          {% endif %}
         </div>
 
         {# Tier 2: inspecting a restore point is safe and stays in the open;
@@ -64,7 +68,7 @@
           {% call overflow_menu(size='xs', label=_('More actions for restore point %(name)s', name=p.id)) %}
             {% if p.is_usable %}
             <li><a class="text-warning"
-                   onclick='openRestoreModal({{ p.id|tojson }}, {{ p.artifacts|tojson }}, {{ p.result|tojson }})'>{% trans %}Restore{% endtrans %}</a></li>
+                   onclick='openRestoreModal({{ p.id|tojson }}, {{ p.artifacts|tojson }}, {{ p.result|tojson }}, {{ (p.scope or [])|tojson }})'>{% trans %}Restore{% endtrans %}</a></li>
             {% else %}
             <li class="disabled"><a title="{{ _('This backup wrote no archive, so there is nothing to restore from.') }}">{% trans %}Restore{% endtrans %}</a></li>
             {% endif %}

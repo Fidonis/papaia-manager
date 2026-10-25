@@ -17,6 +17,7 @@
 {% set cnt_inactive = addons | selectattr('status', 'equalto', 'inactive')  | list | length
                     + addons | selectattr('status', 'equalto', 'installed') | list | length %}
 {% set cnt_avail    = addons | selectattr('status', 'equalto', 'available') | list | length %}
+{% set upgrades      = addons | selectattr('update_available') | list %}
 
 {# One strip rather than four floating tiles. Four cards with 3xl figures took
    most of the first screen before the first add-on appeared, and the reading
@@ -24,7 +25,7 @@
    between them than across four gaps. The dot repeats the state the colour
    already carries, so the row survives a monochrome print and a colour-blind
    reader. Classes are spelled out per figure; nothing is assembled. #}
-<div class="grid grid-cols-2 lg:grid-cols-4 overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+<div class="grid grid-cols-2 lg:grid-cols-5 overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l lg:first:border-l-0">
     <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Add-Ons{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
@@ -49,7 +50,39 @@
       <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ cnt_avail }}
     </p>
   </div>
+  <div class="px-5 py-3.5 border-base-300 border-t lg:border-t-0 lg:border-l col-span-2 lg:col-span-1">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Upgrades{% endtrans %}</p>
+    <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums {{ 'text-accent' if upgrades else '' }}">
+      <span class="h-2 w-2 shrink-0 rounded-full {{ 'bg-accent' if upgrades else 'bg-neutral' }}"></span>{{ upgrades | length }}
+    </p>
+  </div>
 </div>
+
+{# What can be upgraded, one line each, with the way to the review. The list is the
+   catalogs as they are on disk: a catalog that has not been refreshed since the
+   release says nothing, which is what the Refresh catalogs button in the header is for. #}
+<div x-data="{ onlyUpgrades: false }">
+{% if upgrades %}
+<div class="rounded-xl border border-accent/40 bg-accent/5 px-5 py-3 mb-8" id="addon-upgrades">
+  <div class="flex flex-wrap items-center justify-between gap-x-3 mb-1.5">
+    <p class="text-sm font-semibold">{% trans count=(upgrades | length) %}{{ count }} upgrade available{% pluralize %}{{ count }} upgrades available{% endtrans %}</p>
+    {# Narrows the cards below to the add-ons in this list; the choice is not kept across a refresh. #}
+    <button type="button" class="btn btn-ghost btn-xs" :aria-pressed="onlyUpgrades" @click="onlyUpgrades = !onlyUpgrades">
+      <span x-show="!onlyUpgrades">{% trans %}Show only these{% endtrans %}</span>
+      <span x-show="onlyUpgrades" style="display:none">{% trans %}Show all add-ons{% endtrans %}</span>
+    </button>
+  </div>
+  <ul class="text-sm space-y-1">
+    {% for u in upgrades %}
+    <li class="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+      <a class="link link-hover font-medium" href="/addons/{{ u.name }}">{{ u.name }}</a>
+      <span class="font-mono text-xs opacity-60">{{ u.installed_version }} → {{ u.catalog_version }}</span>
+      <a class="link text-xs" href="/addons/{{ u.name }}/upgrade">{% trans %}Review upgrade{% endtrans %}</a>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 
 {# ── Section heading ──────────────────────────────────────────────
    The catalog link that used to sit here is the page's secondary action and
@@ -67,7 +100,10 @@
 {# ── Add-on card grid ───────────────────────────────────────────── #}
 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
   {% for addon in addons %}
-  <div x-data="{ busy: false, activeVerb: '' }" class="card bg-base-100 border border-base-300 hover:border-base-content/25 transition-colors flex flex-col">
+  <div x-data="{ busy: false, activeVerb: '' }"
+       x-show="!onlyUpgrades || $el.hasAttribute('data-has-upgrade')"
+       {% if addon.update_available %}data-has-upgrade{% endif %}
+       class="card bg-base-100 border border-base-300 hover:border-base-content/25 transition-colors flex flex-col">
     <div class="card-body p-5 flex flex-col gap-3">
 
       {# Header: icon + name/meta + badge #}
@@ -122,7 +158,7 @@
           <span class="badge badge-outline badge-xs">v{{ addon.catalog_version }}</span>
         {% endif %}
         {% if addon.update_available %}
-          <span class="badge badge-accent badge-xs">{% trans %}Update{% endtrans %}</span>
+          <span class="badge badge-accent badge-xs">{% trans %}Upgrade{% endtrans %}</span>
         {% endif %}
         {% if addon.shadowed_by %}
           <span class="badge badge-outline badge-xs" title="{{ _('Same version also in: %(shadowed_by)s', shadowed_by=addon.shadowed_by | join(', ')) }}">{% trans shadowed_by=(addon.shadowed_by | join(', ')) %}also in {{ shadowed_by }}{% endtrans %}</span>
@@ -159,5 +195,6 @@
 
   </div>
   {% endfor %}
+</div>
 </div>
 {% endif %}
