@@ -214,6 +214,29 @@ def test_serialized_restore_point_carries_the_usable_flag() -> None:
     assert data["addons"] == []
 
 
+def test_a_scoped_backup_carries_its_scope_from_the_catalogue(tmp_path: Path) -> None:
+    index = {
+        "version": 1,
+        "backups": [
+            {"id": "2026-07-30_10-19-38", "created_at": "2026-07-30T08:19:41Z", "result": "ok"},
+            {
+                "id": "2026-07-30_12-41-24",
+                "created_at": "2026-07-30T10:41:30Z",
+                "result": "ok",
+                "scope": ["addon:paperless"],
+            },
+        ],
+    }
+    (tmp_path / "backup.yaml").write_text(yaml.safe_dump(index), encoding="utf-8")
+
+    scoped, whole = load_restore_points(tmp_path)
+
+    assert scoped.is_scoped and scoped.scope == ["addon:paperless"]
+    assert not whole.is_scoped
+    assert restore_point_to_dict(scoped)["scope"] == ["addon:paperless"]
+    assert restore_point_to_dict(whole)["scope"] == []
+
+
 # ---------------------------------------------------------------------------
 # Snapshot manifest
 # ---------------------------------------------------------------------------
@@ -287,6 +310,16 @@ def test_the_newest_successful_point_ignores_partial_and_failed_runs() -> None:
     found = newest_successful(points)
     assert found is not None
     assert found.id == "new-ok"
+
+
+def test_a_scoped_restore_point_is_not_the_last_backup_of_the_stack() -> None:
+    whole = _at("2026-07-30T08:00:00Z", "ok", "whole")
+    scoped = RestorePoint(
+        id="scoped", created_at="2026-07-31T08:00:00Z", result="ok", scope=["addon:paperless"]
+    )
+
+    assert newest_successful([whole, scoped]) is whole
+    assert newest_successful([scoped]) is None
 
 
 def test_no_successful_point_is_none() -> None:

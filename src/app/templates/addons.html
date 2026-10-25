@@ -9,6 +9,14 @@
    out of the gallery's section heading, where it was the only mid-page action
    button in the panel. #}
 {% block page_actions %}
+<button class="btn btn-ghost btn-sm" x-data="{ busy: false }" :disabled="busy"
+        @click="busy = true; refreshAllCatalogs().finally(() => busy = false)">
+  <span style="display:none" x-show="busy" class="loading loading-spinner loading-xs"></span>
+  <svg x-show="!busy" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+  </svg>
+  {% trans %}Refresh catalogs{% endtrans %}
+</button>
 <a href="/catalogs" class="btn btn-outline btn-sm">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
@@ -28,4 +36,35 @@
     <span class="loading loading-spinner loading-lg text-primary"></span>
   </div>
 </div>
+
+<script>
+  // Fetches every git catalog again, then redraws the gallery: a version a catalog published
+  // since the last refresh only shows up as an update after this.
+  function refreshAllCatalogs() {
+    return fetch("/api/v1/catalogs")
+      .then(r => (_authGuard(r) ? [] : r.json()))
+      .then(catalogs => Promise.all(
+        catalogs.filter(c => c.type === "git" && c.enabled).map(c =>
+          fetch("/api/v1/catalogs/" + encodeURIComponent(c.name) + "/refresh", {
+            method: "POST",
+            headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
+          }).then(r => (r.ok ? r.json() : null)).then(data => new Promise(resolve => {
+            if (!data) {
+              showToast("error", fmt(I18N.catalogActionFailed, { detail: c.name }));
+              return resolve();
+            }
+            _pollJob(data.job_id, job => {
+              showToast(
+                job.status === "succeeded" ? "success" : "error",
+                fmtHtml(job.status === "succeeded" ? I18N.catalogRefreshed : I18N.catalogRefreshFailed,
+                        { name: c.name, href: "/jobs/" + data.job_id })
+              );
+              resolve();
+            });
+          }))
+        )
+      ))
+      .then(() => htmx.ajax("GET", "/partials/addons", { target: "#addon-gallery", swap: "innerHTML" }));
+  }
+</script>
 {% endblock %}

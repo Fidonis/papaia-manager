@@ -106,6 +106,15 @@ def test_the_two_allowlists_stay_apart() -> None:
     assert "install" not in ALLOWED_CORE_VERBS
 
 
+def test_update_and_rollback_are_add_on_verbs_only() -> None:
+    # They move one add-on between versions; the core's own upgrade is a
+    # different operation and goes through the runner.
+    assert {"update", "rollback"} <= set(ALLOWED_VERBS)
+    assert not ({"update", "rollback"} & set(ALLOWED_CORE_VERBS))
+    # `list` is a read; the manager reads deployment.yaml itself instead.
+    assert "list" not in ALLOWED_VERBS
+
+
 def test_upgrade_stays_out_of_the_core_verbs() -> None:
     # Same argument as `restore`, one step stronger: `upgrade` runs
     # `stop --clean-up --addons` between its two phases, which removes the

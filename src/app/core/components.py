@@ -28,7 +28,7 @@ from typing import Any
 import yaml
 
 from app.core.envfile import load_env_file
-from app.core.snapshots import InstalledAddon, managed_snapshot_path
+from app.core.snapshots import InstalledAddon, installed_addon_dir
 
 logger = logging.getLogger(__name__)
 
@@ -190,12 +190,16 @@ def components_for(
     name: str,
     catalog_manifest: Mapping[str, Any] | None,
     installed: InstalledAddon | None,
+    deployment_entry: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """The components of one add-on as its gallery card and detail page show them."""
+    """The components of one add-on as its gallery card and detail page show them.
+
+    `deployment_entry` is the add-on's entry in deployment.yaml: the installed side is read from
+    the directory it is registered at, which an update moves."""
     if installed is None:
         return addon_components(catalog_manifest, None, None)
     return addon_components(
         catalog_manifest,
-        managed_snapshot_path(workspace_dir, installed.catalog, name),
+        installed_addon_dir(deployment_entry, workspace_dir, installed.catalog, name),
         Path(config_dir) / "addons" / name / ".env",
     )

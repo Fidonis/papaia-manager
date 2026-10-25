@@ -63,6 +63,19 @@ class RestorePoint:
     addons: list[str] | None = None
     papaia_version: str = ""
     project: str = ""
+    # Selectors ("addon:paperless") a scoped backup was limited to; empty for a
+    # backup of the whole stack.
+    scope: list[str] | None = None
+
+    @property
+    def is_scoped(self) -> bool:
+        """True for a restore point that holds only part of the stack.
+
+        Such a point has no configuration directory and no core volumes, so
+        papaia-ctl refuses to restore it as a whole. The UI offers it through the
+        selective restore only.
+        """
+        return bool(self.scope)
 
     @property
     def is_usable(self) -> bool:
@@ -147,15 +160,19 @@ def restore_point_time(point: RestorePoint) -> datetime | None:
 
 
 def newest_successful(points: Iterable[RestorePoint]) -> RestorePoint | None:
-    """The newest restore point whose run finished `ok`.
+    """The newest restore point of the whole stack whose run finished `ok`.
 
     `partial` is a usable restore point but not a successful backup: some archive
-    failed, so it must not be what tells a schedule that all is well.
+    failed, so it must not be what tells a schedule that all is well. A scoped one
+    -- the restore point taken before an add-on update -- holds a part of the stack
+    and says nothing about the rest, so it does not count either.
     """
     dated = [
         (taken, point)
         for point in points
-        if point.result == RESULT_OK and (taken := restore_point_time(point)) is not None
+        if point.result == RESULT_OK
+        and not point.is_scoped
+        and (taken := restore_point_time(point)) is not None
     ]
     return max(dated, key=lambda pair: pair[0])[1] if dated else None
 
@@ -228,6 +245,7 @@ def _restore_point_from_dict(raw: dict[str, Any]) -> RestorePoint:
         addons=addons,
         papaia_version=str(raw.get("papaia_version", "")),
         project=str(raw.get("project", "")),
+        scope=[str(s) for s in raw.get("scope") or []],
     )
 
 
@@ -256,5 +274,6 @@ def restore_point_to_dict(point: RestorePoint) -> dict[str, Any]:
         "addons": point.addons or [],
         "papaia_version": point.papaia_version,
         "project": point.project,
+        "scope": point.scope or [],
         "usable": point.is_usable,
     }

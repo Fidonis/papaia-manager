@@ -10,6 +10,7 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
+from app.core.addon_updates import invalidate_outdated_count
 from app.core.audit import redact_params, write_audit_entry
 from app.core.catalogs import (
     Catalog,
@@ -220,6 +221,7 @@ async def refresh_catalog(
             lines = await refresh_catalog_clone(_catalog, settings.papaia_workspace_dir)
             for line in lines:
                 ctx.log(line)
+            invalidate_outdated_count()
             ctx.log("[info] done")
         write_audit_entry(
             settings.papaia_config_dir,

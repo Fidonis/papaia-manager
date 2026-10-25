@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.catalogs import Catalog, CatalogRegistry, catalog_scan_path, scan_catalog_addons
+from app.core.semver import is_newer
 from app.core.snapshots import InstalledAddon
 
 logger = logging.getLogger(__name__)
@@ -42,19 +43,18 @@ class ResolvedAddon:
 
 
 def update_available(installed: InstalledAddon | None, catalog_version: object) -> bool:
-    """Whether the catalog offers a version other than the installed one.
+    """Whether the catalog offers a version that is higher than the installed one.
 
     The rule behind the "update" marker of the add-ons page, and behind the notification
     about it, so the two cannot disagree. Only an add-on the manager installed and manages
-    counts, and only against a catalog that states a version; "other than" rather than
-    "newer than" because a manifest version is not required to be a semantic version.
-    """
-    return (
-        installed is not None
-        and installed.managed
-        and catalog_version is not None
-        and installed.manifest_version != catalog_version
-    )
+    counts, and only against a catalog that states a version. Two SemVer versions are compared
+    by precedence, so a catalog that is behind (a branch that was reset, another catalog that
+    wins the name) does not offer a downgrade as an update. A version that is not SemVer, which
+    a manifest is not required to be, is "other than" the installed one."""
+    if installed is None or not installed.managed or catalog_version is None:
+        return False
+    newer = is_newer(catalog_version, installed.manifest_version)
+    return newer if newer is not None else installed.manifest_version != catalog_version
 
 
 @dataclass(frozen=True)

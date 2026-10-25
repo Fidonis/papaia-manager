@@ -507,6 +507,18 @@ async def start_restore(
                 ) % {"id": point.id}
             ),
         )
+    if point.is_scoped:
+        # papaia-ctl refuses it as well; saying so here spares the detached
+        # runner container being started only to fail.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                _(
+                    "restore point %(id)s only holds %(scope)s and cannot be restored as a "
+                    "whole; use POST /api/v1/maintenance/restore/scoped instead"
+                ) % {"id": point.id, "scope": ", ".join(point.scope or [])}
+            ),
+        )
 
     existing = await runner.find_runner()
     if existing is not None:
