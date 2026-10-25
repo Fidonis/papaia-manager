@@ -92,15 +92,15 @@ msgid "id_token missing exp claim"
 msgstr "Im id_token fehlt der Claim exp"
 
 #, python-format
-msgid "Updating and rolling back add-ons needs papAIa core %(version)s or newer."
+msgid "Upgrading and rolling back add-ons needs papAIa core %(version)s or newer."
 msgstr "Zum Aktualisieren und Zurücksetzen von Add-ons wird papAIa-Core %(version)s oder neuer benötigt."
 
 #, python-format
 msgid "The new version of %(name)s could not be taken from the catalog: %(detail)s"
 msgstr "Die neue Version von %(name)s konnte nicht aus dem Katalog übernommen werden: %(detail)s"
 
-msgid "The version that was reviewed is gone. Review the update again."
-msgstr "Die geprüfte Version ist nicht mehr vorhanden. Prüfen Sie das Update erneut."
+msgid "The version that was reviewed is gone. Review the upgrade again."
+msgstr "Die geprüfte Version ist nicht mehr vorhanden. Prüfen Sie das Upgrade erneut."
 
 #, python-format
 msgid "%(name)s is no longer in catalog %(catalog)s"
@@ -110,8 +110,8 @@ msgstr "%(name)s ist nicht mehr im Katalog %(catalog)s"
 msgid "The catalog %(catalog)s has no commit to take a version from."
 msgstr "Der Katalog %(catalog)s hat keinen Commit, aus dem eine Version entnommen werden könnte."
 
-msgid "The catalog changed since this update was reviewed. Review the update again."
-msgstr "Der Katalog hat sich seit der Prüfung dieses Updates geändert. Prüfen Sie das Update erneut."
+msgid "The catalog changed since this upgrade was reviewed. Review the upgrade again."
+msgstr "Der Katalog hat sich seit der Prüfung dieses Upgrades geändert. Prüfen Sie das Upgrade erneut."
 
 #, python-format
 msgid "%(name)s is not in catalog %(catalog)s at revision %(revision)s"
@@ -3184,8 +3184,8 @@ msgid "addon %(name)r is not managed by this panel"
 msgstr "Das Add-on %(name)r wird nicht von diesem Panel verwaltet"
 
 #, python-format
-msgid "addon %(name)r is not active; reactivate it before updating"
-msgstr "Das Add-on %(name)r ist nicht aktiv; reaktivieren Sie es vor dem Update"
+msgid "addon %(name)r is not active; reactivate it before upgrading"
+msgstr "Das Add-on %(name)r ist nicht aktiv; reaktivieren Sie es vor dem Upgrade"
 
 msgid "this core does not accept the new version"
 msgstr "Dieser Core akzeptiert die neue Version nicht"
@@ -3194,8 +3194,8 @@ msgstr "Dieser Core akzeptiert die neue Version nicht"
 msgid "addon %(name)r already runs from this directory"
 msgstr "Das Add-on %(name)r läuft bereits aus diesem Verzeichnis"
 
-msgid "this update does not ask for a value for this key"
-msgstr "Dieses Update fragt für diesen Schlüssel keinen Wert ab"
+msgid "this upgrade does not ask for a value for this key"
+msgstr "Dieses Upgrade fragt für diesen Schlüssel keinen Wert ab"
 
 msgid "a value is required"
 msgstr "ein Wert ist erforderlich"
@@ -3208,8 +3208,8 @@ msgstr "Das Add-on %(name)r hat keine frühere Version, auf die es zurückgehen 
 msgid "the files of the earlier version of %(name)r are gone"
 msgstr "Die Dateien der früheren Version von %(name)r sind nicht mehr vorhanden"
 
-msgid "the restore point taken before the update no longer exists"
-msgstr "Der vor dem Update angelegte Wiederherstellungspunkt existiert nicht mehr"
+msgid "the restore point taken before the upgrade no longer exists"
+msgstr "Der vor dem Upgrade angelegte Wiederherstellungspunkt existiert nicht mehr"
 
 msgid "cutoff date is in the future"
 msgstr "Das Stichtagsdatum liegt in der Zukunft"
@@ -3638,7 +3638,7 @@ msgid "Add-Ons"
 msgstr "Add-ons"
 
 #, python-format
-msgid "Update %(name)s — %(branding)s"
+msgid "Upgrade %(name)s — %(branding)s"
 msgstr "%(name)s aktualisieren — %(branding)s"
 
 msgid "Review what the new version changes before it is applied"
@@ -3680,8 +3680,8 @@ msgstr "entfernt"
 msgid "Configuration"
 msgstr "Konfiguration"
 
-msgid "Values that are already set stay as they are. The update only adds the keys the new version brings."
-msgstr "Bereits gesetzte Werte bleiben, wie sie sind. Das Update fügt nur die Schlüssel hinzu, die die neue Version mitbringt."
+msgid "Values that are already set stay as they are. The upgrade only adds the keys the new version brings."
+msgstr "Bereits gesetzte Werte bleiben, wie sie sind. Das Upgrade fügt nur die Schlüssel hinzu, die die neue Version mitbringt."
 
 msgid "New key"
 msgstr "Neuer Schlüssel"
@@ -3722,8 +3722,8 @@ msgstr "Wird mit diesen Diensten verbunden:"
 msgid "Leaves the services:"
 msgstr "Wird von diesen Diensten getrennt:"
 
-msgid "To do by hand after the update:"
-msgstr "Nach dem Update von Hand zu erledigen:"
+msgid "To do by hand after the upgrade:"
+msgstr "Nach dem Upgrade von Hand zu erledigen:"
 
 msgid "Import the Keycloak client"
 msgstr "Keycloak-Client importieren"
@@ -3743,11 +3743,11 @@ msgstr "Werte für die neue Version"
 msgid "Take a restore point of this add-on first"
 msgstr "Zuerst einen Wiederherstellungspunkt dieses Add-ons anlegen"
 
-msgid "Its volumes and data directories, so that a rollback can bring the data back as well. An add-on without any gets none and the update goes on."
-msgstr "Seine Volumes und Datenverzeichnisse, damit ein Rollback auch die Daten zurückbringen kann. Ein Add-on ohne beides bekommt keinen, und das Update läuft weiter."
+msgid "Its volumes and data directories, so that a rollback can bring the data back as well. An add-on without any gets none and the upgrade goes on."
+msgstr "Seine Volumes und Datenverzeichnisse, damit ein Rollback auch die Daten zurückbringen kann. Ein Add-on ohne beides bekommt keinen, und das Upgrade läuft weiter."
 
-msgid "<strong>There is no automatic rollback.</strong> If the new version does not start, the update stops and the add-on page offers the way back."
-msgstr "<strong>Es gibt keinen automatischen Rollback.</strong> Startet die neue Version nicht, bricht das Update ab und die Add-on-Seite bietet den Weg zurück an."
+msgid "<strong>There is no automatic rollback.</strong> If the new version does not start, the upgrade stops and the add-on page offers the way back."
+msgstr "<strong>Es gibt keinen automatischen Rollback.</strong> Startet die neue Version nicht, bricht das Upgrade ab und die Add-on-Seite bietet den Weg zurück an."
 
 msgid "Cancel"
 msgstr "Abbrechen"
@@ -3755,14 +3755,14 @@ msgstr "Abbrechen"
 msgid "Enter a value for every key marked with *."
 msgstr "Geben Sie für jeden mit * markierten Schlüssel einen Wert ein."
 
-msgid "Updating…"
+msgid "Upgrading…"
 msgstr "Wird aktualisiert…"
 
-msgid "The add-on was updated."
+msgid "The add-on was upgraded."
 msgstr "Das Add-on wurde aktualisiert."
 
-msgid "The update did not finish."
-msgstr "Das Update wurde nicht abgeschlossen."
+msgid "The upgrade did not finish."
+msgstr "Das Upgrade wurde nicht abgeschlossen."
 
 msgid "The add-on may already run from the new version. Open the add-on page: if an earlier version is offered there, you can go back to it."
 msgstr "Das Add-on läuft möglicherweise schon mit der neuen Version. Öffnen Sie die Add-on-Seite: Wird dort eine frühere Version angeboten, können Sie darauf zurückgehen."
@@ -3774,7 +3774,7 @@ msgid "Back to the add-on"
 msgstr "Zurück zum Add-on"
 
 #, python-brace-format
-msgid "Update to {version}"
+msgid "Upgrade to {version}"
 msgstr "Auf {version} aktualisieren"
 
 #, python-format
@@ -6499,8 +6499,8 @@ msgstr "Starten"
 msgid "Stop"
 msgstr "Stoppen"
 
-msgid "Review update"
-msgstr "Update prüfen"
+msgid "Review upgrade"
+msgstr "Upgrade prüfen"
 
 msgid "Uninstall"
 msgstr "Deinstallieren"
@@ -7089,8 +7089,8 @@ msgstr "nicht verwaltet"
 msgid "available"
 msgstr "verfügbar"
 
-msgid "update available"
-msgstr "Update verfügbar"
+msgid "upgrade available"
+msgstr "Upgrade verfügbar"
 
 #, python-format
 msgid "catalog: %(catalog)s"
@@ -7113,8 +7113,8 @@ msgstr "Identische Version (v%(catalog_version)s) auch verfügbar in:"
 msgid "Offered by the catalog"
 msgstr "Vom Katalog angeboten"
 
-msgid "Before the last update"
-msgstr "Vor dem letzten Update"
+msgid "Before the last upgrade"
+msgstr "Vor dem letzten Upgrade"
 
 msgid "files gone"
 msgstr "Dateien fehlen"
@@ -7154,8 +7154,8 @@ msgstr "Code und Daten aus dem Wiederherstellungspunkt"
 msgid "Restores %(id)s. What the add-on wrote since then is lost."
 msgstr "Stellt %(id)s wieder her. Was das Add-on seitdem geschrieben hat, geht verloren."
 
-msgid "No restore point was taken before the update, or it has been deleted."
-msgstr "Vor dem Update wurde kein Wiederherstellungspunkt angelegt, oder er wurde gelöscht."
+msgid "No restore point was taken before the upgrade, or it has been deleted."
+msgstr "Vor dem Upgrade wurde kein Wiederherstellungspunkt angelegt, oder er wurde gelöscht."
 
 msgid "The add-on is stopped while its data is replaced. This cannot be undone."
 msgstr "Das Add-on wird angehalten, während seine Daten ersetzt werden. Das lässt sich nicht rückgängig machen."
@@ -7163,9 +7163,6 @@ msgstr "Das Add-on wird angehalten, während seine Daten ersetzt werden. Das lä
 #, python-format
 msgid "Earlier versions (%(count)s)"
 msgstr "Frühere Versionen (%(count)s)"
-
-msgid "update"
-msgstr "Update"
 
 msgid "The tag floats: which version runs depends on when the image was pulled"
 msgstr "Der Image-Tag ist nicht festgelegt: Welche Version läuft, hängt davon ab, wann das Image geladen wurde"
@@ -7219,11 +7216,14 @@ msgstr "Fügen Sie einen Katalog hinzu und aktualisieren Sie ihn, um Add-ons zu 
 msgid "Available"
 msgstr "Verfügbar"
 
+msgid "Upgrades"
+msgstr "Upgrades"
+
 #, python-format
-msgid "%(count)s update available"
-msgid_plural "%(count)s updates available"
-msgstr[0] "%(count)s Update verfügbar"
-msgstr[1] "%(count)s Updates verfügbar"
+msgid "%(count)s upgrade available"
+msgid_plural "%(count)s upgrades available"
+msgstr[0] "%(count)s Upgrade verfügbar"
+msgstr[1] "%(count)s Upgrades verfügbar"
 
 msgid "Show only these"
 msgstr "Nur diese anzeigen"
@@ -7243,9 +7243,6 @@ msgstr "Nicht verwaltet"
 
 msgid "· other version"
 msgstr "· andere Version"
-
-msgid "Update"
-msgstr "Aktualisieren"
 
 #, python-format
 msgid "Same version also in: %(shadowed_by)s"
@@ -8657,8 +8654,8 @@ msgstr "Anteil je Modell · %(metric)s"
 msgid "A model without a price shows no spend however much it is used. A price can be set for it in LiteLLM."
 msgstr "Ein Modell ohne Preis zeigt keine Kosten, egal wie oft es genutzt wird. Ein Preis lässt sich in LiteLLM dafür hinterlegen."
 
-msgid "Add-on updates are available"
-msgstr "Add-on-Updates sind verfügbar"
+msgid "Add-on upgrades are available"
+msgstr "Add-on-Upgrades sind verfügbar"
 
 msgid "Host needs attention"
 msgstr "Der Host braucht Aufmerksamkeit"

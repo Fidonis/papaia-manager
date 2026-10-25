@@ -164,7 +164,7 @@ def newest_successful(points: Iterable[RestorePoint]) -> RestorePoint | None:
 
     `partial` is a usable restore point but not a successful backup: some archive
     failed, so it must not be what tells a schedule that all is well. A scoped one
-    -- the restore point taken before an add-on update -- holds a part of the stack
+    -- the restore point taken before an add-on upgrade -- holds a part of the stack
     and says nothing about the rest, so it does not count either.
     """
     dated = [

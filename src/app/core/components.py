@@ -6,8 +6,8 @@ list of the manifest, one entry per image, and this module turns it into what
 the add-on pages show:
 
 * the catalog's version of each component next to the one the installed
-  snapshot carries, so an update reads "3.0.5 -> 3.1.0" instead of a bare
-  "update available";
+  snapshot carries, so an upgrade reads "3.0.5 -> 3.1.0" instead of a bare
+  "upgrade available";
 * the tag an operator pinned by hand in the add-on's `.env` (`image_var`), which
   replaces the catalog default without any trace in the manifest.
 
@@ -195,7 +195,7 @@ def components_for(
     """The components of one add-on as its gallery card and detail page show them.
 
     `deployment_entry` is the add-on's entry in deployment.yaml: the installed side is read from
-    the directory it is registered at, which an update moves."""
+    the directory it is registered at, which an upgrade moves."""
     if installed is None:
         return addon_components(catalog_manifest, None, None)
     return addon_components(

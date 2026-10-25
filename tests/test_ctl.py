@@ -106,11 +106,11 @@ def test_the_two_allowlists_stay_apart() -> None:
     assert "install" not in ALLOWED_CORE_VERBS
 
 
-def test_update_and_rollback_are_add_on_verbs_only() -> None:
+def test_upgrade_and_rollback_are_add_on_verbs_only() -> None:
     # They move one add-on between versions; the core's own upgrade is a
     # different operation and goes through the runner.
-    assert {"update", "rollback"} <= set(ALLOWED_VERBS)
-    assert not ({"update", "rollback"} & set(ALLOWED_CORE_VERBS))
+    assert {"upgrade", "rollback"} <= set(ALLOWED_VERBS)
+    assert not ({"upgrade", "rollback"} & set(ALLOWED_CORE_VERBS))
     # `list` is a read; the manager reads deployment.yaml itself instead.
     assert "list" not in ALLOWED_VERBS
 
@@ -121,7 +121,23 @@ def test_upgrade_stays_out_of_the_core_verbs() -> None:
     # container this process runs in, and no flag scopes that away. It goes
     # through app.core.runner.
     assert "upgrade" not in ALLOWED_CORE_VERBS
-    assert "upgrade" not in ALLOWED_VERBS
+
+
+async def test_the_add_on_upgrade_is_only_ever_dispatched_below_addon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `upgrade` is in ALLOWED_VERBS as the add-on verb. That set is only run as
+    # `papaia-ctl addon <verb>`, so it cannot reach the core's own `upgrade`.
+    seen: dict[str, Any] = {}
+
+    def spawn(cmd: list[str], env: dict[str, str]) -> None:
+        seen["cmd"] = cmd
+
+    monkeypatch.setattr("app.core.ctl._stream_subprocess", spawn)
+
+    await run_addon_verb(verb="upgrade", name="paperless", workspace_dir="/w", config_dir="/c")
+
+    assert seen["cmd"][2:5] == ["addon", "upgrade", "paperless"]
 
 
 # ---------------------------------------------------------------------------

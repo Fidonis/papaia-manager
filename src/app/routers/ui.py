@@ -24,9 +24,9 @@ from app.core import (
     schedule,
     upgrade,
 )
-from app.core.addon_updates import (
+from app.core.addon_upgrades import (
     core_requirement_message,
-    core_supports_updates,
+    core_supports_upgrades,
     outdated_count,
     version_state,
 )
@@ -189,23 +189,23 @@ async def addons_page(
     return _templates.TemplateResponse(request, "addons.html", _ctx(request, user))
 
 
-@router.get("/addons/{name}/update", response_class=HTMLResponse)
-async def addon_update_page(
+@router.get("/addons/{name}/upgrade", response_class=HTMLResponse)
+async def addon_upgrade_page(
     request: Request,
     name: str,
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
-    """The review of an update: the plan is fetched by the page, nothing is staged here."""
-    supported = core_supports_updates(settings.papaia_workspace_dir)
+    """The review of an upgrade: the plan is fetched by the page, nothing is staged here."""
+    supported = core_supports_upgrades(settings.papaia_workspace_dir)
     return _templates.TemplateResponse(
         request,
-        "addon_update.html",
+        "addon_upgrade.html",
         _ctx(
             request,
             user,
             addon_name=name,
-            updates_supported=supported,
+            upgrades_supported=supported,
             core_requirement="" if supported else core_requirement_message(),
         ),
     )
@@ -1545,8 +1545,8 @@ async def partial_upgrade_log(
     return resp
 
 
-@router.get("/partials/nav/addon-updates", response_class=HTMLResponse)
-async def partial_nav_addon_updates(
+@router.get("/partials/nav/addon-upgrades", response_class=HTMLResponse)
+async def partial_nav_addon_upgrades(
     request: Request,
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
@@ -1559,7 +1559,7 @@ async def partial_nav_addon_updates(
         None, outdated_count, settings.papaia_config_dir, settings.papaia_workspace_dir
     )
     resp = _templates.TemplateResponse(
-        request, "partials/nav_addon_updates.html", _ctx(request, user, count=count)
+        request, "partials/nav_addon_upgrades.html", _ctx(request, user, count=count)
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

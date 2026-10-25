@@ -1,4 +1,4 @@
-"""The snapshot layout, the SemVer rule and the helpers around `addon update` and `addon rollback`.
+"""The snapshot layout, the SemVer rule and the helpers around `addon upgrade` and `addon rollback`.
 
 Everything here runs against a temporary workspace and config directory. papaia-ctl is replaced by
 a function that returns the lines it would print, so no Docker and no checkout of the core is
@@ -17,13 +17,13 @@ from typing import Any
 import pytest
 import yaml
 
-from app.core import addon_updates
-from app.core.addon_updates import (
+from app.core import addon_upgrades
+from app.core.addon_upgrades import (
     Staged,
-    UpdateError,
+    UpgradeError,
     answerable_keys,
     changelog_between,
-    core_supports_updates,
+    core_supports_upgrades,
     fetch_plan,
     next_history,
     parse_plan_output,
@@ -31,7 +31,7 @@ from app.core.addon_updates import (
     prune_after,
     stage_revision,
     sync_installed_after_rollback,
-    sync_installed_after_update,
+    sync_installed_after_upgrade,
     version_state,
     write_answers_file,
 )
@@ -85,16 +85,16 @@ def _installed(version: str, *, managed: bool = True) -> InstalledAddon:
     )
 
 
-def test_a_higher_catalog_version_is_an_update() -> None:
+def test_a_higher_catalog_version_is_an_upgrade() -> None:
     assert update_available(_installed("1.0.0"), "1.1.0") is True
 
 
-def test_an_older_catalog_version_is_not_offered_as_an_update() -> None:
+def test_an_older_catalog_version_is_not_offered_as_an_upgrade() -> None:
     assert update_available(_installed("1.2.0"), "1.1.0") is False
     assert update_available(_installed("1.2.0"), "1.2.0") is False
 
 
-def test_a_version_that_is_not_semver_is_an_update_when_it_differs() -> None:
+def test_a_version_that_is_not_semver_is_an_upgrade_when_it_differs() -> None:
     assert update_available(_installed("2026-10"), "2026-11") is True
     assert update_available(_installed("2026-10"), "2026-10") is False
     assert update_available(_installed("1.0.0"), "next") is True
@@ -116,7 +116,7 @@ def test_a_revision_directory_keeps_the_add_on_name_last(tmp_path: Path) -> None
     assert path.name == "paperless"
 
 
-def test_without_a_revision_the_path_is_the_one_from_before_updates(tmp_path: Path) -> None:
+def test_without_a_revision_the_path_is_the_one_from_before_upgrades(tmp_path: Path) -> None:
     assert managed_snapshot_path(str(tmp_path), "cat", "paperless") == (
         tmp_path / "addons" / "_managed" / "cat" / "paperless"
     )
@@ -251,7 +251,7 @@ def test_pruning_never_removes_what_is_kept_even_beyond_the_limit(tmp_path: Path
     assert prune_snapshots(str(tmp_path), "cat", "paperless", keep=kept) == []
 
 
-def test_the_directory_from_before_updates_goes_when_nothing_points_at_it(tmp_path: Path) -> None:
+def test_the_directory_from_before_upgrades_goes_when_nothing_points_at_it(tmp_path: Path) -> None:
     legacy = managed_snapshot_path(str(tmp_path), "cat", "paperless")
     legacy.mkdir(parents=True)
     (legacy / "papaia-app.yaml").write_text("name: paperless\n", encoding="utf-8")
@@ -263,7 +263,7 @@ def test_the_directory_from_before_updates_goes_when_nothing_points_at_it(tmp_pa
     assert not legacy.exists()
 
 
-def test_the_directory_from_before_updates_stays_while_it_is_registered(tmp_path: Path) -> None:
+def test_the_directory_from_before_upgrades_stays_while_it_is_registered(tmp_path: Path) -> None:
     legacy = managed_snapshot_path(str(tmp_path), "cat", "paperless")
     legacy.mkdir(parents=True)
     (legacy / "papaia-app.yaml").write_text("name: paperless\n", encoding="utf-8")
@@ -346,7 +346,7 @@ def test_the_answers_are_written_to_a_file_only_this_user_can_read() -> None:
 
 
 def test_a_value_with_a_line_break_is_refused() -> None:
-    with pytest.raises(UpdateError):
+    with pytest.raises(UpgradeError):
         write_answers_file({"A": "one\ntwo"})
 
 
@@ -371,7 +371,7 @@ def _fake_ctl(
 
         return stream()
 
-    monkeypatch.setattr(addon_updates, "run_addon_verb", run_addon_verb)
+    monkeypatch.setattr(addon_upgrades, "run_addon_verb", run_addon_verb)
     return flags
 
 
@@ -407,7 +407,7 @@ def test_a_refusal_before_there_is_a_plan_carries_papaia_ctls_message(
 ) -> None:
     _fake_ctl(monkeypatch, ["ERROR: addon 'paperless' is not registered."], fail_with=2)
 
-    with pytest.raises(UpdateError, match="is not registered"):
+    with pytest.raises(UpgradeError, match="is not registered"):
         asyncio.run(fetch_plan(
             name="paperless", candidate=tmp_path, workspace_dir=str(tmp_path),
             config_dir=str(tmp_path),
@@ -423,31 +423,31 @@ def _core(workspace: Path, text: str) -> None:
     script.write_text(text, encoding="utf-8")
 
 
-def test_a_core_with_the_update_verb_is_recognised(tmp_path: Path) -> None:
-    _core(tmp_path, "cmd_addon_update() {\n    :\n}\n")
+def test_a_core_with_the_upgrade_verb_is_recognised(tmp_path: Path) -> None:
+    _core(tmp_path, "cmd_addon_upgrade() {\n    :\n}\n")
 
-    assert core_supports_updates(str(tmp_path)) is True
+    assert core_supports_upgrades(str(tmp_path)) is True
 
 
 def test_a_core_without_it_is_not(tmp_path: Path) -> None:
     _core(tmp_path, "cmd_addon_install() {\n    :\n}\n")
 
-    assert core_supports_updates(str(tmp_path)) is False
+    assert core_supports_upgrades(str(tmp_path)) is False
 
 
 def test_a_missing_core_is_not(tmp_path: Path) -> None:
-    assert core_supports_updates(str(tmp_path)) is False
+    assert core_supports_upgrades(str(tmp_path)) is False
 
 
 def test_a_core_that_is_upgraded_in_place_is_read_again(tmp_path: Path) -> None:
     _core(tmp_path, "cmd_addon_install() {\n}\n")
-    assert core_supports_updates(str(tmp_path)) is False
+    assert core_supports_upgrades(str(tmp_path)) is False
 
     script = tmp_path / "papaia" / "tools" / "lib" / "sh" / "addon.sh"
-    script.write_text("cmd_addon_update() {\n}\n", encoding="utf-8")
+    script.write_text("cmd_addon_upgrade() {\n}\n", encoding="utf-8")
     os.utime(script, (1_800_000_000, 1_800_000_000))
 
-    assert core_supports_updates(str(tmp_path)) is True
+    assert core_supports_upgrades(str(tmp_path)) is True
 
 
 # ── Staging ─────────────────────────────────────────────────────────────────
@@ -486,7 +486,7 @@ def test_the_reviewed_local_revision_is_used_as_it_is(tmp_path: Path) -> None:
     first = asyncio.run(
         stage_revision(catalog=catalog, workspace_dir=str(tmp_path), name="paperless")
     )
-    # The working directory changes after the review; the update must not pick that up.
+    # The working directory changes after the review; the upgrade must not pick that up.
     _write_addon(Path(catalog.path or "") / "paperless", "9.9.9")
 
     again = asyncio.run(stage_revision(
@@ -500,7 +500,7 @@ def test_the_reviewed_local_revision_is_used_as_it_is(tmp_path: Path) -> None:
 def test_a_local_revision_that_is_gone_is_refused(tmp_path: Path) -> None:
     catalog = _local_catalog(tmp_path, "1.1.0")
 
-    with pytest.raises(UpdateError, match="gone"):
+    with pytest.raises(UpgradeError, match="gone"):
         asyncio.run(stage_revision(
             catalog=catalog, workspace_dir=str(tmp_path), name="paperless",
             revision="local-20260101000000",
@@ -510,7 +510,7 @@ def test_a_local_revision_that_is_gone_is_refused(tmp_path: Path) -> None:
 def test_an_add_on_that_left_the_catalog_is_refused(tmp_path: Path) -> None:
     catalog = Catalog(name="cat", type="local", path=str(tmp_path / "empty"))
 
-    with pytest.raises(UpdateError, match="no longer in catalog"):
+    with pytest.raises(UpgradeError, match="no longer in catalog"):
         asyncio.run(stage_revision(catalog=catalog, workspace_dir=str(tmp_path), name="paperless"))
 
 
@@ -633,9 +633,9 @@ def test_a_git_catalog_that_cannot_be_unpacked_is_an_error_of_the_request(
     async def _unpack(**_: Any) -> None:
         raise RuntimeError("tar extract failed: tar: Option --touch is not supported")
 
-    monkeypatch.setattr(addon_updates, "materialize_snapshot", _unpack)
+    monkeypatch.setattr(addon_upgrades, "materialize_snapshot", _unpack)
 
-    with pytest.raises(UpdateError, match="could not be taken from the catalog.*--touch"):
+    with pytest.raises(UpgradeError, match="could not be taken from the catalog.*--touch"):
         asyncio.run(
             stage_revision(catalog=catalog, workspace_dir=str(tmp_path), name="paperless")
         )
@@ -649,9 +649,9 @@ def test_a_local_catalog_that_cannot_be_copied_is_an_error_of_the_request(
     async def _copy(*_: Any, **__: Any) -> None:
         raise PermissionError("denied")
 
-    monkeypatch.setattr(addon_updates, "materialize_local_addon", _copy)
+    monkeypatch.setattr(addon_upgrades, "materialize_local_addon", _copy)
 
-    with pytest.raises(UpdateError, match="could not be taken from the catalog.*denied"):
+    with pytest.raises(UpgradeError, match="could not be taken from the catalog.*denied"):
         asyncio.run(
             stage_revision(catalog=catalog, workspace_dir=str(tmp_path), name="paperless")
         )
@@ -700,7 +700,7 @@ def test_a_catalog_that_moved_on_since_the_review_is_refused(tmp_path: Path) -> 
     _git(clone, "add", "-A")
     _git(clone, "commit", "-q", "-m", "paperless 1.2.0")
 
-    with pytest.raises(UpdateError, match="changed since"):
+    with pytest.raises(UpgradeError, match="changed since"):
         asyncio.run(stage_revision(
             catalog=catalog, workspace_dir=str(tmp_path), name="paperless",
             revision=reviewed.revision,
@@ -713,7 +713,7 @@ def test_a_clone_without_a_commit_is_refused(tmp_path: Path) -> None:
     _git(clone, "init", "-q")
     catalog = Catalog(name="cat", type="git", url="https://example.org/cat.git")
 
-    with pytest.raises(UpdateError, match="no commit"):
+    with pytest.raises(UpgradeError, match="no commit"):
         asyncio.run(stage_revision(catalog=catalog, workspace_dir=str(tmp_path), name="paperless"))
 
 
@@ -738,7 +738,7 @@ def test_installed_yaml_follows_a_registration_that_moved(tmp_path: Path) -> Non
     staged = _staged(workspace, "bbbbbbbbbbbb", "1.1.0", "b" * 40)
     _register(config, staged.path)
 
-    assert sync_installed_after_update(
+    assert sync_installed_after_upgrade(
         str(config), str(workspace), name="paperless", inst=inst, staged=staged
     )
 
@@ -753,7 +753,7 @@ def test_installed_yaml_is_left_alone_when_the_registration_did_not_move(tmp_pat
     staged = _staged(workspace, "bbbbbbbbbbbb", "1.1.0", "b" * 40)
     _register(config, workspace / "addons" / "_managed" / "cat" / "paperless")
 
-    assert not sync_installed_after_update(
+    assert not sync_installed_after_upgrade(
         str(config), str(workspace), name="paperless", inst=inst, staged=staged
     )
 
@@ -765,7 +765,7 @@ def test_a_relative_registration_is_followed_too(tmp_path: Path) -> None:
     staged = _staged(workspace, "bbbbbbbbbbbb", "1.1.0", "b" * 40)
     _register(config, staged.path.relative_to(workspace))
 
-    assert sync_installed_after_update(
+    assert sync_installed_after_upgrade(
         str(config), str(workspace), name="paperless", inst=_installed("1.0.0"), staged=staged
     )
 
@@ -883,19 +883,19 @@ def test_files_that_are_gone_are_reported(tmp_path: Path) -> None:
 def test_the_version_state_of_an_old_core_asks_for_a_newer_one(tmp_path: Path) -> None:
     state = version_state(str(tmp_path), str(tmp_path), _installed("1.0.0"), None)
 
-    assert state["updates_supported"] is False
+    assert state["upgrades_supported"] is False
     assert "1.8.0" in state["core_requirement"]
     assert state["previous"] is None
 
 
 def test_the_version_state_lists_the_history(tmp_path: Path) -> None:
-    _core(tmp_path, "cmd_addon_update() {\n}\n")
+    _core(tmp_path, "cmd_addon_upgrade() {\n}\n")
     inst = _installed("1.1.0")
     inst.history = [HistoryEntry("a" * 40, "1.0.0", datetime(2026, 9, 1, tzinfo=UTC))]
 
     state = version_state(str(tmp_path), str(tmp_path), inst, None)
 
-    assert state["updates_supported"] is True
+    assert state["upgrades_supported"] is True
     assert state["history"] == [
         {"version": "1.0.0", "commit": "a" * 12, "installed_at": "2026-09-01T00:00:00+00:00"}
     ]

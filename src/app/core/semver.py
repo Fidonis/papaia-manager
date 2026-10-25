@@ -2,7 +2,7 @@
 
 An add-on manifest's `version` is meant to be `MAJOR.MINOR.PATCH` (optionally with a
 pre-release and build metadata), but nothing forces it, so every function here says "not
-comparable" instead of raising. The order is the one papaia-ctl uses to say whether an update is
+comparable" instead of raising. The order is the one papaia-ctl uses to say whether an upgrade is
 an upgrade or a downgrade, so the two agree on what "newer" means.
 """
 from __future__ import annotations

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{% trans name=addon_name, branding=branding().name %}Update {{ name }} — {{ branding }}{% endtrans %}{% endblock %}
+{% block title %}{% trans name=addon_name, branding=branding().name %}Upgrade {{ name }} — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{{ addon_name }}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Review what the new version changes before it is applied{% endtrans %}</p>{% endblock %}
@@ -12,16 +12,16 @@
 </a>
 {% endblock %}
 
-{# The review of an update. Nothing here changes the add-on until the button at the bottom
+{# The review of an upgrade. Nothing here changes the add-on until the button at the bottom
    is pressed: the page stages the catalog's version in a directory of its own and asks
-   papaia-ctl what it would do (`addon update --dry-run`), so what is shown is what the
-   update will do, decided by the same code. The plan is drawn from JSON by Alpine; every
+   papaia-ctl what it would do (`addon upgrade --dry-run`), so what is shown is what the
+   upgrade will do, decided by the same code. The plan is drawn from JSON by Alpine; every
    text is marked for translation here, and the few that are put together in the browser
    come through the object at the top of the script. #}
 {% block content %}
-<div x-data="addonUpdate({{ addon_name|tojson|forceescape }}, {{ updates_supported|tojson }})" x-init="load()" class="max-w-4xl">
+<div x-data="addonUpgrade({{ addon_name|tojson|forceescape }}, {{ upgrades_supported|tojson }})" x-init="load()" class="max-w-4xl">
 
-  {% if not updates_supported %}
+  {% if not upgrades_supported %}
   <div class="alert alert-warning mb-6">
     <span class="text-sm">{{ core_requirement }}</span>
   </div>
@@ -115,7 +115,7 @@
         <div class="card-body">
           <h3 class="card-title text-base mb-1">{% trans %}Configuration{% endtrans %}</h3>
           <p class="text-xs opacity-60 mb-2">
-            {% trans %}Values that are already set stay as they are. The update only adds the keys the new version brings.{% endtrans %}
+            {% trans %}Values that are already set stay as they are. The upgrade only adds the keys the new version brings.{% endtrans %}
           </p>
           <div class="overflow-x-auto" x-show="plan.env.new.length">
             <table class="table table-sm">
@@ -170,7 +170,7 @@
           </ul>
           <div class="alert alert-info mt-3 py-2" x-show="hasManualSteps">
             <div class="text-xs">
-              <p class="font-semibold">{% trans %}To do by hand after the update:{% endtrans %}</p>
+              <p class="font-semibold">{% trans %}To do by hand after the upgrade:{% endtrans %}</p>
               <ul class="list-disc list-inside">
                 <template x-for="c in plan.manifest.keycloak.clients_added" :key="c">
                   <li><span>{% trans %}Import the Keycloak client{% endtrans %}</span> <span class="font-mono" x-text="c"></span></li>
@@ -188,7 +188,7 @@
       </div>
 
       {# ── What the add-on says changed ─────────────────────────── #}
-      {# The text is the add-on's own CHANGELOG.md for the versions the update brings in,
+      {# The text is the add-on's own CHANGELOG.md for the versions the upgrade brings in,
          shown as plain text (x-text on a <pre>), never as markup. Best effort: an add-on
          without one shows no card. #}
       <div class="card bg-base-100 border border-base-300" x-show="data.changelog && data.changelog.length" style="display:none">
@@ -240,20 +240,20 @@
             <span>
               {% trans %}Take a restore point of this add-on first{% endtrans %}
               <span class="block text-xs opacity-60">
-                {% trans %}Its volumes and data directories, so that a rollback can bring the data back as well. An add-on without any gets none and the update goes on.{% endtrans %}
+                {% trans %}Its volumes and data directories, so that a rollback can bring the data back as well. An add-on without any gets none and the upgrade goes on.{% endtrans %}
               </span>
             </span>
           </label>
           <div class="alert alert-warning py-2">
             <span class="text-xs leading-snug">
-              {% trans %}<strong>There is no automatic rollback.</strong> If the new version does not start, the update stops and the add-on page offers the way back.{% endtrans %}
+              {% trans %}<strong>There is no automatic rollback.</strong> If the new version does not start, the upgrade stops and the add-on page offers the way back.{% endtrans %}
             </span>
           </div>
           <div class="flex items-center gap-2 justify-end">
             <a class="btn btn-ghost btn-sm" href="/addons/{{ addon_name }}">{% trans %}Cancel{% endtrans %}</a>
             <button class="btn btn-primary btn-sm" :disabled="!canApply" @click="apply()">
               <span style="display:none" x-show="submitting" class="loading loading-spinner loading-xs"></span>
-              <span x-text="fmt(I18N.updateTo, { version: plan.candidate.version })"></span>
+              <span x-text="fmt(I18N.upgradeTo, { version: plan.candidate.version })"></span>
             </button>
           </div>
           <p class="text-xs text-error text-right" x-show="missing.length" style="display:none">
@@ -267,9 +267,9 @@
         <div class="card-body gap-3">
           <div class="flex items-center gap-2">
             <span x-show="jobStatus === 'queued' || jobStatus === 'running'" class="loading loading-spinner loading-sm"></span>
-            <span class="font-semibold" x-show="jobStatus === 'queued' || jobStatus === 'running'">{% trans %}Updating…{% endtrans %}</span>
-            <span class="font-semibold text-success" x-show="jobStatus === 'succeeded'" style="display:none">{% trans %}The add-on was updated.{% endtrans %}</span>
-            <span class="font-semibold text-error" x-show="jobStatus === 'failed'" style="display:none">{% trans %}The update did not finish.{% endtrans %}</span>
+            <span class="font-semibold" x-show="jobStatus === 'queued' || jobStatus === 'running'">{% trans %}Upgrading…{% endtrans %}</span>
+            <span class="font-semibold text-success" x-show="jobStatus === 'succeeded'" style="display:none">{% trans %}The add-on was upgraded.{% endtrans %}</span>
+            <span class="font-semibold text-error" x-show="jobStatus === 'failed'" style="display:none">{% trans %}The upgrade did not finish.{% endtrans %}</span>
           </div>
           <div class="alert alert-warning py-2" x-show="jobStatus === 'failed'" style="display:none">
             <span class="text-xs">{% trans %}The add-on may already run from the new version. Open the add-on page: if an earlier version is offered there, you can go back to it.{% endtrans %}</span>
@@ -286,12 +286,12 @@
   </template>
 
   <script>
-    var UPDATE_I18N = {
-      updateTo: {{ _("Update to {version}")|tojson }},
+    var UPGRADE_I18N = {
+      upgradeTo: {{ _("Upgrade to {version}")|tojson }},
     };
-    Object.assign(I18N, UPDATE_I18N);
+    Object.assign(I18N, UPGRADE_I18N);
 
-    function addonUpdate(name, supported) {
+    function addonUpgrade(name, supported) {
       var csrf = function () { return document.querySelector("meta[name=csrf]").content; };
       var base = "/api/v1/addons/" + encodeURIComponent(name);
       var messageOf = async function (r) {
@@ -338,7 +338,7 @@
         load: async function () {
           if (!this.supported) return;
           try {
-            var r = await fetch(base + "/update-plan", {
+            var r = await fetch(base + "/upgrade-plan", {
               method: "POST",
               headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
               body: "{}",
@@ -365,7 +365,7 @@
             if (v) env[k] = v;
           });
           try {
-            var r = await fetch(base + "/update", {
+            var r = await fetch(base + "/upgrade", {
               method: "POST",
               headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
               body: JSON.stringify({ env: env, revision: this.data.revision, backup: this.backup }),

@@ -13,12 +13,12 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core.addon_updates import (
-    UpdateError,
+from app.core.addon_upgrades import (
+    UpgradeError,
     answerable_keys,
     changelog_between,
     core_requirement_message,
-    core_supports_updates,
+    core_supports_upgrades,
     deployment_entry,
     fetch_plan,
     invalidate_outdated_count,
@@ -27,7 +27,7 @@ from app.core.addon_updates import (
     prune_after,
     stage_revision,
     sync_installed_after_rollback,
-    sync_installed_after_update,
+    sync_installed_after_upgrade,
     write_answers_file,
 )
 from app.core.audit import write_audit_entry
@@ -79,24 +79,24 @@ class RestartBody(BaseModel):
     clean_up: bool = False
 
 
-class UpdateBody(BaseModel):
+class UpgradeBody(BaseModel):
     # Values for the keys the new version asks about; nothing else is accepted.
     env: dict[str, str] = {}
     # The version the operator reviewed (the `revision` of the plan). If the catalog has moved on
-    # the update is refused instead of applying something that was not shown.
+    # the upgrade is refused instead of applying something that was not shown.
     revision: str | None = None
     # A restore point of the add-on is taken first. Turning it off is for an operator who has a
     # backup of their own.
     backup: bool = True
 
 
-class UpdatePlanBody(BaseModel):
+class UpgradePlanBody(BaseModel):
     revision: str | None = None
 
 
 class RollbackBody(BaseModel):
     # False: the add-on goes back to the old code and keeps today's data. True: the data of the
-    # restore point taken before the update is restored too, and what was written since is lost.
+    # restore point taken before the upgrade is restored too, and what was written since is lost.
     restore_data: bool = False
 
 
@@ -246,8 +246,8 @@ async def list_addons(
     return list(addons.values())
 
 
-@router.get("/updates")
-async def list_updates(
+@router.get("/upgrades")
+async def list_upgrades(
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
@@ -255,15 +255,15 @@ async def list_updates(
 
     Reads the catalogs as they are; a catalog is refreshed by hand (the catalogs API), never
     by this. Whether the compatibility gate accepts a version is not decided here: that is
-    `update-plan`, which asks papaia-ctl."""
+    `upgrade-plan`, which asks papaia-ctl."""
     found = outdated_addons(
         load_registry(settings.papaia_config_dir),
         settings.papaia_workspace_dir,
         load_installed(settings.papaia_config_dir),
     )
     return {
-        "supported": core_supports_updates(settings.papaia_workspace_dir),
-        "updates": [
+        "supported": core_supports_upgrades(settings.papaia_workspace_dir),
+        "upgrades": [
             {
                 "name": u.name,
                 "installed": u.installed,
@@ -414,7 +414,7 @@ async def install(
             staged = await stage_revision(
                 catalog=catalog, workspace_dir=settings.papaia_workspace_dir, name=name
             )
-        except UpdateError as exc:
+        except UpgradeError as exc:
             raise RuntimeError(str(exc)) from exc
         dest, sha, ver = staged.path, staged.commit, staged.version
         ctx.log(f"[info] snapshot at {dest} (revision {staged.revision})")
@@ -745,14 +745,14 @@ async def uninstall(
     return {"job_id": job.id, "status": "queued"}
 
 
-def _require_core_updates(settings: Settings) -> None:
-    """Updating and rolling back are verbs of papaia-ctl; an older core does not have them."""
-    if not core_supports_updates(settings.papaia_workspace_dir):
+def _require_core_upgrades(settings: Settings) -> None:
+    """Upgrading and rolling back are verbs of papaia-ctl; an older core does not have them."""
+    if not core_supports_upgrades(settings.papaia_workspace_dir):
         raise HTTPException(status_code=409, detail=core_requirement_message())
 
 
-def _updatable(name: str, settings: Settings) -> tuple[Any, dict[str, Any], Any]:
-    """The installed record, the registration and the catalog an update of `name` comes from.
+def _upgradable(name: str, settings: Settings) -> tuple[Any, dict[str, Any], Any]:
+    """The installed record, the registration and the catalog an upgrade of `name` comes from.
 
     Refuses what papaia-ctl would refuse later, so the operator hears it before anything is
     staged: an add-on this manager did not install, one that is not active, a catalog that is
@@ -769,7 +769,7 @@ def _updatable(name: str, settings: Settings) -> tuple[Any, dict[str, Any], Any]
     entry = deployment_entry(settings.papaia_config_dir, name)
     if entry is None or not entry.get("active", False):
         raise HTTPException(status_code=409, detail=gettext(
-            "addon %(name)r is not active; reactivate it before updating"
+            "addon %(name)r is not active; reactivate it before upgrading"
         ) % {"name": name})
     catalog = next(
         (
@@ -789,8 +789,8 @@ def _updatable(name: str, settings: Settings) -> tuple[Any, dict[str, Any], Any]
 async def _stage_and_plan(
     name: str, revision: str | None, settings: Settings
 ) -> tuple[Any, Any, Any, dict[str, Any]]:
-    """Stage the catalog's version of `name` and ask papaia-ctl what updating to it would do."""
-    inst, entry, catalog = _updatable(name, settings)
+    """Stage the catalog's version of `name` and ask papaia-ctl what upgrading to it would do."""
+    inst, entry, catalog = _upgradable(name, settings)
     try:
         staged = await stage_revision(
             catalog=catalog,
@@ -804,27 +804,27 @@ async def _stage_and_plan(
             workspace_dir=settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
         )
-    except UpdateError as exc:
+    except UpgradeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return inst, entry, staged, plan
 
 
-@router.post("/{name}/update-plan")
-async def update_plan(
+@router.post("/{name}/upgrade-plan")
+async def upgrade_plan(
     name: str,
-    body: UpdatePlanBody,
+    body: UpgradePlanBody,
     request: Request,
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
-    """What updating `name` to the catalog's version would change, without changing it.
+    """What upgrading `name` to the catalog's version would change, without changing it.
 
     A POST because it writes: the version is staged to a directory of its own (the one the
-    update then uses, so what is reviewed is what is applied) and the older ones are pruned.
-    The plan is papaia-ctl's (`addon update --dry-run --json`) with the manager's view of the
+    upgrade then uses, so what is reviewed is what is applied) and the older ones are pruned.
+    The plan is papaia-ctl's (`addon upgrade --dry-run --json`) with the manager's view of the
     components added."""
     verify_csrf(request)
-    _require_core_updates(settings)
+    _require_core_upgrades(settings)
     inst, entry, staged, plan = await _stage_and_plan(name, body.revision, settings)
     prune_after(
         settings.papaia_config_dir,
@@ -849,21 +849,21 @@ async def update_plan(
     }
 
 
-@router.post("/{name}/update", status_code=status.HTTP_202_ACCEPTED)
-async def update(
+@router.post("/{name}/upgrade", status_code=status.HTTP_202_ACCEPTED)
+async def upgrade(
     name: str,
-    body: UpdateBody,
+    body: UpgradeBody,
     request: Request,
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
-    """Move `name` to the catalog's version with `papaia-ctl addon update`.
+    """Move `name` to the catalog's version with `papaia-ctl addon upgrade`.
 
     The version is staged first and the plan checked here, so a refusal (the compatibility gate,
     a value the new version needs and was not given) is an error of this request and not a failed
-    job. The job then runs the update and records the result in installed.yaml."""
+    job. The job then runs the upgrade and records the result in installed.yaml."""
     verify_csrf(request)
-    _require_core_updates(settings)
+    _require_core_upgrades(settings)
     inst, entry, staged, plan = await _stage_and_plan(name, body.revision, settings)
 
     if plan.get("blocked"):
@@ -883,7 +883,7 @@ async def update(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
                 "field": unknown[0],
-                "message": gettext("this update does not ask for a value for this key"),
+                "message": gettext("this upgrade does not ask for a value for this key"),
             },
         )
     fields = [f for f in _addon_fields(name, staged.path, settings) if f.key in asked]
@@ -915,11 +915,11 @@ async def update(
             flags.append("--no-backup")
         if answers_file is not None:
             flags.append(f"--answers-file={answers_file}")
-        ctx.log(f"[info] updating {name!r} from {_from} to {staged.version} ({staged.revision})")
-        ctx.log(f"[ctl] papaia-ctl addon update {name}")
+        ctx.log(f"[info] upgrading {name!r} from {_from} to {staged.version} ({staged.revision})")
+        ctx.log(f"[ctl] papaia-ctl addon upgrade {name}")
         try:
             gen = await run_addon_verb(
-                verb="update",
+                verb="upgrade",
                 name=name,
                 workspace_dir=settings.papaia_workspace_dir,
                 config_dir=settings.papaia_config_dir,
@@ -932,7 +932,7 @@ async def update(
                 answers_file.unlink(missing_ok=True)
             # The registration may have moved even when the command failed (the new version
             # could not be started), so installed.yaml follows deployment.yaml, not the exit.
-            if sync_installed_after_update(
+            if sync_installed_after_upgrade(
                 settings.papaia_config_dir,
                 settings.papaia_workspace_dir,
                 name=name,
@@ -951,7 +951,7 @@ async def update(
         write_audit_entry(
             settings.papaia_config_dir,
             user=_username,
-            action="update",
+            action="upgrade",
             target=name,
             params=_params,
             job_id=ctx.job.id,
@@ -959,7 +959,7 @@ async def update(
         ctx.log("[info] done")
 
     job = await queue.enqueue(
-        action="update", target=name, user=_username, params=_params, callback=_callback,
+        action="upgrade", target=name, user=_username, params=_params, callback=_callback,
     )
     return {"job_id": job.id, "status": "queued", "revision": staged.revision}
 
@@ -974,11 +974,11 @@ async def rollback(
 ) -> dict[str, str]:
     """One step back, with `papaia-ctl addon rollback`.
 
-    The code and configuration of the version before the last update are registered again;
+    The code and configuration of the version before the last upgrade are registered again;
     the data is left as it is unless `restore_data` asks for the restore point taken before
-    the update, which discards what the add-on wrote since."""
+    the upgrade, which discards what the add-on wrote since."""
     verify_csrf(request)
-    _require_core_updates(settings)
+    _require_core_upgrades(settings)
     inst = load_installed(settings.papaia_config_dir).get(name)
     entry = deployment_entry(settings.papaia_config_dir, name)
     if inst is None or entry is None:
@@ -996,7 +996,7 @@ async def rollback(
         ) % {"name": name})
     if body.restore_data and not previous.restore_point_available:
         raise HTTPException(status_code=409, detail=gettext(
-            "the restore point taken before the update no longer exists"
+            "the restore point taken before the upgrade no longer exists"
         ))
 
     queue = _queue()

@@ -1,4 +1,4 @@
-{% from "partials/_addon_controls.html" import primary_action, update_action, overflow_actions, remove_modal, uninstall_modal, install_modal %}
+{% from "partials/_addon_controls.html" import primary_action, upgrade_action, overflow_actions, remove_modal, uninstall_modal, install_modal %}
 {% from "partials/_env_fields.html" import env_input %}
 {% set s = addon.status %}
 
@@ -14,8 +14,8 @@
 <div id="addon-actions" hx-swap-oob="true" class="flex items-center gap-2"
      x-data="{ busy: false, activeVerb: '' }">
   {{ primary_action(addon, s, 'addonAction') }}
-  {{ update_action(addon, 'addonAction') }}
-  {{ overflow_actions(addon, s, 'addonAction', include_update=False) }}
+  {{ upgrade_action(addon, 'addonAction') }}
+  {{ overflow_actions(addon, s, 'addonAction', include_upgrade=False) }}
   {{ remove_modal(addon, s, 'addonAction') }}
   {{ uninstall_modal(addon, 'addonAction') }}
   {{ install_modal(addon, s, 'addonAction') }}
@@ -36,7 +36,7 @@
   {% endif %}
 
   {% if addon.update_available %}
-    <span class="badge badge-warning">{% trans %}update available{% endtrans %}</span>
+    <span class="badge badge-warning">{% trans %}upgrade available{% endtrans %}</span>
   {% endif %}
 
   <span class="text-sm opacity-60">
@@ -76,10 +76,10 @@
       <dd class="font-mono text-xs">{{ addon.installed_version }}</dd>
       {% if addon.update_available %}
       <dt class="opacity-60">{% trans %}Offered by the catalog{% endtrans %}</dt>
-      <dd class="font-mono text-xs">{{ addon.catalog_version }} <a class="link font-sans ml-2" href="/addons/{{ addon.name }}/update">{% trans %}Review update{% endtrans %}</a></dd>
+      <dd class="font-mono text-xs">{{ addon.catalog_version }} <a class="link font-sans ml-2" href="/addons/{{ addon.name }}/upgrade">{% trans %}Review upgrade{% endtrans %}</a></dd>
       {% endif %}
       {% if addon.previous %}
-      <dt class="opacity-60">{% trans %}Before the last update{% endtrans %}</dt>
+      <dt class="opacity-60">{% trans %}Before the last upgrade{% endtrans %}</dt>
       <dd class="text-xs">
         <span class="font-mono">{{ addon.previous.version }}</span>
         {% if not addon.previous.available %}
@@ -98,7 +98,7 @@
       {% endif %}
     </dl>
 
-    {% if addon.previous and addon.updates_supported %}
+    {% if addon.previous and addon.upgrades_supported %}
     <div class="mt-3">
       <button class="btn btn-outline btn-sm" :disabled="busy || {{ 'false' if addon.previous.available else 'true' }}"
               @click="mode = ''; $refs.rollbackModal.showModal()">
@@ -128,7 +128,7 @@
               {% if addon.previous.restore_point_available %}
                 {% trans id=addon.previous.restore_point %}Restores {{ id }}. What the add-on wrote since then is lost.{% endtrans %}
               {% else %}
-                {% trans %}No restore point was taken before the update, or it has been deleted.{% endtrans %}
+                {% trans %}No restore point was taken before the upgrade, or it has been deleted.{% endtrans %}
               {% endif %}
             </span>
           </span>
@@ -192,7 +192,7 @@
             <td class="font-mono text-xs">
               {% if c.changed %}
                 {{ c.installed_version }} → {{ c.version }}
-                <span class="badge badge-accent badge-xs font-sans">{% trans %}update{% endtrans %}</span>
+                <span class="badge badge-accent badge-xs font-sans">{% trans %}upgrade{% endtrans %}</span>
               {% else %}
                 {{ c.version }}
               {% endif %}

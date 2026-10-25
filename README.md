@@ -5,7 +5,7 @@ Maintained by **Fidonis** · See [TRADEMARK.md](TRADEMARK.md) for the trademark 
 
 A web-based control plane for the papAIa stack's add-on lifecycle. It gives
 non-technical operators a browser UI for discovering, installing, starting,
-stopping, removing, and updating add-ons — without needing shell access to
+stopping, removing, and upgrading add-ons — without needing shell access to
 the host running the stack.
 
 The manager does not duplicate orchestration logic: it drives `papaia-ctl`
@@ -551,7 +551,7 @@ add-on's `.env`. The pinned tags are read from that file, so the pages need no
 Docker. The list is also `components` in the JSON of an add-on. A catalog whose
 manifests have no `components` shows nothing new.
 
-**Jobs.** Installs, updates, and lifecycle verbs that shell out to
+**Jobs.** Installs, upgrades, and lifecycle verbs that shell out to
 `papaia-ctl` can take minutes (image pulls, container starts). These run as
 queued `Job` objects processed one at a time by a single worker; the UI
 polls for live status and streamed log output. A line of output longer than
@@ -640,24 +640,24 @@ outdated only if no container uses it, the installed release does not declare it
 and it belongs to a repository the stack declares; unrelated images are never
 touched, and nothing is offered while the declared images cannot be resolved.
 
-**Updates.** An add-on is offered an update when a catalog on disk has a
+**Upgrades.** An add-on is offered an upgrade when a catalog on disk has a
 higher version than the one installed (SemVer precedence; a version that is not
 SemVer counts when it differs). The Add-Ons page counts them, lists them with a
 link to the review (and can narrow the cards to them), and marks the Add-Ons
 entry of the sidebar; **Refresh
 catalogs** fetches every Git catalog first, because the page reads the
-catalogs as they are. **Review update** (`/addons/<name>/update`) stages the
+catalogs as they are. **Review upgrade** (`/addons/<name>/upgrade`) stages the
 catalog's version in a directory of its own and shows what `papaia-ctl addon
-update --dry-run` reports: the versions, whether this core accepts the new one,
+upgrade --dry-run` reports: the versions, whether this core accepts the new one,
 the components that change, the new configuration keys (generated, asking for a
 value, or a Keycloak client secret), the keys that are gone or whose default
 changed, new services and Keycloak clients to set up by hand, and the sections
 of the add-on's own `CHANGELOG.md` for the versions in between (as plain text,
-when it has one). A value the new version asks for is entered there. The update itself is a job that runs
-`papaia-ctl addon update`: it takes a restore point of the add-on first (the
+when it has one). A value the new version asks for is entered there. The upgrade itself is a job that runs
+`papaia-ctl addon upgrade`: it takes a restore point of the add-on first (the
 **Take a restore point** box; an add-on without volumes gets none), repoints
 the add-on to the new directory, adds the new keys to its configuration and
-recreates its containers when it was running. The update runs against the
+recreates its containers when it was running. The upgrade runs against the
 version that was reviewed, and is refused if the catalog has changed since. A
 refusal of the compatibility gate or a missing value is an error of the
 request, not a failed job; values reach papaia-ctl through a private file that
@@ -665,11 +665,11 @@ is deleted when the job ends, never on a command line. There is no automatic
 rollback. When the new version has been put in place the add-on page lists the
 version before it, and **Roll back** offers two ways back: the code and
 configuration only (the data stays as it is), or the code and the data of the
-restore point taken before the update (what the add-on wrote since is lost).
+restore point taken before the upgrade (what the add-on wrote since is lost).
 That restore point holds the add-on only: on the Backup / Restore page it is
 marked as such, can be restored by selection only and does not count as the
 last backup of the stack.
-It is one step: afterwards there is no earlier version to return to. Updating
+It is one step: afterwards there is no earlier version to return to. Upgrading
 and rolling back need papAIa core 1.8.0 or newer; an older core shows a hint
 instead.
 
@@ -769,9 +769,9 @@ POST /api/v1/addons/{name}/stop            # {clean_up?} → 202
 POST /api/v1/addons/{name}/restart         # {clean_up?} stop then start → 202
 POST /api/v1/addons/{name}/remove          # stop and remove the containers, then deactivate → 202; 409 without its docker-compose.yml
 POST /api/v1/addons/{name}/uninstall       # → 202
-GET  /api/v1/addons/updates                # {supported, updates: [{name, installed, available, catalog}]}
-POST /api/v1/addons/{name}/update-plan     # {revision?} stage the catalog's version, ask papaia-ctl what updating would do → {revision, plan, form}
-POST /api/v1/addons/{name}/update          # {env?, revision?, backup?} → 202; 409 if the gate refuses, 422 for a missing value
+GET  /api/v1/addons/upgrades                # {supported, upgrades: [{name, installed, available, catalog}]}
+POST /api/v1/addons/{name}/upgrade-plan     # {revision?} stage the catalog's version, ask papaia-ctl what upgrading would do → {revision, plan, form}
+POST /api/v1/addons/{name}/upgrade          # {env?, revision?, backup?} → 202; 409 if the gate refuses, 422 for a missing value
 POST /api/v1/addons/{name}/rollback        # {restore_data?} → 202; 409 without an earlier version
 POST /api/v1/addons/{name}/save-config     # → 202
 POST /api/v1/addons/{name}/check           # synchronous compatibility check

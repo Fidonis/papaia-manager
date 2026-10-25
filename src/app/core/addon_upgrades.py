@@ -1,16 +1,16 @@
 """Moving an installed add-on to another version, and back.
 
-The decisions live in `papaia-ctl addon update` and `addon rollback`; this module is what
+The decisions live in `papaia-ctl addon upgrade` and `addon rollback`; this module is what
 the manager adds around them:
 
 * a version of an add-on is a directory of its own (`snapshots.managed_snapshot_path` with a
   revision), staged from the catalog before anything is asked of papaia-ctl, so the plan the
-  operator reviews and the update that follows are about the same files;
-* `--dry-run --json` is how the review page learns what an update would change;
+  operator reviews and the upgrade that follows are about the same files;
+* `--dry-run --json` is how the review page learns what an upgrade would change;
 * the values a new version asks for travel to papaia-ctl in a private file, never on a
   command line, and the file does not outlive the job;
 * installed.yaml follows what papaia-ctl registered. It is read back from deployment.yaml
-  rather than assumed from the exit status, because an update whose containers could not be
+  rather than assumed from the exit status, because an upgrade whose containers could not be
   recreated has still moved the registration.
 """
 from __future__ import annotations
@@ -56,12 +56,12 @@ _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 # What marks a core that has the verbs: the function itself. A version number would be wrong
 # for a checkout that carries the change before the release that names it.
-_VERBS_MARKER = "cmd_addon_update()"
+_VERBS_MARKER = "cmd_addon_upgrade()"
 MIN_CORE_VERSION = "1.8.0"
 
 
-class UpdateError(Exception):
-    """An update cannot be staged, planned or started; `str(exc)` is for the operator."""
+class UpgradeError(Exception):
+    """An upgrade cannot be staged, planned or started; `str(exc)` is for the operator."""
 
 
 @dataclass(frozen=True)
@@ -95,7 +95,7 @@ class ChangelogSection:
 
 
 @lru_cache(maxsize=4)
-def _supports_updates(script: str, mtime_ns: int) -> bool:
+def _supports_upgrades(script: str, mtime_ns: int) -> bool:
     del mtime_ns  # part of the cache key: a core that is upgraded in place is read again
     try:
         return _VERBS_MARKER in Path(script).read_text(encoding="utf-8", errors="replace")
@@ -103,18 +103,18 @@ def _supports_updates(script: str, mtime_ns: int) -> bool:
         return False
 
 
-def core_supports_updates(workspace_dir: str) -> bool:
-    """Whether the papaia core in the workspace has `addon update` and `addon rollback`."""
+def core_supports_upgrades(workspace_dir: str) -> bool:
+    """Whether the papaia core in the workspace has `addon upgrade` and `addon rollback`."""
     script = Path(workspace_dir) / "papaia" / "tools" / "lib" / "sh" / "addon.sh"
     try:
-        return _supports_updates(str(script), script.stat().st_mtime_ns)
+        return _supports_upgrades(str(script), script.stat().st_mtime_ns)
     except OSError:
         return False
 
 
 def core_requirement_message() -> str:
     return _(
-        "Updating and rolling back add-ons needs papAIa core %(version)s or newer."
+        "Upgrading and rolling back add-ons needs papAIa core %(version)s or newer."
     ) % {"version": MIN_CORE_VERSION}
 
 
@@ -131,7 +131,7 @@ _CHANGELOG_LIMIT = 6000
 
 
 def changelog_between(addon_dir: Path, installed: str, candidate: str) -> list[ChangelogSection]:
-    """The `CHANGELOG.md` sections for the versions an update brings in, newest first.
+    """The `CHANGELOG.md` sections for the versions an upgrade brings in, newest first.
 
     Best effort: an add-on without the file, or one that is not a Keep a Changelog document,
     gives an empty list. A section counts when its version is newer than `installed` and not
@@ -163,9 +163,9 @@ def changelog_between(addon_dir: Path, installed: str, candidate: str) -> list[C
     return wanted
 
 
-def _staging_failed(name: str, exc: Exception) -> UpdateError:
+def _staging_failed(name: str, exc: Exception) -> UpgradeError:
     detail = " ".join(str(exc).split())[:300]
-    return UpdateError(
+    return UpgradeError(
         _("The new version of %(name)s could not be taken from the catalog: %(detail)s") % {
             "name": name, "detail": detail,
         }
@@ -186,16 +186,18 @@ async def stage_revision(
     working directory and has no commit, every staging is a new directory.
 
     `revision` is what the operator reviewed. If the catalog has moved on since, this refuses
-    rather than update to something that was not shown."""
+    rather than upgrade to something that was not shown."""
     source = catalog_scan_path(catalog, workspace_dir) / name
     if catalog.type == "local":
         if revision:
             path = managed_snapshot_path(workspace_dir, catalog.name, name, revision)
             if (path / "papaia-app.yaml").is_file():
                 return Staged(revision, "local", path, manifest_version_of(path))
-            raise UpdateError(_("The version that was reviewed is gone. Review the update again."))
+            raise UpgradeError(
+                _("The version that was reviewed is gone. Review the upgrade again.")
+            )
         if not (source / "papaia-app.yaml").is_file():
-            raise UpdateError(
+            raise UpgradeError(
                 _("%(name)s is no longer in catalog %(catalog)s") % {
                     "name": name, "catalog": catalog.name,
                 }
@@ -211,13 +213,13 @@ async def stage_revision(
     clone = catalog_clone_path(workspace_dir, catalog.name)
     sha = await head_sha(clone)
     if not _SHA_RE.match(sha):
-        raise UpdateError(_("The catalog %(catalog)s has no commit to take a version from.") % {
+        raise UpgradeError(_("The catalog %(catalog)s has no commit to take a version from.") % {
             "catalog": catalog.name,
         })
     current = sha[:12]
     if revision and revision != current:
-        raise UpdateError(
-            _("The catalog changed since this update was reviewed. Review the update again.")
+        raise UpgradeError(
+            _("The catalog changed since this upgrade was reviewed. Review the upgrade again.")
         )
     path = managed_snapshot_path(workspace_dir, catalog.name, name, current)
     if not (path / "papaia-app.yaml").is_file():
@@ -226,7 +228,7 @@ async def stage_revision(
         except (RuntimeError, OSError) as exc:
             raise _staging_failed(name, exc) from exc
         if not (path / "papaia-app.yaml").is_file():
-            raise UpdateError(
+            raise UpgradeError(
                 _("%(name)s is not in catalog %(catalog)s at revision %(revision)s") % {
                     "name": name, "catalog": catalog.name, "revision": current,
                 }
@@ -235,7 +237,7 @@ async def stage_revision(
 
 
 def parse_plan_output(lines: list[str]) -> dict[str, Any] | None:
-    """The plan JSON in the output of `addon update --dry-run --json`, or None.
+    """The plan JSON in the output of `addon upgrade --dry-run --json`, or None.
 
     stderr is merged into the stream, so the document is looked for rather than assumed to
     be all of it: it starts at the first line that is a lone `{`."""
@@ -263,11 +265,11 @@ async def fetch_plan(
     config_dir: str,
     force: bool = False,
 ) -> dict[str, Any]:
-    """What `addon update` would do with `candidate`, as papaia-ctl reports it.
+    """What `addon upgrade` would do with `candidate`, as papaia-ctl reports it.
 
     A candidate the compatibility gate refuses still yields the plan, with `blocked` set.
     Anything that stops papaia-ctl before it has a plan (the add-on is not registered, the
-    directory has another name) raises `UpdateError` with its message."""
+    directory has another name) raises `UpgradeError` with its message."""
     flags = ["--dry-run", "--json", f"--path={candidate}"]
     if force:
         flags.append("--force")
@@ -275,7 +277,7 @@ async def fetch_plan(
     failure: CtlError | None = None
     try:
         stream = await run_addon_verb(
-            verb="update",
+            verb="upgrade",
             name=name,
             workspace_dir=workspace_dir,
             config_dir=config_dir,
@@ -287,12 +289,12 @@ async def fetch_plan(
         failure = exc
     plan = parse_plan_output(lines)
     if plan is None:
-        raise UpdateError(_tail(lines) or (str(failure) if failure else _("no plan was produced")))
+        raise UpgradeError(_tail(lines) or (str(failure) if failure else _("no plan was produced")))
     return plan
 
 
 def answerable_keys(plan: Mapping[str, Any]) -> set[str]:
-    """The keys an update may be given a value for: those the plan itself asks about."""
+    """The keys an upgrade may be given a value for: those the plan itself asks about."""
     return {
         str(item["key"])
         for item in (plan.get("env") or {}).get("new", [])
@@ -301,10 +303,10 @@ def answerable_keys(plan: Mapping[str, Any]) -> set[str]:
 
 
 def write_answers_file(answers: Mapping[str, str]) -> Path:
-    """The values for an update, as KEY=VALUE lines in a file only this process can read."""
+    """The values for an upgrade, as KEY=VALUE lines in a file only this process can read."""
     for key, value in answers.items():
         if "\n" in value or "\r" in value or "\n" in key:
-            raise UpdateError(_("The value for %(key)s must be a single line.") % {"key": key})
+            raise UpgradeError(_("The value for %(key)s must be a single line.") % {"key": key})
     fd, raw = tempfile.mkstemp(prefix="papaia-answers-")
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         for key, value in answers.items():
@@ -365,11 +367,11 @@ def version_state(
     inst: InstalledAddon | None,
     entry: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    """What an add-on's detail page needs to offer an update or a rollback."""
-    supported = core_supports_updates(workspace_dir)
+    """What an add-on's detail page needs to offer an upgrade or a rollback."""
+    supported = core_supports_upgrades(workspace_dir)
     previous = previous_version(config_dir, workspace_dir, entry) if supported else None
     return {
-        "updates_supported": supported,
+        "upgrades_supported": supported,
         "core_requirement": "" if supported else core_requirement_message(),
         "previous": None
         if previous is None
@@ -390,7 +392,7 @@ def version_state(
     }
 
 
-def sync_installed_after_update(
+def sync_installed_after_upgrade(
     config_dir: str,
     workspace_dir: str,
     *,
@@ -400,7 +402,7 @@ def sync_installed_after_update(
 ) -> bool:
     """Record the new version in installed.yaml if papaia-ctl registered it.
 
-    Returns whether it did. The exit status of `addon update` is not what decides this: when
+    Returns whether it did. The exit status of `addon upgrade` is not what decides this: when
     the containers cannot be recreated, the registration has moved all the same, and the manager
     would otherwise keep showing the old version for an add-on that is running the new one."""
     registered = _registered(workspace_dir, deployment_entry(config_dir, name))
@@ -468,7 +470,7 @@ def prune_after(
 
 # The nav dot asks on every page of every open tab. Reading the catalogs is cheap but not free, and
 # an answer that is a minute old is as good as a fresh one: a catalog changes when somebody
-# refreshes it, and that (and an update) clears this.
+# refreshes it, and that (and an upgrade) clears this.
 _OUTDATED_TTL = 60.0
 _outdated_cache: dict[str, tuple[float, int]] = {}
 

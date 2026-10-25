@@ -39,7 +39,7 @@
 
 <script>
   // Fetches every git catalog again, then redraws the gallery: a version a catalog published
-  // since the last refresh only shows up as an update after this.
+  // since the last refresh only shows up as an upgrade after this.
   function refreshAllCatalogs() {
     return fetch("/api/v1/catalogs")
       .then(r => (_authGuard(r) ? [] : r.json()))

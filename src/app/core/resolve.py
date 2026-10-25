@@ -45,11 +45,11 @@ class ResolvedAddon:
 def update_available(installed: InstalledAddon | None, catalog_version: object) -> bool:
     """Whether the catalog offers a version that is higher than the installed one.
 
-    The rule behind the "update" marker of the add-ons page, and behind the notification
+    The rule behind the "upgrade" marker of the add-ons page, and behind the notification
     about it, so the two cannot disagree. Only an add-on the manager installed and manages
     counts, and only against a catalog that states a version. Two SemVer versions are compared
     by precedence, so a catalog that is behind (a branch that was reset, another catalog that
-    wins the name) does not offer a downgrade as an update. A version that is not SemVer, which
+    wins the name) does not offer a downgrade as an upgrade. A version that is not SemVer, which
     a manifest is not required to be, is "other than" the installed one."""
     if installed is None or not installed.managed or catalog_version is None:
         return False
@@ -73,7 +73,7 @@ def outdated_addons(
     """The installed add-ons for which a catalog on disk offers another version.
 
     Reads the catalogs as they are: they are refreshed by hand (a catalog refresh), not by
-    this, so an update shows up here after the refresh that fetched it."""
+    this, so an upgrade shows up here after the refresh that fetched it."""
     found: list[AddonUpdate] = []
     for resolved in resolve_catalog_addons(registry, workspace_dir, installed_map):
         installed = installed_map.get(resolved.name)

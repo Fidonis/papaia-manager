@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 MAX_SNAPSHOTS = 3
 
 # A directory level of `_managed/<catalog>/` that holds versions, as opposed to the
-# directory of an add-on in the layout before updates existed.
+# directory of an add-on in the layout before upgrades existed.
 _REVISION_RE = re.compile(r"^(?:[0-9a-f]{12}|local-\d{14})$")
 
 
@@ -239,7 +239,7 @@ def managed_snapshot_path(
     `_managed/<catalog>/<revision>/<add-on>`: a directory that is written once and never
     again, so the version an add-on ran before is still there to go back to. The add-on's own
     name stays the last component because Compose names the project after it. Without one it
-    is the single directory the layout before updates used, which an install made then is
+    is the single directory the layout before upgrades used, which an install made then is
     still registered at."""
     base = Path(workspace_dir) / "addons" / "_managed" / catalog_name
     return base / revision / addon_name if revision else base / addon_name
@@ -253,7 +253,7 @@ def installed_addon_dir(
 ) -> Path:
     """The directory an installed add-on runs from.
 
-    papaia-ctl's registration (`path` in deployment.yaml) is the truth, because an update or a
+    papaia-ctl's registration (`path` in deployment.yaml) is the truth, because an upgrade or a
     rollback repoints it; the legacy directory is the answer for an add-on that deployment.yaml
     does not list."""
     raw = str((deployment_entry or {}).get("path") or "")
@@ -287,7 +287,7 @@ def prune_snapshots(
 
     `keep` are the directories that must stay: the registered one, the one a rollback goes
     back to, one just staged. Of the rest the newest fill up to `limit` in all. The directory
-    of the layout before updates goes as soon as it is not kept, together with the leftovers
+    of the layout before upgrades goes as soon as it is not kept, together with the leftovers
     of its atomic swap. Returns what was removed."""
     protected = list(keep)
     base = Path(workspace_dir) / "addons" / "_managed" / catalog_name

@@ -1,8 +1,8 @@
-"""`POST /api/v1/addons/{name}/update-plan | update | rollback` and `GET /api/v1/addons/updates`.
+"""`POST /api/v1/addons/{name}/upgrade-plan | upgrade | rollback` and `GET /api/v1/addons/upgrades`.
 
-The version in the catalog is staged and papaia-ctl is asked what an update would do before a job
+The version in the catalog is staged and papaia-ctl is asked what an upgrade would do before a job
 exists, so the refusals (the compatibility gate, a value the new version needs) are errors of the
-request. The job then runs `addon update` and records the outcome in installed.yaml. The queue and
+request. The job then runs `addon upgrade` and records the outcome in installed.yaml. The queue and
 `run_addon_verb` are replaced, so no Docker daemon, no papaia checkout and no worker is needed: the
 fake plays papaia-ctl's part, including the one thing the manager depends on, which is that the
 registration in deployment.yaml has moved afterwards.
@@ -26,8 +26,8 @@ import pytest
 import yaml
 
 _SESSION_SECRET = "test-session-secret-value"
-_CONFIG_DIR = tempfile.mkdtemp(prefix="papaia-addon-update-config-")
-_WORKSPACE_DIR = tempfile.mkdtemp(prefix="papaia-addon-update-workspace-")
+_CONFIG_DIR = tempfile.mkdtemp(prefix="papaia-addon-upgrade-config-")
+_WORKSPACE_DIR = tempfile.mkdtemp(prefix="papaia-addon-upgrade-workspace-")
 
 os.environ.update(
     OIDC_ISSUER_KC_AUTH="https://kc.test/auth",
@@ -47,7 +47,7 @@ from itsdangerous import TimestampSigner  # noqa: E402
 
 from app import main as app_main  # noqa: E402
 from app.config import get_settings  # noqa: E402
-from app.core import addon_updates  # noqa: E402
+from app.core import addon_upgrades  # noqa: E402
 from app.core.catalogs import Catalog, CatalogRegistry, save_registry  # noqa: E402
 from app.core.ctl import CtlError  # noqa: E402
 from app.core.jobs import Job, JobCallback, JobContext  # noqa: E402
@@ -111,7 +111,7 @@ def _fresh_state() -> Iterator[None]:
         shutil.rmtree(child) if child.is_dir() else child.unlink()
     for child in _WORKSPACE.iterdir():
         shutil.rmtree(child) if child.is_dir() else child.unlink()
-    addon_updates.invalidate_outdated_count()
+    addon_upgrades.invalidate_outdated_count()
     yield
 
 
@@ -158,7 +158,7 @@ def _world(
     """paperless `installed` registered at the old directory, `offered` in a local catalog."""
     script = _WORKSPACE / "papaia" / "tools" / "lib" / "sh" / "addon.sh"
     script.parent.mkdir(parents=True, exist_ok=True)
-    script.write_text("cmd_addon_update() {\n}\n" if supported else "cmd_addon_install() {\n}\n")
+    script.write_text("cmd_addon_upgrade() {\n}\n" if supported else "cmd_addon_install() {\n}\n")
 
     _write_addon(_CATALOG_SOURCE / "paperless", offered, env=candidate_env)
     if with_catalog:
@@ -248,13 +248,13 @@ class _FakeCtl:
         self.calls.append((verb, flags))
 
         async def stream() -> AsyncIterator[str]:
-            if verb == "update" and "--dry-run" in flags:
+            if verb == "upgrade" and "--dry-run" in flags:
                 for line in json.dumps(self.plan, indent=2).splitlines():
                     yield line
                 if self.plan["blocked"]:
                     raise CtlError("refused", 2)
                 return
-            if verb == "update":
+            if verb == "upgrade":
                 target = next(f.split("=", 1)[1] for f in flags if f.startswith("--path="))
                 for flag in flags:
                     if flag.startswith("--answers-file="):
@@ -269,7 +269,7 @@ class _FakeCtl:
                         Path(target),
                         previous={"path": old, "version": "1.0.0", "restore_point": None},
                     )
-                yield f"update {name} output"
+                yield f"upgrade {name} output"
                 if self.fail_after_repoint:
                     raise CtlError("containers could not be recreated", 3)
                 return
@@ -287,7 +287,7 @@ class _FakeCtl:
 @pytest.fixture
 def ctl(monkeypatch: pytest.MonkeyPatch) -> _FakeCtl:
     fake = _FakeCtl(_plan())
-    monkeypatch.setattr(addon_updates, "run_addon_verb", fake)
+    monkeypatch.setattr(addon_upgrades, "run_addon_verb", fake)
     monkeypatch.setattr(api_addons, "run_addon_verb", fake)
     return fake
 
@@ -312,7 +312,7 @@ def _run(queue: _FakeQueue, log_path: Path, *, action: str) -> None:
     asyncio.run(entry["callback"](ctx))
 
 
-# ── update-plan ─────────────────────────────────────────────────────────────
+# ── upgrade-plan ─────────────────────────────────────────────────────────────
 
 
 def test_the_plan_is_staged_and_returned_with_the_form_for_what_is_asked(
@@ -320,7 +320,7 @@ def test_the_plan_is_staged_and_returned_with_the_form_for_what_is_asked(
 ) -> None:
     _world()
 
-    response = _post(client, "paperless/update-plan")
+    response = _post(client, "paperless/upgrade-plan")
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -329,7 +329,7 @@ def test_the_plan_is_staged_and_returned_with_the_form_for_what_is_asked(
     assert [f["key"] for f in body["form"]] == ["NEW_MAIL"]
     staged = managed_snapshot_path(_WORKSPACE_DIR, "cat", "paperless", body["revision"])
     assert (staged / "papaia-app.yaml").is_file()
-    (flags,) = [f for verb, f in ctl.calls if verb == "update"]
+    (flags,) = [f for verb, f in ctl.calls if verb == "upgrade"]
     assert flags[:2] == ["--dry-run", "--json"]
     assert flags[2] == f"--path={staged}"
 
@@ -344,7 +344,7 @@ def test_the_plan_carries_the_changelog_of_the_versions_it_brings(
         encoding="utf-8",
     )
 
-    body = _post(client, "paperless/update-plan").json()
+    body = _post(client, "paperless/upgrade-plan").json()
 
     assert body["changelog"] == [
         {"version": "1.1.0", "date": "2026-10-01", "body": "### Upgrade notes\n- Run it twice."}
@@ -354,13 +354,13 @@ def test_the_plan_carries_the_changelog_of_the_versions_it_brings(
 def test_an_add_on_without_a_changelog_has_an_empty_one(client: TestClient, ctl: _FakeCtl) -> None:
     _world()
 
-    assert _post(client, "paperless/update-plan").json()["changelog"] == []
+    assert _post(client, "paperless/upgrade-plan").json()["changelog"] == []
 
 
 def test_the_plan_of_an_old_core_is_refused(client: TestClient, ctl: _FakeCtl) -> None:
     _world(supported=False)
 
-    response = _post(client, "paperless/update-plan")
+    response = _post(client, "paperless/upgrade-plan")
 
     assert response.status_code == 409
     assert "1.8.0" in response.json()["detail"]
@@ -371,19 +371,19 @@ def test_an_add_on_that_is_not_installed_has_no_plan(client: TestClient, ctl: _F
     _world()
     (_CONFIG / "manager" / "installed.yaml").unlink()
 
-    assert _post(client, "paperless/update-plan").status_code == 404
+    assert _post(client, "paperless/upgrade-plan").status_code == 404
 
 
 def test_an_add_on_the_panel_does_not_manage_has_no_plan(client: TestClient, ctl: _FakeCtl) -> None:
     _world(managed=False)
 
-    assert _post(client, "paperless/update-plan").status_code == 409
+    assert _post(client, "paperless/upgrade-plan").status_code == 409
 
 
 def test_an_inactive_add_on_has_no_plan(client: TestClient, ctl: _FakeCtl) -> None:
     _world(active=False)
 
-    response = _post(client, "paperless/update-plan")
+    response = _post(client, "paperless/upgrade-plan")
 
     assert response.status_code == 409
     assert "not active" in response.json()["detail"]
@@ -392,7 +392,7 @@ def test_an_inactive_add_on_has_no_plan(client: TestClient, ctl: _FakeCtl) -> No
 def test_a_catalog_that_is_gone_has_no_plan(client: TestClient, ctl: _FakeCtl) -> None:
     _world(with_catalog=False)
 
-    assert _post(client, "paperless/update-plan").status_code == 409
+    assert _post(client, "paperless/upgrade-plan").status_code == 409
 
 
 def test_the_plan_needs_the_csrf_token_and_an_administrator(
@@ -400,8 +400,8 @@ def test_the_plan_needs_the_csrf_token_and_an_administrator(
 ) -> None:
     _world()
 
-    assert _post(client, "paperless/update-plan", csrf=None).status_code == 403
-    assert _post(client, "paperless/update-plan", role="user").status_code == 403
+    assert _post(client, "paperless/upgrade-plan", csrf=None).status_code == 403
+    assert _post(client, "paperless/upgrade-plan", role="user").status_code == 403
     assert ctl.calls == []
 
 
@@ -414,7 +414,7 @@ def test_a_plan_pruning_keeps_the_registered_directory(client: TestClient, ctl: 
         _write_addon(path, "0.0.1")
         os.utime(path, (1_700_000_000 + i, 1_700_000_000 + i))
 
-    assert _post(client, "paperless/update-plan").status_code == 200
+    assert _post(client, "paperless/upgrade-plan").status_code == 200
 
     assert current.is_dir()
     survivors = [p for p in stale if p.is_dir()]
@@ -422,41 +422,41 @@ def test_a_plan_pruning_keeps_the_registered_directory(client: TestClient, ctl: 
     assert len(survivors) == 1
 
 
-# ── update ──────────────────────────────────────────────────────────────────
+# ── upgrade ──────────────────────────────────────────────────────────────────
 
 
-def test_an_update_the_gate_refuses_is_an_error_of_the_request(
+def test_an_upgrade_the_gate_refuses_is_an_error_of_the_request(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl
 ) -> None:
     _world()
     ctl.plan = _plan(blocked=True)
 
-    response = _post(client, "paperless/update", {"env": {"NEW_MAIL": "ops@example.org"}})
+    response = _post(client, "paperless/upgrade", {"env": {"NEW_MAIL": "ops@example.org"}})
 
     assert response.status_code == 409
     assert response.json()["detail"] == "needs addon_api 3"
     assert queue.enqueued == []
 
 
-def test_a_value_the_update_needs_is_asked_for(
+def test_a_value_the_upgrade_needs_is_asked_for(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl
 ) -> None:
     _world()
 
-    response = _post(client, "paperless/update", {})
+    response = _post(client, "paperless/upgrade", {})
 
     assert response.status_code == 422
     assert response.json()["detail"]["field"] == "NEW_MAIL"
     assert queue.enqueued == []
 
 
-def test_a_key_the_update_does_not_ask_about_is_refused(
+def test_a_key_the_upgrade_does_not_ask_about_is_refused(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl
 ) -> None:
     _world()
 
     response = _post(
-        client, "paperless/update", {"env": {"NEW_MAIL": "a@b.c", "KEEP": "overwritten"}}
+        client, "paperless/upgrade", {"env": {"NEW_MAIL": "a@b.c", "KEEP": "overwritten"}}
     )
 
     assert response.status_code == 422
@@ -464,30 +464,30 @@ def test_a_key_the_update_does_not_ask_about_is_refused(
     assert queue.enqueued == []
 
 
-def test_an_update_to_the_directory_the_add_on_runs_from_is_refused(
+def test_an_upgrade_to_the_directory_the_add_on_runs_from_is_refused(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl
 ) -> None:
     _world()
     ctl.plan = _plan(in_place=True, needs=[])
 
-    assert _post(client, "paperless/update", {}).status_code == 409
+    assert _post(client, "paperless/upgrade", {}).status_code == 409
     assert queue.enqueued == []
 
 
-def test_an_update_runs_papaia_ctl_with_the_values_in_a_file_and_records_the_result(
+def test_an_upgrade_runs_papaia_ctl_with_the_values_in_a_file_and_records_the_result(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl, tmp_path: Path
 ) -> None:
     _world()
-    revision = _post(client, "paperless/update-plan").json()["revision"]
+    revision = _post(client, "paperless/upgrade-plan").json()["revision"]
 
     response = _post(
-        client, "paperless/update",
+        client, "paperless/upgrade",
         {"env": {"NEW_MAIL": "ops@example.org"}, "revision": revision},
     )
     assert response.status_code == 202, response.text
-    _run(queue, tmp_path / "job.log", action="update")
+    _run(queue, tmp_path / "job.log", action="upgrade")
 
-    (flags,) = [f for verb, f in ctl.calls if verb == "update" and "--dry-run" not in f]
+    (flags,) = [f for verb, f in ctl.calls if verb == "upgrade" and "--dry-run" not in f]
     staged = managed_snapshot_path(_WORKSPACE_DIR, "cat", "paperless", revision)
     assert flags[0] == f"--path={staged}"
     assert "-y" in flags
@@ -501,7 +501,7 @@ def test_an_update_runs_papaia_ctl_with_the_values_in_a_file_and_records_the_res
     recorded = load_installed(_CONFIG_DIR)["paperless"]
     assert recorded.manifest_version == "1.1.0"
     assert [h.manifest_version for h in recorded.history] == ["1.0.0"]
-    (entry,) = [e for e in _audit() if e["action"] == "update"]
+    (entry,) = [e for e in _audit() if e["action"] == "upgrade"]
     assert entry["params"]["from"] == "1.0.0"
     assert entry["params"]["to"] == "1.1.0"
     assert entry["params"]["answered"] == ["NEW_MAIL"]
@@ -514,31 +514,31 @@ def test_the_restore_point_can_be_turned_off(
     _world(candidate_env="KEEP=1\n")
     ctl.plan = _plan(needs=[], new=[])
 
-    assert _post(client, "paperless/update", {"backup": False}).status_code == 202
-    _run(queue, tmp_path / "job.log", action="update")
+    assert _post(client, "paperless/upgrade", {"backup": False}).status_code == 202
+    _run(queue, tmp_path / "job.log", action="upgrade")
 
-    (flags,) = [f for verb, f in ctl.calls if verb == "update" and "--dry-run" not in f]
+    (flags,) = [f for verb, f in ctl.calls if verb == "upgrade" and "--dry-run" not in f]
     assert "--no-backup" in flags
     assert not any(f.startswith("--answers-file=") for f in flags)
 
 
-def test_an_update_whose_containers_fail_still_records_the_new_version(
+def test_an_upgrade_whose_containers_fail_still_records_the_new_version(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl, tmp_path: Path
 ) -> None:
     _world(candidate_env="KEEP=1\n")
     ctl.plan = _plan(needs=[], new=[])
     ctl.fail_after_repoint = True
 
-    assert _post(client, "paperless/update", {}).status_code == 202
+    assert _post(client, "paperless/upgrade", {}).status_code == 202
     with pytest.raises(CtlError):
-        _run(queue, tmp_path / "job.log", action="update")
+        _run(queue, tmp_path / "job.log", action="upgrade")
 
     # papaia-ctl moved the registration before it failed to start the containers, so the
     # panel shows what is registered and offers the way back.
     assert load_installed(_CONFIG_DIR)["paperless"].manifest_version == "1.1.0"
 
 
-def test_an_update_that_papaia_ctl_refused_leaves_installed_yaml_alone(
+def test_an_upgrade_that_papaia_ctl_refused_leaves_installed_yaml_alone(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl, tmp_path: Path
 ) -> None:
     _world(candidate_env="KEEP=1\n")
@@ -546,42 +546,42 @@ def test_an_update_that_papaia_ctl_refused_leaves_installed_yaml_alone(
     ctl.repoint = False
     ctl.fail_after_repoint = True
 
-    assert _post(client, "paperless/update", {}).status_code == 202
+    assert _post(client, "paperless/upgrade", {}).status_code == 202
     with pytest.raises(CtlError):
-        _run(queue, tmp_path / "job.log", action="update")
+        _run(queue, tmp_path / "job.log", action="upgrade")
 
     assert load_installed(_CONFIG_DIR)["paperless"].manifest_version == "1.0.0"
 
 
-def test_an_update_of_a_catalog_that_moved_since_the_review_is_refused(
+def test_an_upgrade_of_a_catalog_that_moved_since_the_review_is_refused(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl
 ) -> None:
     _world()
 
     response = _post(
-        client, "paperless/update",
+        client, "paperless/upgrade",
         {"env": {"NEW_MAIL": "a@b.c"}, "revision": "local-20200101000000"},
     )
 
     assert response.status_code == 409
-    assert "Review the update again" in response.json()["detail"]
+    assert "Review the upgrade again" in response.json()["detail"]
     assert queue.enqueued == []
 
 
-def test_update_is_denied_to_a_plain_user_and_needs_the_csrf_token(
+def test_upgrade_is_denied_to_a_plain_user_and_needs_the_csrf_token(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl
 ) -> None:
     _world()
 
-    assert _post(client, "paperless/update", role="user").status_code == 403
-    assert _post(client, "paperless/update", csrf=None).status_code == 403
+    assert _post(client, "paperless/upgrade", role="user").status_code == 403
+    assert _post(client, "paperless/upgrade", csrf=None).status_code == 403
     assert queue.enqueued == []
 
 
 # ── rollback ────────────────────────────────────────────────────────────────
 
 
-def _updated_world(*, restore_point: str | None = None) -> tuple[Path, Path]:
+def _upgraded_world(*, restore_point: str | None = None) -> tuple[Path, Path]:
     """paperless registered at the new directory, with the old one as `previous`."""
     old = _world()
     new = managed_snapshot_path(_WORKSPACE_DIR, "cat", "paperless", "bbbbbbbbbbbb")
@@ -598,7 +598,7 @@ def _updated_world(*, restore_point: str | None = None) -> tuple[Path, Path]:
 def test_a_rollback_runs_papaia_ctl_and_records_the_earlier_version(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl, tmp_path: Path
 ) -> None:
-    old, _new = _updated_world()
+    old, _new = _upgraded_world()
 
     response = _post(client, "paperless/rollback", {})
     assert response.status_code == 202, response.text
@@ -628,7 +628,7 @@ def test_a_rollback_without_an_earlier_version_is_refused(
 def test_a_rollback_to_files_that_are_gone_is_refused(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl
 ) -> None:
-    old, _new = _updated_world()
+    old, _new = _upgraded_world()
     shutil.rmtree(old)
 
     response = _post(client, "paperless/rollback", {})
@@ -640,7 +640,7 @@ def test_a_rollback_to_files_that_are_gone_is_refused(
 def test_restoring_the_data_needs_a_restore_point_that_still_exists(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl
 ) -> None:
-    _updated_world(restore_point="2026-10-25_10-00-00")
+    _upgraded_world(restore_point="2026-10-25_10-00-00")
 
     response = _post(client, "paperless/rollback", {"restore_data": True})
 
@@ -652,7 +652,7 @@ def test_restoring_the_data_needs_a_restore_point_that_still_exists(
 def test_a_rollback_with_the_data_passes_the_flag_on(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl, tmp_path: Path
 ) -> None:
-    _updated_world(restore_point="2026-10-25_10-00-00")
+    _upgraded_world(restore_point="2026-10-25_10-00-00")
     backups = tmp_path / "backups"
     backups.mkdir()
     (backups / "backup.yaml").write_text(
@@ -672,7 +672,7 @@ def test_a_rollback_with_the_data_passes_the_flag_on(
 def test_rollback_is_refused_by_an_old_core(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl
 ) -> None:
-    _updated_world()
+    _upgraded_world()
     (_WORKSPACE / "papaia" / "tools" / "lib" / "sh" / "addon.sh").write_text("# none\n")
     os.utime(
         _WORKSPACE / "papaia" / "tools" / "lib" / "sh" / "addon.sh", (1_800_000_000, 1_800_000_000)
@@ -684,7 +684,7 @@ def test_rollback_is_refused_by_an_old_core(
 def test_rollback_is_denied_to_a_plain_user_and_needs_the_csrf_token(
     client: TestClient, queue: _FakeQueue, ctl: _FakeCtl
 ) -> None:
-    _updated_world()
+    _upgraded_world()
 
     assert _post(client, "paperless/rollback", role="user").status_code == 403
     assert _post(client, "paperless/rollback", csrf=None).status_code == 403
@@ -699,11 +699,11 @@ def test_the_overview_lists_the_installed_add_ons_a_catalog_has_a_higher_version
 ) -> None:
     _world()
 
-    body = _as(client, "admin").get("/api/v1/addons/updates").json()
+    body = _as(client, "admin").get("/api/v1/addons/upgrades").json()
 
     assert body == {
         "supported": True,
-        "updates": [
+        "upgrades": [
             {"name": "paperless", "installed": "1.0.0", "available": "1.1.0", "catalog": "cat"}
         ],
     }
@@ -712,54 +712,54 @@ def test_the_overview_lists_the_installed_add_ons_a_catalog_has_a_higher_version
 def test_the_overview_is_empty_when_the_catalog_is_behind(client: TestClient) -> None:
     _world(installed="1.2.0", offered="1.1.0")
 
-    assert _as(client, "admin").get("/api/v1/addons/updates").json()["updates"] == []
+    assert _as(client, "admin").get("/api/v1/addons/upgrades").json()["upgrades"] == []
 
 
 def test_the_overview_is_for_administrators(client: TestClient) -> None:
-    assert _as(client, "user").get("/api/v1/addons/updates").status_code == 403
+    assert _as(client, "user").get("/api/v1/addons/upgrades").status_code == 403
 
 
 def test_the_nav_dot_follows_the_catalogs(client: TestClient) -> None:
     _world()
 
-    dot = _as(client, "admin").get("/partials/nav/addon-updates")
+    dot = _as(client, "admin").get("/partials/nav/addon-upgrades")
     assert dot.status_code == 200
     assert "bg-accent" in dot.text
 
-    addon_updates.invalidate_outdated_count()
+    addon_upgrades.invalidate_outdated_count()
     _world(installed="1.1.0", offered="1.1.0")
-    assert "bg-accent" not in _as(client, "admin").get("/partials/nav/addon-updates").text
+    assert "bg-accent" not in _as(client, "admin").get("/partials/nav/addon-upgrades").text
 
 
-def _cards_with_an_update(html: str) -> list[str]:
+def _cards_with_an_upgrade(html: str) -> list[str]:
     """The cards that carry the attribute the "show only these" toggle looks for.
 
     The attribute name also appears in the toggle's own expression, so only a line that is
     nothing but the attribute counts."""
-    return re.findall(r"^\s+data-has-update\s*$", html, flags=re.MULTILINE)
+    return re.findall(r"^\s+data-has-upgrade\s*$", html, flags=re.MULTILINE)
 
 
-def test_the_gallery_lists_the_updates_and_can_narrow_the_cards_to_them(
+def test_the_gallery_lists_the_upgrades_and_can_narrow_the_cards_to_them(
     client: TestClient,
 ) -> None:
     _world()
 
     html = _as(client, "admin").get("/partials/addons").text
 
-    assert 'id="addon-updates"' in html
-    assert "/addons/paperless/update" in html
+    assert 'id="addon-upgrades"' in html
+    assert "/addons/paperless/upgrade" in html
     assert "Show only these" in html
-    assert len(_cards_with_an_update(html)) == 1
+    assert len(_cards_with_an_upgrade(html)) == 1
     assert "1.0.0 → 1.1.0" in html
 
 
-def test_the_gallery_has_no_update_box_when_the_catalog_is_not_ahead(
+def test_the_gallery_has_no_upgrade_box_when_the_catalog_is_not_ahead(
     client: TestClient,
 ) -> None:
     _world(installed="1.1.0", offered="1.1.0")
 
     html = _as(client, "admin").get("/partials/addons").text
 
-    assert 'id="addon-updates"' not in html
+    assert 'id="addon-upgrades"' not in html
     assert "Show only these" not in html
-    assert _cards_with_an_update(html) == []
+    assert _cards_with_an_upgrade(html) == []

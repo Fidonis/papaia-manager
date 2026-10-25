@@ -10,7 +10,7 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core.addon_updates import invalidate_outdated_count
+from app.core.addon_upgrades import invalidate_outdated_count
 from app.core.audit import redact_params, write_audit_entry
 from app.core.catalogs import (
     Catalog,

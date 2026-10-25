@@ -30,12 +30,12 @@ logger = logging.getLogger(__name__)
 
 # Only these verbs may be dispatched via papaia-ctl addon <verb>.
 #
-# `update` and `rollback` repoint the registration at another directory and recreate the add-on's
+# `upgrade` and `rollback` repoint the registration at another directory and recreate the add-on's
 # containers, nothing else: they take a restore point of the add-on first (`backup --only=`) and
 # restore only with `restore-scoped`, which cannot replace the configuration directory, so
 # neither can reach the core stack.
 ALLOWED_VERBS: frozenset[str] = frozenset(
-    {"install", "start", "stop", "remove", "uninstall", "check", "update", "rollback"}
+    {"install", "start", "stop", "remove", "uninstall", "check", "upgrade", "rollback"}
 )
 
 # Stack-level verbs that may run as a child of this process.
