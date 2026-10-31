@@ -854,3 +854,67 @@ async def test_a_deployment_without_a_release_version_cannot_say(tmp_path: Path)
         )
         is None
     )
+
+
+# ---------------------------------------------------------------------------
+# Provisioning steps the upgrade's start skipped
+# ---------------------------------------------------------------------------
+
+# Verbatim from a 1.5.0 -> 1.7.0 upgrade whose runner was not on papaia-net.
+_SKIPPED_PROVISIONING_LOG = _COMPLETE_LOG.replace(
+    "[ok] start complete.\n",
+    "Waiting for NPM API to become ready...\n"
+    "NPM provisioning skipped: NPM API at http://localhost:8181 did not become ready within"
+    " 60s: <urlopen error [Errno 111] Connection refused>\n"
+    "[!] NPM proxy-host provisioning failed. Once the stack is healthy, run"
+    " 'papaia-ctl npm-provision' to retry.\n"
+    "Keycloak role sync skipped: Keycloak at https://keycloak:8443 did not become ready"
+    " within 90s: <urlopen error [Errno -3] Temporary failure in name resolution>\n"
+    "[ok] start complete.\n",
+)
+
+
+def _problems(log: str) -> list[upgrade.ProvisioningProblem]:
+    return upgrade.provisioning_problems(
+        log, workspace_dir="/srv/papaia", config_dir="/srv/papaia/config"
+    )
+
+
+def test_a_clean_start_has_no_provisioning_problem() -> None:
+    assert _problems(_COMPLETE_LOG) == []
+
+
+def test_skipped_provisioning_steps_are_named_with_their_retry() -> None:
+    problems = _problems(_SKIPPED_PROVISIONING_LOG)
+    assert [p.step for p in problems] == ["npm-provision", "keycloak-role-sync"]
+    npm, keycloak = problems
+    # The first line of a step is its own sentence; the hint that follows is not repeated.
+    assert npm.line.startswith("NPM provisioning skipped: NPM API at http://localhost:8181")
+    assert keycloak.line.endswith("Temporary failure in name resolution>")
+    ctl = upgrade.repo_path("/srv/papaia") / "tools" / "papaia-ctl"
+    assert npm.command == f"bash {ctl} npm-provision --config-dir=/srv/papaia/config"
+    assert keycloak.command == f"bash {ctl} keycloak-role-sync --config-dir=/srv/papaia/config"
+
+
+def test_a_failed_step_without_a_skip_line_is_named_by_its_warning() -> None:
+    log = _COMPLETE_LOG.replace(
+        "[ok] start complete.\n",
+        "[!] Keycloak role sync failed. Once Keycloak is healthy, run"
+        " 'papaia-ctl keycloak-role-sync' to retry.\n[ok] start complete.\n",
+    )
+    (problem,) = _problems(log)
+    assert problem.line == "Keycloak role sync failed"
+
+
+def test_an_identity_provider_of_the_operators_own_is_no_problem() -> None:
+    log = _COMPLETE_LOG.replace(
+        "[ok] start complete.\n",
+        "Keycloak role sync skipped: AUTH_PROVIDER is not internal_keycloak.\n"
+        "[ok] start complete.\n",
+    )
+    assert _problems(log) == []
+
+
+def test_lines_before_the_start_of_the_stack_do_not_count() -> None:
+    log = "Keycloak role sync skipped: something earlier\n" + _COMPLETE_LOG
+    assert _problems(log) == []

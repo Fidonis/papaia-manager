@@ -512,3 +512,69 @@ def test_a_running_runner_is_not_announced_as_finished() -> None:
     assert "active: true" in html
     assert "running: true" in html
     assert "finished: false" in html
+
+
+# ---------------------------------------------------------------------------
+# The result panel names provisioning steps the upgrade's start skipped
+# ---------------------------------------------------------------------------
+
+_DONE_LOG = (
+    "[papaia-ctl] Starting the stack...\n"
+    "NPM provisioning skipped: NPM API at http://localhost:8181 did not become ready within"
+    " 60s: <urlopen error [Errno 111] Connection refused>\n"
+    "Keycloak role sync skipped: Keycloak at https://keycloak:8443 did not become ready"
+    " within 90s: <urlopen error [Errno -3] Temporary failure in name resolution>\n"
+    "[ok] start complete.\n"
+    "[ok] upgrade complete: 1.5.0 -> 1.7.0\n"
+)
+
+
+def _finished(monkeypatch: pytest.MonkeyPatch, *, log: str, exit_code: int) -> None:
+    status = runner.RunnerStatus(
+        name="papaia-upgrade-1.7.0",
+        target="1.7.0",
+        status="exited",
+        exit_code=exit_code,
+        started_at="2026-10-26T10:00:00Z",
+        finished_at="2026-10-26T10:09:00Z",
+    )
+
+    async def found(kind: object = None) -> runner.RunnerStatus:
+        return status
+
+    async def output(name: str, *, tail: int = 0) -> str:
+        return log
+
+    monkeypatch.setattr(runner, "find_runner", found)
+    monkeypatch.setattr(runner, "runner_log", output)
+
+
+def test_a_finished_upgrade_names_the_steps_it_skipped(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _finished(monkeypatch, log=_DONE_LOG, exit_code=0)
+    html = _admin(client).get("/partials/upgrade/runner").text
+    assert "upgrade complete" in html
+    assert "not every step at the end ran" in html
+    assert "npm-provision --config-dir=" in html
+    assert "keycloak-role-sync --config-dir=" in html
+
+
+def test_a_clean_upgrade_shows_no_provisioning_warning(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clean = (
+        "[papaia-ctl] Starting the stack...\n[ok] start complete.\n"
+        "[ok] upgrade complete: 1.5.0 -> 1.7.0\n"
+    )
+    _finished(monkeypatch, log=clean, exit_code=0)
+    html = _admin(client).get("/partials/upgrade/runner").text
+    assert "not every step at the end ran" not in html
+
+
+def test_a_failed_upgrade_keeps_its_own_block_only(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _finished(monkeypatch, log=_DONE_LOG, exit_code=1)
+    html = _admin(client).get("/partials/upgrade/runner").text
+    assert "not every step at the end ran" not in html

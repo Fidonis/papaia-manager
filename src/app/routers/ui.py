@@ -1499,6 +1499,16 @@ async def partial_upgrade_runner(
             ),
             recovery=recovery,
             recovery_generated=recovery_generated,
+            # Only once the run is over and succeeded: a failed run has its own block.
+            provisioning=(
+                upgrade.provisioning_problems(
+                    log,
+                    workspace_dir=settings.papaia_workspace_dir,
+                    config_dir=settings.papaia_config_dir,
+                )
+                if status_obj is not None and status_obj.succeeded
+                else []
+            ),
         ),
     )
     resp.headers["Cache-Control"] = "no-store"
