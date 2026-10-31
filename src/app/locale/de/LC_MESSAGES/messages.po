@@ -9510,3 +9510,119 @@ msgstr "Dieses Widget kann seine Daten gerade nicht anzeigen."
 msgid "As of %(strftime)s UTC."
 msgstr "Stand: %(strftime)s UTC."
 
+msgid "Confirm your sign-in first; this action needs a fresh one."
+msgstr "Bestätigen Sie zuerst Ihre Anmeldung; diese Aktion braucht eine frische."
+
+msgid "The sign-in could not be confirmed. Sign in again and retry."
+msgstr "Die Anmeldung konnte nicht bestätigt werden. Melden Sie sich erneut an und versuchen Sie es noch einmal."
+
+msgid "verb %(verb)r has no equivalent on a node"
+msgstr "Das Verb %(verb)r gibt es auf einem Node nicht"
+
+msgid "docker cannot run on node %(node)s; use its node verbs"
+msgstr "docker kann auf Node %(node)s nicht laufen; verwenden Sie seine Node-Verben"
+
+msgid "git cannot run on node %(node)s; a node has no Git checkout"
+msgstr "git kann auf Node %(node)s nicht laufen; ein Node hat keinen Git-Checkout"
+
+msgid "node-push failed"
+msgstr "node-push ist fehlgeschlagen"
+
+msgid "no node named '%(name)s'"
+msgstr "Es gibt keinen Node namens '%(name)s'"
+
+msgid "the core could not list the nodes"
+msgstr "Der Core konnte die Nodes nicht auflisten"
+
+msgid "the core's node list is unreadable"
+msgstr "Die Node-Liste des Core ist nicht lesbar"
+
+msgid "the node offered no host key"
+msgstr "Der Node hat keinen Host-Key angeboten"
+
+msgid "%(command)s failed"
+msgstr "%(command)s ist fehlgeschlagen"
+
+msgid "A node name is lowercase letters, digits and '-', starting with a letter."
+msgstr "Ein Node-Name besteht aus Kleinbuchstaben, Ziffern und '-' und beginnt mit einem Buchstaben."
+
+msgid "That is not a SHA256 host key fingerprint."
+msgstr "Das ist kein SHA256-Fingerabdruck eines Host-Keys."
+
+msgid "Nodes"
+msgstr "Nodes"
+
+msgid "The machines of this distributed installation"
+msgstr "Die Maschinen dieser verteilten Installation"
+
+msgid "Add a node"
+msgstr "Node hinzufügen"
+
+msgid "SSH user (optional)"
+msgstr "SSH-Benutzer (optional)"
+
+msgid "SSH port (optional)"
+msgstr "SSH-Port (optional)"
+
+msgid "Add node"
+msgstr "Node hinzufügen"
+
+msgid "Adding the node failed:"
+msgstr "Der Node konnte nicht hinzugefügt werden:"
+
+msgid "Changing the nodes needs a fresh sign-in."
+msgstr "Änderungen an den Nodes brauchen eine frische Anmeldung."
+
+msgid "Confirm your sign-in"
+msgstr "Anmeldung bestätigen"
+
+msgid "Node"
+msgstr "Node"
+
+msgid "Links"
+msgstr "Verbindungen"
+
+msgid "controller"
+msgstr "Controller"
+
+msgid "reachable"
+msgstr "erreichbar"
+
+msgid "not enrolled"
+msgstr "nicht eingebunden"
+
+msgid "unreachable"
+msgstr "nicht erreichbar"
+
+msgid "failing"
+msgstr "gestört"
+
+msgid "Enrol this node"
+msgstr "Diesen Node einbinden"
+
+msgid "Copy the join archive to the node and run its install script there, as root:"
+msgstr "Kopieren Sie das Join-Archiv auf den Node und führen Sie dort sein Installationsskript als root aus:"
+
+msgid "Then compare the fingerprint the script printed with the ones below, and confirm the one that matches:"
+msgstr "Vergleichen Sie dann den vom Skript ausgegebenen Fingerabdruck mit den folgenden und bestätigen Sie den passenden:"
+
+msgid "Trust this key"
+msgstr "Diesem Schlüssel vertrauen"
+
+msgid "Remove this node"
+msgstr "Diesen Node entfernen"
+
+msgid "That did not work:"
+msgstr "Das hat nicht funktioniert:"
+
+msgid "Remove this node? Its SSH key and link certificate are deleted."
+msgstr "Diesen Node entfernen? Sein SSH-Schlüssel und sein Link-Zertifikat werden gelöscht."
+
+msgid "Nodes — %(branding)s"
+msgstr "Nodes — %(branding)s"
+
+msgid "Node %(name)s — %(branding)s"
+msgstr "Node %(name)s — %(branding)s"
+
+msgid "Node %(name)s"
+msgstr "Node %(name)s"

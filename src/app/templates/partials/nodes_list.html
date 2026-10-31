@@ -1,0 +1,50 @@
+{% if error %}
+<div class="alert alert-warning mb-4"><span>{{ error }}</span></div>
+{% endif %}
+{% if rows %}
+<div class="overflow-x-auto rounded-lg border border-base-300 bg-base-100">
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>{% trans %}Node{% endtrans %}</th>
+        <th>{% trans %}Address{% endtrans %}</th>
+        <th>{% trans %}Services{% endtrans %}</th>
+        <th>{% trans %}Status{% endtrans %}</th>
+        <th>{% trans %}Version{% endtrans %}</th>
+        <th>{% trans %}Links{% endtrans %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>
+          <a class="link font-medium" href="/nodes/{{ row.name }}">{{ row.name }}</a>
+          {% if row.controller %}<span class="badge badge-ghost badge-sm">{% trans %}controller{% endtrans %}</span>{% endif %}
+        </td>
+        <td class="font-mono text-xs">{{ row.address }}</td>
+        <td class="text-xs">{{ row.services|join(", ") }}</td>
+        <td>
+          {% if row.reachable %}
+          <span class="badge badge-success badge-sm">{% trans %}reachable{% endtrans %}</span>
+          {% elif not row.host_key_pinned %}
+          <span class="badge badge-warning badge-sm">{% trans %}not enrolled{% endtrans %}</span>
+          {% else %}
+          <span class="badge badge-error badge-sm" title="{{ row.reason }}">{% trans %}unreachable{% endtrans %}</span>
+          {% endif %}
+        </td>
+        <td class="font-mono text-xs">{{ row.version }}</td>
+        <td>
+          {% if not row.links_known %}
+          <span class="text-xs opacity-50">{% trans %}unknown{% endtrans %}</span>
+          {% elif row.links_ok %}
+          <span class="badge badge-success badge-sm">{% trans %}healthy{% endtrans %}</span>
+          {% else %}
+          <span class="badge badge-error badge-sm">{% trans %}failing{% endtrans %}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}

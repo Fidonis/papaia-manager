@@ -35,7 +35,7 @@ class OIDCError(Exception):
 class OIDCClaims:
     """Validated OIDC claims stored in the manager session."""
 
-    __slots__ = ("sub", "preferred_username", "roles", "exp")
+    __slots__ = ("sub", "preferred_username", "roles", "exp", "auth_time")
 
     def __init__(
         self,
@@ -44,11 +44,15 @@ class OIDCClaims:
         preferred_username: str,
         roles: list[str],
         exp: int,
+        auth_time: int = 0,
     ) -> None:
         self.sub = sub
         self.preferred_username = preferred_username
         self.roles = roles
         self.exp = exp
+        # When the user last actually signed in, 0 when the token did not say. A silent
+        # sign-in through an open SSO session keeps the old time: step-up relies on that.
+        self.auth_time = auth_time
 
     @property
     def is_expired(self) -> bool:
@@ -146,8 +150,11 @@ class OIDCClient:
         url = f"{self._auth_endpoint}?{urlencode(params)}"
         return url, state, verifier
 
-    def build_auth_url(self, state: str, challenge: str) -> str:
-        """Return an authorization URL with caller-supplied state and PKCE challenge."""
+    def build_auth_url(self, state: str, challenge: str, *, step_up: bool = False) -> str:
+        """Return an authorization URL with caller-supplied state and PKCE challenge.
+
+        `step_up` asks the provider for a real sign-in even while its SSO session is open.
+        """
         params = {
             "response_type": "code",
             "client_id": self._client_id,
@@ -157,6 +164,9 @@ class OIDCClient:
             "code_challenge": challenge,
             "code_challenge_method": "S256",
         }
+        if step_up:
+            params["prompt"] = "login"
+            params["max_age"] = "0"
         return f"{self._auth_endpoint}?{urlencode(params)}"
 
     async def exchange_code(self, *, code: str, code_verifier: str) -> TokenSet:
@@ -289,6 +299,7 @@ class OIDCClient:
             preferred_username=claims.preferred_username,
             roles=roles,
             exp=claims.exp,
+            auth_time=claims.auth_time,
         )
 
     async def _validate_id_token(
@@ -454,12 +465,14 @@ def _extract_claims(payload: dict[str, Any], role_claim: str) -> OIDCClaims:
         raise OIDCError(_("id_token missing exp claim"))
 
     preferred_username = str(payload.get("preferred_username", sub))
+    auth_time = payload.get("auth_time")
 
     return OIDCClaims(
         sub=sub,
         preferred_username=preferred_username,
         roles=roles,
         exp=int(exp),
+        auth_time=int(auth_time) if isinstance(auth_time, (int, float)) else 0,
     )
 
 

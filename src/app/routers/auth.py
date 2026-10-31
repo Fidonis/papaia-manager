@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import time
 from typing import Annotated, Any
 from urllib.parse import urlsplit
 
@@ -12,7 +13,8 @@ from fastapi.responses import RedirectResponse, Response
 
 from app.auth import user_token
 from app.auth.csrf import verify_csrf
-from app.auth.oidc import OIDCError, _pkce_pair, get_oidc_client
+from app.auth.deps import STEP_UP_AT, STEP_UP_PENDING, STEP_UP_SKEW_SECONDS, AdminUser
+from app.auth.oidc import OIDCClaims, OIDCError, _pkce_pair, get_oidc_client
 from app.auth.roles import has_manager_access
 from app.config import Settings, get_settings
 from app.i18n import gettext as _
@@ -83,6 +85,52 @@ async def login(
     return RedirectResponse(auth_url, status_code=status.HTTP_302_FOUND)
 
 
+@router.get("/step-up")
+async def step_up(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+    next_: Annotated[str, Query(alias="next")] = "/",
+) -> RedirectResponse:
+    """Send an administrator to Keycloak to sign in again before a sensitive action.
+
+    The pending entry ties the callback to this redirect through the PKCE verifier: an
+    ordinary login in another tab is not mistaken for the step-up, and one the provider
+    answered without asking for the password is refused by the `auth_time` check.
+    """
+    verifier, challenge = _pkce_pair()
+    request.session[STEP_UP_PENDING] = {
+        "verifier": hashlib.sha256(verifier.encode()).hexdigest(),
+        "sub": user.sub,
+        "at": int(time.time()),
+        "next": _safe_next(next_) or "/",
+    }
+    state = _make_state(settings.manager_session_secret, verifier)
+    url = get_oidc_client().build_auth_url(state, challenge, step_up=True)
+    return RedirectResponse(url, status_code=status.HTTP_302_FOUND)
+
+
+def _finish_step_up(request: Request, verifier: str, claims: OIDCClaims) -> str | None:
+    """The path to return to when this callback ends a step-up, else None."""
+    pending = request.session.get(STEP_UP_PENDING)
+    digest = hashlib.sha256(verifier.encode()).hexdigest()
+    if not isinstance(pending, dict) or pending.get("verifier") != digest:
+        request.session.pop(STEP_UP_AT, None)
+        return None
+    request.session.pop(STEP_UP_PENDING, None)
+    # A provider that ignored `prompt=login` keeps the old `auth_time`; one that signed in
+    # another account is not this administrator confirming anything.
+    fresh = claims.auth_time >= int(pending["at"]) - STEP_UP_SKEW_SECONDS
+    if claims.sub != pending["sub"] or not fresh:
+        logger.warning("auth/step-up: refused for %s", claims.preferred_username)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=_("The sign-in could not be confirmed. Sign in again and retry."),
+        )
+    request.session[STEP_UP_AT] = int(time.time())
+    return str(pending["next"])
+
+
 @router.get("/callback")
 async def callback(
     request: Request,
@@ -132,6 +180,7 @@ async def callback(
             detail=_("your account does not have a role granting access to this application"),
         )
 
+    stepped_up_to = _finish_step_up(request, code_verifier, claims)
     request.session["user"] = claims.to_dict()
     if token_set.refresh_token:
         # Lets the session be renewed on its own until the Keycloak SSO session
@@ -139,6 +188,8 @@ async def callback(
         request.session["oidc"] = {"refresh_token": token_set.refresh_token}
     logger.info("user %s authenticated successfully", claims.preferred_username)
 
+    if stepped_up_to is not None:
+        return RedirectResponse(stepped_up_to, status_code=status.HTTP_302_FOUND)
     dest = request.session.pop("post_login_redirect", "/")
     if not isinstance(dest, str) or not dest.startswith("/"):
         dest = "/"

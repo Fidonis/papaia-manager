@@ -98,9 +98,31 @@ ALLOWED_CORE_VERBS: frozenset[str] = frozenset(
 # `module-info` lists, as JSON, what switching one optional module off could delete: the
 # named volumes it owns (and whether they exist) and what its settings consist of. The
 # Modules tab asks it for the dialog that offers to delete them. It writes nothing.
+#
+# `node-list`, `node-check` and `node-keyscan` read the nodes of a distributed installation:
+# what `deployment.yaml` says, what each node answers, and the host keys it offers. They
+# change nothing on a node or here.
 ALLOWED_PY_COMMANDS: frozenset[str] = frozenset(
-    {"upgrade-resolve", "upgrade-plan", "addon-check", "doctor", "render-preview", "module-info"}
+    {
+        "upgrade-resolve",
+        "upgrade-plan",
+        "addon-check",
+        "doctor",
+        "render-preview",
+        "module-info",
+        "node-list",
+        "node-check",
+        "node-keyscan",
+    }
 )
+
+# What a remote node may be asked through `node-exec`, from the verbs its forced command
+# accepts. Reading only: everything else a node does goes through the core's own commands.
+NODE_READ_VERBS: frozenset[str] = frozenset({"ping", "version", "status", "doctor"})
+
+# The stack verbs that have a node verb of their own. The rest of ALLOWED_CORE_VERBS is the
+# controller's business: the backups live there, and so does the core's checkout.
+NODE_CORE_VERBS: dict[str, str] = {"start": "compose-up", "stop": "compose-stop"}
 
 # The commands that write, kept apart from the read-only set so that adding to either is a
 # decision of its own. `setup` is the core's non-interactive configuration engine; it is
@@ -116,6 +138,15 @@ ALLOWED_PY_COMMANDS: frozenset[str] = frozenset(
 # nothing but a module name from `PURGE_MODULES` and the two switches, and the core refuses
 # it while the module is still switched on and never touches another module's data.
 ALLOWED_PY_WRITE_COMMANDS: frozenset[str] = frozenset({"setup", "module-purge"})
+
+# The commands that change the set of nodes: reachable only through `run_node_command`,
+# from the routes that demand a fresh sign-in. `node-register` and `node-unregister` edit the
+# topology and the node's keys, `node-pin` trusts a host key the administrator confirmed,
+# `node-join-bundle` writes the archive a new node is set up from, `node-push` hands a node
+# its bundle.
+ALLOWED_NODE_COMMANDS: frozenset[str] = frozenset(
+    {"node-register", "node-unregister", "node-pin", "node-join-bundle", "node-push"}
+)
 
 # The optional modules the Modules tab may switch, and the `setup` option for each. A
 # module is named by the profile the core adds to `COMPOSE_PROFILES`. The mail relay is
@@ -322,17 +353,36 @@ async def run_core_verb(
     workspace_dir: str,
     config_dir: str,
     extra_flags: list[str] | None = None,
+    node: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Yield output lines from ``papaia-ctl <verb>``.
 
     Same contract as run_addon_verb: stdin is /dev/null, validation happens
     before the first line is yielded, CtlError is raised after a non-zero exit.
+
+    `node` names a remote node (see `app.core.nodes`); None is this machine and the path
+    every single-host installation takes. On a node the verb runs as its node verb, and
+    `extra_flags` are the service names that verb takes.
     """
     if verb not in ALLOWED_CORE_VERBS:
         raise ValueError(
             _(
                 "verb %(verb)r is not in the allowed set %(value)s"
             ) % {"verb": verb, "value": sorted(ALLOWED_CORE_VERBS)}
+        )
+    if node is not None:
+        if verb not in NODE_CORE_VERBS:
+            raise ValueError(
+                _("verb %(verb)r has no equivalent on a node") % {"verb": verb}
+            )
+        return _stream_subprocess(
+            _node_exec_cmd(
+                node,
+                [NODE_CORE_VERBS[verb], *(extra_flags or [])],
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+            ),
+            _py_env(workspace_dir, config_dir),
         )
 
     cmd: list[str] = [
@@ -357,6 +407,7 @@ async def run_py_cli(
     repo_root: str | None = None,
     extra_flags: list[str] | None = None,
     limit: float | None = None,
+    node: str | None = None,
 ) -> tuple[int, str, str]:
     """Run one of the core's read-only Python sub-commands and collect its output.
 
@@ -380,7 +431,25 @@ async def run_py_cli(
     caller that polls passes one, and a child that outlives it is killed and
     reaped before `CtlError` (exit code `TIMEOUT_EXIT_CODE`) is raised, so a
     hung probe cannot pile up one process per request.
+
+    `node` asks a node instead (see `app.core.nodes`): `command` is then one of
+    NODE_READ_VERBS, which goes through the core's `node-exec` and so through that
+    node's forced command. None is this machine.
     """
+    if node is not None:
+        if command not in NODE_READ_VERBS:
+            raise ValueError(
+                _(
+                    "command %(command)r is not in the allowed set %(value)s"
+                ) % {"command": command, "value": sorted(NODE_READ_VERBS)}
+            )
+        return await _run_py(
+            command="node-exec",
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            extra_flags=[f"--name={node}", command],
+            limit=limit,
+        )
     if command not in ALLOWED_PY_COMMANDS:
         raise ValueError(
             _(
@@ -650,6 +719,61 @@ async def run_module_purge(
     )
 
 
+async def run_node_command(
+    *,
+    command: str,
+    workspace_dir: str,
+    config_dir: str,
+    extra_flags: list[str] | None = None,
+    limit: float | None = None,
+) -> tuple[int, str, str]:
+    """Run one of ALLOWED_NODE_COMMANDS. The caller has checked the fresh sign-in."""
+    if command not in ALLOWED_NODE_COMMANDS:
+        raise ValueError(
+            _(
+                "command %(command)r is not in the allowed set %(value)s"
+            ) % {"command": command, "value": sorted(ALLOWED_NODE_COMMANDS)}
+        )
+    return await _run_py(
+        command=command,
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        extra_flags=extra_flags,
+        limit=limit,
+    )
+
+
+def _node_exec_cmd(
+    node: str, words: list[str], *, workspace_dir: str, config_dir: str
+) -> list[str]:
+    """`lib.cli node-exec`, which streams the node's output and passes on its exit code."""
+    return [
+        "python3",
+        "-m",
+        "lib.cli",
+        "--repo-root",
+        str(Path(workspace_dir) / "papaia"),
+        "--config-dir",
+        config_dir,
+        "node-exec",
+        f"--name={node}",
+        *words,
+    ]
+
+
+def _py_env(workspace_dir: str, config_dir: str) -> dict[str, str]:
+    """The environment `lib.cli` runs in: importable from the checkout, no stray secret."""
+    tools = Path(workspace_dir) / "papaia" / "tools"
+    env = dict(os.environ)
+    # Never inherited: a password the manager's own environment happens to carry is
+    # not the one the operator typed.
+    env.pop(SMTP_PASSWORD_ENV, None)
+    env["PAPAIA_CONFIG_DIR"] = config_dir
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{tools}{os.pathsep}{existing}" if existing else str(tools)
+    return env
+
+
 async def _run_py(
     *,
     command: str,
@@ -661,7 +785,6 @@ async def _run_py(
     env_extra: dict[str, str] | None = None,
 ) -> tuple[int, str, str]:
     """The process half of `run_py_cli` and `run_smtp_setup`; the callers check the allowlist."""
-    tools = Path(workspace_dir) / "papaia" / "tools"
     cmd: list[str] = [
         "python3",
         "-m",
@@ -674,13 +797,7 @@ async def _run_py(
         *(extra_flags or []),
     ]
 
-    env = dict(os.environ)
-    # Never inherited: a password the manager's own environment happens to carry is
-    # not the one the operator typed.
-    env.pop(SMTP_PASSWORD_ENV, None)
-    env["PAPAIA_CONFIG_DIR"] = config_dir
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{tools}{os.pathsep}{existing}" if existing else str(tools)
+    env = _py_env(workspace_dir, config_dir)
     if env_extra:
         env.update(env_extra)
 
