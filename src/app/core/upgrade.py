@@ -812,6 +812,67 @@ def _detail(key: str, seen: dict[str, str]) -> str:
     return ""
 
 
+# The provisioning steps at the end of `start`. papaia-ctl only warns when one of them
+# is skipped or fails, and the upgrade still exits 0 and prints its completion line,
+# so these lines are the only sign that proxy hosts or realm roles of the release are
+# missing. A Keycloak that is not the bundled one is skipped on purpose and is no
+# warning.
+_PROVISIONING_PROBLEMS: tuple[tuple[str, re.Pattern[str], str], ...] = (
+    (
+        "npm-provision",
+        re.compile(r"^NPM (?:provisioning skipped|proxy-host provisioning failed)"),
+        N_("Proxy hosts of the release were not created in Nginx Proxy Manager."),
+    ),
+    (
+        "keycloak-role-sync",
+        re.compile(r"^Keycloak role sync (?:skipped|failed)"),
+        N_("Roles and mappers of the release were not added to Keycloak."),
+    ),
+)
+_PROVISIONING_ON_PURPOSE = "AUTH_PROVIDER is not internal_keycloak"
+
+
+@dataclass(frozen=True)
+class ProvisioningProblem:
+    """A provisioning step `start` skipped or failed, and how to run it again."""
+
+    step: str
+    summary: str
+    line: str
+    command: str
+
+
+def provisioning_problems(
+    log: str, *, workspace_dir: str, config_dir: str
+) -> list[ProvisioningProblem]:
+    """The provisioning steps the upgrade's `start` skipped or failed, once each, in the
+    order of the steps. Only lines after the start of the stack count: the same steps
+    are not run anywhere else in an upgrade."""
+    lines = [_strip_prefix(raw.strip()) for raw in log.splitlines()]
+    start = next(
+        (i for i, line in enumerate(lines) if line.startswith("Starting the stack")), None
+    )
+    if start is None:
+        return []
+    ctl = repo_path(workspace_dir) / "tools" / "papaia-ctl"
+    found: list[ProvisioningProblem] = []
+    for step, pattern, summary in _PROVISIONING_PROBLEMS:
+        for line in lines[start + 1 :]:
+            if pattern.match(line) and _PROVISIONING_ON_PURPOSE not in line:
+                # The sentence only: `warn` appends a retry hint the panel gives itself.
+                text = re.split(r"\. Once (?:the stack|Keycloak) is healthy", line, maxsplit=1)[0]
+                found.append(
+                    ProvisioningProblem(
+                        step=step,
+                        summary=gettext(summary),
+                        line=text[:300],
+                        command=f"bash {ctl} {step} --config-dir={config_dir}",
+                    )
+                )
+                break
+    return found
+
+
 def recovery_from_log(log: str) -> str:
     """`_upgrade_failed`'s recovery block, verbatim, or "" when it is not there.
 

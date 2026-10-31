@@ -9356,6 +9356,18 @@ msgstr "Das Upgrade wurde zwischen zwei Schritten gestoppt, bevor papaia-ctl sei
 msgid "There is no automatic rollback"
 msgstr "Es gibt kein automatisches Zurückrollen"
 
+msgid "The upgrade finished, but not every step at the end ran"
+msgstr "Das Upgrade ist abgeschlossen, aber nicht jeder Schritt am Ende lief"
+
+msgid "Once the stack is healthy, run these on the host:"
+msgstr "Sobald der Stack gesund ist, führen Sie diese Befehle auf dem Host aus:"
+
+msgid "Proxy hosts of the release were not created in Nginx Proxy Manager."
+msgstr "Die Proxy-Hosts des Releases wurden in Nginx Proxy Manager nicht angelegt."
+
+msgid "Roles and mappers of the release were not added to Keycloak."
+msgstr "Die Rollen und Mapper des Releases wurden in Keycloak nicht ergänzt."
+
 msgid "A rollback that fails after a migration failed would leave an installation nobody can reason about, so papaia-ctl stops instead and says how to get back. Run these on the host:"
 msgstr "Ein Zurückrollen, das nach einer fehlgeschlagenen Migration selbst fehlschlägt, würde eine Installation hinterlassen, über die niemand mehr urteilen kann; deshalb stoppt papaia-ctl stattdessen und sagt, wie man zurückkommt. Führen Sie diese Befehle auf dem Host aus:"
 
