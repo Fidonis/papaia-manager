@@ -673,6 +673,8 @@ It is one step: afterwards there is no earlier version to return to. Upgrading
 and rolling back need papAIa core 1.8.0 or newer; an older core shows a hint
 instead.
 
+**Nodes.** On a distributed installation (papAIa 1.8.0 and newer, an experimental mode of the core) an admin-only `/nodes` page lists the machines with their services, address, status, version and link health. A node that does not answer stays in the list and says so. Adding a node registers it and writes its join archive; the page shows the commands to run on the node and the host keys it offers, for the administrator to compare and confirm. Removing a node and confirming a host key are on its detail page. Each of these changes needs a fresh sign-in at Keycloak, valid for five minutes, on top of the admin role, and each is audited. On a single host the page and its sidebar entry do not exist. The image carries an SSH client for this; the keys stay in the configuration directory, managed by the core.
+
 **Audit log.** An admin-only `/audit` page lists every entry from the audit log,
 filtered by user, action, result, a target substring and a date range, newest
 first and paginated, with the filter facets drawn from the log itself. The same
@@ -780,6 +782,9 @@ GET /api/v1/jobs
 GET /api/v1/jobs/{id}
 GET /api/v1/jobs/{id}/log
 
+POST   /api/v1/nodes                       # Distributed only; needs a fresh sign-in
+DELETE /api/v1/nodes/{name}                # Distributed only; needs a fresh sign-in
+POST   /api/v1/nodes/{name}/pin            # Distributed only; needs a fresh sign-in
 GET    /api/v1/audit                       # ?user,action,result,target,since,before,limit,offset
 GET    /api/v1/audit/export                # {format=csv|jsonl} + same filters, streamed
 POST   /api/v1/audit/prune                 # {before, dry_run?} → removed/kept counts

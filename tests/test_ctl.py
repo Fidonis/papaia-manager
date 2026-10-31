@@ -152,7 +152,8 @@ def test_the_py_commands_are_exactly_the_read_only_ones() -> None:
     # changing nothing, and the caller skips every check but two. `render-preview`
     # is here for the overlay editor: it merges a draft in memory, prints it and
     # writes nothing. `module-info` is here for the Modules tab: it lists what a module
-    # owns, as JSON, and writes nothing.
+    # owns, as JSON, and writes nothing. The `node-*` ones are here for the Nodes page: they
+    # read the topology and what each node answers, and change nothing.
     assert set(ALLOWED_PY_COMMANDS) == {
         "upgrade-resolve",
         "upgrade-plan",
@@ -160,6 +161,9 @@ def test_the_py_commands_are_exactly_the_read_only_ones() -> None:
         "doctor",
         "render-preview",
         "module-info",
+        "node-list",
+        "node-check",
+        "node-keyscan",
     }
 
 

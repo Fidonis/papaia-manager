@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{% trans branding=branding().name %}Nodes — {{ branding }}{% endtrans %}{% endblock %}
+{% block page_title %}{% trans %}Nodes{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}The machines of this distributed installation{% endtrans %}</p>{% endblock %}
+
+{% block page_actions %}
+<button class="btn btn-outline btn-sm"
+        hx-get="/partials/nodes?fresh=true" hx-target="#nodes-list" hx-swap="innerHTML">
+  {% trans %}Refresh{% endtrans %}
+</button>
+{% endblock %}
+
+{% block content %}
+<div id="nodes-list" hx-get="/partials/nodes" hx-trigger="load, every 60s" hx-swap="innerHTML">
+  <span class="loading loading-dots loading-sm"></span>
+</div>
+
+<div class="card bg-base-100 border border-base-300 mt-6">
+  <div class="card-body p-5 gap-3">
+    <h2 class="text-sm font-semibold">{% trans %}Add a node{% endtrans %}</h2>
+    {% if stepped_up %}
+    <form id="add-node" class="grid gap-3 sm:grid-cols-2" onsubmit="addNode(event)">
+      <label class="form-control">
+        <span class="label-text">{% trans %}Name{% endtrans %}</span>
+        <input class="input input-bordered input-sm" name="name" required pattern="[a-z][a-z0-9\-]{0,30}">
+      </label>
+      <label class="form-control">
+        <span class="label-text">{% trans %}Address{% endtrans %}</span>
+        <input class="input input-bordered input-sm" name="address" required>
+      </label>
+      <label class="form-control">
+        <span class="label-text">{% trans %}SSH user (optional){% endtrans %}</span>
+        <input class="input input-bordered input-sm" name="ssh_user">
+      </label>
+      <label class="form-control">
+        <span class="label-text">{% trans %}SSH port (optional){% endtrans %}</span>
+        <input class="input input-bordered input-sm" name="ssh_port" type="number" min="1" max="65535">
+      </label>
+      <div class="sm:col-span-2">
+        <button class="btn btn-primary btn-sm" type="submit">{% trans %}Add node{% endtrans %}</button>
+      </div>
+    </form>
+    <script>
+      function addNode(event) {
+        event.preventDefault();
+        var form = event.target;
+        fetch('/api/v1/nodes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name=csrf]').content,
+          },
+          body: JSON.stringify({
+            name: form.elements['name'].value,
+            address: form.elements['address'].value,
+            ssh_user: form.elements['ssh_user'].value,
+            ssh_port: Number(form.elements['ssh_port'].value) || 0,
+          }),
+        }).then(async function(r) {
+          var data = {};
+          try { data = await r.json(); } catch (_) {}
+          if (!r.ok) {
+            alert({{ _('Adding the node failed:')|tojson }} + " " + (data.detail || r.status));
+            return;
+          }
+          window.location.href = '/nodes/' + encodeURIComponent(data.name);
+        });
+      }
+    </script>
+    {% else %}
+    <p class="text-sm opacity-60">{% trans %}Changing the nodes needs a fresh sign-in.{% endtrans %}</p>
+    <div><a class="btn btn-outline btn-sm" href="/auth/step-up?next=/nodes">{% trans %}Confirm your sign-in{% endtrans %}</a></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

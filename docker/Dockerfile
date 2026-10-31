@@ -100,6 +100,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         gnupg \
+        openssh-client \
         openssl \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
