@@ -923,3 +923,46 @@ def test_lines_before_the_start_of_the_stack_do_not_count() -> None:
 def test_a_distributed_start_counts_too() -> None:
     log = _SKIPPED_PROVISIONING_LOG.replace("Starting the stack", "Starting every node")
     assert [p.step for p in _problems(log)] == ["npm-provision", "keycloak-role-sync"]
+
+
+@pytest.mark.parametrize(
+    "hook_output",
+    [
+        "ssh: connect to host 10.0.0.2 port 22: Connection timed out\n",
+        "",
+        "refused: hook npm-provision needs the nginx service\n",
+        "Traceback (most recent call last):\n",
+    ],
+    ids=["unreachable", "executor-timeout", "refused", "traceback"],
+)
+def test_a_hook_that_failed_on_a_node_is_named_by_the_start(hook_output: str) -> None:
+    log = (
+        "Starting every node\n"
+        "node dmz: npm-provision\n"
+        f"{hook_output}"
+        "WARNING: npm-provision failed on node 'dmz'. Once the services are healthy,"
+        " retry with 'papaia-ctl start --node=dmz'.\n"
+    )
+    (problem,) = _problems(log)
+    assert problem.step == "npm-provision"
+    assert problem.line == "WARNING: npm-provision failed on node 'dmz'"
+
+
+def test_the_role_sync_failing_on_a_node_is_named_too() -> None:
+    log = (
+        "Starting every node\n"
+        "WARNING: keycloak-role-sync failed on node 'core'. Once the services are healthy,"
+        " retry with 'papaia-ctl start --node=core'.\n"
+    )
+    assert [p.step for p in _problems(log)] == ["keycloak-role-sync"]
+
+
+def test_the_hooks_own_line_wins_over_the_nodes_warning() -> None:
+    log = (
+        "Starting every node\n"
+        "NPM provisioning skipped: NPM API did not become ready\n"
+        "WARNING: npm-provision failed on node 'dmz'. Once the services are healthy,"
+        " retry with 'papaia-ctl start --node=dmz'.\n"
+    )
+    (problem,) = _problems(log)
+    assert problem.line == "NPM provisioning skipped: NPM API did not become ready"

@@ -824,20 +824,28 @@ def _detail(key: str, seen: dict[str, str]) -> str:
 # is skipped or fails, and the upgrade still exits 0 and prints its completion line,
 # so these lines are the only sign that proxy hosts or realm roles of the release are
 # missing. A Keycloak that is not the bundled one is skipped on purpose and is no
-# warning.
+# warning. A distributed `start` reports a failed hook with a `WARNING:` line of its
+# own, the only sign when the node did not answer or the hook printed nothing of ours.
 _PROVISIONING_PROBLEMS: tuple[tuple[str, re.Pattern[str], str], ...] = (
     (
         "npm-provision",
-        re.compile(r"^NPM (?:provisioning skipped|proxy-host provisioning failed)"),
+        re.compile(
+            r"^(?:NPM (?:provisioning skipped|proxy-host provisioning failed)"
+            r"|WARNING: npm-provision failed on node )"
+        ),
         N_("Proxy hosts of the release were not created in Nginx Proxy Manager."),
     ),
     (
         "keycloak-role-sync",
-        re.compile(r"^Keycloak role sync (?:skipped|failed)"),
+        re.compile(
+            r"^(?:Keycloak role sync (?:skipped|failed)"
+            r"|WARNING: keycloak-role-sync failed on node )"
+        ),
         N_("Roles and mappers of the release were not added to Keycloak."),
     ),
 )
 _PROVISIONING_ON_PURPOSE = "AUTH_PROVIDER is not internal_keycloak"
+_RETRY_HINT = re.compile(r"\. Once (?:the stack|the services|Keycloak) (?:is|are) healthy")
 
 
 @dataclass(frozen=True)
@@ -874,7 +882,7 @@ def provisioning_problems(
         for line in lines[start + 1 :]:
             if pattern.match(line) and _PROVISIONING_ON_PURPOSE not in line:
                 # The sentence only: `warn` appends a retry hint the panel gives itself.
-                text = re.split(r"\. Once (?:the stack|Keycloak) is healthy", line, maxsplit=1)[0]
+                text = _RETRY_HINT.split(line, maxsplit=1)[0]
                 found.append(
                     ProvisioningProblem(
                         step=step,
