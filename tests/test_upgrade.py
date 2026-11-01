@@ -918,3 +918,8 @@ def test_an_identity_provider_of_the_operators_own_is_no_problem() -> None:
 def test_lines_before_the_start_of_the_stack_do_not_count() -> None:
     log = "Keycloak role sync skipped: something earlier\n" + _COMPLETE_LOG
     assert _problems(log) == []
+
+
+def test_a_distributed_start_counts_too() -> None:
+    log = _SKIPPED_PROVISIONING_LOG.replace("Starting the stack", "Starting every node")
+    assert [p.step for p in _problems(log)] == ["npm-provision", "keycloak-role-sync"]

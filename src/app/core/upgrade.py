@@ -849,8 +849,14 @@ def provisioning_problems(
     order of the steps. Only lines after the start of the stack count: the same steps
     are not run anywhere else in an upgrade."""
     lines = [_strip_prefix(raw.strip()) for raw in log.splitlines()]
+    # The second opening is a distributed installation's.
     start = next(
-        (i for i, line in enumerate(lines) if line.startswith("Starting the stack")), None
+        (
+            i
+            for i, line in enumerate(lines)
+            if line.startswith(("Starting the stack", "Starting every node"))
+        ),
+        None,
     )
     if start is None:
         return []
