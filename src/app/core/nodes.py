@@ -247,14 +247,24 @@ def lock_reason(config_dir: str, workspace_dir: str) -> str:
             data = json.loads(lock.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             data = {}
+        versions = {"source": data.get("from", "?"), "target": data.get("to", "?")}
+        restore_point = data.get("restore_point")
+        if restore_point:
+            return _(
+                "An upgrade from %(source)s to %(target)s has not finished. Run it again, or"
+                " restore its restore point %(restore_point)s."
+            ) % {**versions, "restore_point": restore_point}
         return _(
-            "An upgrade from %(source)s to %(target)s has not finished. Run it again, or restore"
-            " the restore point it took."
-        ) % {"source": data.get("from", "?"), "target": data.get("to", "?")}
-    version_file = Path(workspace_dir) / "papaia" / "VERSION"
-    try:
-        version = version_file.read_text(encoding="utf-8").strip()
-    except OSError:
+            "An upgrade from %(source)s to %(target)s has not finished, and it took no restore"
+            " point. Run it again, or clear the lock with papaia-ctl start --addons --unlock on"
+            " the host papaia-manager runs on."
+        ) % versions
+    from app.core import upgrade  # noqa: PLC0415 - upgrade reaches this module through runner
+
+    # The checkout first, as the core reads it; the recorded version answers for one without.
+    current = upgrade.current_version(config_dir, workspace_dir)
+    version = current.checkout or current.recorded
+    if not version:
         return ""
     behind = []
     for node in known.values():

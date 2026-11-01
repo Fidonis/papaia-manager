@@ -223,18 +223,37 @@ _CONFIG_PRESENTATION = _Presentation(
 )
 
 
-def _node_groups(manifest: dict[str, Any], controller: str) -> list[ScopeGroup]:
+def _artifact_selector(raw: dict[str, Any]) -> str:
+    """The module or add-on group an artifact belongs to, or "" when it has none."""
+    module = str(raw.get("module", ""))
+    if not module or raw.get("kind") == "configdir":
+        return ""
+    return f"{'addon' if str(raw.get('owner', '')).startswith('addon:') else 'module'}:{module}"
+
+
+def _node_groups(
+    manifest: dict[str, Any], controller: str, groups: dict[str, ScopeGroup]
+) -> list[ScopeGroup]:
     """A group per remote node a distributed restore point holds data of.
+
+    A node group is its modules taken together: it carries their profiles, hazards and
+    `requires_config`. Selecting `node:edge` with Keycloak on it is restoring Keycloak, and
+    the guards must not depend on which of the two selectors was used.
 
     The controller is not offered: it is the manager's own node, and its data is reachable
     through the module groups. A single-host manifest has no `node` on its artifacts, so
     this adds nothing there.
     """
     found: dict[str, int] = {}
+    members: dict[str, list[ScopeGroup]] = {}
     for raw in manifest.get("artifacts") or []:
         node = str(raw.get("node") or "") if isinstance(raw, dict) else ""
-        if node and node != controller:
-            found[node] = found.get(node, 0) + 1
+        if not node or node == controller:
+            continue
+        found[node] = found.get(node, 0) + 1
+        member = groups.get(_artifact_selector(raw))
+        if member is not None and member not in members.setdefault(node, []):
+            members[node].append(member)
     return [
         ScopeGroup(
             selector=f"node:{name}",
@@ -242,6 +261,9 @@ def _node_groups(manifest: dict[str, Any], controller: str) -> list[ScopeGroup]:
             name=name,
             label=_("Node %(name)s") % {"name": name},
             summary=_("All data of this node. No other node is touched."),
+            profiles=sorted({p for g in members.get(name, []) for p in g.profiles}),
+            hazards=tuple(dict.fromkeys(h for g in members.get(name, []) for h in g.hazards)),
+            requires_config=any(g.requires_config for g in members.get(name, [])),
             archives=count,
         )
         for name, count in sorted(found.items())
@@ -294,7 +316,7 @@ def build_groups(
             continue
 
         is_addon = owner.startswith("addon:")
-        selector = f"{'addon' if is_addon else 'module'}:{module}"
+        selector = _artifact_selector(raw)
         if selector not in groups:
             known = None if is_addon else _MODULES.get(module)
             groups[selector] = ScopeGroup(
@@ -335,7 +357,7 @@ def build_groups(
     # than in the template.
     rank = {"config": 0, "module": 1, "addon": 2, "node": 3}
     return sorted(
-        [*groups.values(), *_node_groups(manifest, controller)],
+        [*groups.values(), *_node_groups(manifest, controller, groups)],
         key=lambda g: (rank.get(g.kind, 4), g.advanced, g.label.lower()),
     )
 
@@ -391,7 +413,7 @@ def selected_profiles(groups: list[ScopeGroup], selected: list[str]) -> list[str
     chosen = set(selected)
     profiles: set[str] = set()
     for group in groups:
-        if group.kind != "module":
+        if group.kind not in ("module", "node"):
             continue
         if group.selector in chosen or any(i.selector in chosen for i in group.items):
             profiles.update(group.profiles)

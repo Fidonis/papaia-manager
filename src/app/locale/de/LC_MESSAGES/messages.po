@@ -9657,8 +9657,12 @@ msgstr "Release pro Node"
 msgid "An upgrade moves every node to one release in one run, and every node has to answer before it starts."
 msgstr "Ein Upgrade bringt alle Nodes in einem Lauf auf ein Release, und vor dem Start muss jeder Node antworten."
 
-msgid "An upgrade from %(source)s to %(target)s has not finished. Run it again, or restore the restore point it took."
-msgstr "Ein Upgrade von %(source)s auf %(target)s ist nicht abgeschlossen. Führen Sie es erneut aus oder stellen Sie den dabei erstellten Wiederherstellungspunkt wieder her."
+msgid "An upgrade from %(source)s to %(target)s has not finished. Run it again, or restore its restore point %(restore_point)s."
+msgstr "Ein Upgrade von %(source)s auf %(target)s ist nicht abgeschlossen. Führen Sie es erneut aus, oder stellen Sie seinen Wiederherstellungspunkt %(restore_point)s wieder her."
+
+#, python-format
+msgid "An upgrade from %(source)s to %(target)s has not finished, and it took no restore point. Run it again, or clear the lock with papaia-ctl start --addons --unlock on the host papaia-manager runs on."
+msgstr "Ein Upgrade von %(source)s auf %(target)s ist nicht abgeschlossen und hat keinen Wiederherstellungspunkt angelegt. Führen Sie es erneut aus, oder heben Sie die Sperre mit papaia-ctl start --addons --unlock auf dem Host auf, auf dem papaia-manager läuft."
 
 msgid "The controller runs %(version)s, but these nodes do not: %(nodes)s. Move all nodes together with an upgrade."
 msgstr "Der Controller läuft auf %(version)s, diese Nodes aber nicht: %(nodes)s. Bringen Sie alle Nodes gemeinsam mit einem Upgrade auf denselben Stand."

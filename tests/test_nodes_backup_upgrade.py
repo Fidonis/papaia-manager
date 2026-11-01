@@ -63,6 +63,20 @@ def test_an_unfinished_upgrade_locks(dirs: tuple[str, str]) -> None:
     assert "1.7.0" in nodes.lock_reason(config, workspace)
 
 
+def test_the_lock_names_the_restore_point_it_can_go_back_to(dirs: tuple[str, str]) -> None:
+    config, workspace = dirs
+    lock = {"from": "1.7.0", "to": "1.8.0", "restore_point": "2026-11-01_10-00-00"}
+    (Path(config) / "upgrade.lock").write_text(json.dumps(lock), encoding="utf-8")
+    assert "2026-11-01_10-00-00" in nodes.lock_reason(config, workspace)
+
+
+def test_a_lock_without_a_restore_point_gives_the_way_out(dirs: tuple[str, str]) -> None:
+    config, workspace = dirs
+    lock = {"from": "1.7.0", "to": "1.8.0", "restore_point": None}
+    (Path(config) / "upgrade.lock").write_text(json.dumps(lock), encoding="utf-8")
+    assert "papaia-ctl start --addons --unlock" in nodes.lock_reason(config, workspace)
+
+
 def test_a_single_host_is_never_locked(tmp_path: Path) -> None:
     (tmp_path / "deployment.yaml").write_text("core: {}\n", encoding="utf-8")
     (tmp_path / "upgrade.lock").write_text("{}", encoding="utf-8")
@@ -99,7 +113,7 @@ def test_a_node_backup_is_scoped_to_it(monkeypatch: pytest.MonkeyPatch, tmp_path
             queue, settings, Path("/b"), user="u", retention_days=None, node="edge"  # type: ignore[arg-type]
         )
     )
-    assert flags == ["--backup-dir=/b", "--only=node:edge"]
+    assert flags == [f"--backup-dir={Path('/b')}", "--only=node:edge"]
     assert queue.params["node"] == "edge"
 
 
@@ -119,6 +133,22 @@ def test_a_restore_offers_remote_nodes_but_not_the_controller() -> None:
     nodes_offered = [g.selector for g in groups if g.kind == "node"]
     assert nodes_offered == ["node:edge"]
     assert "node:edge" in restore_scope.allowed_selectors(groups)
+
+
+def test_a_node_restore_keeps_the_guards_of_its_modules() -> None:
+    groups = restore_scope.build_groups(MANIFEST, controller="internal")
+    assert restore_scope.requires_full_restore(groups, ["module:keycloak"])
+    assert restore_scope.requires_full_restore(groups, ["node:edge"])
+    assert "keycloak" in restore_scope.selected_profiles(groups, ["node:edge"])
+    (node,) = [g for g in groups if g.kind == "node"]
+    (module,) = [g for g in groups if g.selector == "module:keycloak"]
+    assert set(module.hazards) <= set(node.hazards)
+
+
+def test_a_node_of_plain_modules_stays_a_scoped_restore() -> None:
+    artifact = {**MANIFEST["artifacts"][1], "node": "edge"}
+    manifest = {**MANIFEST, "artifacts": [artifact]}
+    groups = restore_scope.build_groups(manifest, controller="internal")
     assert not restore_scope.requires_full_restore(groups, ["node:edge"])
 
 
@@ -132,12 +162,12 @@ DISTRIBUTED_LOG = (
     "[papaia-ctl] Stopping and removing the containers (volumes are kept)...\n"
     "[papaia-ctl] Moving the checkout to v1.8.0...\n"
     "[papaia-ctl] Installing 1.8.0 on every node and running the migrations...\n"
-    "node edge: installing release 1.8.0\n"
-    "node edge: installing its bundle\n"
-    "node internal: installing its bundle\n"
+    "[papaia-ctl] node edge: installing release 1.8.0\n"
+    "[papaia-ctl] node edge: installing its bundle\n"
+    "[papaia-ctl] node internal: installing its bundle\n"
     "[papaia-ctl] Applying 1.8.0's configuration to /c...\n"
     "[papaia-ctl] Starting every node...\n"
-    "node edge: starting keycloak\n"
+    "[papaia-ctl] node edge: starting keycloak\n"
 )
 
 
