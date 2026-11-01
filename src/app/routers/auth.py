@@ -103,6 +103,7 @@ async def step_up(
         "verifier": hashlib.sha256(verifier.encode()).hexdigest(),
         "sub": user.sub,
         "at": int(time.time()),
+        "auth_time": user.auth_time,
         "next": _safe_next(next_) or "/",
     }
     state = _make_state(settings.manager_session_secret, verifier)
@@ -119,8 +120,14 @@ def _finish_step_up(request: Request, verifier: str, claims: OIDCClaims) -> str 
         return None
     request.session.pop(STEP_UP_PENDING, None)
     # A provider that ignored `prompt=login` keeps the old `auth_time`; one that signed in
-    # another account is not this administrator confirming anything.
-    fresh = claims.auth_time >= int(pending["at"]) - STEP_UP_SKEW_SECONDS
+    # another account is not this administrator confirming anything. Compared with the
+    # provider's own earlier answer, since it may run on another machine with another clock.
+    # A session from before `auth_time` was kept has only this machine's clock to go by.
+    previous = int(pending.get("auth_time") or 0)
+    if previous:
+        fresh = claims.auth_time > previous
+    else:
+        fresh = claims.auth_time >= int(pending["at"]) - STEP_UP_SKEW_SECONDS
     if claims.sub != pending["sub"] or not fresh:
         logger.warning("auth/step-up: refused for %s", claims.preferred_username)
         raise HTTPException(

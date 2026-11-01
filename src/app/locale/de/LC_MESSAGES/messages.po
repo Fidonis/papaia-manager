@@ -9674,3 +9674,14 @@ msgstr "Die Archive liegen auf dem Controller. Ein Wiederherstellungspunkt ist k
 
 msgid "All data of this node. No other node is touched."
 msgstr "Alle Daten dieses Nodes. Andere Nodes bleiben unberührt."
+msgid "no links"
+msgstr "keine Verbindungen"
+
+msgid "no bundle"
+msgstr "kein Bundle"
+
+msgid "Send its release and bundle"
+msgstr "Release und Bundle senden"
+
+msgid "A node named '%(name)s' exists already."
+msgstr "Ein Node namens '%(name)s' existiert bereits."

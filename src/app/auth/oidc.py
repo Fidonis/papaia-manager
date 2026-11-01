@@ -59,12 +59,15 @@ class OIDCClaims:
         return time.time() > self.exp
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "sub": self.sub,
             "preferred_username": self.preferred_username,
             "roles": self.roles,
             "exp": self.exp,
         }
+        if self.auth_time:
+            data["auth_time"] = self.auth_time
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> OIDCClaims:
@@ -73,6 +76,7 @@ class OIDCClaims:
             preferred_username=str(data.get("preferred_username", data["sub"])),
             roles=[str(r) for r in data.get("roles", [])],
             exp=int(data["exp"]),
+            auth_time=int(data.get("auth_time") or 0),
         )
 
 

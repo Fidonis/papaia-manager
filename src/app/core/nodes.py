@@ -9,8 +9,8 @@ In a distributed installation the core owns the channel: keys, pinned host keys 
 verbs of a node's forced command. `SshExecutor` therefore does not open SSH connections of
 its own. It goes through the core's `node-exec`, the same code `papaia-ctl` uses, and the
 SSH client it needs is in the image. The keys are in the configuration tree, under
-`nodes/<name>/ssh/`; the manager and its runners already mount that tree, and neither the
-keys nor their paths are ever written to a log.
+`nodes/<name>/ssh/`; the manager and its runners already mount that tree. A private key is
+never read here, so none reaches a log; a key's path can, in a message of the core.
 
 What a node's forced command does not offer stays on the controller: `docker` (a node's
 containers are in the core's merged `status`) and Git (a node gets its release as an
@@ -45,7 +45,7 @@ _FINGERPRINT_RE = re.compile(r"^SHA256:[A-Za-z0-9+/]{43}=?\Z")
 # How long one poll may take per node, and how long its result is reused: the page refreshes
 # on a timer, and every refresh is an SSH round trip to every node.
 _CHECK_LIMIT_SECONDS = 60.0
-_DOCTOR_LIMIT_SECONDS = 45.0
+_LINKS_LIMIT_SECONDS = 45.0
 _OVERVIEW_TTL_SECONDS = 30.0
 
 
@@ -64,8 +64,9 @@ def valid_fingerprint(value: str) -> bool:
 def _topology(config_dir: str) -> dict[str, Any]:
     try:
         block = load_deployment_yaml(config_dir).get("topology")
-    except (OSError, yaml.YAMLError, AttributeError):
+    except (OSError, ValueError, yaml.YAMLError, AttributeError):
         # The core reports a broken file its own way; here it is not a distributed one.
+        # ValueError covers a file that is not UTF-8.
         return {}
     return block if isinstance(block, dict) else {}
 
@@ -115,8 +116,10 @@ def registry(config_dir: str) -> dict[str, NodeRef]:
 class Executor(Protocol):
     """Run this on that node. Output and exit codes come back as they do locally."""
 
-    def run_ctl(self, verb: str, flags: list[str] | None = None) -> AsyncGenerator[str, None]:
-        """Stream a stack verb; `CtlError` after a non-zero exit."""
+    def run_ctl(self, verb: str) -> AsyncGenerator[str, None]:
+        """Stream a stack verb for everything on this node; `CtlError` after a non-zero
+        exit. It takes no arguments: `papaia-ctl` flags and a node verb's service names are
+        different things, and selecting services is the core's `--profiles`."""
         ...
 
     async def run_py(self, command: str, *, limit: float | None = None) -> tuple[int, str, str]:
@@ -139,14 +142,9 @@ class LocalExecutor:
     workspace_dir: str
     config_dir: str
 
-    async def run_ctl(
-        self, verb: str, flags: list[str] | None = None
-    ) -> AsyncGenerator[str, None]:
+    async def run_ctl(self, verb: str) -> AsyncGenerator[str, None]:
         lines = await ctl.run_core_verb(
-            verb=verb,
-            workspace_dir=self.workspace_dir,
-            config_dir=self.config_dir,
-            extra_flags=flags,
+            verb=verb, workspace_dir=self.workspace_dir, config_dir=self.config_dir
         )
         async for line in lines:
             yield line
@@ -174,14 +172,11 @@ class SshExecutor:
     workspace_dir: str
     config_dir: str
 
-    async def run_ctl(
-        self, verb: str, flags: list[str] | None = None
-    ) -> AsyncGenerator[str, None]:
+    async def run_ctl(self, verb: str) -> AsyncGenerator[str, None]:
         lines = await ctl.run_core_verb(
             verb=verb,
             workspace_dir=self.workspace_dir,
             config_dir=self.config_dir,
-            extra_flags=flags,
             node=self.node,
         )
         async for line in lines:
@@ -309,14 +304,20 @@ class NodeState:
     version: str = ""
     links: tuple[LinkState, ...] = field(default=())
     links_known: bool = False
+    # The node answered and holds no bundle yet: it runs nothing.
+    no_bundle: bool = False
 
     @property
     def links_ok(self) -> bool:
-        return self.links_known and all(link.ok for link in self.links)
+        return self.links_known and bool(self.links) and all(link.ok for link in self.links)
+
+    @property
+    def no_links(self) -> bool:
+        return self.links_known and not self.links
 
 
-def _links_from_doctor(text: str) -> tuple[LinkState, ...] | None:
-    """The link probes of a node's `doctor` answer; None when it is unreadable."""
+def _links_from_answer(text: str) -> tuple[LinkState, ...] | None:
+    """The link probes a node answered with; None when the answer is unreadable."""
     lines = text.strip().splitlines()
     try:
         data = json.loads(lines[-1])
@@ -337,19 +338,19 @@ def _links_from_doctor(text: str) -> tuple[LinkState, ...] | None:
 
 
 async def _links(name: str, *, workspace_dir: str, config_dir: str) -> tuple[LinkState, ...] | None:
-    # Through node-exec on every node, the controller too: `doctor` there is the machine's
-    # own report, and only the node verb answers for its links.
+    # Through node-exec on every node, the controller too. The `links` verb and not `doctor`:
+    # this runs on every refresh, and `doctor` also has Docker size every volume.
     try:
         code, out, _err = await ctl.run_py_cli(
-            command="doctor",
+            command="links",
             workspace_dir=workspace_dir,
             config_dir=config_dir,
-            limit=_DOCTOR_LIMIT_SECONDS,
+            limit=_LINKS_LIMIT_SECONDS,
             node=name,
         )
     except ctl.CtlError:
         return None
-    return _links_from_doctor(out) if code == 0 else None
+    return _links_from_answer(out) if code == 0 else None
 
 
 async def _node_state(row: dict[str, Any], *, workspace_dir: str, config_dir: str) -> NodeState:
@@ -374,6 +375,7 @@ async def _node_state(row: dict[str, Any], *, workspace_dir: str, config_dir: st
         version=str(check.get("papaia_version") or row.get("release") or ""),
         links=links or (),
         links_known=links is not None,
+        no_bundle=reachable and not row.get("controller") and not check.get("bundle_version"),
     )
 
 
@@ -404,6 +406,17 @@ async def overview(
         extra_flags=["--json", "--check"],
         limit=_CHECK_LIMIT_SECONDS,
     )
+    if code != 0:
+        # The list is what enrolling and removing a node start from: without the nodes'
+        # answers it still is one.
+        logger.warning("node-list --check failed: %s", _last_line(err or out))
+        code, out, err = await ctl.run_py_cli(
+            command="node-list",
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            extra_flags=["--json"],
+            limit=_CHECK_LIMIT_SECONDS,
+        )
     if code != 0:
         raise NodeError(_last_line(err or out) or _("the core could not list the nodes"))
     try:
@@ -453,7 +466,8 @@ async def host_keys(name: str, *, workspace_dir: str, config_dir: str) -> list[H
 
 async def _write(
     command: str, flags: list[str], *, workspace_dir: str, config_dir: str, limit: float = 120.0
-) -> str:
+) -> tuple[str, str]:
+    """(stdout, stderr) of a command that worked; `NodeError` with its reason otherwise."""
     code, out, err = await ctl.run_node_command(
         command=command,
         workspace_dir=workspace_dir,
@@ -464,7 +478,7 @@ async def _write(
     invalidate_overview()
     if code != 0:
         raise NodeError(_last_line(err or out) or _("%(command)s failed") % {"command": command})
-    return out
+    return out, err
 
 
 def join_archive_path(config_dir: str, name: str) -> str:
@@ -509,10 +523,22 @@ async def add_node(node: NewNode, *, workspace_dir: str, config_dir: str) -> str
     return archive
 
 
-async def remove_node(name: str, *, workspace_dir: str, config_dir: str) -> None:
-    await _write(
+async def remove_node(name: str, *, workspace_dir: str, config_dir: str) -> list[str]:
+    """Remove a node. Returns what the core says is left to do; a removal that worked can
+    still have left a gateway running and a certificate accepted."""
+    out, err = await _write(
         "node-unregister", [f"--name={name}"], workspace_dir=workspace_dir, config_dir=config_dir
     )
+    lines = [line.strip() for line in (*err.splitlines(), *out.splitlines()) if line.strip()]
+    return [line.removeprefix("WARNING: ") for line in lines if not line.startswith("Node ")]
+
+
+async def send_bundle(name: str, *, workspace_dir: str, config_dir: str) -> None:
+    """Hand a node its release and its bundle, the step after enrolling it."""
+    try:
+        await executor_for(name, workspace_dir=workspace_dir, config_dir=config_dir).put_bundle()
+    finally:
+        invalidate_overview()
 
 
 async def pin_host_key(
