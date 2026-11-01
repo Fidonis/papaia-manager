@@ -118,6 +118,7 @@ ADMIN_PARTIALS = [
     "/partials/nodes",
     "/partials/upgrade/check",
     "/partials/upgrade/log",
+    "/partials/upgrade/nodes",
     "/partials/upgrade/runner",
     "/partials/upgrade/status",
     "/partials/roles",

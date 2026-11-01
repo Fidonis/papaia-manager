@@ -21,7 +21,7 @@ from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_identity_admin
 from app.config import get_settings
 from app.core.ingest import display
-from app.core.nodes import is_distributed
+from app.core.nodes import is_distributed, lock_reason
 from app.core.rag import rag_active
 from app.core.settings_store import EffectiveBranding, effective_branding
 from app.core.widgets import registry as widget_registry
@@ -130,6 +130,20 @@ def nodes_enabled(context: dict[str, object]) -> bool:
 
 
 templates.env.globals["nodes_enabled"] = nodes_enabled
+
+
+@pass_context
+def nodes_lock(context: dict[str, object]) -> str:
+    """Why the installation is locked between releases, for the banner on every admin page."""
+    request = context.get("request")
+    resolver = get_settings
+    if isinstance(request, Request):
+        resolver = request.app.dependency_overrides.get(get_settings, get_settings)
+    settings = resolver()
+    return lock_reason(settings.papaia_config_dir, settings.papaia_workspace_dir)
+
+
+templates.env.globals["nodes_lock"] = nodes_lock
 
 
 @pass_context

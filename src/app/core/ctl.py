@@ -205,7 +205,7 @@ _ADDON_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 # Restore selectors, mirroring the grammar in the core's tools/lib/backup.py.
 # The prefix is mandatory there because `librechat` is at once a module, a
 # service, a profile and the prefix of six volume names.
-_MODULE_SELECTOR_RE = re.compile(r"^(module|addon):[a-z0-9][a-z0-9-]{0,31}$")
+_MODULE_SELECTOR_RE = re.compile(r"^(module|addon|node):[a-z0-9][a-z0-9-]{0,31}$")
 _VOLUME_SELECTOR_RE = re.compile(r"^volume:[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 MAX_SELECTORS = 32

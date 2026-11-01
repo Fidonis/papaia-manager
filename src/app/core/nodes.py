@@ -25,6 +25,7 @@ import re
 import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 import yaml
@@ -85,6 +86,10 @@ class NodeRef:
     @property
     def remote(self) -> bool:
         return self.executor != LOCAL_EXECUTOR
+
+
+def controller_name(config_dir: str) -> str:
+    return str(_topology(config_dir).get("controller") or "")
 
 
 def registry(config_dir: str) -> dict[str, NodeRef]:
@@ -222,6 +227,59 @@ def executor_for(name: str, *, workspace_dir: str, config_dir: str) -> Executor:
 def _last_line(text: str) -> str:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     return lines[-1].removeprefix("ERROR: ")[:300] if lines else ""
+
+
+# ---------------------------------------------------------------------------
+# The upgrade lock
+# ---------------------------------------------------------------------------
+
+_LOCK_FILE = "upgrade.lock"
+
+
+def lock_reason(config_dir: str, workspace_dir: str) -> str:
+    """Why `start`, `backup` and the like are refused now, or "" when they are not.
+
+    The same two reasons the core has (`cluster.skew`), read from the same files, so a page
+    can say so instead of queueing a job that fails. Reads files only: empty on a single host.
+    """
+    known = registry(config_dir)
+    if not known:
+        return ""
+    base = Path(config_dir)
+    lock = base / _LOCK_FILE
+    if lock.is_file():
+        try:
+            data = json.loads(lock.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        return _(
+            "An upgrade from %(source)s to %(target)s has not finished. Run it again, or restore"
+            " the restore point it took."
+        ) % {"source": data.get("from", "?"), "target": data.get("to", "?")}
+    version_file = Path(workspace_dir) / "papaia" / "VERSION"
+    try:
+        version = version_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    behind = []
+    for node in known.values():
+        if not node.remote:
+            continue
+        try:
+            state = json.loads(
+                (base / "nodes" / node.name / "state.json").read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError):
+            continue
+        release = state.get("release") if isinstance(state, dict) else None
+        if release and release != version:
+            behind.append(f"{node.name} ({release})")
+    if behind:
+        return _(
+            "The controller runs %(version)s, but these nodes do not: %(nodes)s. Move all nodes"
+            " together with an upgrade."
+        ) % {"version": version, "nodes": ", ".join(behind)}
+    return ""
 
 
 # ---------------------------------------------------------------------------

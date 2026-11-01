@@ -223,7 +223,34 @@ _CONFIG_PRESENTATION = _Presentation(
 )
 
 
-def build_groups(manifest: dict[str, Any] | None) -> list[ScopeGroup]:
+def _node_groups(manifest: dict[str, Any], controller: str) -> list[ScopeGroup]:
+    """A group per remote node a distributed restore point holds data of.
+
+    The controller is not offered: it is the manager's own node, and its data is reachable
+    through the module groups. A single-host manifest has no `node` on its artifacts, so
+    this adds nothing there.
+    """
+    found: dict[str, int] = {}
+    for raw in manifest.get("artifacts") or []:
+        node = str(raw.get("node") or "") if isinstance(raw, dict) else ""
+        if node and node != controller:
+            found[node] = found.get(node, 0) + 1
+    return [
+        ScopeGroup(
+            selector=f"node:{name}",
+            kind="node",
+            name=name,
+            label=_("Node %(name)s") % {"name": name},
+            summary=_("All data of this node. No other node is touched."),
+            archives=count,
+        )
+        for name, count in sorted(found.items())
+    ]
+
+
+def build_groups(
+    manifest: dict[str, Any] | None, *, controller: str = ""
+) -> list[ScopeGroup]:
     """The selectable groups of one restore point, configuration first.
 
     The configuration is offered as its own entry even though it is one
@@ -306,10 +333,10 @@ def build_groups(manifest: dict[str, Any] | None) -> list[ScopeGroup]:
     # Configuration, then core, then add-ons; ordinary before advanced, then
     # alphabetical. The order the picker renders in, decided once here rather
     # than in the template.
-    rank = {"config": 0, "module": 1, "addon": 2}
+    rank = {"config": 0, "module": 1, "addon": 2, "node": 3}
     return sorted(
-        groups.values(),
-        key=lambda g: (rank.get(g.kind, 3), g.advanced, g.label.lower()),
+        [*groups.values(), *_node_groups(manifest, controller)],
+        key=lambda g: (rank.get(g.kind, 4), g.advanced, g.label.lower()),
     )
 
 

@@ -307,6 +307,70 @@ def test_the_host_partial_reads_the_selected_node(
 
 
 # ---------------------------------------------------------------------------
+# The lock between releases, and backups per node
+# ---------------------------------------------------------------------------
+
+
+def _locked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(nodes, "lock_reason", lambda c, w: "edge runs another release")
+
+
+def test_a_backup_is_refused_while_the_nodes_disagree(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.routers import api_maintenance
+
+    monkeypatch.setattr(api_maintenance, "_backup_dir", lambda s: Path(_CONFIG_DIR))
+    _locked(monkeypatch)
+    response = _session(client).post("/api/v1/maintenance/backup", json={}, headers=_HEADERS)
+    assert response.status_code == 409 and "another release" in response.json()["detail"]
+
+
+def test_a_backup_of_an_unknown_node_is_refused(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.routers import api_maintenance
+
+    monkeypatch.setattr(api_maintenance, "_backup_dir", lambda s: Path(_CONFIG_DIR))
+    monkeypatch.setattr(nodes, "lock_reason", lambda c, w: "")
+    response = _session(client).post(
+        "/api/v1/maintenance/backup", json={"node": "elsewhere"}, headers=_HEADERS
+    )
+    assert response.status_code == 400
+
+
+def test_starting_is_refused_while_locked_and_stopping_is_not(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi import HTTPException
+
+    from app.config import get_settings
+    from app.routers import api_stack
+
+    _locked(monkeypatch)
+    with pytest.raises(HTTPException):
+        api_stack._refuse_while_locked("start", get_settings())  # noqa: SLF001
+    api_stack._refuse_while_locked("stop", get_settings())  # noqa: SLF001
+
+
+def test_every_admin_page_says_why_it_is_locked(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (Path(_CONFIG_DIR) / "upgrade.lock").write_text(
+        json.dumps({"from": "1.7.0", "to": "1.8.0"}), encoding="utf-8"
+    )
+    try:
+        assert "has not finished" in _session(client).get("/audit").text
+    finally:
+        (Path(_CONFIG_DIR) / "upgrade.lock").unlink()
+
+
+def test_the_upgrade_page_lists_the_release_per_node(client: TestClient) -> None:
+    html = _session(client).get("/partials/upgrade/nodes").text
+    assert "edge" in html and "1.8.0" in html and "unreachable" in html
+
+
+# ---------------------------------------------------------------------------
 # Step-up
 # ---------------------------------------------------------------------------
 

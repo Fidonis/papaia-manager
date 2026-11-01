@@ -9650,3 +9650,27 @@ msgstr "Keine Antwort von %(nodes)s."
 
 msgid "%(count)d need attention on %(nodes)s."
 msgstr "%(count)d brauchen Aufmerksamkeit auf %(nodes)s."
+
+msgid "Release per node"
+msgstr "Release pro Node"
+
+msgid "An upgrade moves every node to one release in one run, and every node has to answer before it starts."
+msgstr "Ein Upgrade bringt alle Nodes in einem Lauf auf ein Release, und vor dem Start muss jeder Node antworten."
+
+msgid "An upgrade from %(source)s to %(target)s has not finished. Run it again, or restore the restore point it took."
+msgstr "Ein Upgrade von %(source)s auf %(target)s ist nicht abgeschlossen. Führen Sie es erneut aus oder stellen Sie den dabei erstellten Wiederherstellungspunkt wieder her."
+
+msgid "The controller runs %(version)s, but these nodes do not: %(nodes)s. Move all nodes together with an upgrade."
+msgstr "Der Controller läuft auf %(version)s, diese Nodes aber nicht: %(nodes)s. Bringen Sie alle Nodes gemeinsam mit einem Upgrade auf denselben Stand."
+
+msgid "What to back up"
+msgstr "Was gesichert wird"
+
+msgid "All nodes"
+msgstr "Alle Nodes"
+
+msgid "Archives are stored on the controller. A restore point is not one moment across nodes: they are archived one after another."
+msgstr "Die Archive liegen auf dem Controller. Ein Wiederherstellungspunkt ist kein einzelner Moment über alle Nodes: Sie werden nacheinander archiviert."
+
+msgid "All data of this node. No other node is touched."
+msgstr "Alle Daten dieses Nodes. Andere Nodes bleiben unberührt."

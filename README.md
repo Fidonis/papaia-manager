@@ -677,6 +677,8 @@ instead.
 
 On such an installation the other pages follow the nodes. Services has a section per node, read from the core's merged `status`, and names a node that does not answer; an action on a group runs on the node that owns it. Host offers a node selector and shows the core's `nodes` and `links` checks. The dashboard's service, disk and certificate cards look at every node and name the one that needs attention, and a node without a reading keeps a card from saying everything is fine. Modules, the overlay editor and the mail settings need nothing new: `papaia-ctl start` renders, sends each node its bundle and recreates the containers there. Users & Roles and Models & Usage keep dialling `keycloak:8443` and `litellm:4000`, which the link gateway carries.
 
+Backups keep going to the controller, as in the core: the Backup page can back up one node or all, and a restore can pick a remote node as a whole, which touches no other node. The page says that a restore point is not one moment across nodes. An upgrade moves all nodes through the same detached runner; the Upgrade page shows the release per node and each node's latest step. While an upgrade has not finished or a node runs another release, every admin page says so, and starting the stack or a backup is refused with that reason. `stop`, the upgrade and a restore stay possible.
+
 **Audit log.** An admin-only `/audit` page lists every entry from the audit log,
 filtered by user, action, result, a target substring and a date range, newest
 first and paginated, with the filter facets drawn from the log itself. The same
