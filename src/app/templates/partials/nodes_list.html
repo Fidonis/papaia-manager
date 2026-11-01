@@ -26,6 +26,7 @@
         <td>
           {% if row.reachable %}
           <span class="badge badge-success badge-sm">{% trans %}reachable{% endtrans %}</span>
+          {% if row.no_bundle %}<span class="badge badge-warning badge-sm">{% trans %}no bundle{% endtrans %}</span>{% endif %}
           {% elif not row.host_key_pinned %}
           <span class="badge badge-warning badge-sm">{% trans %}not enrolled{% endtrans %}</span>
           {% else %}
@@ -36,6 +37,8 @@
         <td>
           {% if not row.links_known %}
           <span class="text-xs opacity-50">{% trans %}unknown{% endtrans %}</span>
+          {% elif row.no_links %}
+          <span class="text-xs opacity-50">{% trans %}no links{% endtrans %}</span>
           {% elif row.links_ok %}
           <span class="badge badge-success badge-sm">{% trans %}healthy{% endtrans %}</span>
           {% else %}

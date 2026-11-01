@@ -254,16 +254,77 @@ def _overview(monkeypatch: pytest.MonkeyPatch, fake: FakePy) -> list[nodes.NodeS
 def test_the_overview_reflects_a_node_that_does_not_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fake = FakePy({"node-list": (0, json.dumps(_ROWS), ""), "doctor": (0, _DOCTOR, "")})
+    fake = FakePy({"node-list": (0, json.dumps(_ROWS), ""), "links": (0, _DOCTOR, "")})
     internal, edge = _overview(monkeypatch, fake)
     assert internal.reachable and internal.version == "1.8.0"
     assert internal.links_known and not internal.links_ok
     assert internal.links[0].reason == "refused"
     assert not edge.reachable and "timed out" in edge.reason
-    # The last known release, and no doctor call to a node that did not answer.
+    # The last known release, and no link probe to a node that did not answer.
     assert edge.version == "1.8.0" and not edge.links_known
     doctors = [c for c in fake.calls if c["command"] == "node-exec"]
     assert [c["extra_flags"][0] for c in doctors] == ["--name=internal"]
+
+
+def test_a_node_without_a_pinned_key_is_listed_as_the_core_reports_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The core's answer for a node right after `node-register`.
+    row = {
+        "name": "spare",
+        "address": "10.0.4.10",
+        "executor": "ssh",
+        "controller": False,
+        "services": [],
+        "host_key_pinned": False,
+        "release": None,
+        "bundle_pushed_at": None,
+        "check": {
+            "node": "spare",
+            "reachable": False,
+            "reason": "no pinned host key for node 'spare'; confirm it with `node check`",
+        },
+    }
+    (state,) = _overview(monkeypatch, FakePy({"node-list": (0, json.dumps([row]), "")}))
+    assert not state.reachable and not state.host_key_pinned and "pinned" in state.reason
+
+
+def test_the_list_survives_a_core_whose_check_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Fallback(FakePy):
+        async def __call__(self, **kwargs: Any) -> tuple[int, str, str]:
+            self.calls.append(kwargs)
+            if "--check" in kwargs["extra_flags"]:
+                return 1, "", "Traceback (most recent call last):\n"
+            rows = [{k: v for k, v in _ROWS[1].items() if k != "check"}]
+            return 0, json.dumps(rows), ""
+
+    (state,) = _overview(monkeypatch, Fallback())
+    assert state.name == "edge" and not state.reachable
+
+
+def test_an_empty_list_of_links_is_not_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [{**_ROWS[1], "check": {"reachable": True, "papaia_version": "1.8.0"}}]
+    answer = json.dumps({"node": "edge", "links": []})
+    fake = FakePy({"node-list": (0, json.dumps(rows), ""), "links": (0, answer, "")})
+    (state,) = _overview(monkeypatch, fake)
+    assert state.links_known and state.no_links and not state.links_ok
+    assert state.no_bundle
+
+
+def test_a_deployment_file_that_is_not_utf8_is_not_a_distributed_one(tmp_path: Path) -> None:
+    (tmp_path / "deployment.yaml").write_bytes(b"core: \xff\n")
+    assert nodes.is_distributed(str(tmp_path)) is False
+
+
+def test_removing_a_node_says_what_is_left_to_do(monkeypatch: pytest.MonkeyPatch) -> None:
+    out = "Node 'x' removed. 2 node(s) left.\nThe other nodes accept its link certificate.\n"
+    err = "WARNING: could not stop the link gateway on 'x'.\n"
+    monkeypatch.setattr(ctl, "_run_py", FakePy({"node-unregister": (0, out, err)}))
+    notes = asyncio.run(nodes.remove_node("x", workspace_dir="/w", config_dir="/c"))
+    assert notes == [
+        "could not stop the link gateway on 'x'.",
+        "The other nodes accept its link certificate.",
+    ]
 
 
 def test_the_overview_is_reused_until_asked_for_fresh(monkeypatch: pytest.MonkeyPatch) -> None:

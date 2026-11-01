@@ -162,7 +162,6 @@ def test_the_py_commands_are_exactly_the_read_only_ones() -> None:
         "render-preview",
         "module-info",
         "node-list",
-        "node-check",
         "node-keyscan",
     }
 

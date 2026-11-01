@@ -1,8 +1,8 @@
 """REST API -- changing the set of nodes of a distributed installation.
 
 Every route here changes what the installation trusts, so each one takes a fresh sign-in
-(`SteppedUpAdmin`) on top of the administrator role and the CSRF token, and each one is
-audited, refused attempts included.
+(`SteppedUpAdmin`) on top of the administrator role and the CSRF token. Each one is audited,
+and so is every refusal: a missing sign-in by the dependency, the rest here.
 """
 from __future__ import annotations
 
@@ -35,11 +35,21 @@ class PinBody(BaseModel):
     fingerprint: str
 
 
-def _require_name(name: str) -> None:
+def _invalid(
+    settings: Settings, user: OIDCClaims, action: str, name: str, detail: str
+) -> HTTPException:
+    _audit(settings, user, action, name, result="failed", params={"reason": detail})
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+
+
+def _require_name(settings: Settings, user: OIDCClaims, action: str, name: str) -> None:
     if not nodes.valid_name(name):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=_("A node name is lowercase letters, digits and '-', starting with a letter."),
+        raise _invalid(
+            settings,
+            user,
+            action,
+            name[:64],
+            _("A node name is lowercase letters, digits and '-', starting with a letter."),
         )
 
 
@@ -79,7 +89,15 @@ async def add_node(
     """Register a node and write its join archive; the core validates the rest."""
     verify_csrf(request)
     require_distributed(settings)
-    _require_name(body.name)
+    _require_name(settings, user, "node.add", body.name)
+    if body.name in nodes.registry(settings.papaia_config_dir):
+        raise _refused(
+            settings,
+            user,
+            "node.add",
+            body.name,
+            nodes.NodeError(_("A node named '%(name)s' exists already.") % {"name": body.name}),
+        )
     new = nodes.NewNode(
         name=body.name,
         address=body.address.strip(),
@@ -105,19 +123,42 @@ async def remove_node(
     name: str,
     user: SteppedUpAdmin,
     settings: Annotated[Settings, Depends(get_settings)],
-) -> dict[str, str]:
+) -> dict[str, Any]:
     verify_csrf(request)
     require_distributed(settings)
-    _require_name(name)
+    _require_name(settings, user, "node.remove", name)
     try:
-        await nodes.remove_node(
+        notes = await nodes.remove_node(
             name,
             workspace_dir=settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
         )
     except (nodes.NodeError, ctl.CtlError) as exc:
         raise _refused(settings, user, "node.remove", name, exc) from exc
-    _audit(settings, user, "node.remove", name)
+    _audit(settings, user, "node.remove", name, params={"notes": notes})
+    return {"name": name, "notes": notes}
+
+
+@router.post("/api/v1/nodes/{name}/bundle")
+async def send_bundle(
+    request: Request,
+    name: str,
+    user: SteppedUpAdmin,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
+    """Hand an enrolled node its release and its bundle."""
+    verify_csrf(request)
+    require_distributed(settings)
+    _require_name(settings, user, "node.bundle", name)
+    try:
+        await nodes.send_bundle(
+            name,
+            workspace_dir=settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
+        )
+    except (nodes.NodeError, ctl.CtlError) as exc:
+        raise _refused(settings, user, "node.bundle", name, exc) from exc
+    _audit(settings, user, "node.bundle", name)
     return {"name": name}
 
 
@@ -132,11 +173,10 @@ async def pin_host_key(
     """Trust the host key an administrator compared with the install script's output."""
     verify_csrf(request)
     require_distributed(settings)
-    _require_name(name)
+    _require_name(settings, user, "node.pin", name)
     if not nodes.valid_fingerprint(body.fingerprint):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=_("That is not a SHA256 host key fingerprint."),
+        raise _invalid(
+            settings, user, "node.pin", name, _("That is not a SHA256 host key fingerprint.")
         )
     try:
         await nodes.pin_host_key(
