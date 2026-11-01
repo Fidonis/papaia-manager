@@ -9626,3 +9626,15 @@ msgstr "Node %(name)s — %(branding)s"
 
 msgid "Node %(name)s"
 msgstr "Node %(name)s"
+
+msgid "no links"
+msgstr "keine Verbindungen"
+
+msgid "no bundle"
+msgstr "kein Bundle"
+
+msgid "Send its release and bundle"
+msgstr "Release und Bundle senden"
+
+msgid "A node named '%(name)s' exists already."
+msgstr "Ein Node namens '%(name)s' existiert bereits."

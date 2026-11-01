@@ -60,6 +60,9 @@
 {% endif %}
 
 {% if stepped_up %}
+  {% if node.no_bundle %}
+  <button class="btn btn-primary btn-sm" onclick="sendBundle()">{% trans %}Send its release and bundle{% endtrans %}</button>
+  {% endif %}
   {% if not node.controller %}
   <button class="btn btn-error btn-outline btn-sm" onclick="removeNode()">{% trans %}Remove this node{% endtrans %}</button>
   {% endif %}
@@ -73,17 +76,24 @@
         },
         body: body ? JSON.stringify(body) : undefined,
       }).then(async function(r) {
-        if (r.ok) return true;
         var data = {};
         try { data = await r.json(); } catch (_) {}
+        if (r.ok) return data;
         alert({{ _('That did not work:')|tojson }} + " " + (data.detail || r.status));
-        return false;
+        return null;
       });
     }
     function removeNode() {
       if (!confirm({{ _('Remove this node? Its SSH key and link certificate are deleted.')|tojson }})) return;
-      nodeRequest('DELETE', '/api/v1/nodes/{{ name }}').then(function(ok) {
-        if (ok) window.location.href = '/nodes';
+      nodeRequest('DELETE', '/api/v1/nodes/{{ name }}').then(function(done) {
+        if (!done) return;
+        if (done.notes && done.notes.length) alert(done.notes.join("\n\n"));
+        window.location.href = '/nodes';
+      });
+    }
+    function sendBundle() {
+      nodeRequest('POST', '/api/v1/nodes/{{ name }}/bundle').then(function(done) {
+        if (done) window.location.reload();
       });
     }
     function pinKey(fingerprint) {

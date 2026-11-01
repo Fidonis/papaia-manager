@@ -220,7 +220,7 @@ def test_adding_a_node_is_audited(client: TestClient, monkeypatch: pytest.Monkey
 def test_a_refused_removal_is_audited_and_says_why(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def remove(name: str, **kwargs: Any) -> None:
+    async def remove(name: str, **kwargs: Any) -> list[str]:
         raise nodes.NodeError("node 'edge' still runs keycloak")
 
     monkeypatch.setattr(nodes, "remove_node", remove)
@@ -230,12 +230,53 @@ def test_a_refused_removal_is_audited_and_says_why(
     assert last["action"] == "node.remove" and last["result"] == "failed"
 
 
+def test_adding_a_name_that_exists_is_refused(client: TestClient) -> None:
+    response = _stepped_up(client).post(
+        "/api/v1/nodes", json={"name": "edge", "address": "10.0.9.9"}, headers=_HEADERS
+    )
+    assert response.status_code == 409 and "exists already" in response.json()["detail"]
+    assert _audit()[-1]["action"] == "node.add" and _audit()[-1]["result"] == "failed"
+
+
+def test_a_removal_hands_on_what_is_left_to_do(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def remove(name: str, **kwargs: Any) -> list[str]:
+        return ["run node sync --all"]
+
+    monkeypatch.setattr(nodes, "remove_node", remove)
+    response = _stepped_up(client).delete("/api/v1/nodes/edge", headers=_HEADERS)
+    assert response.json()["notes"] == ["run node sync --all"]
+    assert _audit()[-1]["params"]["notes"] == ["run node sync --all"]
+
+
+def test_a_bundle_can_be_sent_and_is_audited(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[str] = []
+
+    async def send(name: str, **kwargs: Any) -> None:
+        sent.append(name)
+
+    monkeypatch.setattr(nodes, "send_bundle", send)
+    response = _stepped_up(client).post("/api/v1/nodes/edge/bundle", headers=_HEADERS)
+    assert response.status_code == 200 and sent == ["edge"]
+    assert _audit()[-1]["action"] == "node.bundle"
+
+
+def test_a_missing_sign_in_is_audited(client: TestClient) -> None:
+    _session(client).post("/api/v1/nodes", json=_BODY, headers=_HEADERS)
+    last = _audit()[-1]
+    assert last["action"] == "step-up.refused" and last["result"] == "failed"
+
+
 @pytest.mark.parametrize("name", ["Bad_Name", "-x", "a b"])
 def test_a_bad_name_never_reaches_the_core(client: TestClient, name: str) -> None:
     response = _stepped_up(client).post(
         "/api/v1/nodes", json={"name": name, "address": "10.0.3.10"}, headers=_HEADERS
     )
     assert response.status_code == 422
+    assert _audit()[-1]["result"] == "failed"
 
 
 def test_a_bad_fingerprint_never_reaches_the_core(client: TestClient) -> None:
@@ -243,6 +284,7 @@ def test_a_bad_fingerprint_never_reaches_the_core(client: TestClient) -> None:
         "/api/v1/nodes/edge/pin", json={"fingerprint": "MD5:aa"}, headers=_HEADERS
     )
     assert response.status_code == 422
+    assert _audit()[-1]["action"] == "node.pin" and _audit()[-1]["result"] == "failed"
 
 
 # ---------------------------------------------------------------------------
@@ -304,6 +346,44 @@ def test_a_silent_sign_in_is_not_a_step_up(
     code, _ = _step_up(client, monkeypatch, FakeOidc(auth_time=int(time.time()) - 3600))
     assert code == 403
     assert client.post("/api/v1/nodes", json=_BODY, headers=_HEADERS).status_code == 403
+
+
+def _with_auth_time(client: TestClient, auth_time: int) -> TestClient:
+    admin = _session(client)
+    payload = {
+        "user": {
+            "sub": "u-1",
+            "preferred_username": "tester",
+            "roles": ["admin"],
+            "exp": int(time.time()) + 3600,
+            "auth_time": auth_time,
+        },
+        "_csrf_token": _CSRF,
+    }
+    admin.cookies.clear()
+    admin.cookies.set(
+        "papaia_manager_session",
+        TimestampSigner(_SESSION_SECRET).sign(base64.b64encode(json.dumps(payload).encode())).decode(),
+    )
+    return admin
+
+
+@pytest.mark.parametrize(
+    "offset, expected",
+    [(1, 302), (0, 403)],
+)
+def test_step_up_compares_the_providers_own_times(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, offset: int, expected: int
+) -> None:
+    from app.routers import auth
+
+    # Keycloak's clock is an hour behind this machine: only its own answers are compared.
+    earlier = int(time.time()) - 7200
+    fake = FakeOidc(auth_time=earlier + offset)
+    monkeypatch.setattr(auth, "get_oidc_client", lambda: fake)
+    admin = _with_auth_time(client, earlier)
+    state = admin.get("/auth/step-up?next=/nodes").headers["location"].split("state=", 1)[1]
+    assert admin.get(f"/auth/callback?code=c&state={state}").status_code == expected
 
 
 def test_another_account_cannot_confirm_for_this_one(

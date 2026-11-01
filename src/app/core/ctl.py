@@ -99,7 +99,7 @@ ALLOWED_CORE_VERBS: frozenset[str] = frozenset(
 # named volumes it owns (and whether they exist) and what its settings consist of. The
 # Modules tab asks it for the dialog that offers to delete them. It writes nothing.
 #
-# `node-list`, `node-check` and `node-keyscan` read the nodes of a distributed installation:
+# `node-list` and `node-keyscan` read the nodes of a distributed installation:
 # what `deployment.yaml` says, what each node answers, and the host keys it offers. They
 # change nothing on a node or here.
 ALLOWED_PY_COMMANDS: frozenset[str] = frozenset(
@@ -111,14 +111,13 @@ ALLOWED_PY_COMMANDS: frozenset[str] = frozenset(
         "render-preview",
         "module-info",
         "node-list",
-        "node-check",
         "node-keyscan",
     }
 )
 
 # What a remote node may be asked through `node-exec`, from the verbs its forced command
 # accepts. Reading only: everything else a node does goes through the core's own commands.
-NODE_READ_VERBS: frozenset[str] = frozenset({"ping", "version", "status", "doctor"})
+NODE_READ_VERBS: frozenset[str] = frozenset({"ping", "version", "status", "doctor", "links"})
 
 # The stack verbs that have a node verb of their own. The rest of ALLOWED_CORE_VERBS is the
 # controller's business: the backups live there, and so does the core's checkout.

@@ -11,6 +11,7 @@ from fastapi import Depends, HTTPException, Request, status
 from app.auth.oidc import OIDCClaims, OIDCError, get_oidc_client
 from app.auth.roles import has_manager_access, is_admin, is_identity_admin
 from app.config import Settings, get_settings
+from app.core.audit import write_audit_entry
 from app.i18n import gettext
 
 # Renew the session this many seconds before the access token actually expires,
@@ -186,9 +187,18 @@ def stepped_up(request: Request) -> bool:
     return isinstance(at, int) and 0 <= time.time() - at < STEP_UP_SECONDS
 
 
-async def require_step_up(request: Request, user: AdminUser) -> OIDCClaims:
-    """An administrator who confirmed their sign-in just now, or 403."""
+async def require_step_up(
+    request: Request, user: AdminUser, settings: Annotated[Settings, Depends(get_settings)]
+) -> OIDCClaims:
+    """An administrator who confirmed their sign-in just now, or 403 and an audit entry."""
     if not stepped_up(request):
+        write_audit_entry(
+            settings.papaia_config_dir,
+            user=user.preferred_username,
+            action="step-up.refused",
+            target=request.url.path,
+            result="failed",
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=gettext("Confirm your sign-in first; this action needs a fresh one."),
