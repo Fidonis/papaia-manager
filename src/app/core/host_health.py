@@ -75,6 +75,11 @@ _WANTED_CHECKS = ("memory", "cpu", "gpu", "time_sync", "disk_space", "certs")
 # `_run`): it is measured on its own, at its own pace, by `app.core.docker_usage`.
 _SKIPPED_CHECKS = ("docker_version", "ports", "dns", "addon_compat", "container_health")
 
+# A distributed installation's `nodes` and `links`, and the controller's `doctor` runs a
+# `doctor` on every node for them, one after another. They have a run of their own (see
+# `load_cluster_checks`), so the reading the cards use stays as cheap as on one host.
+_CLUSTER_CHECKS = ("nodes", "links")
+
 # The mail relay's check (core 1.6.0 and newer); measured by the Mail page, see
 # `app.core.mail.status`. Not in the tuple above because `--skip` refuses a name the core
 # does not know.
@@ -98,6 +103,10 @@ RECHECK_MIN_INTERVAL_SECONDS = 5.0
 # holding the lock.
 RUN_TIMEOUT_SECONDS = 30.0
 
+# One `doctor` per node, in a row, so it gets more than one host's run. Nobody waits for it:
+# the Host page shows what it has and picks up the result at its next poll.
+CLUSTER_RUN_TIMEOUT_SECONDS = 150.0
+
 # Past this, a cached reading is no longer shown by the cache-only consumers. The
 # chip refreshes it in the background on every poll, so this only matters when
 # nobody has had a page open for a while. A long interval raises it: the cut-off
@@ -108,6 +117,7 @@ STALE_AFTER_INTERVALS = 3.0
 
 _TOO_OLD = N_("This papAIa core does not provide doctor yet. Upgrade the core to 1.4.0 or newer.")
 _NO_OUTPUT = N_("doctor exited with status %(code)s and no output")
+_CLUSTER_PENDING = N_("Being checked...")
 _UNEXPECTED = N_("the host check failed unexpectedly")
 
 _DISK_LABELS = {
@@ -674,7 +684,8 @@ def parse_doctor(stdout: str, *, checked_at: datetime | None = None) -> HostHeal
     )
 
 
-_CLUSTER_TITLES = {"nodes": N_("Nodes"), "links": N_("Links")}
+_NODES_TITLE = N_("Nodes")
+_CLUSTER_TITLES = {"nodes": _NODES_TITLE, "links": N_("Links")}
 
 
 def _cluster_checks(by_name: dict[str, dict[str, Any]]) -> tuple[ClusterCheck, ...]:
@@ -685,7 +696,7 @@ def _cluster_checks(by_name: dict[str, dict[str, Any]]) -> tuple[ClusterCheck, .
             summary=_summary(by_name[name]),
         )
         for name, title in _CLUSTER_TITLES.items()
-        if name in by_name
+        if name in by_name and by_name[name].get("status") != "skip"
     )
 
 
@@ -740,6 +751,9 @@ def reset_cache() -> None:
     _cache = None
     _refresh = None
     _node_cache.clear()
+    _node_runs.clear()
+    _cluster.cached = None
+    _cluster.run = None
     docker_usage.reset_cache()
 
 
@@ -759,7 +773,7 @@ def _first_line(text: str, limit: int = 200) -> str:
     return ""
 
 
-def _skipped(workspace_dir: str) -> tuple[str, ...]:
+def _skipped(workspace_dir: str, config_dir: str = "") -> tuple[str, ...]:
     """What this run asks the core not to do.
 
     The five old checks always. `docker_usage` too, once the core has it: it costs
@@ -767,10 +781,12 @@ def _skipped(workspace_dir: str) -> tuple[str, ...]:
     `docker exec` into the mail relay, and only the Mail page has a use for the
     answer. Naming either for a core that does not know it would get the whole run
     refused, which is why the registry is read first and nothing is added
-    unconditionally."""
+    unconditionally. The same goes for `nodes` and `links`: only a distributed
+    installation is asked to leave them out, and its core knows them."""
     known = docker_usage.core_checks(workspace_dir)
     extra = tuple(name for name in (docker_usage.CHECK_NAME, _MAIL_CHECK) if name in known)
-    return (*_SKIPPED_CHECKS, *extra)
+    cluster = _CLUSTER_CHECKS if config_dir and nodes.is_distributed(config_dir) else ()
+    return (*_SKIPPED_CHECKS, *extra, *cluster)
 
 
 async def _run(
@@ -785,7 +801,7 @@ async def _run(
             command="doctor",
             workspace_dir=workspace_dir,
             config_dir=config_dir,
-            extra_flags=["--json", f"--skip={','.join(_skipped(workspace_dir))}"],
+            extra_flags=["--json", f"--skip={','.join(_skipped(workspace_dir, config_dir))}"],
             limit=RUN_TIMEOUT_SECONDS,
         )
     except CtlError as exc:
@@ -869,17 +885,12 @@ def _start(config_dir: str, workspace_dir: str, interval: int) -> asyncio.Task[H
 
 
 _node_cache: dict[str, tuple[float, HostHealth]] = {}
+# The run in flight per node, shared as `_refresh` is.
+_node_runs: dict[str, asyncio.Task[HostHealth]] = {}
 
 
-async def load_node_health(
-    node: str, *, config_dir: str, workspace_dir: str, force: bool = False
-) -> HostHealth:
-    """Another node's reading: its own `doctor`, through its forced command. Never raises,
-    so a node that does not answer is a reading that says so."""
-    cached = _node_cache.get(node)
-    limit = RECHECK_MIN_INTERVAL_SECONDS if force else float(refresh_interval(config_dir))
-    if cached is not None and time.monotonic() - cached[0] < limit:
-        return cached[1]
+async def _measure_node(node: str, *, config_dir: str, workspace_dir: str) -> HostHealth:
+    """One run on a node, stored whatever it says. Never raises: nobody may await it."""
     try:
         code, out, err = await run_py_cli(
             command="doctor",
@@ -889,12 +900,127 @@ async def load_node_health(
             node=node,
         )
     except CtlError as exc:
-        return unavailable(str(exc))
-    if code != 0:
-        return unavailable(_first_line(err or out) or _(_NO_OUTPUT) % {"code": code})
-    health = parse_node_doctor(out)
+        health = unavailable(str(exc))
+    except Exception:
+        logger.exception("host health: unexpected failure on node %s", node)
+        health = unavailable(_(_UNEXPECTED))
+    else:
+        if code != 0:
+            health = unavailable(_first_line(err or out) or _(_NO_OUTPUT) % {"code": code})
+        else:
+            health = parse_node_doctor(out)
     _node_cache[node] = (time.monotonic(), health)
     return health
+
+
+async def load_node_health(
+    node: str, *, config_dir: str, workspace_dir: str, force: bool = False
+) -> HostHealth:
+    """Another node's reading: its own `doctor`, through its forced command. Never raises,
+    so a node that does not answer is a reading that says so."""
+    cached = _node_cache.get(node)
+    if cached is not None:
+        interval = float(refresh_interval(config_dir))
+        if force:
+            limit = RECHECK_MIN_INTERVAL_SECONDS
+        elif cached[1].available:
+            limit = interval
+        else:
+            limit = min(FAILURE_TTL_SECONDS, interval)
+        if time.monotonic() - cached[0] < limit:
+            return cached[1]
+    run = _node_runs.get(node)
+    if run is None or run.done():
+        run = asyncio.get_running_loop().create_task(
+            _measure_node(node, config_dir=config_dir, workspace_dir=workspace_dir)
+        )
+        _node_runs[node] = run
+    # Shielded: cancelling this request (tab closed) must not cancel the run.
+    return await asyncio.shield(run)
+
+
+@dataclass
+class _ClusterReading:
+    """The last `nodes` and `links`, kept as the core's raw answer so that each request can
+    read it in its own language, or the reason there is none."""
+
+    at: float
+    out: str | None
+    reason: str = ""
+
+
+@dataclass
+class _ClusterState:
+    cached: _ClusterReading | None = None
+    run: asyncio.Task[None] | None = None
+
+
+_cluster = _ClusterState()
+
+
+async def _measure_cluster(config_dir: str, workspace_dir: str) -> None:
+    """Only `nodes` and `links`: every check the host reading uses is skipped."""
+    skip = (*_WANTED_CHECKS, *_skipped(workspace_dir))
+    out: str | None = None
+    reason = ""
+    try:
+        code, stdout, err = await run_py_cli(
+            command="doctor",
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            extra_flags=["--json", f"--skip={','.join(skip)}"],
+            limit=CLUSTER_RUN_TIMEOUT_SECONDS,
+        )
+    except CtlError as exc:
+        reason = str(exc)
+    except Exception:
+        logger.exception("host health: unexpected failure of the cluster checks")
+        reason = _(_UNEXPECTED)
+    else:
+        if stdout.strip():
+            out = stdout
+        else:
+            reason = _first_line(err) or _(_NO_OUTPUT) % {"code": code}
+    _cluster.cached = _ClusterReading(at=time.monotonic(), out=out, reason=reason)
+
+
+def _cluster_fresh(*, force: bool, interval: int) -> bool:
+    cached = _cluster.cached
+    if cached is None:
+        return False
+    if force:
+        limit = RECHECK_MIN_INTERVAL_SECONDS
+    elif cached.out is not None:
+        limit = float(interval)
+    else:
+        limit = min(FAILURE_TTL_SECONDS, float(interval))
+    return time.monotonic() - cached.at < limit
+
+
+def load_cluster_checks(
+    *, config_dir: str, workspace_dir: str, force: bool = False
+) -> tuple[ClusterCheck, ...]:
+    """`nodes` and `links` as last read, starting a run in the background when that reading
+    has run out. Never waits. Must be called from a running event loop; a single host has
+    neither check and starts nothing."""
+    if not nodes.is_distributed(config_dir):
+        return ()
+    if not _cluster_fresh(force=force, interval=refresh_interval(config_dir)) and (
+        _cluster.run is None or _cluster.run.done()
+    ):
+        _cluster.run = asyncio.get_running_loop().create_task(
+            _measure_cluster(config_dir, workspace_dir)
+        )
+    cached = _cluster.cached
+    title = _(_NODES_TITLE)
+    if cached is None:
+        return (ClusterCheck(title, HostState.UNKNOWN, _(_CLUSTER_PENDING)),)
+    if cached.out is None:
+        return (ClusterCheck(title, HostState.UNKNOWN, cached.reason),)
+    health = parse_doctor(cached.out)
+    if not health.available:
+        return (ClusterCheck(title, HostState.UNKNOWN, health.reason),)
+    return health.cluster_checks
 
 
 async def load_all_nodes(

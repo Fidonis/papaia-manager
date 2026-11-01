@@ -19,6 +19,7 @@ import yaml
 from app.core import ctl, host_health, nodes, services
 from app.core.services import ServiceHealth
 from app.core.widgets import builtin
+from app.routers import api_stack
 
 
 def _container(service: str, state: str = "running", health: str = "healthy") -> dict[str, Any]:
@@ -92,9 +93,100 @@ def test_a_node_that_did_not_answer_is_named() -> None:
 
 def test_modules_are_grouped_by_node_in_the_order_of_the_nodes() -> None:
     sections = services.modules_by_node(services.parse_status_report(json.dumps(REPORT)))
-    assert [(name, [m.name for m in found]) for name, found in sections] == [
-        ("internal", ["docs", "librechat"]),
+    assert [(name, [m.name for m in found]) for name, found, _ in sections] == [
+        ("internal", ["librechat", "docs"]),
         ("edge", ["keycloak"]),
+    ]
+
+
+def _module(name: str, health: str = "healthy", **fields: Any) -> services.ServiceModule:
+    container = services.ServiceContainer(
+        name=name,
+        service=name,
+        role="",
+        state="running",
+        status_text="Up",
+        health=ServiceHealth(health),
+    )
+    return services.ServiceModule(name=name, containers=[container], **fields)
+
+
+def test_a_node_lists_its_core_first_and_keeps_an_addons_modules_together() -> None:
+    snapshot = services.StackSnapshot(
+        core=[
+            _module("papaia-link-gateway", node="a", profiles=("link-gateway",)),
+            _module("librechat", node="a", profiles=("librechat",)),
+        ],
+        addons=[
+            _module("docs-web", "stopped", node="a", addon="docs"),
+            _module("other", "unhealthy", node="a", addon="other"),
+            _module("docs-db", node="a", addon="docs"),
+        ],
+        nodes=[services.NodeHealth(name="a", reachable=True)],
+    )
+    ((_, modules, groups),) = services.modules_by_node(snapshot)
+    assert [m.name for m in modules] == [
+        "librechat",
+        "papaia-link-gateway",
+        "docs-web",
+        "docs-db",
+        "other",
+    ]
+    assert groups == 2
+
+
+def test_the_link_gateway_is_no_group_to_select() -> None:
+    groups = services.build_groups([_module("papaia-link-gateway", profiles=("link-gateway",))])
+    assert [g.selectable for g in groups] == [False]
+    with pytest.raises(ValueError, match="connects the nodes"):
+        ctl.profiles_flag(["link-gateway"], allowed={"link-gateway": frozenset()})
+
+
+def test_a_module_without_a_project_adds_no_running_project() -> None:
+    report = {"modules": [{"name": "x", "containers": [{"state": "running"}]}], "nodes": []}
+    assert services.parse_status_report(json.dumps(report)).running_projects == set()
+
+
+def test_groups_are_split_by_the_node_that_runs_them() -> None:
+    snapshot = services.StackSnapshot(
+        core=[
+            _module("librechat", node="internal", profiles=("librechat",)),
+            _module("keycloak", node="edge", profiles=("keycloak",)),
+        ]
+    )
+    assert services.group_owners(snapshot, ["librechat", "keycloak", "gone"]) == {
+        "": ["gone"],
+        "edge": ["keycloak"],
+        "internal": ["librechat"],
+    }
+
+
+def test_a_group_action_names_the_owning_node_and_a_single_host_does_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot = services.StackSnapshot(
+        core=[
+            _module("librechat", node="internal", profiles=("librechat",)),
+            _module("keycloak", node="edge", profiles=("keycloak",)),
+        ]
+    )
+    monkeypatch.setattr(services, "load_snapshot", lambda *a: snapshot)
+    allowed = {"librechat": frozenset(), "keycloak": frozenset()}
+
+    def runs(config: str, names: list[str]) -> list[list[str]]:
+        settings = SimpleNamespace(papaia_config_dir=config, papaia_workspace_dir="/w")
+        return asyncio.run(api_stack._runs(names, allowed, settings))  # type: ignore[arg-type]
+
+    config = _deployment(tmp_path, DISTRIBUTED)
+    assert runs(config, ["librechat"]) == [["--profiles=librechat", "--node=internal"]]
+    assert runs(config, ["librechat", "keycloak"]) == [
+        ["--profiles=keycloak", "--node=edge"],
+        ["--profiles=librechat", "--node=internal"],
+    ]
+    single = tmp_path / "single"
+    single.mkdir()
+    assert runs(_deployment(single, {}), ["librechat", "keycloak"]) == [
+        ["--profiles=keycloak,librechat"]
     ]
 
 
@@ -340,3 +432,163 @@ def test_the_gateway_names_stay_the_defaults() -> None:
 
     assert Settings.model_fields["litellm_url"].default == "http://litellm:4000"
     assert nodes.DISTRIBUTED == "distributed"
+
+
+def test_a_failed_status_is_shared_by_everyone_who_waited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _deployment(tmp_path, DISTRIBUTED)
+    calls: list[str] = []
+
+    def failing(*args: Any) -> None:
+        calls.append("status")
+
+    monkeypatch.setattr(services, "query_status", failing)
+    for _ in range(4):
+        assert services.load_snapshot(config, "/w") == services.StackSnapshot()
+    assert calls == ["status"]
+    services.invalidate_snapshot()
+    services.load_snapshot(config, "/w")
+    assert calls == ["status", "status"]
+
+
+_NODE_DOCTOR = json.dumps({"doctor": {"schema_version": 1, "checks": []}})
+
+
+def test_a_node_is_asked_once_however_many_want_its_reading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def fake(**kwargs: Any) -> tuple[int, str, str]:
+        calls.append("doctor")
+        await asyncio.sleep(0)
+        return 0, _NODE_DOCTOR, ""
+
+    monkeypatch.setattr(host_health, "run_py_cli", fake)
+    monkeypatch.setattr(host_health, "refresh_interval", lambda c: 300)
+
+    async def together() -> None:
+        await asyncio.gather(
+            *(
+                host_health.load_node_health("edge", config_dir="/c", workspace_dir="/w")
+                for _ in range(4)
+            )
+        )
+
+    asyncio.run(together())
+    assert calls == ["doctor"]
+
+
+def test_a_node_that_gave_no_reading_is_not_asked_again_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def fake(**kwargs: Any) -> tuple[int, str, str]:
+        calls.append("doctor")
+        return 2, "", "timed out"
+
+    monkeypatch.setattr(host_health, "run_py_cli", fake)
+    monkeypatch.setattr(host_health, "refresh_interval", lambda c: 300)
+
+    async def twice() -> None:
+        for _ in range(2):
+            health = await host_health.load_node_health(
+                "edge", config_dir="/c", workspace_dir="/w"
+            )
+            assert health.reason == "timed out"
+
+    asyncio.run(twice())
+    assert calls == ["doctor"]
+
+
+def _flags(monkeypatch: pytest.MonkeyPatch, answer: str) -> list[list[str]]:
+    asked: list[list[str]] = []
+
+    async def fake(**kwargs: Any) -> tuple[int, str, str]:
+        asked.append(kwargs["extra_flags"])
+        return 2 if answer else 0, answer, ""
+
+    monkeypatch.setattr(host_health, "run_py_cli", fake)
+    monkeypatch.setattr(host_health, "refresh_interval", lambda c: 300)
+    monkeypatch.setattr(host_health, "is_supported", lambda w: True)
+    monkeypatch.setattr(host_health.docker_usage, "core_checks", lambda w: frozenset())
+    return asked
+
+
+def _skip(flags: list[str]) -> set[str]:
+    return set(next(f for f in flags if f.startswith("--skip=")).removeprefix("--skip=").split(","))
+
+
+def test_the_reading_of_the_cards_leaves_the_nodes_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _flags(monkeypatch, "")
+    config = _deployment(tmp_path, DISTRIBUTED)
+    asyncio.run(host_health.load_host_health(config_dir=config, workspace_dir="/w"))
+    assert {"nodes", "links"} <= _skip(asked[0])
+    single = tmp_path / "single"
+    single.mkdir()
+    host_health.reset_cache()
+    config = _deployment(single, {})
+    asyncio.run(host_health.load_host_health(config_dir=config, workspace_dir="/w"))
+    assert not {"nodes", "links"} & _skip(asked[1])
+
+
+_CLUSTER_DOCTOR = json.dumps(
+    {
+        "schema_version": 1,
+        "checks": [
+            {"name": "memory", "status": "skip", "summary": "skipped (--skip)"},
+            {"name": "nodes", "status": "fail", "summary": "edge does not answer"},
+            {"name": "links", "status": "skip", "summary": "skipped (--skip)"},
+        ],
+    }
+)
+
+
+def test_nodes_and_links_are_read_in_the_background(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _flags(monkeypatch, _CLUSTER_DOCTOR)
+    config = _deployment(tmp_path, DISTRIBUTED)
+
+    async def page() -> None:
+        first = host_health.load_cluster_checks(config_dir=config, workspace_dir="/w")
+        assert first[0].state is host_health.HostState.UNKNOWN
+        assert first[0].summary == "Being checked..."
+        assert host_health._cluster.run is not None
+        await host_health._cluster.run
+        later = host_health.load_cluster_checks(config_dir=config, workspace_dir="/w")
+        assert [(c.title, c.summary) for c in later] == [("Nodes", "edge does not answer")]
+
+    asyncio.run(page())
+    assert len(asked) == 1
+    assert not {"nodes", "links"} & _skip(asked[0])
+    assert {"memory", "cpu", "certs"} <= _skip(asked[0])
+
+
+def test_a_failed_read_of_nodes_and_links_says_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake(**kwargs: Any) -> tuple[int, str, str]:
+        raise ctl.CtlError("timed out", 124)
+
+    monkeypatch.setattr(host_health, "run_py_cli", fake)
+    monkeypatch.setattr(host_health, "refresh_interval", lambda c: 300)
+    config = _deployment(tmp_path, DISTRIBUTED)
+
+    async def page() -> None:
+        host_health.load_cluster_checks(config_dir=config, workspace_dir="/w")
+        assert host_health._cluster.run is not None
+        await host_health._cluster.run
+        (check,) = host_health.load_cluster_checks(config_dir=config, workspace_dir="/w")
+        assert check.summary == "timed out"
+
+    asyncio.run(page())
+
+
+def test_a_single_host_has_no_nodes_and_links_and_starts_nothing(tmp_path: Path) -> None:
+    config = _deployment(tmp_path, {})
+    assert host_health.load_cluster_checks(config_dir=config, workspace_dir="/w") == ()

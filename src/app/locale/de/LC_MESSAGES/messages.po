@@ -9674,6 +9674,7 @@ msgstr "Die Archive liegen auf dem Controller. Ein Wiederherstellungspunkt ist k
 
 msgid "All data of this node. No other node is touched."
 msgstr "Alle Daten dieses Nodes. Andere Nodes bleiben unberührt."
+
 msgid "no links"
 msgstr "keine Verbindungen"
 
@@ -9685,3 +9686,14 @@ msgstr "Release und Bundle senden"
 
 msgid "A node named '%(name)s' exists already."
 msgstr "Ein Node namens '%(name)s' existiert bereits."
+
+msgid "Being checked..."
+msgstr "Wird geprüft..."
+
+#, python-format
+msgid "%(profile)s connects the nodes and cannot be selected"
+msgstr "%(profile)s verbindet die Nodes und kann nicht ausgewählt werden"
+
+#, python-format
+msgid "profile %(name)r connects the nodes and cannot be controlled from this panel"
+msgstr "Profil %(name)r verbindet die Nodes und kann nicht über dieses Panel gesteuert werden"

@@ -42,7 +42,7 @@
     {% if module.addon %}
       <span class="h-4 w-4 shrink-0"></span>
     {% else %}
-      {{ group_checkbox(module, self_profile) }}
+      {{ group_checkbox(module, self_profile, link_profile) }}
     {% endif %}
     {% if mh == 'missing' %}
       <span class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-error"></span>
@@ -169,15 +169,15 @@
   <p class="text-xs opacity-40">{% trans %}Refreshes every 15 s{% endtrans %}</p>
 </div>
 
-{# A distributed installation: one section per node. An action still names the group, and
-   the core runs it on the node that owns it. #}
+{# A distributed installation: one section per node. An action names the group, and the
+   API adds the node that owns it. #}
 {% for node in unreachable_nodes %}
 <div class="alert alert-error mb-4">
   <span>{% trans name=node.name, reason=node.reason %}Node {{ name }} does not answer: {{ reason }}{% endtrans %}</span>
 </div>
 {% endfor %}
 {% if node_sections %}
-{% for name, modules in node_sections %}{{ module_section(name, modules) }}{% endfor %}
+{% for name, modules, groups in node_sections %}{{ module_section(name, modules, groups) }}{% endfor %}
 {% else %}
 {% if core_modules %}{{ module_section(_("Core stack"), core_modules, group_count) }}{% endif %}
 {% if addon_modules %}{{ module_section(_("Add-ons"), addon_modules) }}{% endif %}

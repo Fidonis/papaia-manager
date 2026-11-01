@@ -53,6 +53,10 @@ UNGROUPED_MODULE = "other"
 # actions reach it, but those run detached -- see `app.core.runner`.
 SELF_PROFILE = "manager"
 
+# The link gateway of a distributed installation. Stopping it cuts the nodes off from
+# each other and, with Keycloak on another node, ends the sign-in to this panel.
+LINK_PROFILE = "link-gateway"
+
 
 def module_display_name(label: str) -> str:
     """The `de.fidonis.module` label as it is shown and grouped by.
