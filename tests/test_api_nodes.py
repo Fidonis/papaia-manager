@@ -323,6 +323,7 @@ def test_the_services_page_has_a_section_per_node(
 def test_the_host_page_offers_the_nodes(client: TestClient) -> None:
     html = _session(client).get("/host").text
     assert 'id="host-node"' in html and '<option value="edge">' in html
+    assert '<option value="ctl">' not in html
 
 
 def test_a_single_host_has_no_node_selector(client: TestClient) -> None:

@@ -39,7 +39,7 @@ from app.core.ingest import catalog as ingest_catalog
 from app.core.ingest import runs as ingest_runs
 from app.core.ingest.errors import IngestError, InvalidRequest, NotFound
 from app.core.ingest.uploads import new_store as new_upload_store
-from app.core.inventory import SELF_PROFILE
+from app.core.inventory import LINK_PROFILE, SELF_PROFILE
 from app.core.jobs import Job, JobQueue
 from app.core.rag import documents_dir, with_rag_tiles
 from app.core.rag_collections import CollectionStore
@@ -253,7 +253,11 @@ async def host_page(
             request,
             user,
             refresh_seconds=refresh_interval(settings.papaia_config_dir),
-            node_names=list(nodes.registry(settings.papaia_config_dir)),
+            node_names=[
+                node.name
+                for node in nodes.registry(settings.papaia_config_dir).values()
+                if node.remote
+            ],
         ),
     )
 
@@ -598,6 +602,7 @@ async def partial_services(
             core_modules=snapshot.core,
             addon_modules=snapshot.addons,
             node_sections=modules_by_node(snapshot) if snapshot.nodes else [],
+            link_profile=LINK_PROFILE,
             unreachable_nodes=snapshot.unreachable_nodes,
             total=len(snapshot.core) + len(snapshot.addons),
             cnt_running=counts[ServiceHealth.HEALTHY] + counts[ServiceHealth.COMPLETED],
@@ -681,6 +686,11 @@ async def partial_host(
             user,
             host=health,
             usage=usage,
+            cluster_checks=host_health.load_cluster_checks(
+                config_dir=settings.papaia_config_dir,
+                workspace_dir=settings.papaia_workspace_dir,
+                force=fresh,
+            ),
             refresh_text=format_interval(refresh_interval(settings.papaia_config_dir)),
         ),
     )

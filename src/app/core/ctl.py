@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from app.core.inventory import SELF_PROFILE
+from app.core.inventory import LINK_PROFILE, SELF_PROFILE
 from app.core.services import invalidate_snapshot
 from app.i18n import gettext as _
 
@@ -297,6 +297,12 @@ def profiles_flag(names: Iterable[str], *, allowed: Collection[str]) -> str:
             raise ValueError(
                 _(
                     "profile %(name)r runs this panel and cannot be controlled from it"
+                ) % {"name": name}
+            )
+        if name == LINK_PROFILE:
+            raise ValueError(
+                _(
+                    "profile %(name)r connects the nodes and cannot be controlled from this panel"
                 ) % {"name": name}
             )
         if name not in allowed:

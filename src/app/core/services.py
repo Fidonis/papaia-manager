@@ -59,6 +59,7 @@ from typing import Any
 
 from app.core.envfile import load_env_file
 from app.core.inventory import (
+    LINK_PROFILE,
     SELF_PROFILE,
     ExpectedService,
     active_profiles,
@@ -110,6 +111,8 @@ _CACHE_TTL_SECONDS = 5.0
 # The same for a distributed installation, where a reading asks every node over SSH.
 _STATUS_TTL_SECONDS = 30.0
 _STATUS_TIMEOUT_SECONDS = 120.0
+# A failed reading is kept briefly, or everyone who waited for it would run their own.
+_STATUS_FAILURE_TTL_SECONDS = 15.0
 _STATUS_LOCK = threading.Lock()
 
 # `Exited (0) 2 days ago` -- the exit code is what separates a completed
@@ -494,7 +497,7 @@ def build_groups(modules: Iterable[ServiceModule]) -> list[ServiceGroup]:
             modules=tuple(sorted(m.name for m in found)),
             containers=sum(len(m.containers) for m in found),
             health=worst(m.health for m in found),
-            selectable=profile != SELF_PROFILE,
+            selectable=profile not in (SELF_PROFILE, LINK_PROFILE),
         )
         for profile, found in members.items()
     ]
@@ -750,6 +753,7 @@ def parse_status_report(text: str) -> StackSnapshot:
         str(entry.get("compose_project"))
         for entry in document["modules"]
         if isinstance(entry, dict)
+        and entry.get("compose_project")
         and any(
             isinstance(c, dict) and c.get("state") == "running"
             for c in entry.get("containers") or []
@@ -810,36 +814,70 @@ def query_status(config_dir: str, workspace_dir: str) -> str | None:
 def _load_distributed(config_dir: str, workspace_dir: str) -> StackSnapshot:
     """One reading of every node. Asking them is an SSH round trip each, so only one such
     reading runs at a time and whoever waited for it uses its result."""
-    global _CACHE
+    global _CACHE, _STATUS_FAILED_AT
 
     with _STATUS_LOCK:
         now = time.monotonic()
         if _CACHE is not None and now - _CACHE[0] < _STATUS_TTL_SECONDS:
             return _CACHE[1]
-        output = query_status(config_dir, workspace_dir)
-        if output is None:
+        failed_at = _STATUS_FAILED_AT
+        if failed_at is not None and now - failed_at < _STATUS_FAILURE_TTL_SECONDS:
             return StackSnapshot()
+        output = query_status(config_dir, workspace_dir)
         try:
+            if output is None:
+                raise ValueError("no answer")
             snapshot = parse_status_report(output)
         except ValueError as exc:
             logger.warning("the core's status is unreadable: %s", exc)
+            _STATUS_FAILED_AT = time.monotonic()
             return StackSnapshot()
+        _STATUS_FAILED_AT = None
         _CACHE = (time.monotonic(), snapshot)
         return snapshot
 
 
-def modules_by_node(snapshot: StackSnapshot) -> list[tuple[str, list[ServiceModule]]]:
-    """(node, its modules) for every node that runs any, in the order of the nodes."""
+def _node_section(core: list[ServiceModule], addons: list[ServiceModule]) -> list[ServiceModule]:
+    """The core first, then the add-ons a project at a time: the page puts one set of add-on
+    buttons on the first module of a project, which only works with its modules together."""
+    projects: dict[str, int] = {}
+    ordered = _worst_first(addons)
+    return [
+        *_worst_first(core),
+        *sorted(ordered, key=lambda m: projects.setdefault(m.addon, len(projects))),
+    ]
+
+
+def modules_by_node(snapshot: StackSnapshot) -> list[tuple[str, list[ServiceModule], int]]:
+    """(node, its modules, its groups) for every node that runs any, in the order of the
+    nodes."""
     modules = [*snapshot.core, *snapshot.addons]
     order = [node.name for node in snapshot.nodes]
     order += sorted({m.node for m in modules} - set(order))
-    sections = [(name, _worst_first(m for m in modules if m.node == name)) for name in order]
-    return [(name, found) for name, found in sections if found]
+    sections = []
+    for name in order:
+        core = [m for m in snapshot.core if m.node == name]
+        addons = [m for m in snapshot.addons if m.node == name]
+        if core or addons:
+            sections.append((name, _node_section(core, addons), len(build_groups(core))))
+    return sections
+
+
+def group_owners(snapshot: StackSnapshot, groups: Iterable[str]) -> dict[str, list[str]]:
+    """The groups per node that runs them. A group no module places, for instance on a node
+    that does not answer, is listed under "": the core decides where it runs."""
+    owners: dict[str, list[str]] = {}
+    for group in sorted(set(groups)):
+        nodes = sorted({m.node for m in snapshot.core if group in m.profiles and m.node})
+        for node in nodes or [""]:
+            owners.setdefault(node, []).append(group)
+    return owners
 
 
 # (monotonic timestamp, snapshot). One manager process serves one deployment,
 # so a single entry is all this ever needs.
 _CACHE: tuple[float, StackSnapshot] | None = None
+_STATUS_FAILED_AT: float | None = None
 
 
 def load_snapshot(config_dir: str, workspace_dir: str) -> StackSnapshot:
@@ -894,6 +932,7 @@ def invalidate_snapshot() -> None:
     was just started reads as running immediately instead of up to five seconds
     later, both on the services page and in `compute_status`.
     """
-    global _CACHE
+    global _CACHE, _STATUS_FAILED_AT
 
     _CACHE = None
+    _STATUS_FAILED_AT = None
