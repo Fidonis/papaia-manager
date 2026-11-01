@@ -9650,6 +9650,7 @@ msgstr "Keine Antwort von %(nodes)s."
 
 msgid "%(count)d need attention on %(nodes)s."
 msgstr "%(count)d brauchen Aufmerksamkeit auf %(nodes)s."
+
 msgid "no links"
 msgstr "keine Verbindungen"
 
