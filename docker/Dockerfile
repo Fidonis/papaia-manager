@@ -100,6 +100,8 @@ RUN apt-get update \
         ca-certificates \
         curl \
         gnupg \
+        libnss-wrapper \
+        openssh-client \
         openssl \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
@@ -136,6 +138,12 @@ COPY --from=css-builder /static/fonts/ /app/app/static/fonts/
 # The token appears in no argv and no log — only in the subprocess environment.
 COPY docker/git-askpass.sh /app/bin/git-askpass
 RUN chmod 755 /app/bin/git-askpass
+
+# The core runs this image as the host's user, an id `/etc/passwd` here does not know, and
+# ssh and ssh-keygen stop without a name for it. Runners clone the image and the user.
+COPY docker/entrypoint.sh /app/bin/entrypoint
+RUN chmod 755 /app/bin/entrypoint
+ENTRYPOINT ["/app/bin/entrypoint"]
 
 USER app
 

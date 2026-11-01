@@ -306,8 +306,15 @@ def build_report(
 # ---------------------------------------------------------------------------
 
 
-async def _run(args: list[str], *, limit: float) -> str:
-    """Run a docker command and return stdout, raising `ImagesError` on failure."""
+async def _run(args: list[str], *, limit: float, node: str | None = None) -> str:
+    """Run a docker command and return stdout, raising `ImagesError` on failure.
+
+    Local only: a node's forced command has no raw `docker`, so `node` is refused.
+    """
+    if node is not None:
+        raise ImagesError(gettext(
+            "docker cannot run on node %(node)s; use its node verbs"
+        ) % {"node": node})
     try:
         proc = await asyncio.create_subprocess_exec(
             *args,

@@ -562,13 +562,19 @@ def compose_project(config_dir: str) -> str:
     return env.get("COMPOSE_PROJECT_NAME") or "papaia"
 
 
-def query_containers() -> str | None:
+def query_containers(node: str | None = None) -> str | None:
     """Raw `docker ps -a` output for the whole host, or None on failure.
 
     Unfiltered on purpose -- see the module docstring. An unreachable Docker
     socket is a normal state here (unit tests, a host mid-restore), so it is
     logged at debug level and surfaces as "unknown" rather than as an error.
+
+    A node's containers are in the core's merged `status`, not here: `node` has no raw
+    `docker` to reach and reads as "unknown".
     """
+    if node is not None:
+        logger.debug("no docker ps for node %s", node)
+        return None
     try:
         result = subprocess.run(
             ["docker", "ps", "-a", "--format", _PS_FORMAT],
