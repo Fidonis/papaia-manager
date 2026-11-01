@@ -194,8 +194,16 @@ def runner_name(target: str, kind: RunnerKind = RESTORE_KIND) -> str:
     return f"{kind.name_prefix}{target}"
 
 
-async def _docker(*args: str) -> str:
-    """Run a docker CLI command and return stdout, raising on failure."""
+async def _docker(*args: str, node: str | None = None) -> str:
+    """Run a docker CLI command and return stdout, raising on failure.
+
+    `node` is None for this machine. Any other value is refused: a node's forced command
+    has no raw `docker`, so its containers are reached through its node verbs.
+    """
+    if node is not None:
+        raise RunnerError(_(
+            "docker cannot run on node %(node)s; use its node verbs"
+        ) % {"node": node})
     try:
         proc = await asyncio.create_subprocess_exec(
             "docker",

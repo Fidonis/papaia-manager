@@ -136,8 +136,16 @@ async def _run_git(repo: Path, args: tuple[str, ...], limit: float) -> str:
     return raw_out.decode(errors="replace")
 
 
-async def _git(repo: Path, *args: str) -> str:
-    """A local git call. Everything except the fetch goes through here."""
+async def _git(repo: Path, *args: str, node: str | None = None) -> str:
+    """A local git call. Everything except the fetch goes through here.
+
+    `node` is refused: only the controller has a checkout with Git. A node gets a release
+    as an archive, through the core.
+    """
+    if node is not None:
+        raise UpgradeError(gettext(
+            "git cannot run on node %(node)s; a node has no Git checkout"
+        ) % {"node": node})
     return await _run_git(repo, args, _GIT_TIMEOUT)
 
 

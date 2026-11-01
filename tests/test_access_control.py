@@ -115,6 +115,7 @@ ADMIN_PARTIALS = [
     "/partials/notifications/log",
     "/partials/notifications/status",
     "/partials/services",
+    "/partials/nodes",
     "/partials/upgrade/check",
     "/partials/upgrade/log",
     "/partials/upgrade/runner",
