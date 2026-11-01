@@ -6,6 +6,7 @@ The runner's whole security and correctness surface is the argv it hands to
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from app.core import runner, upgrade
 from app.core.runner import (
     _UPGRADE_WITH_PRUNE,
     RUNNER_NAME_PREFIX,
@@ -538,3 +540,60 @@ def test_the_wrapper_cleans_up_only_after_success_and_keeps_the_exit_code(
         )
         # The stand-in failed (exit 1); the run still reports the upgrade's 0.
         assert "Image cleanup skipped" in proc.stdout
+
+
+def _stub_docker(monkeypatch: pytest.MonkeyPatch, script: str) -> None:
+    """Run `script` where `docker` would run, with the stream wiring the caller asked for."""
+    real = asyncio.create_subprocess_exec
+
+    async def _exec(*_argv: str, **kwargs: object) -> asyncio.subprocess.Process:
+        return await real(sys.executable, "-c", script, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(runner.asyncio, "create_subprocess_exec", _exec)
+
+
+_CORE_STREAMS = """
+import sys
+def out(line): print(line, flush=True)
+def err(line): print(line, file=sys.stderr, flush=True)
+out("[papaia-ctl] Starting the stack...")
+err("NPM provisioning skipped: NPM API did not become ready")
+err("[!] NPM proxy-host provisioning failed. Once the stack is healthy, run it.")
+err("Keycloak role sync skipped: Keycloak did not become ready")
+out("[ok] start complete.")
+"""
+
+
+def test_the_runner_log_carries_what_the_core_writes_to_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_docker(monkeypatch, _CORE_STREAMS)
+    log = asyncio.run(runner.runner_log("papaia-upgrade-1.8.0"))
+    assert log.index("Starting the stack") < log.index("NPM provisioning skipped")
+    assert log.index("Keycloak role sync skipped") < log.index("start complete")
+    problems = upgrade.provisioning_problems(log, workspace_dir="/w", config_dir="/c")
+    assert [p.step for p in problems] == ["npm-provision", "keycloak-role-sync"]
+
+
+def test_a_merged_docker_call_still_reports_why_it_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_docker(
+        monkeypatch, "import sys; print('No such container', file=sys.stderr); sys.exit(1)"
+    )
+    with pytest.raises(RunnerError, match="No such container"):
+        asyncio.run(runner._docker("logs", "gone", merge_stderr=True))
+
+
+def test_a_runner_log_that_cannot_be_read_is_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_docker(monkeypatch, "import sys; sys.exit(1)")
+    assert asyncio.run(runner.runner_log("gone")) == ""
+
+
+def test_other_docker_calls_keep_stderr_out_of_their_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_docker(
+        monkeypatch, "import sys; print('[]'); print('a warning', file=sys.stderr)"
+    )
+    assert asyncio.run(runner._docker("inspect", "x")).strip() == "[]"
