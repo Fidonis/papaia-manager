@@ -9626,3 +9626,27 @@ msgstr "Node %(name)s — %(branding)s"
 
 msgid "Node %(name)s"
 msgstr "Node %(name)s"
+
+msgid "Node %(name)s does not answer: %(reason)s"
+msgstr "Node %(name)s antwortet nicht: %(reason)s"
+
+msgid "Controller"
+msgstr "Controller"
+
+msgid "Nodes and links"
+msgstr "Nodes und Verbindungen"
+
+msgid "The node's doctor gave no readable answer."
+msgstr "Der doctor des Nodes gab keine lesbare Antwort."
+
+msgid "No node answered the host check."
+msgstr "Kein Node hat auf die Host-Prüfung geantwortet."
+
+msgid "Not read: %(nodes)s."
+msgstr "Nicht gelesen: %(nodes)s."
+
+msgid "No answer from %(nodes)s."
+msgstr "Keine Antwort von %(nodes)s."
+
+msgid "%(count)d need attention on %(nodes)s."
+msgstr "%(count)d brauchen Aufmerksamkeit auf %(nodes)s."

@@ -23,8 +23,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.config import Settings
-from app.core import backups, host_health, schedule, services, upgrade
-from app.core.host_health import HostState
+from app.core import backups, host_health, nodes, schedule, services, upgrade
+from app.core.host_health import HostHealth, HostState
 from app.core.notifications import detect
 from app.core.notifications.model import Event
 from app.core.notifications.store import load_config, load_state
@@ -277,15 +277,49 @@ async def _host(context: WidgetContext) -> host_health.HostHealth:
     return health
 
 
+async def _readings(context: WidgetContext) -> tuple[list[tuple[str, HostHealth]], list[str]]:
+    """The hosts this installation runs on, as (node, reading), and the nodes without one.
+    A single host is the one reading with no name, and raises like `_host` when it has none."""
+    if not nodes.is_distributed(context.settings.papaia_config_dir):
+        return [("", await _host(context))], []
+    all_nodes = await host_health.load_all_nodes(
+        config_dir=context.settings.papaia_config_dir,
+        workspace_dir=context.settings.papaia_workspace_dir,
+    )
+    usable = [(name, health) for name, health in all_nodes if health.available]
+    if not usable:
+        raise WidgetUnavailableError(gettext("No node answered the host check."))
+    return usable, [name for name, health in all_nodes if not health.available]
+
+
+def _on_node(node: str, label: str) -> str:
+    return f"{node}: {label}" if node else label
+
+
+def _unread(label: str, state: State, missing: list[str]) -> tuple[str, State]:
+    """A node that gave no reading is not a healthy node: the card says so."""
+    if not missing:
+        return label, state
+    note = gettext("Not read: %(nodes)s.") % {"nodes": ", ".join(missing)}
+    return f"{label} {note}", State.WARN if state is State.OK else state
+
+
 async def _disk_space(context: WidgetContext) -> dict[str, Any]:
-    health = await _host(context)
-    disks = [disk for disk in health.disks if disk.used_percent is not None]
+    readings, missing = await _readings(context)
+    disks = [
+        (node, disk)
+        for node, health in readings
+        for disk in health.disks
+        if disk.used_percent is not None
+    ]
     if not disks:
         raise WidgetUnavailableError(gettext("The host check reported no disks."))
     # The one that needs attention most: the worst verdict, the fullest among equals. The
     # verdict is the core's (its thresholds are free bytes, not a percentage); the percentage
     # is only what the bar is drawn from.
-    disk = min(disks, key=lambda d: (_HOST_RANK[d.state], -(d.used_percent or 0.0)))
+    node, disk = min(
+        disks, key=lambda item: (_HOST_RANK[item[1].state], -(item[1].used_percent or 0.0))
+    )
     label = disk.label
     if disk.free_text and disk.total_text:
         label = gettext("%(label)s: %(free)s free of %(total)s") % {
@@ -293,9 +327,10 @@ async def _disk_space(context: WidgetContext) -> dict[str, Any]:
             "free": disk.free_text,
             "total": disk.total_text,
         }
+    label, state = _unread(_on_node(node, label), _HOST_STATE[disk.state], missing)
     return _document(
         "progress",
-        _HOST_STATE[disk.state],
+        state,
         {"value": disk.used_percent, "max": 100, "unit": "%", "label": label},
         now=context.now,
         link=(gettext("Open host"), "/host"),
@@ -303,8 +338,13 @@ async def _disk_space(context: WidgetContext) -> dict[str, Any]:
 
 
 async def _cert_expiry(context: WidgetContext) -> dict[str, Any]:
-    health = await _host(context)
-    certs = [cert for cert in health.certs if cert.days_left is not None]
+    readings, missing = await _readings(context)
+    certs = [
+        (node, cert)
+        for node, health in readings
+        for cert in health.certs
+        if cert.days_left is not None
+    ]
     link = (gettext("Open host"), "/host")
     if not certs:
         return _document(
@@ -317,20 +357,22 @@ async def _cert_expiry(context: WidgetContext) -> dict[str, Any]:
             now=context.now,
             link=link,
         )
-    nearest = min(certs, key=lambda cert: cert.days_left if cert.days_left is not None else 0)
-    worst = min((cert.state for cert in certs), key=_HOST_RANK.__getitem__)
+    node, nearest = min(certs, key=lambda item: item[1].days_left or 0)
+    worst = min((cert.state for _node, cert in certs), key=_HOST_RANK.__getitem__)
     days = nearest.days_left if nearest.days_left is not None else 0
+    name = _on_node(node, nearest.label)
     if days < 0:
         label = ngettext(
             "%(label)s expired %(days)s day ago.",
             "%(label)s expired %(days)s days ago.",
             -days,
-        ) % {"label": nearest.label, "days": -days}
+        ) % {"label": name, "days": -days}
         data = {"value": gettext("expired"), "label": label}
     else:
         unit = npgettext("unit of time", "day", "days", days)
-        data = {"value": str(days), "unit": unit, "label": nearest.label}
-    return _document("stat", _HOST_STATE[worst], data, now=context.now, link=link)
+        data = {"value": str(days), "unit": unit, "label": name}
+    data["label"], state = _unread(data["label"], _HOST_STATE[worst], missing)
+    return _document("stat", state, data, now=context.now, link=link)
 
 
 # ---------------------------------------------------------------------------
@@ -345,21 +387,43 @@ async def _services_health(context: WidgetContext) -> dict[str, Any]:
         context.settings.papaia_workspace_dir,
     )
     modules = [*snapshot.core, *snapshot.addons]
-    if not modules:
+    silent = [node.name for node in snapshot.unreachable_nodes]
+    if not modules and not silent:
         # Docker did not answer, or nothing is deployed: neither says anything about a service.
         raise WidgetUnavailableError(gettext("Docker did not report any service."))
     counts = services.count_by_health(modules)
     running = counts[ServiceHealth.HEALTHY] + counts[ServiceHealth.COMPLETED]
     # An empty section is "no information", which must not drag a stack without add-ons down.
     verdict = services.worst(
-        services.overall_health(section) for section in (snapshot.core, snapshot.addons) if section
+        [
+            *(
+                services.overall_health(section)
+                for section in (snapshot.core, snapshot.addons)
+                if section
+            ),
+            *([ServiceHealth.UNHEALTHY] if silent else []),
+        ]
     )
     attention = len(modules) - running
-    label = (
-        gettext("Every service is running.")
-        if attention == 0
-        else gettext("%(count)d need attention.") % {"count": attention}
+    # A distributed installation names where to look.
+    where = sorted(
+        {
+            m.node
+            for m in modules
+            if m.node and m.health not in (ServiceHealth.HEALTHY, ServiceHealth.COMPLETED)
+        }
     )
+    if silent:
+        label = gettext("No answer from %(nodes)s.") % {"nodes": ", ".join(silent)}
+    elif attention == 0:
+        label = gettext("Every service is running.")
+    elif where:
+        label = gettext("%(count)d need attention on %(nodes)s.") % {
+            "count": attention,
+            "nodes": ", ".join(where),
+        }
+    else:
+        label = gettext("%(count)d need attention.") % {"count": attention}
     return _document(
         "stat",
         _SERVICE_STATE[verdict],

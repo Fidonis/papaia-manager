@@ -246,6 +246,67 @@ def test_a_bad_fingerprint_never_reaches_the_core(client: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Services and Host on a distributed installation
+# ---------------------------------------------------------------------------
+
+
+def test_the_services_page_has_a_section_per_node(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core import services
+
+    module = services.ServiceModule(
+        name="keycloak",
+        containers=[
+            services.ServiceContainer(
+                name="k", service="keycloak", role="", state="running", status_text="Up"
+            )
+        ],
+        node="edge",
+    )
+    snapshot = services.StackSnapshot(
+        core=[module],
+        nodes=[
+            services.NodeHealth(name="edge", reachable=True),
+            services.NodeHealth(name="gpu", reachable=False, reason="timed out"),
+        ],
+    )
+    monkeypatch.setattr(services, "load_snapshot", lambda *a: snapshot)
+    monkeypatch.setattr("app.routers.ui.load_snapshot", lambda *a: snapshot)
+    html = _session(client).get("/partials/services").text
+    assert "Node gpu does not answer: timed out" in html
+    assert "Core stack" not in html and "edge" in html
+
+
+def test_the_host_page_offers_the_nodes(client: TestClient) -> None:
+    html = _session(client).get("/host").text
+    assert 'id="host-node"' in html and '<option value="edge">' in html
+
+
+def test_a_single_host_has_no_node_selector(client: TestClient) -> None:
+    _deployment({"core": {}})
+    assert 'id="host-node"' not in _session(client).get("/host").text
+
+
+def test_the_host_partial_reads_the_selected_node(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core import host_health
+
+    asked: list[str] = []
+
+    async def read(node: str, **kwargs: Any) -> host_health.HostHealth:
+        asked.append(node)
+        return host_health.unavailable("ssh: timed out")
+
+    monkeypatch.setattr(host_health, "load_node_health", read)
+    admin = _session(client)
+    assert "timed out" in admin.get("/partials/host?node=edge").text
+    assert asked == ["edge"]
+    assert admin.get("/partials/host?node=elsewhere").status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Step-up
 # ---------------------------------------------------------------------------
 

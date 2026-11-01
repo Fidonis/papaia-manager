@@ -45,14 +45,17 @@ the only granularity `papaia-ctl` accepts.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import subprocess
+import threading
 import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 from app.core.envfile import load_env_file
 from app.core.inventory import (
@@ -104,6 +107,10 @@ _SERVICE_RESTART_POLICIES = frozenset({"always", "unless-stopped"})
 # load would fork several subprocesses; five seconds is short enough that the
 # polled views still feel live.
 _CACHE_TTL_SECONDS = 5.0
+# The same for a distributed installation, where a reading asks every node over SSH.
+_STATUS_TTL_SECONDS = 30.0
+_STATUS_TIMEOUT_SECONDS = 120.0
+_STATUS_LOCK = threading.Lock()
 
 # `Exited (0) 2 days ago` -- the exit code is what separates a completed
 # one-shot container from a crashed service.
@@ -192,6 +199,8 @@ class ServiceModule:
     containers: list[ServiceContainer] = field(default_factory=list)
     profiles: tuple[str, ...] = ()
     addon: str = ""
+    # The node it runs on; empty on a single host.
+    node: str = ""
 
     @property
     def health(self) -> ServiceHealth:
@@ -245,6 +254,16 @@ class ServiceGroup:
     selectable: bool = True
 
 
+@dataclass(frozen=True)
+class NodeHealth:
+    """Whether a node answered the core's `status`, and with which release."""
+
+    name: str
+    reachable: bool
+    reason: str = ""
+    version: str = ""
+
+
 @dataclass
 class StackSnapshot:
     """One reading of the whole host, split into the parts this manager owns.
@@ -258,6 +277,12 @@ class StackSnapshot:
     addons: list[ServiceModule] = field(default_factory=list)
     running_projects: set[str] = field(default_factory=set)
     groups: list[ServiceGroup] = field(default_factory=list)
+    # Every node of a distributed installation, in the core's order; empty on a single host.
+    nodes: list[NodeHealth] = field(default_factory=list)
+
+    @property
+    def unreachable_nodes(self) -> list[NodeHealth]:
+        return [node for node in self.nodes if not node.reachable]
 
 
 # ---------------------------------------------------------------------------
@@ -678,6 +703,140 @@ def build_snapshot(config_dir: str, workspace_dir: str, output: str) -> StackSna
     )
 
 
+def _module_from_report(entry: dict[str, Any]) -> ServiceModule:
+    containers = []
+    for raw in entry.get("containers") or []:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            health = ServiceHealth(str(raw.get("health")))
+        except ValueError:
+            health = ServiceHealth.UNKNOWN
+        containers.append(
+            ServiceContainer(
+                name=str(raw.get("name") or ""),
+                service=str(raw.get("service") or ""),
+                role=str(raw.get("role") or ""),
+                state=str(raw.get("state") or ""),
+                status_text=str(raw.get("status_text") or ""),
+                ports=[str(p) for p in raw.get("host_ports") or []],
+                health=health,
+            )
+        )
+    addon = str(entry.get("compose_project") or "") if entry.get("kind") == "addon" else ""
+    return ServiceModule(
+        name=str(entry.get("name") or ""),
+        containers=sorted(containers, key=lambda c: c.sort_key),
+        profiles=tuple(str(p) for p in entry.get("profiles") or []),
+        addon=addon,
+        node=str(entry.get("node") or ""),
+    )
+
+
+def parse_status_report(text: str) -> StackSnapshot:
+    """A distributed installation's snapshot, from the core's merged `status --json`.
+
+    The core has already asked every node and said which node each module runs on. It is
+    the same picture `build_snapshot` draws from `docker ps`, which on this path could
+    only see the controller. Raises ValueError on an answer that is not a report.
+    """
+    document = json.loads(text)
+    if not isinstance(document, dict) or not isinstance(document.get("modules"), list):
+        raise ValueError("not a status report")
+    modules = [_module_from_report(m) for m in document["modules"] if isinstance(m, dict)]
+    core = [m for m in modules if not m.addon]
+    addons = [m for m in modules if m.addon]
+    running = {
+        str(entry.get("compose_project"))
+        for entry in document["modules"]
+        if isinstance(entry, dict)
+        and any(
+            isinstance(c, dict) and c.get("state") == "running"
+            for c in entry.get("containers") or []
+        )
+    }
+    nodes = [
+        NodeHealth(
+            name=str(entry.get("name") or ""),
+            reachable=bool(entry.get("reachable")),
+            reason=str(entry.get("reason") or ""),
+            version=str(entry.get("papaia_version") or ""),
+        )
+        for entry in document.get("nodes") or []
+        if isinstance(entry, dict)
+    ]
+    return StackSnapshot(
+        core=_worst_first(core),
+        addons=_worst_first(addons),
+        running_projects=running,
+        groups=build_groups(core),
+        nodes=nodes,
+    )
+
+
+def query_status(config_dir: str, workspace_dir: str) -> str | None:
+    """The core's merged `status --json --addons`, or None when it gave none."""
+    from app.core import ctl  # noqa: PLC0415 - ctl imports this module
+
+    command = [
+        "python3",
+        "-m",
+        "lib.cli",
+        "--repo-root",
+        str(Path(workspace_dir) / "papaia"),
+        "--config-dir",
+        config_dir,
+        "status",
+        "--json",
+        "--addons",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=_STATUS_TIMEOUT_SECONDS,
+            env=ctl._py_env(workspace_dir, config_dir),  # noqa: SLF001
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.warning("the core's status did not answer: %s", exc)
+        return None
+    if result.returncode != 0:
+        logger.warning("the core's status failed with exit %s", result.returncode)
+        return None
+    return result.stdout
+
+
+def _load_distributed(config_dir: str, workspace_dir: str) -> StackSnapshot:
+    """One reading of every node. Asking them is an SSH round trip each, so only one such
+    reading runs at a time and whoever waited for it uses its result."""
+    global _CACHE
+
+    with _STATUS_LOCK:
+        now = time.monotonic()
+        if _CACHE is not None and now - _CACHE[0] < _STATUS_TTL_SECONDS:
+            return _CACHE[1]
+        output = query_status(config_dir, workspace_dir)
+        if output is None:
+            return StackSnapshot()
+        try:
+            snapshot = parse_status_report(output)
+        except ValueError as exc:
+            logger.warning("the core's status is unreadable: %s", exc)
+            return StackSnapshot()
+        _CACHE = (time.monotonic(), snapshot)
+        return snapshot
+
+
+def modules_by_node(snapshot: StackSnapshot) -> list[tuple[str, list[ServiceModule]]]:
+    """(node, its modules) for every node that runs any, in the order of the nodes."""
+    modules = [*snapshot.core, *snapshot.addons]
+    order = [node.name for node in snapshot.nodes]
+    order += sorted({m.node for m in modules} - set(order))
+    sections = [(name, _worst_first(m for m in modules if m.node == name)) for name in order]
+    return [(name, found) for name, found in sections if found]
+
+
 # (monotonic timestamp, snapshot). One manager process serves one deployment,
 # so a single entry is all this ever needs.
 _CACHE: tuple[float, StackSnapshot] | None = None
@@ -693,6 +852,11 @@ def load_snapshot(config_dir: str, workspace_dir: str) -> StackSnapshot:
     now = time.monotonic()
     if _CACHE is not None and now - _CACHE[0] < _CACHE_TTL_SECONDS:
         return _CACHE[1]
+
+    from app.core import nodes  # noqa: PLC0415 - nodes imports ctl, which imports this module
+
+    if nodes.is_distributed(config_dir):
+        return _load_distributed(config_dir, workspace_dir)
 
     output = query_containers()
     # A failed query keeps no cache entry: the next request should retry rather

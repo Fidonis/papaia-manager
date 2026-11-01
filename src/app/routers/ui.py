@@ -19,6 +19,7 @@ from app.core import (
     docker_usage,
     host_health,
     images,
+    nodes,
     restore_scope,
     runner,
     schedule,
@@ -48,6 +49,7 @@ from app.core.services import (
     StackSnapshot,
     count_by_health,
     load_snapshot,
+    modules_by_node,
     overall_health,
     worst,
 )
@@ -247,7 +249,12 @@ async def host_page(
     return _templates.TemplateResponse(
         request,
         "host.html",
-        _ctx(request, user, refresh_seconds=refresh_interval(settings.papaia_config_dir)),
+        _ctx(
+            request,
+            user,
+            refresh_seconds=refresh_interval(settings.papaia_config_dir),
+            node_names=list(nodes.registry(settings.papaia_config_dir)),
+        ),
     )
 
 
@@ -590,6 +597,8 @@ async def partial_services(
             user,
             core_modules=snapshot.core,
             addon_modules=snapshot.addons,
+            node_sections=modules_by_node(snapshot) if snapshot.nodes else [],
+            unreachable_nodes=snapshot.unreachable_nodes,
             total=len(snapshot.core) + len(snapshot.addons),
             cnt_running=counts[ServiceHealth.HEALTHY] + counts[ServiceHealth.COMPLETED],
             cnt_degraded=counts[ServiceHealth.UNHEALTHY] + counts[ServiceHealth.STARTING],
@@ -615,13 +624,40 @@ async def partial_host(
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
     fresh: bool = False,
+    node: str = "",
 ) -> HTMLResponse:
     """The host page's body: resources, disk space and certificates, or why none.
+
+    `node` is the selector of a distributed installation: another node's own `doctor`,
+    for which Docker's disk use has no reading here.
 
     `fresh` is the "Re-check" button. It asks for a new run instead of the cached
     one, and `load_host_health` still folds it into a run that is under way or
     finished a few seconds ago, so the button cannot be used to hammer `doctor`.
     """
+    known = nodes.registry(settings.papaia_config_dir)
+    if node and node not in known:
+        raise HTTPException(status_code=404)
+    if node and known[node].remote:
+        reading = await host_health.load_node_health(
+            node,
+            config_dir=settings.papaia_config_dir,
+            workspace_dir=settings.papaia_workspace_dir,
+            force=fresh,
+        )
+        return _no_store(
+            _templates.TemplateResponse(
+                request,
+                "partials/host_list.html",
+                _ctx(
+                    request,
+                    user,
+                    host=reading,
+                    usage=None,
+                    refresh_text=format_interval(refresh_interval(settings.papaia_config_dir)),
+                ),
+            )
+        )
     # Two readings, side by side. Docker's disk use is the slow one and has its own
     # cache: it is served as it stands when it is stale, and neither its cost nor its
     # failure can hold up or take rows from the host reading.

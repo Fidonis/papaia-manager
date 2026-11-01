@@ -57,7 +57,7 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from app.core import docker_usage
+from app.core import docker_usage, nodes
 from app.core.ctl import CtlError, run_py_cli
 from app.core.services import ServiceHealth
 from app.core.settings_store import refresh_interval
@@ -224,6 +224,15 @@ class HostCheck:
 
 
 @dataclass(frozen=True)
+class ClusterCheck:
+    """The core's verdict on the nodes, or on the links between them."""
+
+    title: str
+    state: HostState
+    summary: str
+
+
+@dataclass(frozen=True)
 class HostHealth:
     """One reading of the host, or the reason there is none."""
 
@@ -234,6 +243,8 @@ class HostHealth:
     certs: tuple[HostCheck, ...] = ()
     notes: tuple[str, ...] = ()
     checked_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    # `nodes` and `links` of a distributed installation; they say nothing about this host.
+    cluster_checks: tuple[ClusterCheck, ...] = ()
 
     @property
     def checks(self) -> tuple[HostCheck, ...]:
@@ -659,7 +670,36 @@ def parse_doctor(stdout: str, *, checked_at: datetime | None = None) -> HostHeal
         certs=tuple(certs),
         notes=notes,
         checked_at=checked_at or datetime.now(UTC),
+        cluster_checks=_cluster_checks(by_name),
     )
+
+
+_CLUSTER_TITLES = {"nodes": N_("Nodes"), "links": N_("Links")}
+
+
+def _cluster_checks(by_name: dict[str, dict[str, Any]]) -> tuple[ClusterCheck, ...]:
+    return tuple(
+        ClusterCheck(
+            title=_(title),
+            state=_state(by_name[name].get("status")),
+            summary=_summary(by_name[name]),
+        )
+        for name, title in _CLUSTER_TITLES.items()
+        if name in by_name
+    )
+
+
+def parse_node_doctor(stdout: str) -> HostHealth:
+    """The `doctor` a node's forced command prints: its own report inside an envelope."""
+    lines = stdout.strip().splitlines()
+    try:
+        document = json.loads(lines[-1])
+    except (ValueError, IndexError):
+        return unavailable(_("The node's doctor gave no readable answer."))
+    report = document.get("doctor") if isinstance(document, dict) else None
+    if not isinstance(report, dict):
+        return unavailable(_("The node's doctor gave no readable answer."))
+    return parse_doctor(json.dumps(report))
 
 
 # ---------------------------------------------------------------------------
@@ -699,6 +739,7 @@ def reset_cache() -> None:
     global _cache, _refresh  # noqa: PLW0603
     _cache = None
     _refresh = None
+    _node_cache.clear()
     docker_usage.reset_cache()
 
 
@@ -825,6 +866,55 @@ def _start(config_dir: str, workspace_dir: str, interval: int) -> asyncio.Task[H
             _measure(config_dir, workspace_dir, interval)
         )
     return _refresh
+
+
+_node_cache: dict[str, tuple[float, HostHealth]] = {}
+
+
+async def load_node_health(
+    node: str, *, config_dir: str, workspace_dir: str, force: bool = False
+) -> HostHealth:
+    """Another node's reading: its own `doctor`, through its forced command. Never raises,
+    so a node that does not answer is a reading that says so."""
+    cached = _node_cache.get(node)
+    limit = RECHECK_MIN_INTERVAL_SECONDS if force else float(refresh_interval(config_dir))
+    if cached is not None and time.monotonic() - cached[0] < limit:
+        return cached[1]
+    try:
+        code, out, err = await run_py_cli(
+            command="doctor",
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            limit=RUN_TIMEOUT_SECONDS,
+            node=node,
+        )
+    except CtlError as exc:
+        return unavailable(str(exc))
+    if code != 0:
+        return unavailable(_first_line(err or out) or _(_NO_OUTPUT) % {"code": code})
+    health = parse_node_doctor(out)
+    _node_cache[node] = (time.monotonic(), health)
+    return health
+
+
+async def load_all_nodes(
+    *, config_dir: str, workspace_dir: str
+) -> list[tuple[str, HostHealth]]:
+    """(node, reading) for every node, or the one reading of a single host with no name."""
+    known = nodes.registry(config_dir)
+    if not known:
+        return [("", await load_host_health(config_dir=config_dir, workspace_dir=workspace_dir))]
+
+    async def one(name: str, remote: bool) -> tuple[str, HostHealth]:
+        if remote:
+            health = await load_node_health(
+                name, config_dir=config_dir, workspace_dir=workspace_dir
+            )
+        else:
+            health = await load_host_health(config_dir=config_dir, workspace_dir=workspace_dir)
+        return name, health
+
+    return list(await asyncio.gather(*(one(n.name, n.remote) for n in known.values())))
 
 
 async def load_host_health(
