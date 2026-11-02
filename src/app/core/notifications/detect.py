@@ -204,7 +204,7 @@ def read_services(config_dir: str, workspace_dir: str) -> services.StackSnapshot
     not answer (and for a host with nothing deployed): neither says anything about a service, so
     both are "unknown"."""
     snapshot = services.load_snapshot(config_dir, workspace_dir)
-    if not snapshot.core and not snapshot.addons:
+    if not snapshot.core and not snapshot.addons and not snapshot.unreachable_nodes:
         return None
     return snapshot
 
@@ -227,7 +227,11 @@ def service_findings(
     stopped before that was running all the same. A one-shot that has `completed` does not
     join. A module that is down stays in it, so it keeps being known while it is gone; one that
     is no longer in the snapshot at all (its profile was switched off, the add-on removed)
-    leaves it."""
+    leaves it.
+
+    A node that does not answer has no modules in the snapshot, which says nothing about them.
+    It is a condition of its own, and its modules stay known, so that they are reported if the
+    node comes back without them."""
     modules = [*snapshot.core, *snapshot.addons]
     labels = {_label(m): m for m in modules}
     down = (services.ServiceHealth.UNHEALTHY, services.ServiceHealth.STOPPED)
@@ -255,11 +259,25 @@ def service_findings(
                     "add_on": module.addon or None,
                     "state": health.value,
                     "summary": module.summary,
+                    **({"node": module.node} if module.node else {}),
                 },
             )
         )
+    silent = tuple(f"{node.name}/" for node in snapshot.unreachable_nodes)
+    conditions.extend(
+        Condition(
+            Event.SERVICE_UNHEALTHY,
+            f"node:{node.name}",
+            "",
+            node.name,
+            f"Node {node.name} does not answer: {node.reason}.",
+            {"node": node.name, "state": "unreachable", "summary": node.reason},
+        )
+        for node in snapshot.unreachable_nodes
+    )
     deployed = {label for label, m in labels.items() if m.health in _DEPLOYED}
-    up_now = frozenset(deployed | {label for label in was_up if label in labels})
+    kept = {label for label in was_up if label in labels or label.startswith(silent)}
+    up_now = frozenset(deployed | kept)
     return [Finding(Event.SERVICE_UNHEALTHY, tuple(conditions))], up_now
 
 
@@ -274,43 +292,54 @@ _DEPLOYED = (
 
 
 def _label(module: services.ServiceModule) -> str:
-    return f"{module.addon}/{module.name}" if module.addon else module.name
+    """Unique per module. The node comes first: a link gateway runs on every node."""
+    label = f"{module.addon}/{module.name}" if module.addon else module.name
+    return f"{module.node}/{label}" if module.node else label
 
 
-def certificates(health: host_health.HostHealth, *, lead_days: int) -> list[Finding]:
+def certificates(
+    health: host_health.HostHealth, *, lead_days: int, node: str = ""
+) -> list[Finding]:
     """Certificates the host reading sees that expire within `lead_days`, or already have.
 
     Judged by the days left, not by the core's own warn and fail thresholds: the lead time is
     the administrator's. Only the certificates `doctor` scans are seen (the ones under the
-    configuration directory and Let's Encrypt's `live` directory)."""
+    configuration directory and Let's Encrypt's `live` directory).
+
+    `node` names the node of a distributed installation. Its finding then covers that node
+    alone, so a node that gives no reading keeps what is remembered about it."""
     if not health.available:
         return []
+    scope = f"{node}:" if node else ""
+    where = f"{node}: " if node else ""
     conditions: list[Condition] = []
     for cert in health.certs:
         if cert.days_left is None or cert.days_left > lead_days:
             continue
+        label = f"{where}{cert.label}"
         if cert.days_left < 0:
-            message = f"{cert.label} expired {-cert.days_left} days ago."
+            message = f"{label} expired {-cert.days_left} days ago."
         elif cert.days_left == 0:
-            message = f"{cert.label} expires today."
+            message = f"{label} expires today."
         else:
             plural = "" if cert.days_left == 1 else "s"
-            message = f"{cert.label} expires in {cert.days_left} day{plural}."
+            message = f"{label} expires in {cert.days_left} day{plural}."
         conditions.append(
             Condition(
                 Event.CERT_EXPIRING,
-                cert.key,
+                f"{scope}{cert.key}",
                 cert.not_after or "expiry unknown",
-                cert.label,
+                label,
                 message,
                 {
                     "certificate": cert.label,
                     "days_left": cert.days_left,
                     "expires": cert.not_after or None,
+                    **({"node": node} if node else {}),
                 },
             )
         )
-    return [Finding(Event.CERT_EXPIRING, tuple(conditions))]
+    return [Finding(Event.CERT_EXPIRING, tuple(conditions), scope=scope)]
 
 
 def addon_updates(config_dir: str, workspace_dir: str) -> list[Finding]:
@@ -408,10 +437,16 @@ def build_detectors(settings: Settings, queue: JobQueue | None) -> dict[Event, D
         return findings
 
     async def certs_expiring(event_settings: EventSettings) -> list[Finding]:
-        health = await host_health.load_host_health(
+        readings = await host_health.load_all_nodes(
             config_dir=config_dir, workspace_dir=workspace_dir
         )
-        return certificates(health, lead_days=event_settings.cert_lead_days)
+        return [
+            finding
+            for node, health in readings
+            for finding in certificates(
+                health, lead_days=event_settings.cert_lead_days, node=node
+            )
+        ]
 
     async def updates(_: EventSettings) -> list[Finding]:
         findings: list[Finding] = []

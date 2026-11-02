@@ -510,3 +510,71 @@ def test_without_installed_add_ons_the_catalogs_are_not_even_read(
     monkeypatch.setattr(detect, "load_registry", explode)
     (finding,) = detect.addon_updates("cfg", "ws")
     assert finding.conditions == () and finding.scope == "addon:"
+
+
+def _on_node(name: str, node: str, state: str = "running", **fields: Any) -> services.ServiceModule:
+    health = {
+        "running": services.ServiceHealth.HEALTHY,
+        "exited": services.ServiceHealth.STOPPED,
+        "gone": services.ServiceHealth.MISSING,
+    }[state]
+    container = services.ServiceContainer(
+        name=name, service=name, role="", state=state, status_text="", health=health
+    )
+    return services.ServiceModule(name=name, containers=[container], node=node, **fields)
+
+
+def _nodes(*silent: str) -> list[services.NodeHealth]:
+    names = ["internal", "dmz"]
+    return [
+        services.NodeHealth(name=n, reachable=n not in silent, reason="timed out") for n in names
+    ]
+
+
+def test_a_node_that_stops_answering_is_reported_and_its_services_stay_known() -> None:
+    snapshot = services.StackSnapshot(
+        core=[_on_node("librechat", "internal")], nodes=_nodes("dmz")
+    )
+    (finding,), up_now = detect.service_findings(snapshot, frozenset({"dmz/keycloak"}))
+    assert [c.key for c in finding.conditions] == ["node:dmz"]
+    assert finding.conditions[0].message == "Node dmz does not answer: timed out."
+    assert up_now == {"internal/librechat", "dmz/keycloak"}
+
+
+def test_a_node_back_without_its_services_reports_them() -> None:
+    snapshot = services.StackSnapshot(core=[_on_node("keycloak", "dmz", "gone")], nodes=_nodes())
+    (finding,), _ = detect.service_findings(snapshot, frozenset({"dmz/keycloak"}))
+    assert [c.key for c in finding.conditions] == ["dmz/keycloak"]
+    assert finding.conditions[0].details["node"] == "dmz"
+
+
+def test_a_link_gateway_is_tracked_per_node() -> None:
+    snapshot = services.StackSnapshot(
+        core=[
+            _on_node("papaia-link-gateway", "internal", "exited"),
+            _on_node("papaia-link-gateway", "dmz"),
+        ],
+        nodes=_nodes(),
+    )
+    (finding,), up_now = detect.service_findings(snapshot, frozenset())
+    assert [c.key for c in finding.conditions] == ["internal/papaia-link-gateway"]
+    assert up_now == {"internal/papaia-link-gateway", "dmz/papaia-link-gateway"}
+
+
+def test_a_pass_with_only_a_silent_node_is_still_a_reading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = services.StackSnapshot(nodes=_nodes("dmz"))
+    monkeypatch.setattr(services, "load_snapshot", lambda *a: snapshot)
+    assert detect.read_services("/c", "/w") is snapshot
+
+
+def test_a_certificate_is_reported_per_node_and_a_silent_node_keeps_its_own() -> None:
+    reading = host_health.HostHealth(available=True, certs=(_cert("proxy", 3),))
+    (finding,) = detect.certificates(reading, lead_days=14, node="dmz")
+    assert finding.scope == "dmz:"
+    (condition,) = finding.conditions
+    assert condition.key == "dmz:proxy"
+    assert condition.message == f"dmz: {reading.certs[0].label} expires in 3 days."
+    assert condition.details["node"] == "dmz"
+    assert detect.certificates(host_health.unavailable("x"), lead_days=14, node="dmz") == []
