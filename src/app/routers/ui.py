@@ -34,6 +34,7 @@ from app.core.addon_upgrades import (
 from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.components import components_for
+from app.core.ctl import CtlError
 from app.core.envfile import load_env_file
 from app.core.ingest import catalog as ingest_catalog
 from app.core.ingest import runs as ingest_runs
@@ -364,6 +365,7 @@ async def backup_page(
             user,
             backup_dir=str(backup_dir) if backup_dir else None,
             backup_dir_reachable=backups.is_reachable(backup_dir),
+            backup_nodes=list(nodes.registry(settings.papaia_config_dir)),
             common_timezones=schedule.COMMON_TIMEZONES,
             weekdays=[(day, _(schedule.WEEKDAY_SHORT[day])) for day in schedule.WEEKDAYS],
             hourly_choices=schedule.HOURLY_CHOICES,
@@ -1545,10 +1547,35 @@ async def partial_upgrade_runner(
             ),
             recovery=recovery,
             recovery_generated=recovery_generated,
+            node_progress=upgrade.node_progress(log),
         ),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@router.get("/partials/upgrade/nodes", response_class=HTMLResponse)
+async def partial_upgrade_nodes(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The release each node runs. Only the upgrade page of a distributed installation asks."""
+    if not nodes.is_distributed(settings.papaia_config_dir):
+        raise HTTPException(status_code=404)
+    error = ""
+    rows: list[nodes.NodeState] = []
+    try:
+        rows = await nodes.overview(
+            workspace_dir=settings.papaia_workspace_dir, config_dir=settings.papaia_config_dir
+        )
+    except (nodes.NodeError, CtlError) as exc:
+        error = str(exc)
+    return _no_store(
+        _templates.TemplateResponse(
+            request, "partials/upgrade_nodes.html", _ctx(request, user, rows=rows, error=error)
+        )
+    )
 
 
 @router.get("/partials/upgrade/images", response_class=HTMLResponse)

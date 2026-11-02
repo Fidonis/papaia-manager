@@ -131,6 +131,15 @@ def _check_clean_up(action: str, clean_up: bool) -> None:
         )
 
 
+def _refuse_while_locked(action: str, settings: Settings) -> None:
+    """While nodes run different releases the core refuses `start`; `stop` stays possible."""
+    if action == "stop":
+        return
+    reason = nodes.lock_reason(settings.papaia_config_dir, settings.papaia_workspace_dir)
+    if reason:
+        raise HTTPException(status_code=409, detail=reason)
+
+
 # ---------------------------------------------------------------------------
 # Service groups -- queued jobs
 # ---------------------------------------------------------------------------
@@ -150,6 +159,7 @@ async def group_action(
             status_code=404, detail=_("unknown action %(action)r") % {"action": action}
         )
     _check_clean_up(action, body.clean_up)
+    _refuse_while_locked(action, settings)
 
     allowed = await _known_groups(settings)
     _flag(body.groups, allowed)
@@ -236,6 +246,7 @@ async def stack_action(
             "unknown action %(action)r"
         ) % {"action": action})
     _check_clean_up(action, body.clean_up)
+    _refuse_while_locked(action, settings)
 
     # A job in flight would be killed together with the manager and left stuck in
     # `running` forever, with its own papaia-ctl half-finished. A second runner

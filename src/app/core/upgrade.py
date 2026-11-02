@@ -733,8 +733,19 @@ def _strip_prefix(line: str) -> str:
     return line
 
 
+# What the second half of `papaia-ctl upgrade` announces on a distributed installation.
+_INSTALL_ON_NODES = "Installing "
+_START_ON_NODES = "Starting every node"
+_ON_EVERY_NODE = "on every node"
+
+
 def _phase_match(key: str, prefix: str, contains: str, line: str) -> bool:
-    if key == "migrations" and line.startswith(_MIGRATIONS_NONE):
+    if key == "migrations" and (
+        line.startswith(_MIGRATIONS_NONE)
+        or (line.startswith(_INSTALL_ON_NODES) and _ON_EVERY_NODE in line)
+    ):
+        return True
+    if key == "start" and line.startswith(_START_ON_NODES):
         return True
     return line.startswith(prefix) and (not contains or contains in line)
 
@@ -818,6 +829,21 @@ def _detail(key: str, seen: dict[str, str]) -> str:
     if key == "checkout" and line.startswith("Moving the checkout to "):
         return line.removeprefix("Moving the checkout to ").rstrip(".")
     return ""
+
+
+_NODE_LINE = re.compile(r"^node ([a-z][a-z0-9-]*): (.+)$")
+
+
+def node_progress(log: str) -> list[tuple[str, str]]:
+    """(node, what it did last) from the runner's output, in the order nodes first appear.
+
+    The core prints `node <name>: ...` for each step on a node. Empty on a single host."""
+    latest: dict[str, str] = {}
+    for raw in log.splitlines():
+        match = _NODE_LINE.match(_strip_prefix(raw.strip()))
+        if match:
+            latest[match.group(1)] = match.group(2)
+    return list(latest.items())
 
 
 def recovery_from_log(log: str) -> str:

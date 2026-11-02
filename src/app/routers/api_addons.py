@@ -55,6 +55,7 @@ from app.core.state import (
     load_deployment_yaml,
 )
 from app.i18n import gettext
+from app.routers.stack_guard import refuse_while_locked
 
 router = APIRouter(prefix="/api/v1/addons")
 
@@ -377,6 +378,7 @@ async def install(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
+    refuse_while_locked(settings)
     registry = load_registry(settings.papaia_config_dir)
     catalog = next(
         (c for c in registry.catalogs if c.name == body.catalog and c.enabled),
@@ -504,6 +506,7 @@ async def start(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
+    refuse_while_locked(settings)
     queue = _queue()
     _username = _user_id(user)
 
@@ -538,6 +541,7 @@ async def stop(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
+    refuse_while_locked(settings)
     queue = _queue()
     _username = _user_id(user)
     _clean = body.clean_up
@@ -613,6 +617,7 @@ async def restart(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
+    refuse_while_locked(settings)
     queue = _queue()
     _username = _user_id(user)
     _clean = body.clean_up
@@ -647,6 +652,7 @@ async def remove(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
+    refuse_while_locked(settings)
     _require_compose_file(name, settings)
     queue = _queue()
     _username = _user_id(user)
@@ -704,6 +710,7 @@ async def uninstall(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
+    refuse_while_locked(settings)
     queue = _queue()
     _username = _user_id(user)
     _clean = body.clean_up
@@ -863,6 +870,7 @@ async def upgrade(
     a value the new version needs and was not given) is an error of this request and not a failed
     job. The job then runs the upgrade and records the result in installed.yaml."""
     verify_csrf(request)
+    refuse_while_locked(settings)
     _require_core_upgrades(settings)
     inst, entry, staged, plan = await _stage_and_plan(name, body.revision, settings)
 
@@ -978,6 +986,7 @@ async def rollback(
     the data is left as it is unless `restore_data` asks for the restore point taken before
     the upgrade, which discards what the add-on wrote since."""
     verify_csrf(request)
+    refuse_while_locked(settings)
     _require_core_upgrades(settings)
     inst = load_installed(settings.papaia_config_dir).get(name)
     entry = deployment_entry(settings.papaia_config_dir, name)
@@ -1064,6 +1073,7 @@ async def save_config(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     verify_csrf(request)
+    refuse_while_locked(settings)
     queue = _queue()
     _username = _user_id(user)
     _restart = body.restart
