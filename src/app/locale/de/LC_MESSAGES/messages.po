@@ -9713,3 +9713,18 @@ msgstr "%(profile)s verbindet die Nodes und kann nicht ausgewählt werden"
 #, python-format
 msgid "profile %(name)r connects the nodes and cannot be controlled from this panel"
 msgstr "Profil %(name)r verbindet die Nodes und kann nicht über dieses Panel gesteuert werden"
+
+msgid "Maintenance actions"
+msgstr "Wartungsaktionen"
+
+#, python-format
+msgid "Run \"%(action)s\" on %(name)s? This cannot be undone."
+msgstr "„%(action)s“ für %(name)s ausführen? Das lässt sich nicht rückgängig machen."
+
+#, python-format
+msgid "Add-on %(name)s declares no action %(action)s"
+msgstr "Das Add-on %(name)s deklariert keine Aktion %(action)s"
+
+#, python-format
+msgid "action name %(action)r is not valid"
+msgstr "Aktionsname %(action)r ist ungültig"

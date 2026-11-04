@@ -25,6 +25,7 @@ from app.core import (
     schedule,
     upgrade,
 )
+from app.core.actions import actions_at
 from app.core.addon_upgrades import (
     core_requirement_message,
     core_supports_upgrades,
@@ -1970,6 +1971,10 @@ async def _get_addon(
             deploy_entry,
         ),
         "env_fields": env_fields,
+        # Declared maintenance actions, offered while the add-on is installed and active.
+        "actions": actions_at(addon_path)
+        if variant_inst and st in (AddonStatus.INSTALLED, AddonStatus.RUNNING)
+        else [],
         **version_state(
             settings.papaia_config_dir, settings.papaia_workspace_dir, variant_inst, deploy_entry
         ),
