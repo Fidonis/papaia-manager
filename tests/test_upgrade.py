@@ -925,6 +925,43 @@ def test_a_distributed_start_counts_too() -> None:
     assert [p.step for p in _problems(log)] == ["npm-provision", "keycloak-role-sync"]
 
 
+# The provisioning lines after more pull progress than the panel reads, as Compose's
+# plain progress writer prints it during `start` when the release brings new images.
+_PULL_FLOOD = "".join(f" a1b2c3d4 Downloading [==>  ] {i}kB/9MB\n" for i in range(2100))
+_PROVISIONING_AFTER_A_PULL = (
+    "[papaia-ctl] Starting the stack...\n"
+    + _PULL_FLOOD
+    + "NPM provisioning skipped: NPM API did not become ready\n"
+    "[!] NPM proxy-host provisioning failed. Once the stack is healthy, run"
+    " 'papaia-ctl npm-provision' to retry.\n"
+)
+
+
+def _last(log: str, tail: int) -> str:
+    return "".join(log.splitlines(keepends=True)[-tail:])
+
+
+def test_a_full_window_without_the_start_line_is_read_as_the_start() -> None:
+    log = _last(_PROVISIONING_AFTER_A_PULL, 2000)
+    assert "Starting the stack" not in log
+    problems = upgrade.provisioning_problems(
+        log, workspace_dir="/srv/papaia", config_dir="/srv/papaia/config", tail=2000
+    )
+    assert [p.step for p in problems] == ["npm-provision"]
+
+
+def test_a_short_log_without_the_start_line_still_lists_nothing() -> None:
+    log = "NPM provisioning skipped: NPM API did not become ready\n"
+    assert (
+        upgrade.provisioning_problems(
+            log, workspace_dir="/srv/papaia", config_dir="/srv/papaia/config", tail=2000
+        )
+        == []
+    )
+    # Without a tail the log is taken as complete, however long it is.
+    assert _problems(_last(_PROVISIONING_AFTER_A_PULL, 2000)) == []
+
+
 @pytest.mark.parametrize(
     "hook_output",
     [

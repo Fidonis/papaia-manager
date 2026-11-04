@@ -123,6 +123,14 @@
         {% endfor %}
       </ul>
 
+      {% if node_progress %}
+      <ul class="text-xs">
+        {% for name, step in node_progress %}
+        <li class="py-0.5"><span class="font-medium">{{ name }}</span>: <span class="font-mono opacity-60">{{ step }}</span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
       <div x-show="offline" class="text-sm opacity-60">
         <span class="loading loading-dots loading-xs"></span>
         {% trans %}Manager not reachable &mdash; reconnecting&hellip;{% endtrans %}

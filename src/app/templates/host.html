@@ -8,9 +8,21 @@
    second click from queueing behind the first, and the route folds a repeat
    inside a few seconds into the run that just finished anyway. #}
 {% block page_actions %}
+{% if node_names %}
+<select id="host-node" name="node" class="select select-bordered select-sm"
+        aria-label="{{ _('Node') }}"
+        hx-get="/partials/host"
+        hx-trigger="change"
+        hx-target="#host-list"
+        hx-swap="innerHTML">
+  <option value="">{% trans %}Controller{% endtrans %}</option>
+  {% for name in node_names %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+</select>
+{% endif %}
 <button type="button"
         class="btn btn-primary btn-sm"
         hx-get="/partials/host?fresh=true"
+        hx-include="#host-node"
         hx-target="#host-list"
         hx-swap="innerHTML"
         hx-disabled-elt="this">
@@ -26,6 +38,7 @@
 <div
   id="host-list"
   hx-get="/partials/host"
+  hx-include="#host-node"
   hx-trigger="load, every {{ refresh_seconds }}s"
   hx-swap="innerHTML"
 >

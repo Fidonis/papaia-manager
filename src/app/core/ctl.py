@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from app.core.inventory import SELF_PROFILE
+from app.core.inventory import LINK_PROFILE, SELF_PROFILE
 from app.core.services import invalidate_snapshot
 from app.i18n import gettext as _
 
@@ -204,7 +204,7 @@ _ADDON_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 # Restore selectors, mirroring the grammar in the core's tools/lib/backup.py.
 # The prefix is mandatory there because `librechat` is at once a module, a
 # service, a profile and the prefix of six volume names.
-_MODULE_SELECTOR_RE = re.compile(r"^(module|addon):[a-z0-9][a-z0-9-]{0,31}$")
+_MODULE_SELECTOR_RE = re.compile(r"^(module|addon|node):[a-z0-9][a-z0-9-]{0,31}$")
 _VOLUME_SELECTOR_RE = re.compile(r"^volume:[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 MAX_SELECTORS = 32
@@ -297,6 +297,12 @@ def profiles_flag(names: Iterable[str], *, allowed: Collection[str]) -> str:
             raise ValueError(
                 _(
                     "profile %(name)r runs this panel and cannot be controlled from it"
+                ) % {"name": name}
+            )
+        if name == LINK_PROFILE:
+            raise ValueError(
+                _(
+                    "profile %(name)r connects the nodes and cannot be controlled from this panel"
                 ) % {"name": name}
             )
         if name not in allowed:

@@ -169,6 +169,9 @@
      hx-trigger="load"
      hx-swap="innerHTML"></div>
 
+{% if nodes_enabled() %}
+<div hx-get="/partials/upgrade/nodes" hx-trigger="load, every 60s" hx-swap="innerHTML"></div>
+{% endif %}
 <div id="upgrade-status-slot"
      hx-get="/partials/upgrade/status"
      hx-trigger="load"

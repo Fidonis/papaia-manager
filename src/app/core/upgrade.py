@@ -733,8 +733,19 @@ def _strip_prefix(line: str) -> str:
     return line
 
 
+# What the second half of `papaia-ctl upgrade` announces on a distributed installation.
+_INSTALL_ON_NODES = "Installing "
+_START_ON_NODES = "Starting every node"
+_ON_EVERY_NODE = "on every node"
+
+
 def _phase_match(key: str, prefix: str, contains: str, line: str) -> bool:
-    if key == "migrations" and line.startswith(_MIGRATIONS_NONE):
+    if key == "migrations" and (
+        line.startswith(_MIGRATIONS_NONE)
+        or (line.startswith(_INSTALL_ON_NODES) and _ON_EVERY_NODE in line)
+    ):
+        return True
+    if key == "start" and line.startswith(_START_ON_NODES):
         return True
     return line.startswith(prefix) and (not contains or contains in line)
 
@@ -859,23 +870,30 @@ class ProvisioningProblem:
 
 
 def provisioning_problems(
-    log: str, *, workspace_dir: str, config_dir: str
+    log: str, *, workspace_dir: str, config_dir: str, tail: int | None = None
 ) -> list[ProvisioningProblem]:
     """The provisioning steps the upgrade's `start` skipped or failed, once each, in the
     order of the steps. Only lines after the start of the stack count: the same steps
-    are not run anywhere else in an upgrade."""
+    are not run anywhere else in an upgrade.
+
+    `tail` is the number of lines the log was cut to. Only for a run that succeeded:
+    a full window without the start line is then read as a whole."""
     lines = [_strip_prefix(raw.strip()) for raw in log.splitlines()]
     # The second opening is a distributed installation's.
     start = next(
         (
             i
             for i, line in enumerate(lines)
-            if line.startswith(("Starting the stack", "Starting every node"))
+            if line.startswith(("Starting the stack", _START_ON_NODES))
         ),
         None,
     )
     if start is None:
-        return []
+        # A full window can begin inside the start phase: Compose's pull progress
+        # alone can fill it, and a run that succeeded reaches `start` last.
+        if tail is None or len(lines) < tail:
+            return []
+        start = -1
     ctl = repo_path(workspace_dir) / "tools" / "papaia-ctl"
     found: list[ProvisioningProblem] = []
     for step, pattern, summary in _PROVISIONING_PROBLEMS:
@@ -893,6 +911,21 @@ def provisioning_problems(
                 )
                 break
     return found
+
+
+_NODE_LINE = re.compile(r"^node ([a-z][a-z0-9-]*): (.+)$")
+
+
+def node_progress(log: str) -> list[tuple[str, str]]:
+    """(node, what it did last) from the runner's output, in the order nodes first appear.
+
+    The core prints `node <name>: ...` for each step on a node. Empty on a single host."""
+    latest: dict[str, str] = {}
+    for raw in log.splitlines():
+        match = _NODE_LINE.match(_strip_prefix(raw.strip()))
+        if match:
+            latest[match.group(1)] = match.group(2)
+    return list(latest.items())
 
 
 def recovery_from_log(log: str) -> str:

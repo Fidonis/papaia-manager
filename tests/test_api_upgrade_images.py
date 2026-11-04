@@ -578,3 +578,19 @@ def test_a_failed_upgrade_keeps_its_own_block_only(
     _finished(monkeypatch, log=_DONE_LOG, exit_code=1)
     html = _admin(client).get("/partials/upgrade/runner").text
     assert "not every step at the end ran" not in html
+
+
+def test_a_pull_that_fills_the_window_still_names_the_skipped_step(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pull = "".join(f" a1b2c3d4 Extracting [==>  ] {i}kB/9MB\n" for i in range(2100))
+    log = _DONE_LOG.replace("Starting the stack...\n", "Starting the stack...\n" + pull)
+    _finished(monkeypatch, log=log, exit_code=0)
+
+    async def cut(name: str, *, tail: int = 0) -> str:
+        return "".join(log.splitlines(keepends=True)[-tail:])
+
+    monkeypatch.setattr(runner, "runner_log", cut)
+    html = _admin(client).get("/partials/upgrade/runner").text
+    assert "not every step at the end ran" in html
+    assert "npm-provision --config-dir=" in html

@@ -1,6 +1,7 @@
 """The Nodes page and its API: who may see it, who may change it, and what is recorded."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -28,6 +29,7 @@ os.environ.update(
     MANAGER_SESSION_SECRET=_SESSION_SECRET,
 )
 
+from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from itsdangerous import TimestampSigner  # noqa: E402
 
@@ -37,6 +39,7 @@ from app.config import get_settings  # noqa: E402
 from app.core import nodes  # noqa: E402
 from app.core.jobs import JobQueue  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.routers import stack_guard  # noqa: E402
 
 _CSRF = "test-csrf-token"
 _TOPOLOGY = {
@@ -288,6 +291,132 @@ def test_a_bad_fingerprint_never_reaches_the_core(client: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Services and Host on a distributed installation
+# ---------------------------------------------------------------------------
+
+
+def test_the_services_page_has_a_section_per_node(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core import services
+
+    module = services.ServiceModule(
+        name="keycloak",
+        containers=[
+            services.ServiceContainer(
+                name="k", service="keycloak", role="", state="running", status_text="Up"
+            )
+        ],
+        node="edge",
+    )
+    snapshot = services.StackSnapshot(
+        core=[module],
+        nodes=[
+            services.NodeHealth(name="edge", reachable=True),
+            services.NodeHealth(name="gpu", reachable=False, reason="timed out"),
+        ],
+    )
+    monkeypatch.setattr(services, "load_snapshot", lambda *a: snapshot)
+    monkeypatch.setattr("app.routers.ui.load_snapshot", lambda *a: snapshot)
+    html = _session(client).get("/partials/services").text
+    assert "Node gpu does not answer: timed out" in html
+    assert "Core stack" not in html and "edge" in html
+
+
+def test_the_host_page_offers_the_nodes(client: TestClient) -> None:
+    html = _session(client).get("/host").text
+    assert 'id="host-node"' in html and '<option value="edge">' in html
+    assert '<option value="ctl">' not in html
+
+
+def test_a_single_host_has_no_node_selector(client: TestClient) -> None:
+    _deployment({"core": {}})
+    assert 'id="host-node"' not in _session(client).get("/host").text
+
+
+def test_the_host_partial_reads_the_selected_node(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core import host_health
+
+    asked: list[str] = []
+
+    async def read(node: str, **kwargs: Any) -> host_health.HostHealth:
+        asked.append(node)
+        return host_health.unavailable("ssh: timed out")
+
+    monkeypatch.setattr(host_health, "load_node_health", read)
+    admin = _session(client)
+    assert "timed out" in admin.get("/partials/host?node=edge").text
+    assert asked == ["edge"]
+    assert admin.get("/partials/host?node=elsewhere").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# The lock between releases, and backups per node
+# ---------------------------------------------------------------------------
+
+
+def _locked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(nodes, "lock_reason", lambda c, w: "edge runs another release")
+
+
+def test_a_backup_is_refused_while_the_nodes_disagree(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.routers import api_maintenance
+
+    monkeypatch.setattr(api_maintenance, "_backup_dir", lambda s: Path(_CONFIG_DIR))
+    _locked(monkeypatch)
+    response = _session(client).post("/api/v1/maintenance/backup", json={}, headers=_HEADERS)
+    assert response.status_code == 409 and "another release" in response.json()["detail"]
+
+
+def test_a_backup_of_an_unknown_node_is_refused(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.routers import api_maintenance
+
+    monkeypatch.setattr(api_maintenance, "_backup_dir", lambda s: Path(_CONFIG_DIR))
+    monkeypatch.setattr(nodes, "lock_reason", lambda c, w: "")
+    response = _session(client).post(
+        "/api/v1/maintenance/backup", json={"node": "elsewhere"}, headers=_HEADERS
+    )
+    assert response.status_code == 400
+
+
+def test_starting_is_refused_while_locked_and_stopping_is_not(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi import HTTPException
+
+    from app.config import get_settings
+    from app.routers import api_stack
+
+    _locked(monkeypatch)
+    with pytest.raises(HTTPException):
+        api_stack._refuse_while_locked("start", get_settings())  # noqa: SLF001
+    api_stack._refuse_while_locked("stop", get_settings())  # noqa: SLF001
+
+
+def test_every_admin_page_says_why_it_is_locked(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (Path(_CONFIG_DIR) / "upgrade.lock").write_text(
+        json.dumps({"from": "1.7.0", "to": "1.8.0"}), encoding="utf-8"
+    )
+    try:
+        assert "has not finished" in _session(client).get("/audit").text
+    finally:
+        (Path(_CONFIG_DIR) / "upgrade.lock").unlink()
+
+
+def test_the_upgrade_page_lists_the_release_per_node(client: TestClient) -> None:
+    html = _session(client).get("/partials/upgrade/nodes").text
+    assert "edge" in html and "1.8.0" in html and "unreachable" in html
+
+
+# ---------------------------------------------------------------------------
 # Step-up
 # ---------------------------------------------------------------------------
 
@@ -425,3 +554,35 @@ def test_the_id_token_carries_the_time_of_the_sign_in() -> None:
     )
     assert claims.auth_time == 1_900_000_000
     assert oidc._extract_claims({"sub": "u", "exp": 2_000_000_000}, "roles").auth_time == 0  # noqa: SLF001
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/api/v1/addons/docs/start", None),
+        ("/api/v1/addons/docs/stop", {}),
+        ("/api/v1/addons/docs/restart", {}),
+        ("/api/v1/addons/docs/uninstall", {}),
+        ("/api/v1/addons/docs/rollback", {}),
+    ],
+)
+def test_add_on_actions_are_refused_while_locked(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, path: str, body: dict[str, Any] | None
+) -> None:
+    monkeypatch.setattr(nodes, "lock_reason", lambda *a: "an upgrade has not finished")
+    response = _session(client).post(path, json=body, headers={"X-CSRF-Token": _CSRF})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "an upgrade has not finished"
+
+
+def test_a_change_to_the_configuration_is_refused_while_locked(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    async def nothing_running(*args: Any) -> None:
+        return None
+
+    monkeypatch.setattr(stack_guard.runner, "find_runner", nothing_running)
+    monkeypatch.setattr(nodes, "lock_reason", lambda *a: "an upgrade has not finished")
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(stack_guard.require_idle_stack())
+    assert refused.value.status_code == 409

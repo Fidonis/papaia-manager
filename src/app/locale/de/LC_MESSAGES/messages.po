@@ -9639,6 +9639,58 @@ msgstr "Node %(name)s — %(branding)s"
 msgid "Node %(name)s"
 msgstr "Node %(name)s"
 
+msgid "Node %(name)s does not answer: %(reason)s"
+msgstr "Node %(name)s antwortet nicht: %(reason)s"
+
+msgid "Controller"
+msgstr "Controller"
+
+msgid "Nodes and links"
+msgstr "Nodes und Verbindungen"
+
+msgid "The node's doctor gave no readable answer."
+msgstr "Der doctor des Nodes gab keine lesbare Antwort."
+
+msgid "No node answered the host check."
+msgstr "Kein Node hat auf die Host-Prüfung geantwortet."
+
+msgid "Not read: %(nodes)s."
+msgstr "Nicht gelesen: %(nodes)s."
+
+msgid "No answer from %(nodes)s."
+msgstr "Keine Antwort von %(nodes)s."
+
+msgid "%(count)d need attention on %(nodes)s."
+msgstr "%(count)d brauchen Aufmerksamkeit auf %(nodes)s."
+
+msgid "Release per node"
+msgstr "Release pro Node"
+
+msgid "An upgrade moves every node to one release in one run, and every node has to answer before it starts."
+msgstr "Ein Upgrade bringt alle Nodes in einem Lauf auf ein Release, und vor dem Start muss jeder Node antworten."
+
+msgid "An upgrade from %(source)s to %(target)s has not finished. Run it again, or restore its restore point %(restore_point)s."
+msgstr "Ein Upgrade von %(source)s auf %(target)s ist nicht abgeschlossen. Führen Sie es erneut aus, oder stellen Sie seinen Wiederherstellungspunkt %(restore_point)s wieder her."
+
+#, python-format
+msgid "An upgrade from %(source)s to %(target)s has not finished, and it took no restore point. Run it again, or clear the lock with papaia-ctl start --addons --unlock on the host papaia-manager runs on."
+msgstr "Ein Upgrade von %(source)s auf %(target)s ist nicht abgeschlossen und hat keinen Wiederherstellungspunkt angelegt. Führen Sie es erneut aus, oder heben Sie die Sperre mit papaia-ctl start --addons --unlock auf dem Host auf, auf dem papaia-manager läuft."
+
+msgid "The controller runs %(version)s, but these nodes do not: %(nodes)s. Move all nodes together with an upgrade."
+msgstr "Der Controller läuft auf %(version)s, diese Nodes aber nicht: %(nodes)s. Bringen Sie alle Nodes gemeinsam mit einem Upgrade auf denselben Stand."
+
+msgid "What to back up"
+msgstr "Was gesichert wird"
+
+msgid "All nodes"
+msgstr "Alle Nodes"
+
+msgid "Archives are stored on the controller. A restore point is not one moment across nodes: they are archived one after another."
+msgstr "Die Archive liegen auf dem Controller. Ein Wiederherstellungspunkt ist kein einzelner Moment über alle Nodes: Sie werden nacheinander archiviert."
+
+msgid "All data of this node. No other node is touched."
+msgstr "Alle Daten dieses Nodes. Andere Nodes bleiben unberührt."
+
 msgid "no links"
 msgstr "keine Verbindungen"
 
@@ -9650,3 +9702,14 @@ msgstr "Release und Bundle senden"
 
 msgid "A node named '%(name)s' exists already."
 msgstr "Ein Node namens '%(name)s' existiert bereits."
+
+msgid "Being checked..."
+msgstr "Wird geprüft..."
+
+#, python-format
+msgid "%(profile)s connects the nodes and cannot be selected"
+msgstr "%(profile)s verbindet die Nodes und kann nicht ausgewählt werden"
+
+#, python-format
+msgid "profile %(name)r connects the nodes and cannot be controlled from this panel"
+msgstr "Profil %(name)r verbindet die Nodes und kann nicht über dieses Panel gesteuert werden"
