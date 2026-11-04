@@ -5777,6 +5777,10 @@ msgstr "in %(modules)s Modulen"
 msgid "· variant %(variant)s"
 msgstr "· Variante %(variant)s"
 
+#, python-format
+msgid "· on node %(node)s"
+msgstr "· auf Node %(node)s"
+
 msgid "No mail server is stored yet. Switching the relay on asks for it, or"
 msgstr "Es ist noch kein Mailserver gespeichert. Beim Einschalten des Relays wird danach gefragt, oder"
 
@@ -5933,6 +5937,10 @@ msgstr "Kein Overlay"
 #, python-brace-format
 msgid "Edit {label} overlay"
 msgstr "Overlay {label} bearbeiten"
+
+#, python-brace-format
+msgid "Recreated on node {node}"
+msgstr "Wird auf Node {node} neu erstellt"
 
 #, python-brace-format
 msgid "rev {revision}"
@@ -8518,6 +8526,10 @@ msgstr "Das Mail-Relay ist an"
 #, python-format
 msgid "relay %(relay)s"
 msgstr "Relay %(relay)s"
+
+#, python-format
+msgid "on node %(node)s"
+msgstr "auf Node %(node)s"
 
 msgid "relay not created"
 msgstr "Relay nicht angelegt"

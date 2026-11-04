@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from app.core import services
+from app.core import nodes, services
 from app.core.audit import write_audit_entry
 from app.core.config import history, modules, overlay
 from app.core.ctl import (
@@ -138,20 +138,29 @@ async def _setup(
 async def _verb(
     ctx: JobContext, verb: str, *flags: str, workspace_dir: str, config_dir: str
 ) -> None:
-    """Run a verb and stream its output into the log. A failure becomes StepFailedError."""
-    ctx.log(f"[ctl] papaia-ctl {verb} {' '.join(flags)}".rstrip())
-    lines: list[str] = []
-    try:
-        gen = await run_core_verb(
-            verb=verb, workspace_dir=workspace_dir, config_dir=config_dir, extra_flags=list(flags)
-        )
-        async for line in gen:
-            ctx.log(line)
-            lines.append(line)
-    except CtlError as exc:
-        raise StepFailedError(_(
-            "papaia-ctl %(verb)s: %(value)s"
-        ) % {"verb": verb, "value": last_problem(lines) or exc}) from exc
+    """Run a verb and stream its output into the log. A failure becomes StepFailedError.
+
+    In a distributed installation a profile's `start` and `stop` run once per node they
+    concern (`nodes.profile_runs`), and the first that fails ends the step."""
+    for run in nodes.profile_runs(
+        verb, flags, config_dir=config_dir, workspace_dir=workspace_dir
+    ):
+        ctx.log(f"[ctl] papaia-ctl {verb} {' '.join(run)}".rstrip())
+        lines: list[str] = []
+        try:
+            gen = await run_core_verb(
+                verb=verb,
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+                extra_flags=list(run),
+            )
+            async for line in gen:
+                ctx.log(line)
+                lines.append(line)
+        except CtlError as exc:
+            raise StepFailedError(_(
+                "papaia-ctl %(verb)s: %(value)s"
+            ) % {"verb": verb, "value": last_problem(lines) or exc}) from exc
 
 
 async def wait_healthy(

@@ -1117,3 +1117,21 @@ def test_the_job_strip_is_empty_without_a_job(client: TestClient) -> None:
     html = _admin(client).get("/partials/config/job-status").text
     assert 'id="config-job-status"' in html
     assert "papaia-config-job" in html
+
+
+def test_the_modules_and_the_overlays_name_their_node(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core import nodes
+
+    html = _admin(client).get("/settings/modules").text
+    assert "on node" not in html
+    assert all(not t["node"] for t in _admin(client).get(f"{_BASE}/overlay").json()["targets"])
+
+    placed = {"localai": "gpu", "litellm": "edge"}
+    monkeypatch.setattr(nodes, "profile_node", lambda config_dir, profile: placed.get(profile, ""))
+    html = _admin(client).get("/settings/modules").text
+    assert html.count("· on node gpu") == 1
+    targets = {t["key"]: t for t in _admin(client).get(f"{_BASE}/overlay").json()["targets"]}
+    assert targets["litellm"]["node"] == "edge"
+    assert targets["librechat"]["node"] == ""

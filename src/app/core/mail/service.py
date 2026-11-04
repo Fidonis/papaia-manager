@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.core import nodes
 from app.core.audit import write_audit_entry
 from app.core.ctl import SmtpSetup, run_core_verb, run_smtp_setup
 from app.core.jobs import JobCallback, JobContext
@@ -108,15 +109,19 @@ async def run_verb(
     ctx: JobContext, verb: str, *flags: str, workspace_dir: str, config_dir: str
 ) -> str | None:
     """Run a verb and stream its output into the log. Returns the first line that says the
-    realm was not updated, for a verb that ends in the sync."""
-    ctx.log(f"[ctl] papaia-ctl {verb} {' '.join(flags)}".rstrip())
-    gen = await run_core_verb(
-        verb=verb, workspace_dir=workspace_dir, config_dir=config_dir, extra_flags=list(flags)
-    )
+    realm was not updated, for a verb that ends in the sync. In a distributed installation it
+    runs once per node it concerns, Keycloak's last (`nodes.profile_runs`)."""
     problem: str | None = None
-    async for line in gen:
-        ctx.log(line)
-        problem = problem or realm_problem(line)
+    for run in nodes.profile_runs(
+        verb, flags, config_dir=config_dir, workspace_dir=workspace_dir
+    ):
+        ctx.log(f"[ctl] papaia-ctl {verb} {' '.join(run)}".rstrip())
+        gen = await run_core_verb(
+            verb=verb, workspace_dir=workspace_dir, config_dir=config_dir, extra_flags=list(run)
+        )
+        async for line in gen:
+            ctx.log(line)
+            problem = problem or realm_problem(line)
     return problem
 
 

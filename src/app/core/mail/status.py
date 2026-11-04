@@ -25,8 +25,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from app.core import nodes
 from app.core.ctl import CtlError, run_py_cli
 from app.core.docker_usage import core_checks
+from app.core.mail.settings import PROFILE
 from app.i18n import N_, current_locale
 from app.i18n import gettext as _
 
@@ -131,6 +133,9 @@ async def _run(
     names = core_checks(workspace_dir)
     if CHECK_NAME not in names:
         return unavailable(_(_NO_CHECK)), None, (_NO_CHECK, {})
+    node = nodes.profile_node(config_dir, PROFILE)
+    if node and node != nodes.controller_name(config_dir):
+        return await _run_on_node(node, config_dir=config_dir, workspace_dir=workspace_dir)
     try:
         code, out, err = await run_py_cli(
             command="doctor",
@@ -154,6 +159,41 @@ async def _run(
             (_NO_OUTPUT, {"code": code}),
         )
     return parse_status(out), out, None
+
+
+async def _run_on_node(
+    node: str, *, config_dir: str, workspace_dir: str
+) -> tuple[RelayStatus, str | None, tuple[str, dict[str, Any]] | None]:
+    """The reading on the node the relay is placed on. A node's `doctor` takes no flags and
+    runs every check; the report is inside the node's envelope."""
+    try:
+        code, out, err = await run_py_cli(
+            command="doctor",
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            limit=STATUS_RUN_TIMEOUT_SECONDS,
+            node=node,
+        )
+    except CtlError as exc:
+        logger.warning("mail relay status on node %s: %s", node, exc)
+        return unavailable(str(exc)), None, None
+    lines = out.strip().splitlines()
+    try:
+        envelope = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        envelope = None
+    report = envelope.get("doctor") if isinstance(envelope, dict) else None
+    if not isinstance(report, dict):
+        first = _first_line(err)
+        if first:
+            return unavailable(first), None, None
+        return (
+            unavailable(_(_NO_OUTPUT) % {"code": code}),
+            None,
+            (_NO_OUTPUT, {"code": code}),
+        )
+    text = json.dumps(report)
+    return parse_status(text), text, None
 
 
 @dataclass(frozen=True)
