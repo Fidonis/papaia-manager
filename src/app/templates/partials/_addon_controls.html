@@ -14,13 +14,46 @@
    made the destructive verbs as easy to hit as the harmless ones.
 
    Macros: primary_action, overflow_actions, remove_modal, uninstall_modal,
-           install_modal
+           install_modal, requirements_list
 #}
 {% from "partials/_env_fields.html" import env_input %}
 {% from "partials/_actions.html" import overflow_menu %}
 
+{# The add-ons this one requires (`requires.addons`) and whether each is there. papaia-ctl
+   refuses the install while one is missing or too old; this shows it before the click. #}
+{% macro requirements_list(addon, compact=False) %}
+  {% if addon.requirements %}
+  <div class="flex flex-wrap items-center gap-1{% if not compact %} text-sm{% endif %}">
+    <span class="opacity-60 {% if compact %}text-xs{% endif %}">{% trans %}Requires{% endtrans %}</span>
+    {% for r in addon.requirements %}
+      {% set label = r.name ~ ((' ' ~ r.range) if r.range else '') %}
+      {% if r.state == "active" %}
+        <a href="/addons/{{ r.name }}" class="badge badge-success badge-outline {% if compact %}badge-xs{% else %}badge-sm{% endif %}"
+           title="{{ _('%(name)s is active', name=r.name) }}">{{ label }}</a>
+      {% elif r.state == "too_old" %}
+        <a href="/addons/{{ r.name }}" class="badge badge-error {% if compact %}badge-xs{% else %}badge-sm{% endif %}"
+           title="{{ _('%(name)s %(version)s is active; this add-on needs %(range)s', name=r.name, version=r.version, range=r.range) }}">{{ label }}</a>
+      {% elif r.state == "unchecked" %}
+        <a href="/addons/{{ r.name }}" class="badge badge-warning badge-outline {% if compact %}badge-xs{% else %}badge-sm{% endif %}"
+           title="{{ _('%(name)s is active; its version could not be checked against %(range)s', name=r.name, range=r.range) }}">{{ label }}</a>
+      {% else %}
+        <a href="/addons/{{ r.name }}" class="badge badge-error {% if compact %}badge-xs{% else %}badge-sm{% endif %}"
+           title="{% if r.state == 'inactive' %}{{ _('%(name)s is installed but not active', name=r.name) }}{% else %}{{ _('%(name)s is not installed', name=r.name) }}{% endif %}">{{ label }}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endmacro %}
+
 {% macro primary_action(addon, s, fn) %}
-  {% if s in ("available", "inactive") and addon.catalog %}
+  {% if s in ("available", "inactive") and addon.catalog and addon.requirements_met is false %}
+    {# papaia-ctl would refuse the install; say why instead of offering it. #}
+    <span class="tooltip" data-tip="{{ _('Install the required add-ons first') }}">
+      <button class="btn btn-primary btn-sm" disabled>
+        {% if s == "inactive" %}{% trans %}Reactivate{% endtrans %}{% else %}{% trans %}Install{% endtrans %}{% endif %}
+      </button>
+    </span>
+  {% elif s in ("available", "inactive") and addon.catalog %}
     <button class="btn btn-primary btn-sm" :disabled="busy"
             @click="$refs.installModal.showModal()">
       <span style="display:none" x-show="activeVerb === 'install'" class="loading loading-dots loading-xs"></span>
