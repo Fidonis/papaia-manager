@@ -18,11 +18,13 @@ from fastapi.responses import HTMLResponse
 
 from app.auth.deps import AdminUser
 from app.config import Settings, get_settings
+from app.core import nodes
 from app.core.jobs import Job, JobQueue, JobStatus
 from app.core.mail import service as mail_service
 from app.core.mail import status as mail_status
 from app.core.mail.settings import (
     DEFAULT_PORTS,
+    PROFILE,
     SECURITY_MODES,
     load_mail_settings,
     settings_json,
@@ -132,6 +134,7 @@ async def partial_mail_status(
                 mail_supported=is_supported,
                 mail=settings_json(current),
                 relay=reading,
+                relay_node=nodes.profile_node(settings.papaia_config_dir, PROFILE),
             ),
         )
     )

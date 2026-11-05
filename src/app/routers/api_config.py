@@ -25,6 +25,7 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
+from app.core import nodes
 from app.core.config import history, modules, overlay, preview, service
 from app.core.config.overlay import OverlayError
 from app.core.jobs import JobQueue
@@ -329,6 +330,7 @@ def target_json(settings: Settings, target: overlay.OverlayTarget) -> dict[str, 
         "profile": target.profile,
         "group_active": target.profile in modules.active(settings.papaia_config_dir),
         "services": services,
+        "node": nodes.profile_node(settings.papaia_config_dir, target.profile),
         "exists": file.exists,
         "revision": file.revision,
         "size": file.size,

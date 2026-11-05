@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from app.core import services
+from app.core import nodes, services
 from app.core.audit import write_audit_entry
 from app.core.config import history, modules, overlay
 from app.core.ctl import (
@@ -41,10 +41,14 @@ from app.core.ctl import (
     run_module_setup,
     run_smtp_setup,
 )
+from app.core.inventory import active_profiles
 from app.core.jobs import JobCallback, JobContext
 from app.core.mail import service as mail_service
 from app.core.mail.settings import MailInput, MailSettings
 from app.i18n import gettext as _
+
+# The profile of Keycloak, whose realm holds the mail server the relay provides.
+_KEYCLOAK_PROFILE = "keycloak"
 
 ENABLE_ACTION = "config-module-enable"
 DISABLE_ACTION = "config-module-disable"
@@ -138,20 +142,29 @@ async def _setup(
 async def _verb(
     ctx: JobContext, verb: str, *flags: str, workspace_dir: str, config_dir: str
 ) -> None:
-    """Run a verb and stream its output into the log. A failure becomes StepFailedError."""
-    ctx.log(f"[ctl] papaia-ctl {verb} {' '.join(flags)}".rstrip())
-    lines: list[str] = []
-    try:
-        gen = await run_core_verb(
-            verb=verb, workspace_dir=workspace_dir, config_dir=config_dir, extra_flags=list(flags)
-        )
-        async for line in gen:
-            ctx.log(line)
-            lines.append(line)
-    except CtlError as exc:
-        raise StepFailedError(_(
-            "papaia-ctl %(verb)s: %(value)s"
-        ) % {"verb": verb, "value": last_problem(lines) or exc}) from exc
+    """Run a verb and stream its output into the log. A failure becomes StepFailedError.
+
+    In a distributed installation a profile's `start` and `stop` run once per node they
+    concern (`nodes.profile_runs`), and the first that fails ends the step."""
+    for run in nodes.profile_runs(
+        verb, flags, config_dir=config_dir, workspace_dir=workspace_dir
+    ):
+        ctx.log(f"[ctl] papaia-ctl {verb} {' '.join(run)}".rstrip())
+        lines: list[str] = []
+        try:
+            gen = await run_core_verb(
+                verb=verb,
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+                extra_flags=list(run),
+            )
+            async for line in gen:
+                ctx.log(line)
+                lines.append(line)
+        except CtlError as exc:
+            raise StepFailedError(_(
+                "papaia-ctl %(verb)s: %(value)s"
+            ) % {"verb": verb, "value": last_problem(lines) or exc}) from exc
 
 
 async def wait_healthy(
@@ -356,9 +369,7 @@ def disable_callback(
             config_dir=config_dir,
         )
         if module == "mail":
-            await _verb(
-                ctx, "keycloak-role-sync", workspace_dir=workspace_dir, config_dir=config_dir
-            )
+            await _sync_realm(ctx, workspace_dir=workspace_dir, config_dir=config_dir)
         await _recreate(
             ctx, definition.recreate, workspace_dir=workspace_dir, config_dir=config_dir
         )
@@ -384,6 +395,39 @@ def disable_callback(
         ctx.log("[info] done")
 
     return _callback
+
+
+async def _sync_realm(ctx: JobContext, *, workspace_dir: str, config_dir: str) -> None:
+    """Bring the realm's mail server in line with the relay that was just switched off.
+
+    In a distributed installation `keycloak-role-sync` runs on Keycloak's node with the bundle
+    that node already has, which still names the relay, so the realm would keep it. A `start`
+    of Keycloak's profile on its node hands the node its new bundle first and runs the sync
+    after it; Keycloak itself keeps running. The start only warns when the sync fails, so its
+    output is read for that, and the job fails rather than report the relay as gone."""
+    node = nodes.profile_node(config_dir, _KEYCLOAK_PROFILE)
+    if not node or _KEYCLOAK_PROFILE not in active_profiles(config_dir):
+        await _verb(
+            ctx, "keycloak-role-sync", workspace_dir=workspace_dir, config_dir=config_dir
+        )
+        return
+    try:
+        problem = await mail_service.run_verb(
+            ctx,
+            "start",
+            f"--profiles={_KEYCLOAK_PROFILE}",
+            f"--node={node}",
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+        )
+    except CtlError as exc:
+        raise StepFailedError(_(
+            "papaia-ctl %(verb)s: %(value)s"
+        ) % {"verb": "start", "value": exc}) from exc
+    if problem is not None:
+        raise StepFailedError(_(
+            "The relay is off, but the realm still names it: %(value)s"
+        ) % {"value": problem})
 
 
 async def _purge(
