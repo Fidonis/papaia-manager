@@ -50,6 +50,19 @@
         {% trans %}A retention period deletes restore points older than that many days, and their catalogue entries, after the new one is written. Leave it empty to keep every restore point.{% endtrans %}
       </p>
 
+      {% if backup_nodes %}
+      <label class="form-control">
+        <span class="label-text">{% trans %}What to back up{% endtrans %}</span>
+        <select id="backup-node" class="select select-bordered select-sm">
+          <option value="">{% trans %}All nodes{% endtrans %}</option>
+          {% for name in backup_nodes %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+        </select>
+      </label>
+      <p class="text-xs opacity-60">
+        {% trans %}Archives are stored on the controller. A restore point is not one moment across nodes: they are archived one after another.{% endtrans %}
+      </p>
+      {% endif %}
+
       <div class="modal-action mt-0">
         <button class="btn btn-ghost btn-sm"
                 @click="document.getElementById('backup-modal').close()">{% trans %}Cancel{% endtrans %}</button>
@@ -314,6 +327,8 @@ function startBackup(onJobId) {
   var raw = document.getElementById('retention-days').value.trim();
   var body = {};
   if (raw !== '') body.retention_days = parseInt(raw, 10);
+  var node = document.getElementById('backup-node');
+  if (node && node.value) body.node = node.value;
 
   return fetch('/api/v1/maintenance/backup', {
     method: 'POST',
@@ -457,8 +472,9 @@ function _node(tag, className, text) {
   return el;
 }
 
-function openRestoreModal(id, artifacts, result) {
+function openRestoreModal(id, artifacts, result, scope) {
   _scope = _freshScope(id, artifacts, result);
+  var scoped = !!(scope && scope.length);
   _el('restore-title').innerHTML = fmtHtml({{ _('Restore <span class="font-mono">{id}</span>')|tojson }}, { id: id });
   _el('restore-everything-detail').textContent = fmt(
     {{ _('Replaces the stack configuration and all {count} archives. The whole stack goes down.')|tojson }}, { count: artifacts });
@@ -469,8 +485,17 @@ function openRestoreModal(id, artifacts, result) {
   _el('restore-picker').textContent = '';
   _el('restore-notes').textContent = '';
   _el('restore-tally').textContent = '';
-  document.querySelector('input[name=restore-scope][value=all]').checked = true;
-  document.querySelector('input[name=restore-scope][value=some]').checked = false;
+  // A scoped restore point has no configuration directory and no core volumes,
+  // so it cannot be restored as a whole: the choice is made for the operator.
+  var allRadio = document.querySelector('input[name=restore-scope][value=all]');
+  allRadio.checked = !scoped;
+  allRadio.disabled = scoped;
+  document.querySelector('input[name=restore-scope][value=some]').checked = scoped;
+  if (scoped) {
+    _scope.mode = 'some';
+    _el('restore-everything-detail').textContent = fmt(
+      {{ _('This restore point only holds {scope}, so it can be restored by selection only.')|tojson }}, { scope: scope.join(', ') });
+  }
   _renderStep();
   _el('restore-modal').showModal();
 
@@ -512,7 +537,7 @@ function _renderPicker() {
   // the row that was just clicked once the list is longer than the panel.
   var scrollTop = box.scrollTop;
 
-  var headings = { config: {{ _('Stack')|tojson }}, module: {{ _('Core services')|tojson }}, addon: {{ _('Add-ons')|tojson }} };
+  var headings = { config: {{ _('Stack')|tojson }}, module: {{ _('Core services')|tojson }}, addon: {{ _('Add-ons')|tojson }}, node: {{ _('Nodes')|tojson }} };
   var lastKind = '';
   _scope.groups.forEach(function (group) {
     if (group.kind !== lastKind) {

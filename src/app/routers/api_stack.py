@@ -16,6 +16,10 @@ comes from `inventory.core_groups`, read out of the Compose fragments this
 deployment actually ships and filtered to the profiles it has enabled. Naming
 anything else is a 400, and so is naming `manager`.
 
+In a distributed installation a group action names the node that owns each group. Without
+it the core's `start` pushes to every node and brings up each link gateway first, so one
+node that does not answer would stop an action that has nothing to do with it.
+
 Add-ons are deliberately untouched by everything here. `papaia-ctl stop` would
 take them along given `--addons`, and that flag is never passed -- an add-on is
 started and stopped one at a time from `/api/v1/addons`.
@@ -32,7 +36,7 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core import runner
+from app.core import nodes, runner, services
 from app.core.audit import write_audit_entry
 from app.core.ctl import profiles_flag, run_core_verb
 from app.core.inventory import active_profiles, core_groups
@@ -94,6 +98,23 @@ def _flag(names: list[str], allowed: dict[str, frozenset[str]]) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+async def _runs(
+    names: list[str], allowed: dict[str, frozenset[str]], settings: Settings
+) -> list[list[str]]:
+    """The flags of each `papaia-ctl` run a group action takes: one, except in a distributed
+    installation whose selection spans several nodes."""
+    config_dir = settings.papaia_config_dir
+    if not nodes.is_distributed(config_dir):
+        return [[_flag(names, allowed)]]
+    snapshot = await asyncio.to_thread(
+        services.load_snapshot, config_dir, settings.papaia_workspace_dir
+    )
+    return [
+        [_flag(groups, allowed), *([f"--node={node}"] if node else [])]
+        for node, groups in services.group_owners(snapshot, names).items()
+    ]
+
+
 def _check_clean_up(action: str, clean_up: bool) -> None:
     """Refuse `clean_up` where there is nothing for it to attach to.
 
@@ -108,6 +129,15 @@ def _check_clean_up(action: str, clean_up: bool) -> None:
             status_code=400,
             detail=_("clean_up needs something to stop, and start stops nothing"),
         )
+
+
+def _refuse_while_locked(action: str, settings: Settings) -> None:
+    """While nodes run different releases the core refuses `start`; `stop` stays possible."""
+    if action == "stop":
+        return
+    reason = nodes.lock_reason(settings.papaia_config_dir, settings.papaia_workspace_dir)
+    if reason:
+        raise HTTPException(status_code=409, detail=reason)
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +159,11 @@ async def group_action(
             status_code=404, detail=_("unknown action %(action)r") % {"action": action}
         )
     _check_clean_up(action, body.clean_up)
+    _refuse_while_locked(action, settings)
 
-    flag = _flag(body.groups, await _known_groups(settings))
+    allowed = await _known_groups(settings)
+    _flag(body.groups, allowed)
+    runs = await _runs(body.groups, allowed, settings)
     queue = _queue()
     _username = _user_id(user)
     _clean = body.clean_up
@@ -139,15 +172,16 @@ async def group_action(
     _config = settings.papaia_config_dir
 
     async def _run(ctx: JobContext, verb: str, *extra: str) -> None:
-        ctx.log(f"[ctl] papaia-ctl {verb} {flag} {' '.join(extra)}".rstrip())
-        gen = await run_core_verb(
-            verb=verb,
-            workspace_dir=_workspace,
-            config_dir=_config,
-            extra_flags=[flag, *extra],
-        )
-        async for line in gen:
-            ctx.log(line)
+        for selection in runs:
+            ctx.log(f"[ctl] papaia-ctl {verb} {' '.join((*selection, *extra))}".rstrip())
+            gen = await run_core_verb(
+                verb=verb,
+                workspace_dir=_workspace,
+                config_dir=_config,
+                extra_flags=[*selection, *extra],
+            )
+            async for line in gen:
+                ctx.log(line)
 
     async def _callback(ctx: JobContext) -> None:
         if action in ("stop", "restart"):
@@ -212,6 +246,7 @@ async def stack_action(
             "unknown action %(action)r"
         ) % {"action": action})
     _check_clean_up(action, body.clean_up)
+    _refuse_while_locked(action, settings)
 
     # A job in flight would be killed together with the manager and left stuck in
     # `running` forever, with its own papaia-ctl half-finished. A second runner

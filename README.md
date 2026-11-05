@@ -5,7 +5,7 @@ Maintained by **Fidonis** · See [TRADEMARK.md](TRADEMARK.md) for the trademark 
 
 A web-based control plane for the papAIa stack's add-on lifecycle. It gives
 non-technical operators a browser UI for discovering, installing, starting,
-stopping, removing, and updating add-ons — without needing shell access to
+stopping, removing, and upgrading add-ons — without needing shell access to
 the host running the stack.
 
 The manager does not duplicate orchestration logic: it drives `papaia-ctl`
@@ -503,12 +503,35 @@ tenth interval and no sooner than every 5 minutes, and a slow or failing
 measurement leaves the rest of the page as it is. The Host entry in the sidebar carries a
 dot while a check warns or has failed.
 
+**Models & Usage.** An admin-only page at `/models`, in the *Monitor* group after Host, that
+shows which models LiteLLM serves and what they consumed. A window of days is chosen at the top:
+the last 7 days (the default), 30 or 90 days, this month, or a custom range of up to a year. The
+**Overview** tab adds up all models: tokens (with input and output), spend in USD and requests,
+as a bar per day stacked by model, with a switch between the three, a tooltip per day (also with
+the arrow keys), a legend and each model's share. The **Per model** tab lists every model
+LiteLLM serves, including the ones nobody used, with its type, its price per million tokens, its
+figures and a small trend line, and a click opens a page for that model with input and output
+tokens apart. A table of the days is under every chart. The page only reads: models, prices,
+teams, budgets and keys are changed in LiteLLM's own Admin UI, which the page links to when the
+stack knows its address. Days are UTC days, because that is the finest grain LiteLLM keeps, and
+the newest requests can take about a minute to show up. A model without a price in LiteLLM (a
+local one) counts tokens and requests but no spend. The manager reads LiteLLM at `LITELLM_URL`
+(default `http://litellm:4000`) with the master key from `ai/litellm/.env`, which it never shows,
+logs or sends anywhere else; a LiteLLM that is down, or a key it refuses, is a message on the
+page and not an error. A reading is kept for a minute and shared between everyone who has the
+page open.
+
 **Catalogs.** A catalog is a source of add-ons — a public or private Git
 repository, or a local directory — registered at runtime (not versioned in
 this repo). Each catalog is scanned for top-level `papaia-app.yaml`
 manifests. Installing an add-on materializes a pinned snapshot
 (`git archive` at a specific commit) so that a later catalog refresh never
-moves code out from under a running container.
+moves code out from under a running container. Every version gets a
+directory of its own, `addons/_managed/<catalog>/<revision>/<add-on>`, which
+is written once and never changed; the revision is the first twelve digits of
+the commit (`local-<timestamp>` for a local catalog). Of one add-on the
+directory it runs from, the one a rollback goes back to and one more stay on
+disk, and an uninstall removes them all.
 
 **Status model.** Each add-on resolves to one of five states, merged from
 the catalog scan, `deployment.yaml`, and live Docker container labels:
@@ -528,7 +551,7 @@ add-on's `.env`. The pinned tags are read from that file, so the pages need no
 Docker. The list is also `components` in the JSON of an add-on. A catalog whose
 manifests have no `components` shows nothing new.
 
-**Jobs.** Installs, updates, and lifecycle verbs that shell out to
+**Jobs.** Installs, upgrades, and lifecycle verbs that shell out to
 `papaia-ctl` can take minutes (image pulls, container starts). These run as
 queued `Job` objects processed one at a time by a single worker; the UI
 polls for live status and streamed log output. A line of output longer than
@@ -617,10 +640,44 @@ outdated only if no container uses it, the installed release does not declare it
 and it belongs to a repository the stack declares; unrelated images are never
 touched, and nothing is offered while the declared images cannot be resolved.
 
-**Updates.** Refresh the catalog, diff the candidate manifest's
-`.env.example` against the installed bundle (new `CHANGE_ME` keys prompt for
-values before the job starts), stop the add-on, re-materialize the snapshot
-at the new commit, reinstall, and start again.
+**Upgrades.** An add-on is offered an upgrade when a catalog on disk has a
+higher version than the one installed (SemVer precedence; a version that is not
+SemVer counts when it differs). The Add-Ons page counts them, lists them with a
+link to the review (and can narrow the cards to them), and marks the Add-Ons
+entry of the sidebar; **Refresh
+catalogs** fetches every Git catalog first, because the page reads the
+catalogs as they are. **Review upgrade** (`/addons/<name>/upgrade`) stages the
+catalog's version in a directory of its own and shows what `papaia-ctl addon
+upgrade --dry-run` reports: the versions, whether this core accepts the new one,
+the components that change, the new configuration keys (generated, asking for a
+value, or a Keycloak client secret), the keys that are gone or whose default
+changed, new services and Keycloak clients to set up by hand, and the sections
+of the add-on's own `CHANGELOG.md` for the versions in between (as plain text,
+when it has one). A value the new version asks for is entered there. The upgrade itself is a job that runs
+`papaia-ctl addon upgrade`: it takes a restore point of the add-on first (the
+**Take a restore point** box; an add-on without volumes gets none), repoints
+the add-on to the new directory, adds the new keys to its configuration and
+recreates its containers when it was running. The upgrade runs against the
+version that was reviewed, and is refused if the catalog has changed since. A
+refusal of the compatibility gate or a missing value is an error of the
+request, not a failed job; values reach papaia-ctl through a private file that
+is deleted when the job ends, never on a command line. There is no automatic
+rollback. When the new version has been put in place the add-on page lists the
+version before it, and **Roll back** offers two ways back: the code and
+configuration only (the data stays as it is), or the code and the data of the
+restore point taken before the upgrade (what the add-on wrote since is lost).
+That restore point holds the add-on only: on the Backup / Restore page it is
+marked as such, can be restored by selection only and does not count as the
+last backup of the stack.
+It is one step: afterwards there is no earlier version to return to. Upgrading
+and rolling back need papAIa core 1.8.0 or newer; an older core shows a hint
+instead.
+
+**Nodes.** On a distributed installation (papAIa 1.8.0 and newer, an experimental mode of the core) an admin-only `/nodes` page lists the machines with their services, address, status, version and link health. A node that does not answer stays in the list and says so. Adding a node registers it and writes its join archive; the page shows the commands to run on the node and the host keys it offers, for the administrator to compare and confirm. Removing a node and confirming a host key are on its detail page. Each of these changes needs a fresh sign-in at Keycloak, valid for five minutes, on top of the admin role, and each is audited. On a single host the page and its sidebar entry do not exist. The image carries an SSH client for this, and its entrypoint gives the host's user id a name, which OpenSSH requires; the keys stay in the configuration directory, managed by the core.
+
+On such an installation the other pages follow the nodes. Services has a section per node, read from the core's merged `status`, and names a node that does not answer; an action on a group runs on the node that owns it. Host offers a node selector and shows the core's `nodes` and `links` checks. The dashboard's service, disk and certificate cards look at every node and name the one that needs attention, and a node without a reading keeps a card from saying everything is fine. Modules, the overlay editor and the mail settings need nothing new: `papaia-ctl start` renders, sends each node its bundle and recreates the containers there. Users & Roles and Models & Usage keep dialling `keycloak:8443` and `litellm:4000`, which the link gateway carries.
+
+Backups keep going to the controller, as in the core: the Backup page can back up one node or all, and a restore can pick a remote node as a whole, which touches no other node. The page says that a restore point is not one moment across nodes. An upgrade moves all nodes through the same detached runner; the Upgrade page shows the release per node and each node's latest step. While an upgrade has not finished or a node runs another release, every admin page says so, and starting the stack or a backup is refused with that reason. `stop`, the upgrade and a restore stay possible.
 
 **Audit log.** An admin-only `/audit` page lists every entry from the audit log,
 filtered by user, action, result, a target substring and a date range, newest
@@ -718,7 +775,10 @@ POST /api/v1/addons/{name}/stop            # {clean_up?} → 202
 POST /api/v1/addons/{name}/restart         # {clean_up?} stop then start → 202
 POST /api/v1/addons/{name}/remove          # stop and remove the containers, then deactivate → 202; 409 without its docker-compose.yml
 POST /api/v1/addons/{name}/uninstall       # → 202
-POST /api/v1/addons/{name}/update          # → 202
+GET  /api/v1/addons/upgrades                # {supported, upgrades: [{name, installed, available, catalog}]}
+POST /api/v1/addons/{name}/upgrade-plan     # {revision?} stage the catalog's version, ask papaia-ctl what upgrading would do → {revision, plan, form}
+POST /api/v1/addons/{name}/upgrade          # {env?, revision?, backup?} → 202; 409 if the gate refuses, 422 for a missing value
+POST /api/v1/addons/{name}/rollback        # {restore_data?} → 202; 409 without an earlier version
 POST /api/v1/addons/{name}/save-config     # → 202
 POST /api/v1/addons/{name}/check           # synchronous compatibility check
 
@@ -726,6 +786,9 @@ GET /api/v1/jobs
 GET /api/v1/jobs/{id}
 GET /api/v1/jobs/{id}/log
 
+POST   /api/v1/nodes                       # Distributed only; needs a fresh sign-in
+DELETE /api/v1/nodes/{name}                # Distributed only; needs a fresh sign-in
+POST   /api/v1/nodes/{name}/pin            # Distributed only; needs a fresh sign-in
 GET    /api/v1/audit                       # ?user,action,result,target,since,before,limit,offset
 GET    /api/v1/audit/export                # {format=csv|jsonl} + same filters, streamed
 POST   /api/v1/audit/prune                 # {before, dry_run?} → removed/kept counts
@@ -769,6 +832,11 @@ POST   /api/v1/settings/branding/logo        # multipart file: PNG, JPEG, WebP o
 DELETE /api/v1/settings/branding/logo        # remove the logo
 POST   /api/v1/settings/branding/reset       # {revision} back to the defaults, logo removed
 PUT    /api/v1/settings/host                 # {revision, refresh_seconds} 10 to 3600
+
+GET    /api/v1/models                        # the models LiteLLM serves: type, host, price per million tokens
+GET    /api/v1/models/usage                  # ?range=7d|30d|90d|month|custom&from=&to= (UTC days):
+                                             #   totals, per day and per model; 422 for a window that
+                                             #   makes no sense, 503 when LiteLLM cannot be read
 GET    /brand/logo                           # the stored logo, for any signed-in user
 POST   /account/language                     # form fields locale (auto or a shipped language), csrf_token, next?: the
                                              #   signed-in account's own language, for every role; 303 back to the page

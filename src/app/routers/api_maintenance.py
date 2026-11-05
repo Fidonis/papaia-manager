@@ -27,7 +27,16 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core import backup_run, backups, ctl, inventory, restore_scope, runner, schedule
+from app.core import (
+    backup_run,
+    backups,
+    ctl,
+    inventory,
+    nodes,
+    restore_scope,
+    runner,
+    schedule,
+)
 from app.core.audit import write_audit_entry
 from app.core.ctl import run_core_verb
 from app.core.jobs import JobContext, JobQueue
@@ -42,6 +51,8 @@ class BackupBody(BaseModel):
     # --retention-period-days is passed, so absence and 0 are different requests
     # and 0 (delete everything older than today) must stay expressible.
     retention_days: int | None = Field(default=None, ge=0)
+    # One node of a distributed installation; None backs up everything.
+    node: str | None = None
 
 
 class ScheduleBody(BaseModel):
@@ -254,7 +265,9 @@ async def restore_point_selectors(
             ) % {"restore_point_id": restore_point_id}
         )
     manifest = backups.snapshot_manifest(backup_dir, restore_point_id)
-    groups = restore_scope.build_groups(manifest)
+    groups = restore_scope.build_groups(
+        manifest, controller=nodes.controller_name(settings.papaia_config_dir)
+    )
     expected = inventory.core_inventory(
         settings.papaia_workspace_dir,
         inventory.active_profiles(settings.papaia_config_dir),
@@ -288,6 +301,14 @@ async def create_backup(
     verify_csrf(request)
     backup_dir = _backup_dir(settings)
     await _require_no_runner()
+    reason = nodes.lock_reason(settings.papaia_config_dir, settings.papaia_workspace_dir)
+    if reason:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=reason)
+    if body.node is not None and body.node not in nodes.registry(settings.papaia_config_dir):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_("no node named '%(name)s'") % {"name": body.node},
+        )
 
     queue = _queue()
     # Refused rather than queued. The worker is single-flight, so a second backup
@@ -309,6 +330,7 @@ async def create_backup(
         backup_dir,
         user=_user_id(user),
         retention_days=body.retention_days,
+        node=body.node,
     )
     return {"job_id": job.id, "status": "queued"}
 
@@ -507,6 +529,18 @@ async def start_restore(
                 ) % {"id": point.id}
             ),
         )
+    if point.is_scoped:
+        # papaia-ctl refuses it as well; saying so here spares the detached
+        # runner container being started only to fail.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                _(
+                    "restore point %(id)s only holds %(scope)s and cannot be restored as a "
+                    "whole; use POST /api/v1/maintenance/restore/scoped instead"
+                ) % {"id": point.id, "scope": ", ".join(point.scope or [])}
+            ),
+        )
 
     existing = await runner.find_runner()
     if existing is not None:
@@ -608,7 +642,9 @@ async def start_scoped_restore(
         )
 
     manifest = backups.snapshot_manifest(backup_dir, point.id)
-    groups = restore_scope.build_groups(manifest)
+    groups = restore_scope.build_groups(
+        manifest, controller=nodes.controller_name(settings.papaia_config_dir)
+    )
     if not restore_scope.has_selectable_groups(groups):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

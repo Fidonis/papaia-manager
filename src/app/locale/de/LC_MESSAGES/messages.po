@@ -92,6 +92,39 @@ msgid "id_token missing exp claim"
 msgstr "Im id_token fehlt der Claim exp"
 
 #, python-format
+msgid "Upgrading and rolling back add-ons needs papAIa core %(version)s or newer."
+msgstr "Zum Aktualisieren und Zurücksetzen von Add-ons wird papAIa-Core %(version)s oder neuer benötigt."
+
+#, python-format
+msgid "The new version of %(name)s could not be taken from the catalog: %(detail)s"
+msgstr "Die neue Version von %(name)s konnte nicht aus dem Katalog übernommen werden: %(detail)s"
+
+msgid "The version that was reviewed is gone. Review the upgrade again."
+msgstr "Die geprüfte Version ist nicht mehr vorhanden. Prüfen Sie das Upgrade erneut."
+
+#, python-format
+msgid "%(name)s is no longer in catalog %(catalog)s"
+msgstr "%(name)s ist nicht mehr im Katalog %(catalog)s"
+
+#, python-format
+msgid "The catalog %(catalog)s has no commit to take a version from."
+msgstr "Der Katalog %(catalog)s hat keinen Commit, aus dem eine Version entnommen werden könnte."
+
+msgid "The catalog changed since this upgrade was reviewed. Review the upgrade again."
+msgstr "Der Katalog hat sich seit der Prüfung dieses Upgrades geändert. Prüfen Sie das Upgrade erneut."
+
+#, python-format
+msgid "%(name)s is not in catalog %(catalog)s at revision %(revision)s"
+msgstr "%(name)s ist im Katalog %(catalog)s nicht in der Revision %(revision)s enthalten"
+
+msgid "no plan was produced"
+msgstr "Es wurde kein Plan erstellt"
+
+#, python-format
+msgid "The value for %(key)s must be a single line."
+msgstr "Der Wert für %(key)s muss einzeilig sein."
+
+#, python-format
 msgid "%(value)r is not a valid date or datetime"
 msgstr "%(value)r ist kein gültiges Datum und keine gültige Zeitangabe"
 
@@ -450,6 +483,66 @@ msgstr "Keycloak hat eine unlesbare Antwort gesendet"
 
 msgid "Keycloak created the user but did not say which"
 msgstr "Keycloak hat den Benutzer angelegt, aber nicht gesagt, welchen"
+
+msgid "LITELLM_MASTER_KEY is not set in ai/litellm/.env, so the manager cannot read from LiteLLM."
+msgstr "LITELLM_MASTER_KEY ist in ai/litellm/.env nicht gesetzt, daher kann der Manager nicht aus LiteLLM lesen."
+
+msgid "LiteLLM refused the master key. Check LITELLM_MASTER_KEY in ai/litellm/.env; LiteLLM reads it at start, so it needs a restart after a change."
+msgstr "LiteLLM hat den Master-Key abgelehnt. Prüfen Sie LITELLM_MASTER_KEY in ai/litellm/.env; LiteLLM liest ihn beim Start, nach einer Änderung ist also ein Neustart nötig."
+
+#, python-format
+msgid "LiteLLM is not reachable at %(where)s (%(error)s)."
+msgstr "LiteLLM ist unter %(where)s nicht erreichbar (%(error)s)."
+
+#, python-format
+msgid "LiteLLM answered with an error: %(detail)s"
+msgstr "LiteLLM hat mit einem Fehler geantwortet: %(detail)s"
+
+msgid "LiteLLM sent an answer the manager could not read."
+msgstr "LiteLLM hat eine Antwort gesendet, die der Manager nicht lesen konnte."
+
+msgid "Unknown time window."
+msgstr "Unbekanntes Zeitfenster."
+
+msgid "Enter both dates."
+msgstr "Bitte beide Daten eingeben."
+
+msgid "Dates must look like 2026-10-24."
+msgstr "Das Datum muss so aussehen: 2026-10-24."
+
+msgid "The start date is after the end date."
+msgstr "Das Startdatum liegt nach dem Enddatum."
+
+msgid "The end date can't be in the future."
+msgstr "Das Enddatum darf nicht in der Zukunft liegen."
+
+#, python-format
+msgid "A window can't be longer than %(days)s days."
+msgstr "Ein Zeitfenster darf höchstens %(days)s Tage lang sein."
+
+msgid "Chat"
+msgstr "Chat"
+
+msgid "Embedding"
+msgstr "Embedding"
+
+msgid "Completion"
+msgstr "Completion"
+
+msgid "Image generation"
+msgstr "Bilderzeugung"
+
+msgid "Transcription"
+msgstr "Transkription"
+
+msgid "Speech"
+msgstr "Sprachausgabe"
+
+msgid "Rerank"
+msgstr "Rerank"
+
+msgid "Moderation"
+msgstr "Moderation"
 
 msgid "Check the api-key of this connection."
 msgstr "Prüfen Sie den API-Key dieser Verbindung."
@@ -1073,6 +1166,94 @@ msgstr "%(tag)s konnte nicht zur Prüfung ausgecheckt werden. Existiert das Tag?
 
 msgid "could not determine the pending migrations"
 msgstr "Die anstehenden Migrationen konnten nicht ermittelt werden"
+
+msgid "Last 7 days"
+msgstr "Letzte 7 Tage"
+
+msgid "Last 30 days"
+msgstr "Letzte 30 Tage"
+
+msgid "Last 90 days"
+msgstr "Letzte 90 Tage"
+
+msgid "This month"
+msgstr "Dieser Monat"
+
+msgid "Custom"
+msgstr "Eigener"
+
+msgid "Tokens"
+msgstr "Tokens"
+
+msgid "USD"
+msgstr "USD"
+
+msgid "Requests"
+msgstr "Anfragen"
+
+#, python-format
+msgid "%(input)s in · %(output)s out"
+msgstr "%(input)s Eingabe · %(output)s Ausgabe"
+
+msgid "Spend"
+msgstr "Kosten"
+
+#, python-format
+msgid "%(count)s model without a price"
+msgid_plural "%(count)s models without a price"
+msgstr[0] "%(count)s Modell ohne Preis"
+msgstr[1] "%(count)s Modelle ohne Preis"
+
+msgid "USD, as LiteLLM prices it"
+msgstr "USD, wie LiteLLM es berechnet"
+
+#, python-format
+msgid "%(count)s failed"
+msgstr "%(count)s fehlgeschlagen"
+
+msgid "Models used"
+msgstr "Genutzte Modelle"
+
+#, python-format
+msgid "%(used)s of %(total)s"
+msgstr "%(used)s von %(total)s"
+
+#, python-format
+msgid "%(count)s not used"
+msgstr "%(count)s nicht genutzt"
+
+msgid "Nothing was spent in this period."
+msgstr "In diesem Zeitraum sind keine Kosten angefallen."
+
+msgid "Nothing was used in this period."
+msgstr "In diesem Zeitraum wurde nichts genutzt."
+
+msgid "Other"
+msgstr "Sonstiges"
+
+#, python-format
+msgid "Other (%(count)s model)"
+msgid_plural "Other (%(count)s models)"
+msgstr[0] "Sonstiges (%(count)s Modell)"
+msgstr[1] "Sonstiges (%(count)s Modelle)"
+
+msgid "Input tokens"
+msgstr "Eingabe-Tokens"
+
+msgid "Output tokens"
+msgstr "Ausgabe-Tokens"
+
+#, python-format
+msgid "%(start)s to %(end)s · %(count)s day"
+msgid_plural "%(start)s to %(end)s · %(count)s days"
+msgstr[0] "%(start)s bis %(end)s · %(count)s Tag"
+msgstr[1] "%(start)s bis %(end)s · %(count)s Tage"
+
+msgid "Overview"
+msgstr "Übersicht"
+
+msgid "Per model"
+msgstr "Pro Modell"
 
 #, python-format
 msgid "%(FILE_NAME)s cannot be read."
@@ -2998,6 +3179,38 @@ msgstr "Der Katalog %(catalog)r wurde nicht gefunden oder ist deaktiviert"
 msgid "addon %(name)r not found in catalog %(name2)r"
 msgstr "Das Add-on %(name)r wurde im Katalog %(name2)r nicht gefunden"
 
+#, python-format
+msgid "addon %(name)r is not managed by this panel"
+msgstr "Das Add-on %(name)r wird nicht von diesem Panel verwaltet"
+
+#, python-format
+msgid "addon %(name)r is not active; reactivate it before upgrading"
+msgstr "Das Add-on %(name)r ist nicht aktiv; reaktivieren Sie es vor dem Upgrade"
+
+msgid "this core does not accept the new version"
+msgstr "Dieser Core akzeptiert die neue Version nicht"
+
+#, python-format
+msgid "addon %(name)r already runs from this directory"
+msgstr "Das Add-on %(name)r läuft bereits aus diesem Verzeichnis"
+
+msgid "this upgrade does not ask for a value for this key"
+msgstr "Dieses Upgrade fragt für diesen Schlüssel keinen Wert ab"
+
+msgid "a value is required"
+msgstr "ein Wert ist erforderlich"
+
+#, python-format
+msgid "addon %(name)r has no earlier version to go back to"
+msgstr "Das Add-on %(name)r hat keine frühere Version, auf die es zurückgehen könnte"
+
+#, python-format
+msgid "the files of the earlier version of %(name)r are gone"
+msgstr "Die Dateien der früheren Version von %(name)r sind nicht mehr vorhanden"
+
+msgid "the restore point taken before the upgrade no longer exists"
+msgstr "Der vor dem Upgrade angelegte Wiederherstellungspunkt existiert nicht mehr"
+
 msgid "cutoff date is in the future"
 msgstr "Das Stichtagsdatum liegt in der Zukunft"
 
@@ -3151,6 +3364,10 @@ msgstr "Wiederherstellungspunkt %(restore_point)r nicht gefunden"
 #, python-format
 msgid "restore point %(id)s is marked 'failed' -- no archive could be written during that backup, so there is nothing to restore from"
 msgstr "Der Wiederherstellungspunkt %(id)s ist als „failed“ markiert – bei diesem Backup konnte kein Archiv geschrieben werden, es gibt also nichts, wovon wiederhergestellt werden könnte"
+
+#, python-format
+msgid "restore point %(id)s only holds %(scope)s and cannot be restored as a whole; use POST /api/v1/maintenance/restore/scoped instead"
+msgstr "Der Wiederherstellungspunkt %(id)s enthält nur %(scope)s und kann nicht als Ganzes wiederhergestellt werden; verwenden Sie stattdessen POST /api/v1/maintenance/restore/scoped"
 
 #, python-format
 msgid "the result of the previous restore (%(target)s) has not been acknowledged yet"
@@ -3421,11 +3638,154 @@ msgid "Add-Ons"
 msgstr "Add-ons"
 
 #, python-format
+msgid "Upgrade %(name)s — %(branding)s"
+msgstr "%(name)s aktualisieren — %(branding)s"
+
+msgid "Review what the new version changes before it is applied"
+msgstr "Prüfen Sie, was die neue Version ändert, bevor sie eingespielt wird"
+
+msgid "upgrade"
+msgstr "Upgrade"
+
+msgid "older than the installed version"
+msgstr "älter als die installierte Version"
+
+msgid "same version"
+msgstr "gleiche Version"
+
+msgid "If the add-on is running, it is recreated from the new version."
+msgstr "Läuft das Add-on, wird es aus der neuen Version neu erstellt."
+
+msgid "This core does not accept the new version."
+msgstr "Dieser Core akzeptiert die neue Version nicht."
+
+msgid "Components"
+msgstr "Komponenten"
+
+msgid "Component"
+msgstr "Komponente"
+
+msgid "Version"
+msgstr "Version"
+
+msgid "changed"
+msgstr "geändert"
+
+msgid "new"
+msgstr "neu"
+
+msgid "removed"
+msgstr "entfernt"
+
+msgid "Configuration"
+msgstr "Konfiguration"
+
+msgid "Values that are already set stay as they are. The upgrade only adds the keys the new version brings."
+msgstr "Bereits gesetzte Werte bleiben, wie sie sind. Das Upgrade fügt nur die Schlüssel hinzu, die die neue Version mitbringt."
+
+msgid "New key"
+msgstr "Neuer Schlüssel"
+
+msgid "What happens"
+msgstr "Was geschieht"
+
+msgid "a secret is generated"
+msgstr "ein Secret wird erzeugt"
+
+msgid "needs a value"
+msgstr "braucht einen Wert"
+
+msgid "takes the default unless you enter a value"
+msgstr "übernimmt den Standardwert, solange Sie keinen Wert eingeben"
+
+msgid "set it after the client is imported"
+msgstr "nach dem Import des Clients setzen"
+
+msgid "added as shipped:"
+msgstr "wie mitgeliefert hinzugefügt:"
+
+msgid "No longer in the new version (kept in your configuration):"
+msgstr "In der neuen Version nicht mehr enthalten (bleibt in Ihrer Konfiguration):"
+
+msgid "The shipped default changed (your value stays):"
+msgstr "Der mitgelieferte Standardwert hat sich geändert (Ihr Wert bleibt):"
+
+msgid "Integration"
+msgstr "Integration"
+
+msgid "Add-on API:"
+msgstr "Add-on-API:"
+
+msgid "Joins the services:"
+msgstr "Wird mit diesen Diensten verbunden:"
+
+msgid "Leaves the services:"
+msgstr "Wird von diesen Diensten getrennt:"
+
+msgid "To do by hand after the upgrade:"
+msgstr "Nach dem Upgrade von Hand zu erledigen:"
+
+msgid "Import the Keycloak client"
+msgstr "Keycloak-Client importieren"
+
+msgid "Add the protocol mappers to the Keycloak client"
+msgstr "Protokoll-Mapper zum Keycloak-Client hinzufügen"
+
+msgid "Set the Keycloak client secret"
+msgstr "Keycloak-Client-Secret setzen"
+
+msgid "What changed"
+msgstr "Was sich ändert"
+
+msgid "Values for the new version"
+msgstr "Werte für die neue Version"
+
+msgid "Take a restore point of this add-on first"
+msgstr "Zuerst einen Wiederherstellungspunkt dieses Add-ons anlegen"
+
+msgid "Its volumes and data directories, so that a rollback can bring the data back as well. An add-on without any gets none and the upgrade goes on."
+msgstr "Seine Volumes und Datenverzeichnisse, damit ein Rollback auch die Daten zurückbringen kann. Ein Add-on ohne beides bekommt keinen, und das Upgrade läuft weiter."
+
+msgid "<strong>There is no automatic rollback.</strong> If the new version does not start, the upgrade stops and the add-on page offers the way back."
+msgstr "<strong>Es gibt keinen automatischen Rollback.</strong> Startet die neue Version nicht, bricht das Upgrade ab und die Add-on-Seite bietet den Weg zurück an."
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Enter a value for every key marked with *."
+msgstr "Geben Sie für jeden mit * markierten Schlüssel einen Wert ein."
+
+msgid "Upgrading…"
+msgstr "Wird aktualisiert…"
+
+msgid "The add-on was upgraded."
+msgstr "Das Add-on wurde aktualisiert."
+
+msgid "The upgrade did not finish."
+msgstr "Das Upgrade wurde nicht abgeschlossen."
+
+msgid "The add-on may already run from the new version. Open the add-on page: if an earlier version is offered there, you can go back to it."
+msgstr "Das Add-on läuft möglicherweise schon mit der neuen Version. Öffnen Sie die Add-on-Seite: Wird dort eine frühere Version angeboten, können Sie darauf zurückgehen."
+
+msgid "Job log"
+msgstr "Job-Log"
+
+msgid "Back to the add-on"
+msgstr "Zurück zum Add-on"
+
+#, python-brace-format
+msgid "Upgrade to {version}"
+msgstr "Auf {version} aktualisieren"
+
+#, python-format
 msgid "Add-Ons — %(branding)s"
 msgstr "Add-ons — %(branding)s"
 
 msgid "Manage all the add-ons in your AI stack"
 msgstr "Alle Add-ons in Ihrem KI-Stack verwalten"
+
+msgid "Refresh catalogs"
+msgstr "Kataloge aktualisieren"
 
 msgid "Manage catalogs"
 msgstr "Kataloge verwalten"
@@ -3487,9 +3847,6 @@ msgstr "Entfernt dauerhaft alle Einträge, die älter als das gewählte Datum si
 
 msgid "Delete entries before"
 msgstr "Einträge löschen vor"
-
-msgid "Cancel"
-msgstr "Abbrechen"
 
 msgid "Delete"
 msgstr "Löschen"
@@ -3665,6 +4022,10 @@ msgstr "<span class=\"font-mono\">{id}</span> wiederherstellen"
 msgid "Replaces the stack configuration and all {count} archives. The whole stack goes down."
 msgstr "Ersetzt die Stack-Konfiguration und alle {count} Archive. Der gesamte Stack wird heruntergefahren."
 
+#, python-brace-format
+msgid "This restore point only holds {scope}, so it can be restored by selection only."
+msgstr "Dieser Wiederherstellungspunkt enthält nur {scope} und kann daher nur über die Auswahl wiederhergestellt werden."
+
 msgid "Stack"
 msgstr "Stack"
 
@@ -3673,9 +4034,6 @@ msgstr "Core-Dienste"
 
 msgid "Add-ons"
 msgstr "Add-ons"
-
-msgid "Other"
-msgstr "Sonstiges"
 
 msgid "This restore point was written by an older core and carries no per-service grouping, so its volumes can only be restored as part of the whole point."
 msgstr "Dieser Wiederherstellungspunkt wurde von einem älteren Core geschrieben und enthält keine Gruppierung nach Diensten, deshalb können seine Volumes nur als Teil des gesamten Punkts wiederhergestellt werden."
@@ -3944,6 +4302,9 @@ msgstr "Dashboard"
 msgid "Monitor"
 msgstr "Überwachung"
 
+msgid "Models & Usage"
+msgstr "Modelle & Verbrauch"
+
 msgid "Jobs"
 msgstr "Jobs"
 
@@ -3958,9 +4319,6 @@ msgstr "Verbindungen"
 
 msgid "Collections"
 msgstr "Collections"
-
-msgid "Embedding"
-msgstr "Embedding"
 
 msgid "Ingest Jobs"
 msgstr "Ingest-Jobs"
@@ -4444,17 +4802,11 @@ msgstr "Seite „Embedding“"
 msgid "%(source_title)s → <span class=\"font-mono\">%(collection)s</span> on %(connection)s"
 msgstr "%(source_title)s → <span class=\"font-mono\">%(collection)s</span> auf %(connection)s"
 
-msgid "Overview"
-msgstr "Übersicht"
-
 msgid "Runs"
 msgstr "Läufe"
 
 msgid "Files"
 msgstr "Dateien"
-
-msgid "Configuration"
-msgstr "Konfiguration"
 
 msgid "This tab could not be loaded."
 msgstr "Dieser Tab konnte nicht geladen werden."
@@ -4813,9 +5165,6 @@ msgstr "Wöchentlich"
 msgid "Monthly"
 msgstr "Monatlich"
 
-msgid "Custom"
-msgstr "Eigener"
-
 #, python-brace-format
 msgid "{name} (stored)"
 msgstr "{name} (gespeichert)"
@@ -5099,6 +5448,16 @@ msgstr "Gestoppt bei {stage}: {reason}"
 
 msgid "The relay accepted the message. It may take a moment to arrive; the status above shows it while it waits."
 msgstr "Das Relay hat die Nachricht angenommen. Bis zur Zustellung kann es einen Moment dauern; der Status oben zeigt sie, solange sie wartet."
+
+#, python-format
+msgid "Models & Usage — %(branding)s"
+msgstr "Modelle & Verbrauch — %(branding)s"
+
+msgid "The models LiteLLM serves and what they consumed"
+msgstr "Die Modelle, die LiteLLM bereitstellt, und was sie verbraucht haben"
+
+msgid "Open LiteLLM"
+msgstr "LiteLLM öffnen"
 
 msgid "Who is told when something needs attention, and what each of them receives"
 msgstr "Wer benachrichtigt wird, wenn etwas Aufmerksamkeit braucht, und was jeder erhält"
@@ -6140,8 +6499,8 @@ msgstr "Starten"
 msgid "Stop"
 msgstr "Stoppen"
 
-msgid "Update"
-msgstr "Aktualisieren"
+msgid "Review upgrade"
+msgstr "Upgrade prüfen"
 
 msgid "Uninstall"
 msgstr "Deinstallieren"
@@ -6152,9 +6511,6 @@ msgstr "%(name)s entfernen"
 
 msgid "Disables the add-on and removes the Docker containers. The add-on can then be reactivated again via <strong>Reactivate</strong>."
 msgstr "Deaktiviert das Add-on und entfernt die Docker-Container. Das Add-on kann danach über <strong>Reaktivieren</strong> wieder aktiviert werden."
-
-msgid "What happens"
-msgstr "Was geschieht"
 
 msgid "Docker containers are stopped and removed"
 msgstr "Docker-Container werden gestoppt und entfernt"
@@ -6733,8 +7089,8 @@ msgstr "nicht verwaltet"
 msgid "available"
 msgstr "verfügbar"
 
-msgid "update available"
-msgstr "Update verfügbar"
+msgid "upgrade available"
+msgstr "Upgrade verfügbar"
 
 #, python-format
 msgid "catalog: %(catalog)s"
@@ -6754,17 +7110,59 @@ msgstr "andere Version"
 msgid "Identical version (v%(catalog_version)s) also available in:"
 msgstr "Identische Version (v%(catalog_version)s) auch verfügbar in:"
 
-msgid "Components"
-msgstr "Komponenten"
+msgid "Offered by the catalog"
+msgstr "Vom Katalog angeboten"
 
-msgid "Component"
-msgstr "Komponente"
+msgid "Before the last upgrade"
+msgstr "Vor dem letzten Upgrade"
 
-msgid "Version"
-msgstr "Version"
+msgid "files gone"
+msgstr "Dateien fehlen"
 
-msgid "update"
-msgstr "Update"
+#, python-format
+msgid "Restore point %(id)s"
+msgstr "Wiederherstellungspunkt %(id)s"
+
+#, python-format
+msgid "Restore point %(id)s no longer exists"
+msgstr "Wiederherstellungspunkt %(id)s existiert nicht mehr"
+
+msgid "No restore point was taken"
+msgstr "Es wurde kein Wiederherstellungspunkt angelegt"
+
+#, python-format
+msgid "Roll back to %(version)s…"
+msgstr "Auf %(version)s zurücksetzen…"
+
+#, python-format
+msgid "Roll back %(name)s to %(version)s"
+msgstr "%(name)s auf %(version)s zurücksetzen"
+
+msgid "Choose what goes back. This is one step: afterwards the add-on has no earlier version to return to."
+msgstr "Wählen Sie, was zurückgesetzt wird. Das ist ein einzelner Schritt: Danach gibt es für das Add-on keine frühere Version mehr, zu der es zurückkehren könnte."
+
+msgid "Code and configuration only"
+msgstr "Nur Code und Konfiguration"
+
+msgid "The data stays as it is now. If the newer version changed how the data is stored, the older one may not read it."
+msgstr "Die Daten bleiben, wie sie jetzt sind. Hat die neuere Version die Speicherung der Daten geändert, kann die ältere sie möglicherweise nicht lesen."
+
+msgid "Code and data from the restore point"
+msgstr "Code und Daten aus dem Wiederherstellungspunkt"
+
+#, python-format
+msgid "Restores %(id)s. What the add-on wrote since then is lost."
+msgstr "Stellt %(id)s wieder her. Was das Add-on seitdem geschrieben hat, geht verloren."
+
+msgid "No restore point was taken before the upgrade, or it has been deleted."
+msgstr "Vor dem Upgrade wurde kein Wiederherstellungspunkt angelegt, oder er wurde gelöscht."
+
+msgid "The add-on is stopped while its data is replaced. This cannot be undone."
+msgstr "Das Add-on wird angehalten, während seine Daten ersetzt werden. Das lässt sich nicht rückgängig machen."
+
+#, python-format
+msgid "Earlier versions (%(count)s)"
+msgstr "Frühere Versionen (%(count)s)"
 
 msgid "The tag floats: which version runs depends on when the image was pulled"
 msgstr "Der Image-Tag ist nicht festgelegt: Welche Version läuft, hängt davon ab, wann das Image geladen wurde"
@@ -6817,6 +7215,21 @@ msgstr "Fügen Sie einen Katalog hinzu und aktualisieren Sie ihn, um Add-ons zu 
 
 msgid "Available"
 msgstr "Verfügbar"
+
+msgid "Upgrades"
+msgstr "Upgrades"
+
+#, python-format
+msgid "%(count)s upgrade available"
+msgid_plural "%(count)s upgrades available"
+msgstr[0] "%(count)s Upgrade verfügbar"
+msgstr[1] "%(count)s Upgrades verfügbar"
+
+msgid "Show only these"
+msgstr "Nur diese anzeigen"
+
+msgid "Show all add-ons"
+msgstr "Alle Add-ons anzeigen"
 
 #, python-format
 msgid "Add-Ons &nbsp;·&nbsp; %(cnt_total)s modules"
@@ -8128,6 +8541,122 @@ msgstr "Geben Sie unten einen Mailserver und eine Absenderadresse ein, um das Re
 msgid "The relay's state could not be read: %(reason)s"
 msgstr "Der Zustand des Relays konnte nicht gelesen werden: %(reason)s"
 
+msgid "Total"
+msgstr "Gesamt"
+
+msgid "Legend"
+msgstr "Legende"
+
+msgid "Measure"
+msgstr "Messgröße"
+
+msgid "Figures per day"
+msgstr "Zahlen pro Tag"
+
+msgid "Day"
+msgstr "Tag"
+
+msgid "Models and usage are not available"
+msgstr "Modelle und Verbrauch sind nicht verfügbar"
+
+msgid "Try again"
+msgstr "Erneut versuchen"
+
+msgid "LiteLLM is reachable"
+msgstr "LiteLLM ist erreichbar"
+
+#, python-format
+msgid "%(count)s model served"
+msgid_plural "%(count)s models served"
+msgstr[0] "%(count)s Modell bereitgestellt"
+msgstr[1] "%(count)s Modelle bereitgestellt"
+
+#, python-format
+msgid "read at %(time)s UTC"
+msgstr "gelesen um %(time)s UTC"
+
+msgid "Reload"
+msgstr "Neu laden"
+
+msgid "Time window"
+msgstr "Zeitfenster"
+
+msgid "Apply"
+msgstr "Anwenden"
+
+#, python-format
+msgid "First and last day, both included, at most %(days)s days."
+msgstr "Erster und letzter Tag, beide eingeschlossen, höchstens %(days)s Tage."
+
+msgid "Days are UTC days. LiteLLM writes its usage in batches, so the newest requests can take a minute to show up."
+msgstr "Tage sind UTC-Tage. LiteLLM schreibt den Verbrauch gebündelt, die neuesten Anfragen können daher eine Minute brauchen, bis sie erscheinen."
+
+msgid "The last 7 days are shown instead."
+msgstr "Stattdessen werden die letzten 7 Tage angezeigt."
+
+msgid "LiteLLM holds more records for this window than the manager reads, so the figures are incomplete. Choose a shorter window."
+msgstr "LiteLLM hält für dieses Zeitfenster mehr Datensätze, als der Manager liest; die Zahlen sind daher unvollständig. Wählen Sie ein kürzeres Zeitfenster."
+
+#, python-format
+msgid "LiteLLM has no model called %(name)s and nothing was used under that name in this window."
+msgstr "LiteLLM kennt kein Modell namens %(name)s, und unter diesem Namen wurde in diesem Zeitfenster nichts genutzt."
+
+msgid "All models"
+msgstr "Alle Modelle"
+
+#, python-format
+msgid "Price per million tokens, input / output: %(price)s"
+msgstr "Preis pro Million Tokens, Eingabe / Ausgabe: %(price)s"
+
+msgid "LiteLLM has no price for this model, so its spend is always $0.00."
+msgstr "LiteLLM kennt für dieses Modell keinen Preis, daher betragen die Kosten immer $0.00."
+
+msgid "LiteLLM does not serve this model any more; the figures are what it consumed."
+msgstr "LiteLLM stellt dieses Modell nicht mehr bereit; die Zahlen zeigen, was es verbraucht hat."
+
+msgid "Model"
+msgstr "Modell"
+
+msgid "Price per 1M tokens (in / out)"
+msgstr "Preis pro 1 Mio. Tokens (Ein / Aus)"
+
+msgid "Tokens per day"
+msgstr "Tokens pro Tag"
+
+msgid "no longer served by LiteLLM"
+msgstr "wird von LiteLLM nicht mehr bereitgestellt"
+
+msgid "no price set"
+msgstr "kein Preis gesetzt"
+
+msgid "LiteLLM has no price for this model"
+msgstr "LiteLLM kennt für dieses Modell keinen Preis"
+
+msgid "no tokens"
+msgstr "keine Tokens"
+
+msgid "not used"
+msgstr "nicht genutzt"
+
+msgid "LiteLLM serves no models."
+msgstr "LiteLLM stellt keine Modelle bereit."
+
+msgid "This model per day"
+msgstr "Dieses Modell pro Tag"
+
+msgid "All models per day"
+msgstr "Alle Modelle pro Tag"
+
+#, python-format
+msgid "Share by model · %(metric)s"
+msgstr "Anteil je Modell · %(metric)s"
+
+msgid "A model without a price shows no spend however much it is used. A price can be set for it in LiteLLM."
+msgstr "Ein Modell ohne Preis zeigt keine Kosten, egal wie oft es genutzt wird. Ein Preis lässt sich in LiteLLM dafür hinterlegen."
+
+msgid "Add-on upgrades are available"
+msgstr "Add-on-Upgrades sind verfügbar"
+
 msgid "Host needs attention"
 msgstr "Der Host braucht Aufmerksamkeit"
 
@@ -8247,6 +8776,13 @@ msgstr[1] "%(artifacts)s Artefakte"
 msgid "core %(papaia_version)s"
 msgstr "Core %(papaia_version)s"
 
+msgid "This restore point holds only part of the stack and can be restored by selection only."
+msgstr "Dieser Wiederherstellungspunkt enthält nur einen Teil des Stacks und kann nur über die Auswahl wiederhergestellt werden."
+
+#, python-format
+msgid "only %(scope)s"
+msgstr "nur %(scope)s"
+
 #, python-format
 msgid "More actions for restore point %(name)s"
 msgstr "Weitere Aktionen für Wiederherstellungspunkt %(name)s"
@@ -8289,9 +8825,6 @@ msgstr "Manager nicht erreichbar &mdash; Verbindung wird neu aufgebaut&hellip;"
 
 msgid "Your account cannot read the roles yet"
 msgstr "Ihr Konto kann die Rollen noch nicht lesen"
-
-msgid "Try again"
-msgstr "Erneut versuchen"
 
 msgid "Keycloak does not answer"
 msgstr "Keycloak antwortet nicht"
@@ -8603,9 +9136,6 @@ msgstr "Für alle sichtbar"
 msgid "Applied to the draft — the dashboard changes when you save."
 msgstr "Auf den Entwurf angewendet — das Dashboard ändert sich, wenn Sie speichern."
 
-msgid "Apply"
-msgstr "Anwenden"
-
 msgid "Add a widget"
 msgstr "Ein Widget hinzufügen"
 
@@ -8826,6 +9356,18 @@ msgstr "Das Upgrade wurde zwischen zwei Schritten gestoppt, bevor papaia-ctl sei
 msgid "There is no automatic rollback"
 msgstr "Es gibt kein automatisches Zurückrollen"
 
+msgid "The upgrade finished, but not every step at the end ran"
+msgstr "Das Upgrade ist abgeschlossen, aber nicht jeder Schritt am Ende lief"
+
+msgid "Once the stack is healthy, run these on the host papaia-manager runs on:"
+msgstr "Sobald der Stack gesund ist, führen Sie diese Befehle auf dem Host aus, auf dem papaia-manager läuft:"
+
+msgid "Proxy hosts of the release were not created in Nginx Proxy Manager."
+msgstr "Die Proxy-Hosts des Releases wurden in Nginx Proxy Manager nicht angelegt."
+
+msgid "Roles and mappers of the release were not added to Keycloak."
+msgstr "Die Rollen und Mapper des Releases wurden in Keycloak nicht ergänzt."
+
 msgid "A rollback that fails after a migration failed would leave an installation nobody can reason about, so papaia-ctl stops instead and says how to get back. Run these on the host:"
 msgstr "Ein Zurückrollen, das nach einer fehlgeschlagenen Migration selbst fehlschlägt, würde eine Installation hinterlassen, über die niemand mehr urteilen kann; deshalb stoppt papaia-ctl stattdessen und sagt, wie man zurückkommt. Führen Sie diese Befehle auf dem Host aus:"
 
@@ -8980,3 +9522,194 @@ msgstr "Dieses Widget kann seine Daten gerade nicht anzeigen."
 msgid "As of %(strftime)s UTC."
 msgstr "Stand: %(strftime)s UTC."
 
+msgid "Confirm your sign-in first; this action needs a fresh one."
+msgstr "Bestätigen Sie zuerst Ihre Anmeldung; diese Aktion braucht eine frische."
+
+msgid "The sign-in could not be confirmed. Sign in again and retry."
+msgstr "Die Anmeldung konnte nicht bestätigt werden. Melden Sie sich erneut an und versuchen Sie es noch einmal."
+
+msgid "verb %(verb)r has no equivalent on a node"
+msgstr "Das Verb %(verb)r gibt es auf einem Node nicht"
+
+msgid "docker cannot run on node %(node)s; use its node verbs"
+msgstr "docker kann auf Node %(node)s nicht laufen; verwenden Sie seine Node-Verben"
+
+msgid "git cannot run on node %(node)s; a node has no Git checkout"
+msgstr "git kann auf Node %(node)s nicht laufen; ein Node hat keinen Git-Checkout"
+
+msgid "node-push failed"
+msgstr "node-push ist fehlgeschlagen"
+
+msgid "no node named '%(name)s'"
+msgstr "Es gibt keinen Node namens '%(name)s'"
+
+msgid "the core could not list the nodes"
+msgstr "Der Core konnte die Nodes nicht auflisten"
+
+msgid "the core's node list is unreadable"
+msgstr "Die Node-Liste des Core ist nicht lesbar"
+
+msgid "the node offered no host key"
+msgstr "Der Node hat keinen Host-Key angeboten"
+
+msgid "%(command)s failed"
+msgstr "%(command)s ist fehlgeschlagen"
+
+msgid "A node name is lowercase letters, digits and '-', starting with a letter."
+msgstr "Ein Node-Name besteht aus Kleinbuchstaben, Ziffern und '-' und beginnt mit einem Buchstaben."
+
+msgid "That is not a SHA256 host key fingerprint."
+msgstr "Das ist kein SHA256-Fingerabdruck eines Host-Keys."
+
+msgid "Nodes"
+msgstr "Nodes"
+
+msgid "The machines of this distributed installation"
+msgstr "Die Maschinen dieser verteilten Installation"
+
+msgid "Add a node"
+msgstr "Node hinzufügen"
+
+msgid "SSH user (optional)"
+msgstr "SSH-Benutzer (optional)"
+
+msgid "SSH port (optional)"
+msgstr "SSH-Port (optional)"
+
+msgid "Add node"
+msgstr "Node hinzufügen"
+
+msgid "Adding the node failed:"
+msgstr "Der Node konnte nicht hinzugefügt werden:"
+
+msgid "Changing the nodes needs a fresh sign-in."
+msgstr "Änderungen an den Nodes brauchen eine frische Anmeldung."
+
+msgid "Confirm your sign-in"
+msgstr "Anmeldung bestätigen"
+
+msgid "Node"
+msgstr "Node"
+
+msgid "Links"
+msgstr "Verbindungen"
+
+msgid "controller"
+msgstr "Controller"
+
+msgid "reachable"
+msgstr "erreichbar"
+
+msgid "not enrolled"
+msgstr "nicht eingebunden"
+
+msgid "unreachable"
+msgstr "nicht erreichbar"
+
+msgid "failing"
+msgstr "gestört"
+
+msgid "Enrol this node"
+msgstr "Diesen Node einbinden"
+
+msgid "Copy the join archive to the node and run its install script there, as root:"
+msgstr "Kopieren Sie das Join-Archiv auf den Node und führen Sie dort sein Installationsskript als root aus:"
+
+msgid "Then compare the fingerprint the script printed with the ones below, and confirm the one that matches:"
+msgstr "Vergleichen Sie dann den vom Skript ausgegebenen Fingerabdruck mit den folgenden und bestätigen Sie den passenden:"
+
+msgid "Trust this key"
+msgstr "Diesem Schlüssel vertrauen"
+
+msgid "Remove this node"
+msgstr "Diesen Node entfernen"
+
+msgid "That did not work:"
+msgstr "Das hat nicht funktioniert:"
+
+msgid "Remove this node? Its SSH key and link certificate are deleted."
+msgstr "Diesen Node entfernen? Sein SSH-Schlüssel und sein Link-Zertifikat werden gelöscht."
+
+msgid "Nodes — %(branding)s"
+msgstr "Nodes — %(branding)s"
+
+msgid "Node %(name)s — %(branding)s"
+msgstr "Node %(name)s — %(branding)s"
+
+msgid "Node %(name)s"
+msgstr "Node %(name)s"
+
+msgid "Node %(name)s does not answer: %(reason)s"
+msgstr "Node %(name)s antwortet nicht: %(reason)s"
+
+msgid "Controller"
+msgstr "Controller"
+
+msgid "Nodes and links"
+msgstr "Nodes und Verbindungen"
+
+msgid "The node's doctor gave no readable answer."
+msgstr "Der doctor des Nodes gab keine lesbare Antwort."
+
+msgid "No node answered the host check."
+msgstr "Kein Node hat auf die Host-Prüfung geantwortet."
+
+msgid "Not read: %(nodes)s."
+msgstr "Nicht gelesen: %(nodes)s."
+
+msgid "No answer from %(nodes)s."
+msgstr "Keine Antwort von %(nodes)s."
+
+msgid "%(count)d need attention on %(nodes)s."
+msgstr "%(count)d brauchen Aufmerksamkeit auf %(nodes)s."
+
+msgid "Release per node"
+msgstr "Release pro Node"
+
+msgid "An upgrade moves every node to one release in one run, and every node has to answer before it starts."
+msgstr "Ein Upgrade bringt alle Nodes in einem Lauf auf ein Release, und vor dem Start muss jeder Node antworten."
+
+msgid "An upgrade from %(source)s to %(target)s has not finished. Run it again, or restore its restore point %(restore_point)s."
+msgstr "Ein Upgrade von %(source)s auf %(target)s ist nicht abgeschlossen. Führen Sie es erneut aus, oder stellen Sie seinen Wiederherstellungspunkt %(restore_point)s wieder her."
+
+#, python-format
+msgid "An upgrade from %(source)s to %(target)s has not finished, and it took no restore point. Run it again, or clear the lock with papaia-ctl start --addons --unlock on the host papaia-manager runs on."
+msgstr "Ein Upgrade von %(source)s auf %(target)s ist nicht abgeschlossen und hat keinen Wiederherstellungspunkt angelegt. Führen Sie es erneut aus, oder heben Sie die Sperre mit papaia-ctl start --addons --unlock auf dem Host auf, auf dem papaia-manager läuft."
+
+msgid "The controller runs %(version)s, but these nodes do not: %(nodes)s. Move all nodes together with an upgrade."
+msgstr "Der Controller läuft auf %(version)s, diese Nodes aber nicht: %(nodes)s. Bringen Sie alle Nodes gemeinsam mit einem Upgrade auf denselben Stand."
+
+msgid "What to back up"
+msgstr "Was gesichert wird"
+
+msgid "All nodes"
+msgstr "Alle Nodes"
+
+msgid "Archives are stored on the controller. A restore point is not one moment across nodes: they are archived one after another."
+msgstr "Die Archive liegen auf dem Controller. Ein Wiederherstellungspunkt ist kein einzelner Moment über alle Nodes: Sie werden nacheinander archiviert."
+
+msgid "All data of this node. No other node is touched."
+msgstr "Alle Daten dieses Nodes. Andere Nodes bleiben unberührt."
+
+msgid "no links"
+msgstr "keine Verbindungen"
+
+msgid "no bundle"
+msgstr "kein Bundle"
+
+msgid "Send its release and bundle"
+msgstr "Release und Bundle senden"
+
+msgid "A node named '%(name)s' exists already."
+msgstr "Ein Node namens '%(name)s' existiert bereits."
+
+msgid "Being checked..."
+msgstr "Wird geprüft..."
+
+#, python-format
+msgid "%(profile)s connects the nodes and cannot be selected"
+msgstr "%(profile)s verbindet die Nodes und kann nicht ausgewählt werden"
+
+#, python-format
+msgid "profile %(name)r connects the nodes and cannot be controlled from this panel"
+msgstr "Profil %(name)r verbindet die Nodes und kann nicht über dieses Panel gesteuert werden"

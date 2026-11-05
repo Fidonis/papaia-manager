@@ -19,29 +19,38 @@ from app.core import (
     docker_usage,
     host_health,
     images,
+    nodes,
     restore_scope,
     runner,
     schedule,
     upgrade,
 )
+from app.core.addon_upgrades import (
+    core_requirement_message,
+    core_supports_upgrades,
+    outdated_count,
+    version_state,
+)
 from app.core.audit import AuditFilter, build_filter, query_entries
 from app.core.catalogs import catalog_scan_path, load_registry, scan_catalog_addons
 from app.core.components import components_for
+from app.core.ctl import CtlError
 from app.core.envfile import load_env_file
 from app.core.ingest import catalog as ingest_catalog
 from app.core.ingest import runs as ingest_runs
 from app.core.ingest.errors import IngestError, InvalidRequest, NotFound
 from app.core.ingest.uploads import new_store as new_upload_store
-from app.core.inventory import SELF_PROFILE
+from app.core.inventory import LINK_PROFILE, SELF_PROFILE
 from app.core.jobs import Job, JobQueue
 from app.core.rag import documents_dir, with_rag_tiles
 from app.core.rag_collections import CollectionStore
-from app.core.resolve import resolve_catalog_addons
+from app.core.resolve import resolve_catalog_addons, update_available
 from app.core.services import (
     ServiceHealth,
     StackSnapshot,
     count_by_health,
     load_snapshot,
+    modules_by_node,
     overall_health,
     worst,
 )
@@ -56,7 +65,7 @@ from app.core.settings_store import (
     refresh_interval,
     settings_revision,
 )
-from app.core.snapshots import load_installed, managed_snapshot_path
+from app.core.snapshots import installed_addon_dir, load_installed
 from app.core.state import (
     AddonStatus,
     compute_status,
@@ -183,6 +192,28 @@ async def addons_page(
     return _templates.TemplateResponse(request, "addons.html", _ctx(request, user))
 
 
+@router.get("/addons/{name}/upgrade", response_class=HTMLResponse)
+async def addon_upgrade_page(
+    request: Request,
+    name: str,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The review of an upgrade: the plan is fetched by the page, nothing is staged here."""
+    supported = core_supports_upgrades(settings.papaia_workspace_dir)
+    return _templates.TemplateResponse(
+        request,
+        "addon_upgrade.html",
+        _ctx(
+            request,
+            user,
+            addon_name=name,
+            upgrades_supported=supported,
+            core_requirement="" if supported else core_requirement_message(),
+        ),
+    )
+
+
 @router.get("/addons/{name}", response_class=HTMLResponse)
 async def addon_detail(
     name: str,
@@ -219,7 +250,16 @@ async def host_page(
     return _templates.TemplateResponse(
         request,
         "host.html",
-        _ctx(request, user, refresh_seconds=refresh_interval(settings.papaia_config_dir)),
+        _ctx(
+            request,
+            user,
+            refresh_seconds=refresh_interval(settings.papaia_config_dir),
+            node_names=[
+                node.name
+                for node in nodes.registry(settings.papaia_config_dir).values()
+                if node.remote
+            ],
+        ),
     )
 
 
@@ -325,6 +365,7 @@ async def backup_page(
             user,
             backup_dir=str(backup_dir) if backup_dir else None,
             backup_dir_reachable=backups.is_reachable(backup_dir),
+            backup_nodes=list(nodes.registry(settings.papaia_config_dir)),
             common_timezones=schedule.COMMON_TIMEZONES,
             weekdays=[(day, _(schedule.WEEKDAY_SHORT[day])) for day in schedule.WEEKDAYS],
             hourly_choices=schedule.HOURLY_CHOICES,
@@ -562,6 +603,9 @@ async def partial_services(
             user,
             core_modules=snapshot.core,
             addon_modules=snapshot.addons,
+            node_sections=modules_by_node(snapshot) if snapshot.nodes else [],
+            link_profile=LINK_PROFILE,
+            unreachable_nodes=snapshot.unreachable_nodes,
             total=len(snapshot.core) + len(snapshot.addons),
             cnt_running=counts[ServiceHealth.HEALTHY] + counts[ServiceHealth.COMPLETED],
             cnt_degraded=counts[ServiceHealth.UNHEALTHY] + counts[ServiceHealth.STARTING],
@@ -587,13 +631,40 @@ async def partial_host(
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
     fresh: bool = False,
+    node: str = "",
 ) -> HTMLResponse:
     """The host page's body: resources, disk space and certificates, or why none.
+
+    `node` is the selector of a distributed installation: another node's own `doctor`,
+    for which Docker's disk use has no reading here.
 
     `fresh` is the "Re-check" button. It asks for a new run instead of the cached
     one, and `load_host_health` still folds it into a run that is under way or
     finished a few seconds ago, so the button cannot be used to hammer `doctor`.
     """
+    known = nodes.registry(settings.papaia_config_dir)
+    if node and node not in known:
+        raise HTTPException(status_code=404)
+    if node and known[node].remote:
+        reading = await host_health.load_node_health(
+            node,
+            config_dir=settings.papaia_config_dir,
+            workspace_dir=settings.papaia_workspace_dir,
+            force=fresh,
+        )
+        return _no_store(
+            _templates.TemplateResponse(
+                request,
+                "partials/host_list.html",
+                _ctx(
+                    request,
+                    user,
+                    host=reading,
+                    usage=None,
+                    refresh_text=format_interval(refresh_interval(settings.papaia_config_dir)),
+                ),
+            )
+        )
     # Two readings, side by side. Docker's disk use is the slow one and has its own
     # cache: it is served as it stands when it is stale, and neither its cost nor its
     # failure can hold up or take rows from the host reading.
@@ -617,6 +688,11 @@ async def partial_host(
             user,
             host=health,
             usage=usage,
+            cluster_checks=host_health.load_cluster_checks(
+                config_dir=settings.papaia_config_dir,
+                workspace_dir=settings.papaia_workspace_dir,
+                force=fresh,
+            ),
             refresh_text=format_interval(refresh_interval(settings.papaia_config_dir)),
         ),
     )
@@ -1471,10 +1547,46 @@ async def partial_upgrade_runner(
             ),
             recovery=recovery,
             recovery_generated=recovery_generated,
+            # Only once the run is over and succeeded: a failed run has its own block.
+            provisioning=(
+                upgrade.provisioning_problems(
+                    log,
+                    workspace_dir=settings.papaia_workspace_dir,
+                    config_dir=settings.papaia_config_dir,
+                    tail=runner.UPGRADE_LOG_TAIL_LINES,
+                )
+                if status_obj is not None and status_obj.succeeded
+                else []
+            ),
+            node_progress=upgrade.node_progress(log),
         ),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@router.get("/partials/upgrade/nodes", response_class=HTMLResponse)
+async def partial_upgrade_nodes(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The release each node runs. Only the upgrade page of a distributed installation asks."""
+    if not nodes.is_distributed(settings.papaia_config_dir):
+        raise HTTPException(status_code=404)
+    error = ""
+    rows: list[nodes.NodeState] = []
+    try:
+        rows = await nodes.overview(
+            workspace_dir=settings.papaia_workspace_dir, config_dir=settings.papaia_config_dir
+        )
+    except (nodes.NodeError, CtlError) as exc:
+        error = str(exc)
+    return _no_store(
+        _templates.TemplateResponse(
+            request, "partials/upgrade_nodes.html", _ctx(request, user, rows=rows, error=error)
+        )
+    )
 
 
 @router.get("/partials/upgrade/images", response_class=HTMLResponse)
@@ -1512,6 +1624,26 @@ async def partial_upgrade_log(
         request,
         "partials/upgrade_log.html",
         _ctx(request, user, entries=upgrade.read_upgrade_log(settings.papaia_config_dir)),
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@router.get("/partials/nav/addon-upgrades", response_class=HTMLResponse)
+async def partial_nav_addon_upgrades(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The dot on the Add-Ons nav entry: whether a catalog on disk offers a higher version.
+
+    No git and no network, only the catalogs as they are, and a minute of cache, because it
+    renders in the sidebar of every admin page."""
+    count = await asyncio.get_running_loop().run_in_executor(
+        None, outdated_count, settings.papaia_config_dir, settings.papaia_workspace_dir
+    )
+    resp = _templates.TemplateResponse(
+        request, "partials/nav_addon_upgrades.html", _ctx(request, user, count=count)
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -1685,12 +1817,7 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             "installed_version": variant_inst.manifest_version if variant_inst else None,
             "shadowed_by": resolved.shadowed_by,
             "is_variant": resolved.is_variant,
-            "update_available": (
-                variant_inst is not None
-                and variant_inst.managed
-                and resolved.manifest.get("version") is not None
-                and variant_inst.manifest_version != resolved.manifest.get("version")
-            ),
+            "update_available": update_available(variant_inst, resolved.manifest.get("version")),
             "managed": variant_inst.managed if variant_inst else True,
             "components": components_for(
                 settings.papaia_config_dir,
@@ -1698,11 +1825,15 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
                 resolved.name,
                 resolved.manifest,
                 variant_inst,
+                deploy_entry,
             ),
             "env_fields": _build_env_fields(
                 resolved.name,
-                managed_snapshot_path(
-                    settings.papaia_workspace_dir, variant_inst.catalog, resolved.name
+                installed_addon_dir(
+                    deploy_entry,
+                    settings.papaia_workspace_dir,
+                    variant_inst.catalog,
+                    resolved.name,
                 )
                 if variant_inst
                 else resolved.clone / resolved.name,
@@ -1737,11 +1868,18 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             "update_available": False,
             "managed": inst.managed if inst else False,
             "components": components_for(
-                settings.papaia_config_dir, settings.papaia_workspace_dir, addon_name, {}, inst
+                settings.papaia_config_dir,
+                settings.papaia_workspace_dir,
+                addon_name,
+                {},
+                inst,
+                deploy_entry,
             ),
             "env_fields": _build_env_fields(
                 addon_name,
-                managed_snapshot_path(settings.papaia_workspace_dir, inst.catalog, addon_name)
+                installed_addon_dir(
+                    deploy_entry, settings.papaia_workspace_dir, inst.catalog, addon_name
+                )
                 if inst
                 else None,
                 settings,
@@ -1802,8 +1940,8 @@ async def _get_addon(
 
     addon_path = None
     if variant_inst:
-        addon_path = managed_snapshot_path(
-            settings.papaia_workspace_dir, variant_inst.catalog, name
+        addon_path = installed_addon_dir(
+            deploy_entry, settings.papaia_workspace_dir, variant_inst.catalog, name
         )
     elif catalog_addon_dir:
         addon_path = catalog_addon_dir
@@ -1820,18 +1958,21 @@ async def _get_addon(
         "installed_version": variant_inst.manifest_version if variant_inst else None,
         "shadowed_by": resolved.shadowed_by if resolved else [],
         "is_variant": resolved.is_variant if resolved else False,
-        "update_available": (
-            variant_inst is not None
-            and variant_inst.managed
-            and manifest.get("version") is not None
-            and variant_inst.manifest_version != manifest.get("version")
-        ),
+        "update_available": update_available(variant_inst, manifest.get("version")),
         "managed": variant_inst.managed if variant_inst else True,
         "manifest": manifest,
         "components": components_for(
-            settings.papaia_config_dir, settings.papaia_workspace_dir, name, manifest, variant_inst
+            settings.papaia_config_dir,
+            settings.papaia_workspace_dir,
+            name,
+            manifest,
+            variant_inst,
+            deploy_entry,
         ),
         "env_fields": env_fields,
+        **version_state(
+            settings.papaia_config_dir, settings.papaia_workspace_dir, variant_inst, deploy_entry
+        ),
     }
 
 

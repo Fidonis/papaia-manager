@@ -221,6 +221,64 @@
   border-radius: 2px;
 }
 
+/* ── Charts (Models & Usage) ──────────────────────────────────────────────
+   The colours of a series, one slot per model, stable from one window to the
+   next (see app/core/charts.py). Unlayered like the blocks above, because the
+   template assembles the class name from the slot number and the purge cannot
+   see that.
+
+   Both sets were run through the dataviz palette validator against the surface
+   they sit on (white cards in the light theme, #17191c in the dark one): the
+   lightness band, the chroma floor and the separation for colour-blind readers
+   pass. In the light theme the green, the amber and the pink are below 3:1
+   against white, which the validator allows when every mark also carries a
+   name -- the legend, the tooltip and the table of days do. */
+:root {
+  --chart-0: #2a78d6;
+  --chart-1: #eb6834;
+  --chart-2: #1baf7a;
+  --chart-3: #eda100;
+  --chart-4: #e87ba4;
+  --chart-5: #008300;
+  --chart-6: #6250d6;
+  --chart-other: #8a8f98;
+}
+
+[data-theme="fidonis-dark"] {
+  --chart-0: #3987e5;
+  --chart-1: #d95926;
+  --chart-2: #199e70;
+  --chart-3: #c98500;
+  --chart-4: #d55181;
+  --chart-5: #008300;
+  --chart-6: #9085e9;
+  --chart-other: #7b818b;
+}
+
+.chart-s0 { background-color: var(--chart-0); }
+.chart-s1 { background-color: var(--chart-1); }
+.chart-s2 { background-color: var(--chart-2); }
+.chart-s3 { background-color: var(--chart-3); }
+.chart-s4 { background-color: var(--chart-4); }
+.chart-s5 { background-color: var(--chart-5); }
+.chart-s6 { background-color: var(--chart-6); }
+.chart-so { background-color: var(--chart-other); }
+
+/* The output half of a model's tokens: the model's colour, lighter. */
+.chart-muted { opacity: 0.5; }
+
+/* A day's column: the segments are boxes with a height in percent, from the
+   baseline up. The 1.5 px of card surface between two of them is the gap the
+   dataviz rules ask for (drawn inside the box, so a height stays a height), and
+   only the top segment is rounded, so the stack stands on a flat baseline. */
+.chart-seg:not(:first-child) {
+  box-shadow: inset 0 1.5px 0 var(--fallback-b1, oklch(var(--b1)));
+}
+
+.chart-seg:last-child {
+  border-radius: 3px 3px 0 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-sidebar,
   .app-main {

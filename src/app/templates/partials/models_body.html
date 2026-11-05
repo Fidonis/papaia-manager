@@ -1,0 +1,348 @@
+{# The body of the Models & Usage page: which models LiteLLM serves and what they consumed in
+   the window asked for, or why there is nothing to show.
+
+   Everything the page says is worded and formatted by app/core/usage_view.py; this file decides
+   where it goes. Every control is a link to the same page with one thing changed (the window,
+   the metric, the tab, the model), so the page works without the script that swaps it in
+   place, and a view can be bookmarked or sent to someone.
+
+   The bars are boxes with a height in percent rather than an SVG scaled to the width: their
+   labels keep the size of the page's text on every screen. The colours are the theme's chart
+   slots (`.chart-s0` .. `.chart-s6`, `.chart-so` for "Other" in docker/tailwind.app.css), the
+   same slot for the same model in every window. A chart is never the only way to read a number:
+   the legend, the tooltip (reachable by keyboard) and the table of days say the same.
+
+   Classes are spelled out rather than assembled, except the slot ones, which are plain
+   stylesheet rules and not part of the purge. #}
+
+{% macro swatch(slot, muted=false) -%}
+<span class="inline-block h-2.5 w-2.5 shrink-0 rounded-sm {{ 'chart-so' if slot is none else 'chart-s' ~ slot }}{{ ' chart-muted' if muted }}" aria-hidden="true"></span>
+{%- endmacro %}
+
+{# One chart: gridlines, stacked day columns, a tooltip per day. `i` is the day under the pointer
+   or the keyboard (arrow keys while the chart has focus); a visually hidden line repeats it for
+   a screen reader. Tooltip text is set with x-text, never as markup. #}
+{% macro bars(chart, tips, caption, empty_text) %}
+<div class="rounded-xl border border-base-300 bg-base-100 p-4"
+     x-data="{ i: -1, tips: {{ tips | tojson | forceescape }} }"
+     @keydown.escape="i = -1">
+  <p class="text-sm font-semibold">{{ caption }}</p>
+  {% if chart.empty %}
+  <div class="flex h-48 items-center justify-center text-sm opacity-60">{{ empty_text }}</div>
+  {% else %}
+  <div class="mt-4 flex gap-2">
+    <div class="relative h-48 w-12 shrink-0" aria-hidden="true">
+      {% for tick in chart.ticks %}
+      <span class="absolute right-0 translate-y-1/2 text-[11px] leading-none tabular-nums opacity-60" style="bottom: {{ '%.1f' | format(tick.pct) }}%">{{ tick.label }}</span>
+      {% endfor %}
+    </div>
+    <div class="min-w-0 grow">
+      <div class="relative h-48 rounded-sm"
+           tabindex="0" role="group" aria-label="{{ caption }}"
+           @focus="if (i < 0) i = tips.length - 1"
+           @blur="i = -1"
+           @mouseleave="i = -1"
+           @keydown.left.prevent="i = Math.max(0, i - 1)"
+           @keydown.right.prevent="i = Math.min(tips.length - 1, i + 1)">
+        {% for tick in chart.ticks %}
+        <div class="absolute inset-x-0 border-t border-base-300" style="bottom: {{ '%.1f' | format(tick.pct) }}%"></div>
+        {% endfor %}
+        <div class="absolute inset-x-0 bottom-0 border-t border-base-content/30"></div>
+        <div class="absolute inset-0 flex gap-px">
+          {% for column in chart.columns %}
+          <div class="flex h-full min-w-0 flex-1 items-end justify-center rounded-sm"
+               :class="i === {{ loop.index0 }} ? 'bg-base-200' : ''"
+               @mouseenter="i = {{ loop.index0 }}">
+            <div class="flex h-full w-full max-w-6 flex-col-reverse justify-start">
+              {% for segment in column.segments %}
+              <div class="chart-seg shrink-0 {{ 'chart-so' if segment.slot is none else 'chart-s' ~ segment.slot }}{{ ' chart-muted' if segment.muted }}"
+                   style="height: {{ '%.2f' | format(segment.pct) }}%"></div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div x-show="i >= 0" style="display: none"
+             class="pointer-events-none absolute top-2 z-10 w-56 rounded-lg border border-base-300 bg-base-100 p-2.5 text-xs shadow-lg"
+             :style="i < tips.length / 2 ? `left: calc(${(i + 1) / tips.length * 100}% + 6px)` : `right: calc(${(tips.length - i) / tips.length * 100}% + 6px)`">
+          <p class="font-semibold" x-text="tips[i]?.title"></p>
+          <template x-for="row in (tips[i]?.rows || [])" :key="row.name">
+            <p class="mt-1 flex items-center gap-2">
+              <span class="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+                    :class="(row.slot < 0 ? 'chart-so' : 'chart-s' + row.slot) + (row.muted ? ' chart-muted' : '')"></span>
+              <span class="min-w-0 grow truncate" x-text="row.name"></span>
+              <span class="tabular-nums" x-text="row.value"></span>
+            </p>
+          </template>
+          <p class="mt-1.5 flex justify-between gap-2 border-t border-base-300 pt-1.5 font-semibold">
+            <span>{% trans %}Total{% endtrans %}</span>
+            <span class="tabular-nums" x-text="tips[i]?.total"></span>
+          </p>
+        </div>
+        <p class="sr-only" aria-live="polite" x-text="i >= 0 ? tips[i].title + ': ' + tips[i].total : ''"></p>
+      </div>
+      <div class="mt-1 flex gap-px" aria-hidden="true">
+        {% for column in chart.columns %}
+        <div class="flex min-w-0 flex-1 justify-center"><span class="whitespace-nowrap text-[11px] opacity-60"><span class="hidden sm:inline">{{ column.label }}</span><span class="sm:hidden">{{ column.short }}</span></span></div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro legend_list(items) %}
+{% if items %}
+<ul class="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-xs" aria-label="{{ _('Legend') }}">
+  {% for item in items %}
+  <li class="flex min-w-0 items-center gap-2">{{ swatch(item.slot, item.muted) }}<span class="truncate">{{ item.name }}</span></li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endmacro %}
+
+{% macro kpi_grid(items) %}
+<div class="grid {{ 'grid-cols-2 lg:grid-cols-4' if items | length > 3 else 'grid-cols-1 sm:grid-cols-3' }} gap-px overflow-hidden rounded-xl border border-base-300 bg-base-300">
+  {% for item in items %}
+  <div class="bg-base-100 px-5 py-3.5">
+    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{{ item.label }}</p>
+    <p class="mt-1 text-2xl font-bold font-brand tabular-nums">{{ item.value }}</p>
+    <p class="mt-0.5 text-xs opacity-60">{{ item.sub }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro metric_toggle() %}
+<div class="join" role="group" aria-label="{{ _('Measure') }}">
+  {% for m in metrics %}
+  <a {{ m.link.attrs | xmlattr }}
+     class="btn btn-sm join-item {{ 'btn-primary' if m.active else 'btn-outline' }}"
+     {% if m.active %}aria-current="true"{% endif %}>{{ m.label }}</a>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro day_details(rows) %}
+<details class="mt-4 rounded-xl border border-base-300 bg-base-100">
+  <summary class="cursor-pointer px-4 py-3 text-sm font-semibold">{% trans %}Figures per day{% endtrans %}</summary>
+  <div class="overflow-x-auto border-t border-base-300">
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>{% trans %}Day{% endtrans %}</th>
+          <th class="text-right">{% trans %}Tokens{% endtrans %}</th>
+          <th class="text-right">{% trans %}Spend{% endtrans %}</th>
+          <th class="text-right">{% trans %}Requests{% endtrans %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="whitespace-nowrap">{{ row.day }}</td>
+          <td class="text-right tabular-nums">{{ row.tokens }}</td>
+          <td class="text-right tabular-nums">{{ row.spend }}</td>
+          <td class="text-right tabular-nums">{{ row.requests }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endmacro %}
+
+{# ── LiteLLM cannot be read ───────────────────────────────────────── #}
+{% if not reading.available %}
+<div class="flex flex-col items-center gap-4 py-24 text-center opacity-80">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+  </svg>
+  <p class="text-lg font-semibold">{% trans %}Models and usage are not available{% endtrans %}</p>
+  <p class="max-w-xl text-sm">{{ problem }}</p>
+  <a {{ reload.attrs | xmlattr }} class="btn btn-primary btn-sm">{% trans %}Try again{% endtrans %}</a>
+</div>
+{% else %}
+
+{# ── Status and window ────────────────────────────────────────────── #}
+<div class="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+  <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs opacity-70">
+    <span class="h-2 w-2 shrink-0 rounded-full bg-success" aria-hidden="true"></span>
+    <span>{% trans %}LiteLLM is reachable{% endtrans %}</span>
+    <span aria-hidden="true">·</span>
+    <span>{% trans count=served %}{{ count }} model served{% pluralize %}{{ count }} models served{% endtrans %}</span>
+    <span aria-hidden="true">·</span>
+    <span>{% trans time=updated %}read at {{ time }} UTC{% endtrans %}</span>
+  </p>
+  <a {{ reload.attrs | xmlattr }} class="btn btn-ghost btn-xs">{% trans %}Reload{% endtrans %}</a>
+</div>
+
+<div class="mb-2 flex flex-wrap items-center gap-3">
+  <div class="join max-w-full overflow-x-auto" role="group" aria-label="{{ _('Time window') }}">
+    {% for r in ranges %}
+    <a {{ r.link.attrs | xmlattr }}
+       class="btn btn-sm join-item {{ 'btn-primary' if r.active else 'btn-outline' }}"
+       {% if r.active %}aria-current="true"{% endif %}>{{ r.label }}</a>
+    {% endfor %}
+  </div>
+  <p class="text-xs opacity-60">{{ window_text }}</p>
+</div>
+
+{% if q.range == 'custom' %}
+{# A plain form: applying a custom window is rare enough to reload the page for. #}
+<form method="get" action="/models" class="mb-2 flex flex-wrap items-end gap-3">
+  <input type="hidden" name="range" value="custom">
+  <input type="hidden" name="metric" value="{{ q.metric }}">
+  <input type="hidden" name="view" value="{{ q.view }}">
+  {% if q.model %}<input type="hidden" name="model" value="{{ q.model }}">{% endif %}
+  <label class="form-control">
+    <span class="label-text mb-1 text-xs">{% trans %}From{% endtrans %}</span>
+    <input type="date" name="from" value="{{ q.start }}" max="{{ today }}" required class="input input-bordered input-sm">
+  </label>
+  <label class="form-control">
+    <span class="label-text mb-1 text-xs">{% trans %}To{% endtrans %}</span>
+    <input type="date" name="to" value="{{ q.end }}" max="{{ today }}" required class="input input-bordered input-sm">
+  </label>
+  <button type="submit" class="btn btn-primary btn-sm">{% trans %}Apply{% endtrans %}</button>
+  <p class="basis-full text-xs opacity-60">{% trans days=max_days %}First and last day, both included, at most {{ days }} days.{% endtrans %}</p>
+</form>
+{% endif %}
+<p class="mb-4 text-xs opacity-50">{% trans %}Days are UTC days. LiteLLM writes its usage in batches, so the newest requests can take a minute to show up.{% endtrans %}</p>
+
+{% if window_notice %}
+<div role="alert" class="alert alert-warning mb-4 py-2 text-sm">
+  <span>{{ window_notice }} {% trans %}The last 7 days are shown instead.{% endtrans %}</span>
+</div>
+{% endif %}
+{% if not report.complete %}
+<div role="alert" class="alert alert-warning mb-4 py-2 text-sm">
+  <span>{% trans %}LiteLLM holds more records for this window than the manager reads, so the figures are incomplete. Choose a shorter window.{% endtrans %}</span>
+</div>
+{% endif %}
+{% if model_missing %}
+<div role="alert" class="alert mb-4 py-2 text-sm">
+  <span>{% trans name=model_missing %}LiteLLM has no model called {{ name }} and nothing was used under that name in this window.{% endtrans %}</span>
+</div>
+{% endif %}
+
+{# ── Tabs ─────────────────────────────────────────────────────────── #}
+{% if kind != 'detail' %}
+<div role="tablist" class="tabs tabs-boxed mb-4 w-fit max-w-full overflow-x-auto overflow-y-hidden">
+  {% for tab in tabs %}
+  <a role="tab" {{ tab.link.attrs | xmlattr }}
+     class="tab whitespace-nowrap {{ 'tab-active font-semibold' if tab.active and not model_missing else '' }}"
+     {% if tab.active and not model_missing %}aria-selected="true"{% endif %}>{{ tab.label }}</a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+  <a {{ link(model='').attrs | xmlattr }} class="btn btn-ghost btn-xs">&larr; {% trans %}All models{% endtrans %}</a>
+  <h2 class="font-brand text-xl font-bold">{{ model.name }}</h2>
+  {% if row.type %}<span class="badge badge-ghost badge-sm">{{ row.type }}</span>{% endif %}
+  {% if row.provider %}<span class="text-sm opacity-60">{{ row.provider }}</span>{% endif %}
+</div>
+<p class="mb-4 text-sm opacity-70">
+  {% if row.price %}
+  {% trans price=row.price %}Price per million tokens, input / output: {{ price }}{% endtrans %}
+  {% elif model.entry %}
+  {% trans %}LiteLLM has no price for this model, so its spend is always $0.00.{% endtrans %}
+  {% else %}
+  {% trans %}LiteLLM does not serve this model any more; the figures are what it consumed.{% endtrans %}
+  {% endif %}
+</p>
+{% endif %}
+
+{# ── Figures ──────────────────────────────────────────────────────── #}
+{% if kind == 'models' %}
+<div class="overflow-x-auto rounded-xl border border-base-300 bg-base-100">
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>{% trans %}Model{% endtrans %}</th>
+        <th class="hidden md:table-cell">{% trans %}Price per 1M tokens (in / out){% endtrans %}</th>
+        <th class="text-right">{% trans %}Tokens{% endtrans %}</th>
+        <th class="text-right">{% trans %}Spend{% endtrans %}</th>
+        <th class="text-right">{% trans %}Requests{% endtrans %}</th>
+        <th class="hidden sm:table-cell">{% trans %}Tokens per day{% endtrans %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      {% set u = r.usage %}
+      <tr class="{{ '' if u.used else 'opacity-60' }}">
+        <td class="max-w-[16rem]">
+          <div class="flex items-center gap-2">
+            {{ swatch(u.slot) }}
+            <a {{ r.link.attrs | xmlattr }} class="link link-hover truncate font-semibold">{{ u.name }}</a>
+          </div>
+          <p class="truncate pl-[1.125rem] text-xs opacity-60">
+            {{ [r.type, r.provider] | select | join(' · ') }}{% if not u.configured %}{% trans %}no longer served by LiteLLM{% endtrans %}{% endif %}
+          </p>
+        </td>
+        <td class="hidden whitespace-nowrap tabular-nums md:table-cell">
+          {% if r.price %}{{ r.price }}{% elif u.configured %}<span class="opacity-60">{% trans %}no price set{% endtrans %}</span>{% else %}–{% endif %}
+        </td>
+        <td class="text-right tabular-nums">{{ fmt.count(u.totals.tokens) }}</td>
+        <td class="text-right tabular-nums">
+          {% if u.used and u.configured and not r.price %}<span title="{{ _('LiteLLM has no price for this model') }}">–</span>{% else %}{{ fmt.usd(u.totals.spend) }}{% endif %}
+        </td>
+        <td class="text-right tabular-nums">
+          {{ fmt.count(u.totals.requests) }}{% if u.totals.failed %}<span class="block text-xs text-error">{% trans count=fmt.count(u.totals.failed) %}{{ count }} failed{% endtrans %}</span>{% endif %}
+        </td>
+        <td class="hidden sm:table-cell">
+          {% if r.spark %}
+          <svg viewBox="0 0 72 20" class="h-5 w-[72px]" aria-hidden="true">
+            <polyline points="{{ r.spark }}" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"
+                      style="stroke: var(--chart-{{ 'other' if u.slot is none else u.slot }})"/>
+          </svg>
+          {% elif u.used %}
+          <span class="text-xs opacity-60">{% trans %}no tokens{% endtrans %}</span>
+          {% else %}
+          <span class="text-xs opacity-60">{% trans %}not used{% endtrans %}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="py-8 text-center text-sm opacity-60">{% trans %}LiteLLM serves no models.{% endtrans %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="mb-4">{{ kpi_grid(kpis) }}</div>
+
+<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+  <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+    {% if kind == 'detail' %}{% trans %}This model per day{% endtrans %}{% else %}{% trans %}All models per day{% endtrans %}{% endif %}
+  </p>
+  {{ metric_toggle() }}
+</div>
+{{ bars(chart, tips, metric_label, empty_text) }}
+{{ legend_list(legend) }}
+
+{% if kind == 'overview' %}
+{% if shares %}
+<p class="mb-1 mt-8 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans metric=metric_label %}Share by model · {{ metric }}{% endtrans %}</p>
+<ul class="divide-y divide-base-300 rounded-xl border border-base-300 bg-base-100 px-4">
+  {% for s in shares %}
+  <li class="flex items-center gap-3 py-2.5">
+    {{ swatch(s.slot) }}
+    <a {{ s.link.attrs | xmlattr }} class="link link-hover min-w-0 grow truncate text-sm font-medium">{{ s.name }}</a>
+    <div class="hidden h-1.5 w-40 overflow-hidden rounded bg-base-200 sm:block" aria-hidden="true">
+      <div class="h-1.5 rounded {{ 'chart-so' if s.slot is none else 'chart-s' ~ s.slot }}" style="width: {{ '%.1f' | format(s.pct) }}%"></div>
+    </div>
+    <span class="text-sm tabular-nums">{{ s.value }}</span>
+    <span class="w-12 text-right text-xs tabular-nums opacity-60">{{ '<1 %' if s.pct < 1 else ('%.0f' | format(s.pct) ~ ' %') }}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endif %}
+{% endif %}
+
+{% if unpriced and kind != 'detail' %}
+<p class="mt-3 text-xs opacity-60">{% trans %}A model without a price shows no spend however much it is used. A price can be set for it in LiteLLM.{% endtrans %}</p>
+{% endif %}
+{{ day_details(day_table) }}
+
+{% endif %}

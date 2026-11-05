@@ -785,7 +785,7 @@ def test_the_admin_nav_is_grouped_by_what_an_entry_acts_on(client: TestClient) -
 
     assert list(groups) == ["", "Monitor", "Extensions", "System"]
     assert groups[""] == ["Dashboard"]
-    assert groups["Monitor"] == ["Services", "Host", "Jobs"]
+    assert groups["Monitor"] == ["Services", "Host", "Models & Usage", "Jobs"]
     assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
     # Backup and upgrade are stack-level commands, so they sit with the system, and so does
     # the mail relay: it is the stack's, not a setting of the manager.
