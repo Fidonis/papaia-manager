@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.core import ctl
+from app.core import ctl, nodes
 from app.core.ctl import (
     LOCALAI_VARIANTS,
     MODULE_URL_FLAGS,
@@ -261,6 +261,8 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
                 "note": gettext(module.note) if module.note else "",
                 "services": services,
                 "modules": modules,
+                # The node the module's services are placed on; empty on a single host.
+                "node": nodes.profile_node(config_dir, module.profile),
                 "variant": variant if module.name == "localai" else None,
                 "configured": mail_configured(config_dir) if module.name == "mail" else None,
                 "mail_defaults": mail_defaults(config_dir) if module.name == "mail" else None,
