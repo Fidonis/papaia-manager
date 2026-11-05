@@ -12,6 +12,7 @@ tests
 
 # Exclude docker/ orchestration files, but keep files the Dockerfile COPYs.
 docker
+!docker/entrypoint.sh
 !docker/git-askpass.sh
 !docker/tailwind.config.js
 !docker/tailwind.brand.css
