@@ -26,6 +26,7 @@
     {% if on and relay and relay.available %}
     <p class="text-xs opacity-70">
       {% if relay.relay %}{% trans relay=relay.relay %}relay {{ relay }}{% endtrans %}{% else %}{% trans %}relay not created{% endtrans %}{% endif %}
+      {% if relay_node %} · {% trans node=relay_node %}on node {{ node }}{% endtrans %}{% endif %}
       {% if relay.queued is not none %}
         ·
         {% if relay.queued == 0 %}{% trans %}queue empty{% endtrans %}{% else %}{% trans queued=relay.queued %}{{ queued }} message waiting{% pluralize queued %}{{ queued }} messages waiting{% endtrans %}{% endif %}
