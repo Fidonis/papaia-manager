@@ -155,12 +155,13 @@ async def overlay_page(
     target: str = "",
 ) -> HTMLResponse:
     """The overlay files, an editor for them and their saved versions."""
-    keys = [t.key for t in overlay.TARGETS]
+    offered = overlay.offered(settings.papaia_workspace_dir)
+    keys = [t.key for t in offered]
     selected = target if target in keys else keys[0]
     init = {
         "selected": selected,
         "preview_available": preview.available(settings.papaia_workspace_dir),
-        "targets": [target_json(settings, t) for t in overlay.TARGETS],
+        "targets": [target_json(settings, t) for t in offered],
         "other": overlay.other_files(settings.papaia_config_dir),
     }
     return _no_store(

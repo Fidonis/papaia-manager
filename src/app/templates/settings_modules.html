@@ -472,13 +472,21 @@
     const present = volumes.filter((v) => v.exists !== false);
     const unknown = volumes.some((v) => v.exists === null);
     const names = present.map((v) => v.name).join(", ");
+    // Docker Model Runner keeps no volumes: its data are the models of its list, which live in
+    // Docker Desktop's model store and are removed one by one (never the store as a whole).
+    const models = info.models || [];
     const settings = (info.settings.dirs || []).map((d) => d + "/.env")
       .concat(info.settings.root_keys && info.settings.root_keys.length ? [".env (" + info.settings.root_keys.join(", ") + ")"] : [])
       .concat(info.settings.files || []).join(", ");
 
     box.append(option("keep", {{ _('Keep data and settings')|tojson }},
       {{ _('Switching it on again brings everything back.')|tojson }}, true));
-    if (present.length) {
+    if (models.length) {
+      box.append(option("data", {{ _('Delete the data, keep the settings')|tojson }},
+        fmtPlural(models.length, {{ _('Removes {count} model from Docker Model Runner: {names}. Other models in its store stay.')|tojson }}, {{ _('Removes {count} models from Docker Model Runner: {names}. Other models in its store stay.')|tojson }}, { names: models.join(", ") }), false));
+      box.append(option("all", {{ _('Delete the data and the settings')|tojson }},
+        fmt({{ _('Also puts {settings} back to the defaults.')|tojson }}, { settings: settings }), false));
+    } else if (present.length) {
       box.append(option("data", {{ _('Delete the data, keep the settings')|tojson }},
         fmtPlural(present.length, {{ _('Removes {count} volume: {names}.')|tojson }}, {{ _('Removes {count} volumes: {names}.')|tojson }}, { names: names }) +
         (unknown ? " " + {{ _('Docker could not be asked, so this list may be incomplete.')|tojson }} : ""), false));

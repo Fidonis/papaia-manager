@@ -9713,3 +9713,96 @@ msgstr "%(profile)s verbindet die Nodes und kann nicht ausgewählt werden"
 #, python-format
 msgid "profile %(name)r connects the nodes and cannot be controlled from this panel"
 msgstr "Profil %(name)r verbindet die Nodes und kann nicht über dieses Panel gesteuert werden"
+
+msgid ""
+"Runs language models on the Apple GPU of this Mac through Docker Desktop's Model Runner. "
+"The models listed in its model list are pulled and offered in LiteLLM."
+msgstr ""
+"Führt Sprachmodelle über den Model Runner von Docker Desktop auf der Apple-GPU dieses Macs "
+"aus. Die Modelle seiner Modellliste werden geladen und in LiteLLM angeboten."
+
+msgid "Models on the Host page"
+msgstr "Modelle auf der Host-Seite"
+
+msgid "Needs Docker Desktop on an Apple Silicon Mac, with Docker Model Runner enabled."
+msgstr "Braucht Docker Desktop auf einem Mac mit Apple Silicon und eingeschaltetem Docker Model Runner."
+
+msgid ""
+"The models pulled into Docker Model Runner and offered in LiteLLM, one per line: a reference "
+"and an optional alias."
+msgstr ""
+"Die Modelle, die in Docker Model Runner geladen und in LiteLLM angeboten werden, eines pro "
+"Zeile: eine Referenz und optional ein Alias."
+
+#, python-format
+msgid "%(value)s is not a model reference."
+msgstr "%(value)s ist keine Modellreferenz."
+
+msgid "Only a reference and an alias are read."
+msgstr "Gelesen werden nur eine Referenz und ein Alias."
+
+#, python-format
+msgid "%(value)s is not a usable model name."
+msgstr "%(value)s ist kein verwendbarer Modellname."
+
+#, python-format
+msgid "The name %(name)s is already used on line %(line)s."
+msgstr "Der Name %(name)s wird schon in Zeile %(line)s verwendet."
+
+msgid "no models (the module pulls and offers none)"
+msgstr "keine Modelle (das Modul lädt und bietet keine an)"
+
+#, python-format
+msgid "%(count)s model"
+msgid_plural "%(count)s models"
+msgstr[0] "%(count)s Modell"
+msgstr[1] "%(count)s Modelle"
+
+#, python-brace-format
+msgid "Removes {count} model from Docker Model Runner: {names}. Other models in its store stay."
+msgstr "Entfernt {count} Modell aus Docker Model Runner: {names}. Andere Modelle in seinem Speicher bleiben."
+
+#, python-brace-format
+msgid "Removes {count} models from Docker Model Runner: {names}. Other models in its store stay."
+msgstr "Entfernt {count} Modelle aus Docker Model Runner: {names}. Andere Modelle in seinem Speicher bleiben."
+
+msgid ""
+"The model list of Docker Model Runner is the exception: its overlay replaces the shipped list "
+"as a whole, so the editor starts from the list in use."
+msgstr ""
+"Die Modellliste von Docker Model Runner ist die Ausnahme: Ihr Overlay ersetzt die "
+"mitgelieferte Liste als Ganzes, deshalb beginnt der Editor mit der Liste, die gerade gilt."
+
+#, python-brace-format
+msgid "Model list valid · {summary}"
+msgstr "Modellliste gültig · {summary}"
+
+msgid "Local inference"
+msgstr "Lokale Inferenz"
+
+msgid "Docker Model Runner"
+msgstr "Docker Model Runner"
+
+#, python-format
+msgid "Docker Desktop %(version)s"
+msgstr "Docker Desktop %(version)s"
+
+#, python-format
+msgid "engines: %(engines)s"
+msgstr "Engines: %(engines)s"
+
+msgid "not pulled"
+msgstr "nicht heruntergeladen"
+
+msgid "loaded"
+msgstr "im Speicher"
+
+msgid "pulled"
+msgstr "heruntergeladen"
+
+msgid "The model download failed; the log above names the models that could not be pulled."
+msgstr "Der Modell-Download ist fehlgeschlagen; das Log oben nennt die Modelle, die nicht heruntergeladen werden konnten."
+
+#, python-format
+msgid "The models are still being pulled after %(minutes)d minutes. The download goes on in the background; the Host page shows which models are present."
+msgstr "Die Modelle werden nach %(minutes)d Minuten noch heruntergeladen. Der Download läuft im Hintergrund weiter; die Host-Seite zeigt, welche Modelle vorhanden sind."

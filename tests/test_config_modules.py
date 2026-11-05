@@ -108,8 +108,8 @@ def test_the_state_comes_from_compose_profiles(tmp_path: Path) -> None:
     }
 
 
-def test_the_four_optional_modules_are_switchable_and_the_manager_is_not() -> None:
-    assert set(modules.SWITCHABLE) == {"localai", "web-search", "rag", "mail"}
+def test_the_five_optional_modules_are_switchable_and_the_manager_is_not() -> None:
+    assert set(modules.SWITCHABLE) == {"localai", "model-runner", "web-search", "rag", "mail"}
     assert set(modules.SWITCHABLE) == set(ctl.PURGE_MODULES)
     rows = modules.state("/nonexistent", "/nonexistent")
     by_name = {r["name"]: r for r in rows}
@@ -502,3 +502,41 @@ async def test_the_open_questions_come_with_the_info(
     info = await modules.module_info("rag", workspace_dir=str(tmp_path / "w"), config_dir="/c")
     assert info["questions"][0]["ask"] is True
     assert info["questions"][0]["default"] == "https://h:6333"
+
+
+# -- Docker Model Runner -------------------------------------------------------------------
+
+
+def test_docker_model_runner_is_left_out_on_a_core_that_does_not_ship_it(tmp_path: Path) -> None:
+    config = tmp_path / "config"
+    _env(config, "COMPOSE_PROFILES=nginx\n")
+    _core(tmp_path / "w", profiles=("localai", "rag"))
+    names = [r["name"] for r in modules.state(str(config), str(tmp_path / "w"))]
+    assert "model-runner" not in names
+    assert "localai" in names
+
+
+def test_docker_model_runner_is_listed_and_switchable_on_a_core_that_ships_it(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "config"
+    _env(config, "COMPOSE_PROFILES=nginx\n")
+    _core(tmp_path / "w", profiles=("localai", "model-runner"))
+    rows = {r["name"]: r for r in modules.state(str(config), str(tmp_path / "w"))}
+    row = rows["model-runner"]
+    assert row["switchable"] is True
+    assert row["can_delete"] is True
+    assert row["variant"] is None
+    assert row["note"]
+    # The Host page shows its models, which exist only while it is on.
+    assert row["link"] == ""
+    _env(config, "COMPOSE_PROFILES=nginx,model-runner\n")
+    rows = {r["name"]: r for r in modules.state(str(config), str(tmp_path / "w"))}
+    assert rows["model-runner"]["link"] == "/host"
+
+
+def test_docker_model_runner_takes_no_variant_and_recreates_litellm() -> None:
+    assert modules.validate_enable("model-runner", None) is None
+    with pytest.raises(modules.ModuleError):
+        modules.validate_enable("model-runner", "cpu")
+    assert modules.SWITCHABLE["model-runner"].recreate == ("litellm",)

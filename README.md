@@ -65,12 +65,16 @@ default 60 seconds); it applies to every administrator.
 
 **Modules and overlay.** Settings has three tabs: **Manager** (the cards above),
 **Modules** and **Overlay**. **Modules** is the one place that switches the
-optional parts of the stack on and off: LocalAI, web search, the RAG system and the
-mail relay. Switching a module on stores the choice with the core's own `setup`
-(`--enable-local-ai`, `--enable-web-search`, `--enable-rag`, `--enable-smtp`, and for
+optional parts of the stack on and off: LocalAI, Docker Model Runner, web search, the RAG
+system and the mail relay. Switching a module on stores the choice with the core's own `setup`
+(`--enable-local-ai`, `--enable-model-runner`, `--enable-web-search`, `--enable-rag`,
+`--enable-smtp`, and for
 LocalAI the accelerator variant, which is chosen on the page because GPU detection
 cannot see the host from inside the container) and starts the module's profile; the
-RAG system also recreates LibreChat, whose configuration lists the RAG tools. The
+RAG system also recreates LibreChat, whose configuration lists the RAG tools, and Docker
+Model Runner recreates LiteLLM, whose model list it fills. Docker Model Runner serves models
+from the Apple GPU through Docker Desktop on an Apple Silicon Mac; it has no variant to choose,
+and the entry is only listed by a core that ships it (papAIa 1.9.0 and newer). The
 RAG pages and the Mail page hold those modules' settings and no longer switch
 anything. Switching a module on asks the questions `papaia-ctl setup` asks, inline under
 its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings
@@ -86,13 +90,17 @@ leaves behind: **keep the data and the settings** (switching it on again brings
 everything back), **delete the data** (its Docker volumes) **and keep the settings**,
 or **delete the data and the settings** (they go back to what the release ships).
 Deleting asks you to type the module's name, and the dialog lists the volumes the
-core reports. Settings alone are not offered: the RAG system's stored credentials are
+core reports. Docker Model Runner has no volumes: its data are the models of its model list,
+which are removed from Docker Desktop's model store one by one; other models in the store stay. Settings alone are not offered: the RAG system's stored credentials are
 encrypted with a secret that belongs to its data, and a module without its settings
 but with its data would be of no use to anyone. The RAG documents folder is never
 deleted. Deleting needs a core with the module operations (papAIa 1.6.0); an older
 core still switches modules off and keeps everything. **Overlay** edits the customer overlay, the files under
 `$PAPAIA_CONFIG_DIR/overlay/` that the core merges last into the LibreChat,
-LiteLLM and SearXNG configuration. The editor checks the YAML while you type,
+LiteLLM and SearXNG configuration, and, with a core that ships it, Docker Model Runner's model
+list. That one is a list of models, one per line, whose overlay replaces the shipped list as a
+whole: the editor starts from the list in use, checks each line the way the core reads it, and
+Apply restarts the module (which pulls what is new) and recreates LiteLLM. The editor checks the YAML while you type,
 shows the effective result (the core merges the draft in memory and the page
 shows the difference to what the file renders to now; this needs a core with the
 `render-preview` command, otherwise only the syntax check is available), and
@@ -487,7 +495,11 @@ and Let's Encrypt). The manager measures nothing itself. It runs the core's
 shell on the host cannot disagree about a threshold. That needs a core that has
 `doctor` (1.4.0 or newer); on an older one the page says so and the status row
 carries on without a Host row, and a 1.4.0 core that predates a resource check
-simply has no row for it. A resource check the core skips is listed as not
+simply has no row for it. With the core's `model-runner` module on (papAIa 1.9.0), a
+**Local inference** section shows the core's `inference` check: whether Docker Model Runner
+answers, its engines and the Docker Desktop version, and each model of the list as pulled,
+loaded or not pulled. The core reads the runner through its API from inside the container; the
+section does not count towards the host's verdict. A resource check the core skips is listed as not
 measurable instead of being left out: with a core that cannot read them inside a
 container, that is the GPU and the clock. The free space of the Docker data root
 has no row while the manager cannot see it (the container mounts the config and

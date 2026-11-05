@@ -585,8 +585,20 @@ def _spawn_recorder(monkeypatch: pytest.MonkeyPatch, seen: dict[str, Any]) -> No
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
 
 
-def test_the_purge_modules_are_the_four_optional_ones() -> None:
-    assert {"localai", "web-search", "rag", "mail"} == PURGE_MODULES
+def test_the_purge_modules_are_the_five_optional_ones() -> None:
+    assert {"localai", "model-runner", "web-search", "rag", "mail"} == PURGE_MODULES
+
+
+def test_docker_model_runner_is_switched_with_its_own_option_and_takes_no_variant() -> None:
+    assert module_setup_flags(ModuleSetup(module="model-runner", enable=True)) == [
+        "--enable-model-runner=true"
+    ]
+    with pytest.raises(ValueError, match="only LocalAI"):
+        module_setup_flags(ModuleSetup(module="model-runner", enable=True, variant="cpu"))
+    with pytest.raises(ValueError, match="no public URL"):
+        module_setup_flags(
+            ModuleSetup(module="model-runner", enable=True, public_url="https://x.test")
+        )
 
 
 async def test_module_info_asks_the_core_for_one_named_module(

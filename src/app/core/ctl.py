@@ -154,6 +154,7 @@ MODULE_SETUP_FLAGS: dict[str, str] = {
     "localai": "--enable-local-ai",
     "web-search": "--enable-web-search",
     "rag": "--enable-rag",
+    "model-runner": "--enable-model-runner",
 }
 
 # The module whose `setup` asks for a public URL when it is switched on, and the option that
@@ -166,7 +167,9 @@ MODULE_URL_FLAGS: dict[str, str] = {
 MAX_URL_LENGTH = 253
 
 # The modules `module-info` and `module-purge` know, by the core's names.
-PURGE_MODULES: frozenset[str] = frozenset({"localai", "web-search", "rag", "mail"})
+PURGE_MODULES: frozenset[str] = frozenset(
+    {"localai", "model-runner", "web-search", "rag", "mail"}
+)
 
 # LocalAI image variants the manager offers. `vulkan` is left out on purpose: the core
 # decides its device list by looking at /dev while it renders, and from inside this

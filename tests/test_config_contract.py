@@ -373,12 +373,15 @@ async def test_a_draft_the_core_cannot_merge_comes_back_with_its_line(
 async def test_every_target_the_page_offers_can_be_previewed_and_what_it_shows_is_the_render(
     deployment: _Deployment,
 ) -> None:
-    for target in overlay.TARGETS:
+    for target in overlay.offered(str(deployment.workspace)):
+        # The draft that changes nothing: empty for a merged target, the list in use for a
+        # model list, whose overlay replaces the file whole (the editor starts from it).
+        draft = overlay.starting_text(str(deployment.config), str(deployment.workspace), target)
         result = await preview.run(
             workspace_dir=str(deployment.workspace),
             config_dir=str(deployment.config),
             target_path=target.path,
-            draft="",
+            draft=draft,
         )
         assert result.ok, target.path
         assert result.changed is False
@@ -650,3 +653,76 @@ async def test_the_relay_is_switched_on_with_a_full_mail_server_in_one_setup(
     assert "smtp" in deployment.profiles()
     stored = load_mail_settings(str(deployment.config))
     assert (stored.profile_on, stored.host, stored.has_password) == (True, "smtp.example.org", True)
+
+
+# -- Docker Model Runner (core 1.9.0) --------------------------------------------------------
+
+
+def _core_has_model_runner() -> bool:
+    return (Path(_SRC) / "src" / "ai" / "model-runner" / "models.txt").is_file()
+
+
+needs_model_runner = pytest.mark.skipif(
+    not _core_has_model_runner(), reason="the core under test predates the model-runner module"
+)
+
+
+@needs_model_runner
+def test_the_model_list_check_agrees_with_the_cores_parser(core: dict[str, ModuleType]) -> None:
+    parse = importlib.import_module("lib.model_runner").parse_models
+    samples = [
+        "ai/qwen3:4b qwen3-4b\nhf.co/mlx-community/Qwen3-4B-4bit\n# comment\n\n",
+        "ai/x;rm\n",
+        "ai/a:1 chat\nai/b:1 chat\n",
+        "ai/ok:1 bad;alias\n",
+    ]
+    for text in samples:
+        mine = overlay.check(text, overlay.FORMAT_MODELS)
+        theirs = parse(text).errors
+        assert bool(mine) == bool(theirs), text
+    shipped = (Path(_SRC) / "src" / "ai" / "model-runner" / "models.txt").read_text("utf-8")
+    assert overlay.check(shipped, overlay.FORMAT_MODELS) == []
+
+
+@needs_model_runner
+async def test_switching_docker_model_runner_on_and_off_edits_one_profile(
+    deployment: _Deployment,
+) -> None:
+    before = deployment.profiles()
+    code, _, err = await _apply(deployment, ModuleSetup("model-runner", True))
+    assert code == 0, err
+    assert deployment.profiles() == before | {"model-runner"}
+    assert "model-runner" in modules.active(str(deployment.config))
+    code, _, err = await _apply(deployment, ModuleSetup("model-runner", False))
+    assert code == 0, err
+    assert deployment.profiles() == before
+
+
+@needs_model_runner
+async def test_the_core_lists_the_models_docker_model_runner_would_delete(
+    deployment: _Deployment,
+) -> None:
+    info = await modules.module_info(
+        "model-runner", workspace_dir=str(deployment.workspace), config_dir=str(deployment.config)
+    )
+    assert info["available"] is True
+    assert info["volumes"] == []
+    assert "ai/nomic-embed-text-v1.5:137M-F16" in info["models"]
+
+
+@needs_model_runner
+async def test_the_model_list_is_previewed_and_the_page_starts_from_the_rendered_one(
+    deployment: _Deployment,
+) -> None:
+    target = overlay.target("model-runner")
+    assert target in overlay.offered(str(deployment.workspace))
+    start = overlay.starting_text(str(deployment.config), str(deployment.workspace), target)
+    assert "nomic-embed-text" in start
+    result = await preview.run(
+        workspace_dir=str(deployment.workspace),
+        config_dir=str(deployment.config),
+        target_path=target.path,
+        draft=start + "ai/gemma3 gemma\n",
+    )
+    assert result.ok and result.changed
+    assert result.added == 1 and result.removed == 0

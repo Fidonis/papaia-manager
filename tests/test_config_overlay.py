@@ -35,6 +35,7 @@ def test_the_targets_are_keys_and_the_paths_are_the_cores() -> None:
         "librechat": "ai/librechat/librechat.yaml",
         "litellm": "ai/litellm/config.yaml",
         "searxng": "services/searxng/settings.yml",
+        "model-runner": "ai/model-runner/models.txt",
     }
 
 
@@ -319,3 +320,66 @@ def test_a_history_that_cannot_be_written_stops_the_change(
     monkeypatch.setattr(history.os, "open", broken)
     with pytest.raises(OverlayError, match="nothing was changed"):
         history.save(config, KEY, b"x", "apply")
+
+
+# -- Docker Model Runner's model list -------------------------------------------------------
+
+_MODELS = "# models\nai/qwen3:4b qwen3-4b\nai/nomic-embed-text-v1.5:137M-F16 nomic-embed-text\n"
+
+
+def test_a_model_list_is_checked_line_by_line() -> None:
+    assert overlay.check(_MODELS, overlay.FORMAT_MODELS) == []
+    assert overlay.summary(_MODELS, overlay.FORMAT_MODELS) == "2 models"
+    assert "no models" in overlay.summary("# nothing\n", overlay.FORMAT_MODELS)
+
+
+@pytest.mark.parametrize(
+    ("text", "line", "fragment"),
+    [
+        ("ai/ok:1\nai/x;rm\n", 2, "not a model reference"),
+        ("ai/a:1 chat\nai/b:1 chat\n", 2, "already used on line 1"),
+        ("ai/a:1 chat extra\n", 1, "Only a reference and an alias"),
+    ],
+)
+def test_a_line_the_core_would_leave_out_is_a_problem(text: str, line: int, fragment: str) -> None:
+    [problem] = overlay.check(text, overlay.FORMAT_MODELS)
+    assert problem.line == line
+    assert fragment in problem.message
+
+
+def test_a_model_list_is_not_read_as_yaml() -> None:
+    # A plain list of names is not a YAML mapping, and must not be refused as one.
+    assert overlay.check("ai/qwen3:4b\n", overlay.FORMAT_YAML)
+    assert overlay.check("ai/qwen3:4b\n", overlay.FORMAT_MODELS) == []
+
+
+def test_the_model_list_is_offered_only_by_a_core_that_ships_it(tmp_path: Path) -> None:
+    old = tmp_path / "old"
+    (old / "papaia" / "src").mkdir(parents=True)
+    assert [t.key for t in overlay.offered(str(old))] == ["librechat", "litellm", "searxng"]
+    new = tmp_path / "new"
+    target = new / "papaia" / "src" / "ai" / "model-runner" / "models.txt"
+    target.parent.mkdir(parents=True)
+    target.write_text(_MODELS, encoding="utf-8")
+    assert "model-runner" in [t.key for t in overlay.offered(str(new))]
+
+
+def test_the_editor_starts_from_the_list_in_use(tmp_path: Path) -> None:
+    target = overlay.target("model-runner")
+    workspace = tmp_path / "w"
+    shipped = workspace / "papaia" / "src" / target.path
+    shipped.parent.mkdir(parents=True)
+    shipped.write_text("ai/shipped:1\n", encoding="utf-8")
+    config = tmp_path / "config"
+    assert overlay.starting_text(str(config), str(workspace), target) == "ai/shipped:1\n"
+    rendered = config / target.path
+    rendered.parent.mkdir(parents=True)
+    rendered.write_text("ai/rendered:1\n", encoding="utf-8")
+    assert overlay.starting_text(str(config), str(workspace), target) == "ai/rendered:1\n"
+    # A merged target's overlay holds only what changes, so it starts empty.
+    assert overlay.starting_text(str(config), str(workspace), overlay.target("litellm")) == ""
+
+
+def test_applying_the_model_list_recreates_the_module_and_litellm() -> None:
+    target = overlay.target("model-runner")
+    assert target.profiles == ("model-runner", "litellm")

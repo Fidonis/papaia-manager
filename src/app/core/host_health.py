@@ -243,6 +243,30 @@ class ClusterCheck:
 
 
 @dataclass(frozen=True)
+class InferenceModel:
+    """One model of Docker Model Runner's list: whether the runner has it and runs it."""
+
+    reference: str
+    present: bool
+    loaded: bool
+
+
+@dataclass(frozen=True)
+class InferenceReading:
+    """The core's `inference` check: Docker Model Runner, the engine on the Mac's host.
+
+    Shown on its own, like the nodes and links: it says whether local models are served,
+    not whether this machine is in shape, so it does not count towards the chip."""
+
+    state: HostState
+    summary: str
+    engines: tuple[str, ...] = ()
+    docker_desktop: str = ""
+    models: tuple[InferenceModel, ...] = ()
+    host_tcp: str = ""
+
+
+@dataclass(frozen=True)
 class HostHealth:
     """One reading of the host, or the reason there is none."""
 
@@ -255,6 +279,8 @@ class HostHealth:
     checked_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     # `nodes` and `links` of a distributed installation; they say nothing about this host.
     cluster_checks: tuple[ClusterCheck, ...] = ()
+    # Docker Model Runner, while the core's `model-runner` module is on (core 1.9.0 and newer).
+    inference: InferenceReading | None = None
 
     @property
     def checks(self) -> tuple[HostCheck, ...]:
@@ -681,6 +707,49 @@ def parse_doctor(stdout: str, *, checked_at: datetime | None = None) -> HostHeal
         notes=notes,
         checked_at=checked_at or datetime.now(UTC),
         cluster_checks=_cluster_checks(by_name),
+        inference=_parse_inference(by_name.get("inference")),
+    )
+
+
+def _model_key(name: str) -> str:
+    """A model name every listing agrees on: the runner reports loaded models without the
+    registry, in lower case and without `:latest`; the model list holds what was typed."""
+    lowered = name.lower()
+    for prefix in ("docker.io/", "huggingface.co/", "hf.co/"):
+        if lowered.startswith(prefix):
+            lowered = lowered[len(prefix) :]
+            break
+    lowered = lowered.removeprefix("ai/")
+    return lowered.removesuffix(":latest")
+
+
+def _strings(value: Any) -> list[str]:
+    return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+
+
+def _parse_inference(check: dict[str, Any] | None) -> InferenceReading | None:
+    if check is None or check.get("status") == "skip":
+        # Off, or a core without the module: nothing to show.
+        return None
+    details = _details(check)
+    missing = set(_strings(details.get("missing")))
+    loaded = {_model_key(name) for name in _strings(details.get("loaded"))}
+    desktop = details.get("docker_desktop")
+    tcp = details.get("host_tcp")
+    return InferenceReading(
+        state=_state(check.get("status")),
+        summary=_summary(check),
+        engines=tuple(_strings(details.get("engines"))),
+        docker_desktop=desktop if isinstance(desktop, str) else "",
+        models=tuple(
+            InferenceModel(
+                reference=reference,
+                present=reference not in missing,
+                loaded=_model_key(reference) in loaded,
+            )
+            for reference in _strings(details.get("listed"))
+        ),
+        host_tcp=tcp if isinstance(tcp, str) else "",
     )
 
 

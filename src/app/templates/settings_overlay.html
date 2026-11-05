@@ -23,6 +23,7 @@
         <h2 class="font-brand text-lg font-bold">{% trans %}Overlay Files{% endtrans %}</h2>
         <p class="text-sm opacity-60">
           {% trans %}An overlay is merged last: mappings are merged, lists are appended and scalars are replaced. Applying one recreates the services that read the file.{% endtrans %}
+          {% trans %}The model list of Docker Model Runner is the exception: its overlay replaces the shipped list as a whole, so the editor starts from the list in use.{% endtrans %}
         </p>
       </div>
       <template x-for="t in targets" :key="t.key">
@@ -96,7 +97,7 @@
             <li><span x-text="p.line ? (p.column ? fmt({{ _('Line {line}, column {column}:')|tojson|forceescape }}, { line: p.line, column: p.column }) : fmt({{ _('Line {line}:')|tojson|forceescape }}, { line: p.line })) + ' ' : ''"></span><span x-text="p.message"></span></li>
           </template>
         </ul>
-        <p class="mt-2 text-xs text-success" x-show="!problems.length && summary" style="display:none" x-text="fmt({{ _('YAML valid · {summary}')|tojson|forceescape }}, { summary: summary })"></p>
+        <p class="mt-2 text-xs text-success" x-show="!problems.length && summary" style="display:none" x-text="fmt(current && current.format === 'models' ? {{ _('Model list valid · {summary}')|tojson|forceescape }} : {{ _('YAML valid · {summary}')|tojson|forceescape }}, { summary: summary })"></p>
 
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <button type="button" class="btn btn-primary btn-sm" :disabled="busy || problems.length > 0" @click="askApply()">{% trans %}Apply overlay{% endtrans %}</button>
