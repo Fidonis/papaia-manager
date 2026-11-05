@@ -110,7 +110,8 @@ async def run_verb(
 ) -> str | None:
     """Run a verb and stream its output into the log. Returns the first line that says the
     realm was not updated, for a verb that ends in the sync. In a distributed installation it
-    runs once per node it concerns, Keycloak's last (`nodes.profile_runs`)."""
+    runs once per node it concerns, the nodes of the proxy and of Keycloak after the owner's
+    (`nodes.profile_runs`)."""
     problem: str | None = None
     for run in nodes.profile_runs(
         verb, flags, config_dir=config_dir, workspace_dir=workspace_dir

@@ -154,6 +154,11 @@ def test_anything_else_is_left_as_it_is(
     assert _runs(verb, flags, distributed) == [flags]
 
 
+def test_a_run_that_names_its_node_is_left_as_it_is(distributed: tuple[str, str]) -> None:
+    flags = ("--profiles=keycloak", "--node=edge")
+    assert _runs("start", flags, distributed) == [flags]
+
+
 def test_a_core_without_the_placement_names_no_node(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -356,3 +361,69 @@ def test_users_and_models_address_the_gateway_names(distributed: tuple[str, str]
     assert endpoint is not None
     assert endpoint.base == "https://keycloak:8443"
     assert Settings.model_fields["litellm_url"].default == "http://litellm:4000"
+
+
+# ---------------------------------------------------------------------------
+# Switching the relay off clears the realm's mail server where Keycloak runs
+# ---------------------------------------------------------------------------
+
+
+def _disable_mail(dirs: tuple[str, str], tmp_path: Path) -> None:
+    config, workspace = dirs
+    callback = svc.disable_callback(
+        module="mail", scope="keep", user="admin", workspace_dir=workspace, config_dir=config
+    )
+    asyncio.run(callback(_context(tmp_path)))
+
+
+def test_switching_the_relay_off_starts_keycloak_on_its_node(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # keycloak-role-sync would run on edge with the bundle edge already has, which still
+    # names the relay; the start hands edge its new bundle first and runs the sync after it.
+    config, _ = distributed
+    monkeypatch.setitem(TOPOLOGY["topology"]["placement"], "keycloak", "edge")
+    Path(config, ".env").write_text(
+        "COMPOSE_PROFILES=nginx,keycloak,librechat,smtp\n", encoding="utf-8"
+    )
+    _disable_mail(distributed, tmp_path)
+    assert ("start", ["--profiles=keycloak", "--node=edge"]) in recorder.calls
+    assert all(verb != "keycloak-role-sync" for verb, _ in recorder.calls)
+
+
+def test_a_realm_left_with_the_relay_fails_the_job(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, _ = distributed
+    monkeypatch.setitem(TOPOLOGY["topology"]["placement"], "keycloak", "edge")
+    recorder.lines["--node=edge"] = [
+        "[!] Keycloak role sync failed. Once Keycloak is healthy, run it again."
+    ]
+    with pytest.raises(svc.StepFailedError, match="the realm still names it"):
+        _disable_mail(distributed, tmp_path)
+
+
+def test_switching_the_relay_off_on_one_host_runs_the_sync(
+    single: tuple[str, str], recorder: _Recorder, tmp_path: Path
+) -> None:
+    _disable_mail(single, tmp_path)
+    assert ("keycloak-role-sync", []) in recorder.calls
+    assert all(verb != "start" for verb, _ in recorder.calls)
+
+
+def test_switching_the_relay_off_without_keycloak_runs_the_sync(
+    distributed: tuple[str, str], recorder: _Recorder, tmp_path: Path
+) -> None:
+    # An external identity provider: the core's sync says there is nothing to do, and no
+    # start may bring up a Keycloak the installation does not run.
+    config, _ = distributed
+    Path(config, ".env").write_text("COMPOSE_PROFILES=nginx,librechat,smtp\n", encoding="utf-8")
+    _disable_mail(distributed, tmp_path)
+    assert ("keycloak-role-sync", []) in recorder.calls
+    assert all("--profiles=keycloak" not in flags for _, flags in recorder.calls)

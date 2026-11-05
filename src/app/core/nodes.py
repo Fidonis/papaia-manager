@@ -154,30 +154,40 @@ def profile_runs(
 ) -> list[tuple[str, ...]]:
     """The flags of each `papaia-ctl` run a `start` or `stop` of one profile takes.
 
-    On a single host, and for anything else, that is one run with the flags as they are. In a
-    distributed installation each run names a node, because without `--node` the core pushes
-    to every node first and one that does not answer stops the whole action. A `start` also
-    visits the nodes of the proxy and of Keycloak, last, so their hooks still run: a module
-    brings proxy hosts and realm roles, and the mail relay's mail server goes into the realm.
+    On a single host, for a run that already names its node, and for anything else, that is
+    one run with the flags as they are. In a distributed installation each run names a node,
+    because without `--node` the core pushes to every node first and one that does not answer
+    stops the whole action. A `start` also visits the nodes of the proxy and of Keycloak,
+    last, so their hooks still run: a module brings proxy hosts and realm roles, and the mail
+    relay's mail server goes into the realm.
     """
     profile = next(
         (f.removeprefix("--profiles=") for f in flags if f.startswith("--profiles=")), ""
     )
-    if verb not in ("start", "stop") or not profile or "," in profile:
+    if (
+        verb not in ("start", "stop")
+        or not profile
+        or "," in profile
+        or any(f.startswith("--node=") for f in flags)
+    ):
         return [flags]
-    owner = profile_node(config_dir, profile)
+    if not is_distributed(config_dir):
+        return [flags]
+    found = _placement(config_dir)
+    if found is None:
+        return [flags]
+    topology, topo = found
+    service = topology.service_of_profile(profile)
+    owner = str(topo.node_of(service)) if service else ""
     if not owner:
         return [flags]
     owners = [owner]
     if verb == "start":
-        found = _placement(config_dir)
-        if found is not None:
-            topology, topo = found
-            active = set(topology.active_services(active_profiles(config_dir) | {profile}))
-            for service in _HOOK_SERVICES:
-                node = str(topo.node_of(service))
-                if service in active and node and node not in owners:
-                    owners.append(node)
+        active = set(topology.active_services(active_profiles(config_dir) | {profile}))
+        for hook_service in _HOOK_SERVICES:
+            node = str(topo.node_of(hook_service))
+            if hook_service in active and node and node not in owners:
+                owners.append(node)
     return [(*flags, f"--node={node}") for node in owners]
 
 
