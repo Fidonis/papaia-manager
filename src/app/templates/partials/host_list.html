@@ -213,6 +213,38 @@
 </div>
 {% endif %}
 
+{# ── Docker Model Runner, the core's `inference` check ───────────── #}
+{# Only while the core's model-runner module is on. It says whether local models are
+   served, not whether the machine is in shape, so it does not count towards the chip. #}
+{% if host.available and host.inference %}
+{% set inf = host.inference %}
+{{ section_header(_("Local inference"), _("Docker Model Runner")) }}
+<div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  <div class="px-5 py-3 text-sm">
+    <span class="{% if inf.state == 'ok' %}text-success{% elif inf.state == 'warn' %}text-warning{% elif inf.state == 'critical' %}text-error{% else %}opacity-50{% endif %}">{{ inf.summary }}</span>
+    {% if inf.engines or inf.docker_desktop %}
+    <p class="text-xs opacity-50">
+      {%- if inf.docker_desktop %}{% trans version=inf.docker_desktop %}Docker Desktop {{ version }}{% endtrans %}{% endif -%}
+      {%- if inf.docker_desktop and inf.engines %} · {% endif -%}
+      {%- if inf.engines %}{% trans engines=inf.engines | join(", ") %}engines: {{ engines }}{% endtrans %}{% endif -%}
+    </p>
+    {% endif %}
+  </div>
+  {% for model in inf.models %}
+  <div class="flex items-center gap-3 border-t border-base-300 px-5 py-2 text-sm">
+    <span class="font-mono text-xs flex-1 truncate">{{ model.reference }}</span>
+    {% if not model.present %}
+    <span class="badge badge-sm badge-warning">{% trans %}not pulled{% endtrans %}</span>
+    {% elif model.loaded %}
+    <span class="badge badge-sm badge-success">{% trans %}loaded{% endtrans %}</span>
+    {% else %}
+    <span class="badge badge-sm">{% trans %}pulled{% endtrans %}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {# ── Docker usage ────────────────────────────────────────────────── #}
 {# What Docker's data takes, from the daemon: it works where the data root's free
    space above cannot be measured. It is a report, not a verdict, so the rows have

@@ -91,7 +91,15 @@ def health(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         return StackSnapshot(
             groups=[
                 ServiceGroup(name=name, modules=(name,), containers=1, health=state["health"])
-                for name in ("librechat", "localai", "librechat-websearch", "rag", "smtp")
+                for name in (
+                    "librechat",
+                    "localai",
+                    "librechat-websearch",
+                    "rag",
+                    "smtp",
+                    "litellm",
+                    "model-runner",
+                )
             ]
         )
 
@@ -809,3 +817,31 @@ def test_the_core_sentence_is_picked_out_of_setups_output() -> None:
     assert svc.last_problem(["a", "", "ERROR: boom", "tail"]) == "boom"
     assert svc.last_problem(["a", "tail"]) == "tail"
     assert svc.last_problem([]) == "the step failed"
+
+
+# -- Docker Model Runner's model list --------------------------------------------------------
+
+
+def test_applying_the_model_list_restarts_the_module_and_then_recreates_litellm(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path, "nginx,litellm,model-runner")
+    ctx = _context(tmp_path)
+    _go(_overlay_job(config, content=b"ai/qwen3:4b qwen3-4b\n", key="model-runner"), ctx)
+
+    assert overlay.read(config, "model-runner").raw == b"ai/qwen3:4b qwen3-4b\n"
+    assert run.steps == [
+        ("stop", ["--clean-up", "--profiles=model-runner"]),
+        ("start", ["--profiles=model-runner"]),
+        ("stop", ["--clean-up", "--profiles=litellm"]),
+        ("start", ["--profiles=litellm"]),
+    ]
+
+
+def test_the_model_list_of_a_module_that_is_off_restarts_nothing(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path, "nginx,litellm")
+    ctx = _context(tmp_path)
+    _go(_overlay_job(config, content=b"ai/qwen3:4b\n", key="model-runner"), ctx)
+    assert run.steps == []

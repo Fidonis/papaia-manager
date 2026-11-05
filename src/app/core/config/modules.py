@@ -5,9 +5,10 @@ acts on and what `papaia-ctl setup --enable-...` edits (`deployment.yaml` only m
 so the state is read from there and a change is asked of `setup`
 (`app.core.ctl.run_module_setup`, `run_smtp_setup`). The manager does not write the file.
 
-Four modules are switched here, and this tab is the only place that switches them: LocalAI,
-web search, the RAG system and the mail relay. The RAG and Mail pages hold their settings and
-work with the module off as well. The manager runs this page and can't switch itself off.
+Five modules are switched here, and this tab is the only place that switches them: LocalAI,
+Docker Model Runner, web search, the RAG system and the mail relay. The RAG and Mail pages
+hold their settings and work with the module off as well. The manager runs this page and
+can't switch itself off.
 
 Switching a module off can also delete what it leaves behind. The core knows what that is
 (`module-info`): the named volumes the module owns and the settings it keeps. Three results
@@ -95,6 +96,9 @@ class ModuleDef:
     recreate: tuple[str, ...] = ()
     # The module needs the core to ship the module operations, not only its own profile.
     needs_core_modules: bool = False
+    # Left out of the tab, rather than shown as "too old", on a core that does not ship it:
+    # a module of a newer release, which an older core has never heard of.
+    hidden_without_core: bool = False
 
 
 MODULES: tuple[ModuleDef, ...] = (
@@ -109,6 +113,27 @@ MODULES: tuple[ModuleDef, ...] = (
             )
         ),
         switchable=True,
+    ),
+    ModuleDef(
+        name="model-runner",
+        profile="model-runner",
+        title="Docker Model Runner",
+        description=(
+            N_(
+                "Runs language models on the Apple GPU of this Mac through Docker Desktop's Model "
+                "Runner. The models listed in its model list are pulled and offered in LiteLLM."
+            )
+        ),
+        switchable=True,
+        link="/host",
+        link_label=N_("Models on the Host page"),
+        link_needs_module=True,
+        note=N_("Needs Docker Desktop on an Apple Silicon Mac, with Docker Model Runner enabled."),
+        # LiteLLM's configuration takes the module's models when it is rendered, and LiteLLM
+        # reads the file once.
+        recreate=("litellm",),
+        needs_core_modules=True,
+        hidden_without_core=True,
     ),
     ModuleDef(
         name="web-search",
@@ -240,6 +265,8 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
         # A profile the core's Compose files don't have (a core older than the module): the
         # switch could only fail. The manager's own profile is always there.
         shipped = services > 0 or not module.switchable
+        if module.hidden_without_core and not shipped and not enabled:
+            continue
         supported = shipped and (manages or not module.needs_core_modules)
         problem = (
             gettext("This papAIa core is too old to switch it from here.")

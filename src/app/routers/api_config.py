@@ -327,6 +327,7 @@ def target_json(settings: Settings, target: overlay.OverlayTarget) -> dict[str, 
         "path": target.path,
         "description": gettext(target.description),
         "profile": target.profile,
+        "format": target.fmt,
         "group_active": target.profile in modules.active(settings.papaia_config_dir),
         "services": services,
         "exists": file.exists,
@@ -344,7 +345,9 @@ async def list_overlay(
 ) -> dict[str, Any]:
     return {
         "preview_available": preview.available(settings.papaia_workspace_dir),
-        "targets": [target_json(settings, t) for t in overlay.TARGETS],
+        "targets": [
+            target_json(settings, t) for t in overlay.offered(settings.papaia_workspace_dir)
+        ],
         "other": overlay.other_files(settings.papaia_config_dir),
     }
 
@@ -357,7 +360,11 @@ async def get_overlay(
     file = _read(settings, key)
     return {
         **target_json(settings, target),
-        "content": file.text,
+        "content": file.text
+        if file.exists
+        else overlay.starting_text(
+            settings.papaia_config_dir, settings.papaia_workspace_dir, target
+        ),
         "preview_available": preview.available(settings.papaia_workspace_dir),
         "versions": [v.as_json() for v in history.versions(settings.papaia_config_dir, key)],
     }
@@ -371,13 +378,13 @@ async def check_overlay(
 ) -> dict[str, Any]:
     """Syntax check of a draft, as you type. Nothing is written and nothing leaves the manager."""
     verify_csrf(request)
-    _target(key)
+    target = _target(key)
     body = await _body(request, DraftBody)
-    problems = overlay.check(body.content)
+    problems = overlay.check(body.content, target.fmt)
     return {
         "ok": not problems,
         "problems": [p.as_json() for p in problems],
-        "summary": "" if problems else overlay.summary(body.content),
+        "summary": "" if problems else overlay.summary(body.content, target.fmt),
     }
 
 
@@ -392,7 +399,7 @@ async def preview_overlay(
     verify_csrf(request)
     target = _target(key)
     body = await _body(request, DraftBody)
-    problems = overlay.check(body.content)
+    problems = overlay.check(body.content, target.fmt)
     if problems:
         return {"ok": False, "available": True, "problems": [p.as_json() for p in problems]}
     if not preview.available(settings.papaia_workspace_dir):
@@ -435,7 +442,7 @@ async def _validated(settings: Settings, target: overlay.OverlayTarget, content:
     """The bytes to write, after the checks that can refuse them: the syntax check, and the
     core's own merge when it can preview. A core that can't be asked is not a reason to refuse
     (the job puts the previous file back if the start fails)."""
-    problems = overlay.check(content)
+    problems = overlay.check(content, target.fmt)
     if problems:
         raise HTTPException(
             status_code=422,

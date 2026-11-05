@@ -1034,3 +1034,64 @@ async def test_ensure_fresh_starts_one_background_run_and_the_cache_fills(
     host_health.ensure_fresh(config_dir="/cfg", workspace_dir=workspace)
     await asyncio.sleep(0.05)
     assert len(doctor.calls) == 1
+
+
+# -- Docker Model Runner (`inference`) -------------------------------------------------------
+
+
+def _inference(status: str = "pass", **details: Any) -> dict[str, Any]:
+    values: dict[str, Any] = {
+        "source": "api",
+        "engines": ["llama.cpp", "vllm"],
+        "docker_desktop": "4.95.0",
+        "listed": ["ai/qwen3:4b-instruct-2507-q4_K_M", "ai/nomic-embed-text-v1.5:137M-F16"],
+        "missing": [],
+        "loaded": ["ai/qwen3:4b-instruct-2507-q4_K_M"],
+        "host_tcp": "unknown",
+    }
+    values.update(details)
+    return _check("inference", status, "Docker Model Runner answers", values)
+
+
+def test_the_inference_check_is_shown_with_every_listed_model() -> None:
+    health = host_health.parse_doctor(_doctor(extra=[_inference()]))
+    reading = health.inference
+    assert reading is not None
+    assert reading.state is HostState.OK
+    assert reading.engines == ("llama.cpp", "vllm")
+    assert reading.docker_desktop == "4.95.0"
+    assert [(m.reference, m.present, m.loaded) for m in reading.models] == [
+        ("ai/qwen3:4b-instruct-2507-q4_K_M", True, True),
+        ("ai/nomic-embed-text-v1.5:137M-F16", True, False),
+    ]
+
+
+def test_a_loaded_model_is_matched_across_the_names_the_host_cli_uses() -> None:
+    # `docker model ps` on the host: no registry, lower case.
+    check = _inference(source="cli", loaded=["qwen3:4b-instruct-2507-q4_k_m"])
+    reading = host_health.parse_doctor(_doctor(extra=[check])).inference
+    assert reading is not None
+    assert reading.models[0].loaded is True
+
+
+def test_a_missing_model_is_marked_and_the_warning_kept() -> None:
+    check = _inference("warn", missing=["ai/nomic-embed-text-v1.5:137M-F16"])
+    reading = host_health.parse_doctor(_doctor(extra=[check])).inference
+    assert reading is not None
+    assert reading.state is HostState.WARN
+    assert reading.models[1].present is False
+
+
+def test_no_inference_section_while_the_module_is_off_or_the_core_has_none() -> None:
+    off = _check("inference", "skip", "Docker Model Runner is not enabled", {})
+    assert host_health.parse_doctor(_doctor(extra=[off])).inference is None
+    assert host_health.parse_doctor(_doctor()).inference is None
+
+
+def test_the_inference_check_does_not_count_towards_the_host_verdict() -> None:
+    check = _inference("fail", reason="not running")
+    healthy = json.loads(HEALTHY)
+    healthy["checks"].append(check)
+    health = host_health.parse_doctor(json.dumps(healthy))
+    assert health.inference is not None and health.inference.state is HostState.CRITICAL
+    assert health.overall is HostState.OK

@@ -544,6 +544,15 @@ def overlay_callback(
         problem = await wait_healthy(
             ctx, target.profile, config_dir=config_dir, workspace_dir=workspace_dir
         )
+        # Docker Model Runner's list also becomes LiteLLM's model_list, which LiteLLM reads
+        # once: its containers are recreated as well, once the target's own are up.
+        also = tuple(p for p in target.also if p in modules.active(config_dir))
+        if also:
+            await _recreate(ctx, also, workspace_dir=workspace_dir, config_dir=config_dir)
+            for profile in also:
+                problem = problem or await wait_healthy(
+                    ctx, profile, config_dir=config_dir, workspace_dir=workspace_dir
+                )
         write_audit_entry(
             config_dir,
             user=user,
