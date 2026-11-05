@@ -17,7 +17,7 @@ import pytest
 
 from app.core import services
 from app.core.audit import audit_path
-from app.core.config import history, overlay
+from app.core.config import history, model_init, overlay
 from app.core.config import service as svc
 from app.core.ctl import CtlError, ModuleSetup, SmtpSetup
 from app.core.jobs import Job, JobContext
@@ -104,6 +104,12 @@ def health(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         )
 
     monkeypatch.setattr(services, "load_snapshot", load)
+
+    async def no_init_job(*args: str) -> tuple[int, str]:
+        return 0, ""
+
+    # Docker Model Runner's init job is followed through `docker`; these tests have none.
+    monkeypatch.setattr(model_init, "_docker", no_init_job)
     monkeypatch.setattr(svc, "HEALTH_TIMEOUT_SECONDS", 0.0)
     monkeypatch.setattr(svc, "HEALTH_INTERVAL_SECONDS", 0.0)
     return state
@@ -208,6 +214,34 @@ def test_a_refusal_by_the_core_stops_before_anything_starts(
         )
     assert run.names() == ["setup"]
     assert _audit(config) == []
+
+
+def test_switching_the_model_runner_on_logs_the_pulls_and_fails_on_a_failed_one(
+    tmp_path: Path, run: _Run, health: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def init_job(*args: str) -> tuple[int, str]:
+        if args[0] == "ps":
+            return 0, "papaia-model-runner-model-init-1\texited\n"
+        if args[0] == "logs":
+            return 0, "[model-init] Pulling ai/x ...\n[model-init] ai/x FAILED: Unauthorized\n"
+        return 0, "1\n"
+
+    monkeypatch.setattr(model_init, "_docker", init_job)
+    config = _config(tmp_path, "nginx,litellm")
+    ctx = _context(tmp_path)
+    with pytest.raises(svc.NotHealthyError, match="model download failed"):
+        _go(
+            svc.enable_callback(
+                module="model-runner",
+                variant=None,
+                user="admin",
+                workspace_dir="/w",
+                config_dir=config,
+            ),
+            ctx,
+        )
+    assert "[model-init] ai/x FAILED: Unauthorized" in _log(ctx)
+    assert [e["result"] for e in _audit(config)] == ["partial"]
 
 
 def test_a_module_that_does_not_become_healthy_is_said_so_and_recorded_as_partial(

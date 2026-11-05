@@ -9799,3 +9799,10 @@ msgstr "im Speicher"
 
 msgid "pulled"
 msgstr "heruntergeladen"
+
+msgid "The model download failed; the log above names the models that could not be pulled."
+msgstr "Der Modell-Download ist fehlgeschlagen; das Log oben nennt die Modelle, die nicht heruntergeladen werden konnten."
+
+#, python-format
+msgid "The models are still being pulled after %(minutes)d minutes. The download goes on in the background; the Host page shows which models are present."
+msgstr "Die Modelle werden nach %(minutes)d Minuten noch heruntergeladen. Der Download läuft im Hintergrund weiter; die Host-Seite zeigt, welche Modelle vorhanden sind."
