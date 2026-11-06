@@ -46,8 +46,9 @@
 {% endmacro %}
 
 {% macro primary_action(addon, s, fn) %}
-  {% if s in ("available", "inactive") and addon.catalog and addon.requirements_met is false %}
-    {# papaia-ctl would refuse the install; say why instead of offering it. #}
+  {% if s in ("available", "inactive") and addon.catalog and addon.requirements_met is false and addon.requirements_enforced is not false %}
+    {# papaia-ctl would refuse the install; say why instead of offering it. In warn mode it
+       installs anyway, so the button stays and the badges show what is unmet. #}
     <span class="tooltip" data-tip="{{ _('Install the required add-ons first') }}">
       <button class="btn btn-primary btn-sm" disabled>
         {% if s == "inactive" %}{% trans %}Reactivate{% endtrans %}{% else %}{% trans %}Install{% endtrans %}{% endif %}

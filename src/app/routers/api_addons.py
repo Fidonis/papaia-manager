@@ -200,7 +200,10 @@ def _addon_summary(
         "update_available": update_available(inst, manifest.get("version")),
         "managed": inst.managed if inst else True,
         "components": components_for(config_dir, workspace_dir, name, manifest, inst, deploy_entry),
-        **(requirements or {"requirements": [], "requirements_met": True}),
+        **(
+            requirements
+            or {"requirements": [], "requirements_met": True, "requirements_enforced": True}
+        ),
     }
 
 
@@ -236,7 +239,8 @@ async def list_addons(
             config_dir=settings.papaia_config_dir,
             key=resolved.key, shadowed_by=resolved.shadowed_by, is_variant=resolved.is_variant,
             requirements=addon_requirements.view(
-                resolved.manifest, deployment_addons, installed_map, settings.papaia_workspace_dir
+                resolved.manifest, deployment_addons, installed_map, settings.papaia_workspace_dir,
+                deployment,
             ),
         )
 
@@ -333,6 +337,7 @@ async def addon_detail(
             deployment_addons_by_name(deployment),
             installed_map,
             settings.papaia_workspace_dir,
+            deployment,
         ),
     )
     return {**summary, "manifest": manifest}

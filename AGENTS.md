@@ -150,7 +150,10 @@ papaia-manager/
 │       │   ├── envfile.py      # Shared KEY=value env-file parsing
 │       │   ├── snapshots.py    # git-archive materialization, revision directories, pruning + installed.yaml
 │       │   ├── addon_upgrades.py # Staging a version, `addon upgrade --dry-run`, answers file, following the registration
-│       │   ├── semver.py       # SemVer precedence for add-on versions
+│       │   ├── semver.py       # SemVer precedence for add-on versions and the manifest range
+│       │   │                   #   syntax (`satisfies`, papaia-ctl's pre-release rule)
+│       │   ├── requirements.py # `requires.addons`: a state per required add-on, whether
+│       │   │                   #   papaia-ctl would refuse the install and enforces that
 │       │   ├── state.py        # Merged addon status (catalog × deployment × Docker)
 │       │   ├── envforms.py     # Env-form spec from .env.example + manifest prompts
 │       │   ├── envvalidate.py  # Server-side validation/coercion of add-on env values
@@ -325,6 +328,16 @@ All mutating operations (install, start, stop, upgrade, remove, uninstall, catal
 ### Add-on components
 
 An add-on's `version` counts changes to the bundle, not to the software in it. The catalog states that in the manifest's `components` list (`id`, `name`, `role`, `kind`, `image_var`, `version`, `source`, `pinned: false` for a floating tag), and `core/components.py` turns it into what the gallery card (the primary components next to the add-on version) and the detail page (a table of all of them) show, and into `components` in the add-on JSON of `api_addons`. For an installed add-on each component also carries the version of the managed snapshot (`changed` when the catalog differs, so an update reads "3.0.5 → 3.1.0") and, when the add-on's `.env` in the config directory sets the component's `image_var` to another tag, that tag as `override_version`. The overrides are read from the file, not from `docker compose config`, so the pages need no Docker and no process per view; a different registry with the same tag is not told apart, because the manifest records no repository. The manifest may come from any catalog, so nothing is trusted: entries of the wrong shape are skipped, an unknown role counts as a sidecar, text is cut, at most 32 entries are read and only an `https://` source becomes a link. A catalog without `components` shows nothing extra.
+
+### Add-on requirements
+
+An add-on may require other add-ons (`requires.addons` in its manifest, contract generation 4: a name or `{name, version}` with a SemVer range). papaia-ctl refuses the install while one is not active or too old; `core/requirements.py` shows the same verdict before the click, as badges on the gallery card and the detail page, and `primary_action` disables *Install*/*Reactivate* with "Install the required add-ons first".
+
+- **papaia-ctl stays the gate.** Each requirement is `active`, `inactive`, `missing`, `too_old` or `unchecked`. Anything the manager cannot read (a malformed entry, an unreadable version or range, an empty clause) is `unchecked` or skipped and never disables the button; papaia-ctl reports it when the install runs.
+- **The registration is the truth.** The version of a required add-on is read as papaia-ctl reads it: the manifest at the registered `path`, then `version` in deployment.yaml, and only then `manifest_version` in installed.yaml, which an `addon upgrade` or `rollback` on the host leaves behind.
+- **Warn mode installs anyway.** `requirements.compat_mode` follows the core's `compat.resolve_mode` (`PAPAIA_COMPAT_MODE`, then `mode:` in deployment.yaml, then enforce). In warn mode `requirements_enforced` is false: the badges stay, the button stays usable.
+- **Pre-releases need an opt-in.** As in the core, `1.3.0-rc.1` does not satisfy `>=1.2.0`; only a range with a pre-release bound on the same `MAJOR.MINOR.PATCH` (`>=1.3.0-rc.1`) admits it.
+- `tests/test_requirements_contract.py` compares range checks, the parsed field and the version source with the core's `semver`, `compat` and `cli_addon` and needs `PAPAIA_SRC`.
 
 ### Upgrading and rolling back an add-on
 
@@ -782,7 +795,7 @@ uv run pytest -q
 - **Tests that need another checkout** are skipped without it: `tests/test_ingester_contract.py` needs
   `QDRANT_INGEST_SRC` (the `src` directory of a `qdrant-ingest` checkout), `tests/test_mail_contract.py` and
   `tests/test_config_contract.py` need `PAPAIA_SRC` (a checkout of the papAIa core that has the mail relay and the
-  module operations). Run them with the latest release of the other repository whenever either side changes. The
+  module operations), and `tests/test_requirements_contract.py` needs one that has `requires.addons`. Run them with the latest release of the other repository whenever either side changes. The
   tests that need a symbolic link or read a file mode are skipped on Windows; run them on Linux.
 
 ---

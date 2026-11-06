@@ -60,13 +60,26 @@ def satisfies(version: object, constraint: str) -> bool | None:
 
     Covers the range syntax papaia-ctl accepts in manifests: comparison operators
     (`>= > <= < == !=`), caret `^` and tilde `~`, and comma-separated clauses that must
-    all hold. A bare version means `==`. The manager only mirrors papaia-ctl's verdict
-    for display, so anything it cannot read is "not checked", never a refusal."""
-    if _key(str(version)) is None:
+    all hold. A bare version means `==`. As in papaia-ctl, a pre-release only satisfies a
+    range when one of its bounds is a pre-release of the same `MAJOR.MINOR.PATCH`, so
+    `1.3.0-rc.1` does not meet `>=1.2.0`. The manager only mirrors papaia-ctl's verdict
+    for display, so anything it cannot read (including an empty clause, which papaia-ctl
+    rejects) is "not checked", never a refusal."""
+    version_key = _key(str(version))
+    if version_key is None:
         return None
-    clauses = [c.strip() for c in constraint.split(",") if c.strip()]
-    if not clauses:
+    clauses = [c.strip() for c in constraint.split(",")]
+    if not all(clauses):
         return None
+    bounds = [_CLAUSE_RE.match(c) for c in clauses]
+    if any(b is None or _key(b.group(2)) is None for b in bounds):
+        return None
+    if not version_key[1] and not any(
+        (k := _key(b.group(2))) is not None and not k[1] and k[0] == version_key[0]
+        for b in bounds
+        if b is not None
+    ):
+        return False
     for clause in clauses:
         match = _CLAUSE_RE.match(clause)
         if match is None:
