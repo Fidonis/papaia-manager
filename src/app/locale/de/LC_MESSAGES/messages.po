@@ -9729,3 +9729,13 @@ msgstr "Profil %(name)r verbindet die Nodes und kann nicht über dieses Panel ge
 #, python-format
 msgid "The relay is off, but the realm still names it: %(value)s"
 msgstr "Das Relay ist aus, aber der Realm nennt es noch: %(value)s"
+
+msgid "On a distributed installation the data and the settings stay: deleting them is not supported across nodes yet."
+msgstr "Auf einer verteilten Installation bleiben die Daten und die Einstellungen: Sie über Nodes hinweg zu löschen, wird noch nicht unterstützt."
+
+#, python-format
+msgid "The change is in place, but a node that only runs its hooks did not take part. Once it answers, run: %(value)s"
+msgstr "Die Änderung ist übernommen, aber ein Node, der nur ihre Hooks ausführt, war nicht dabei. Sobald er antwortet, führen Sie aus: %(value)s"
+
+msgid "the node's doctor gave no readable answer"
+msgstr "der doctor des Nodes gab keine lesbare Antwort"
