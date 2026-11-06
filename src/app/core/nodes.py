@@ -19,6 +19,7 @@ archive). The call sites take `node` and refuse it rather than pretend.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import logging
 import re
@@ -31,6 +32,7 @@ from typing import Any, Protocol
 import yaml
 
 from app.core import ctl, runner
+from app.core.inventory import active_profiles
 from app.core.state import load_deployment_yaml
 from app.i18n import gettext as _
 
@@ -111,6 +113,82 @@ def registry(config_dir: str) -> dict[str, NodeRef]:
         )
         for name, body in raw.items()
     }
+
+
+# The catalogue services whose node runs the provisioning hooks at the end of `start`:
+# `npm-provision` where the proxy runs, `keycloak-role-sync` (roles, mappers and the realm's
+# mail server) where Keycloak runs. The core runs a hook only when that node is started.
+_HOOK_SERVICES = ("nginx", "keycloak")
+
+
+def _placement(config_dir: str) -> Any:
+    """The core's own reading of the topology (`lib.topology`), or None.
+
+    The unit of placement is a service of the core's catalogue, which names the profiles it
+    consists of; only the core knows that mapping, so it is asked rather than copied. A core
+    without it, or a topology it cannot read, gives None and the caller names no node."""
+    try:
+        topology = importlib.import_module("lib.topology")
+        return topology, topology.load_config(Path(config_dir))
+    except Exception as exc:  # noqa: BLE001 - the core's own errors, of any kind
+        logger.warning("cannot read the placement: %s", exc)
+        return None
+
+
+def profile_node(config_dir: str, profile: str) -> str:
+    """The node the services of a Compose profile are placed on. Read from the
+    configuration, so it also answers for a profile that is not running yet. Empty on a
+    single host, and for a profile the core does not place."""
+    if not is_distributed(config_dir):
+        return ""
+    found = _placement(config_dir)
+    if found is None:
+        return ""
+    topology, topo = found
+    service = topology.service_of_profile(profile)
+    return str(topo.node_of(service)) if service else ""
+
+
+def profile_runs(
+    verb: str, flags: tuple[str, ...], *, config_dir: str, workspace_dir: str
+) -> list[tuple[str, ...]]:
+    """The flags of each `papaia-ctl` run a `start` or `stop` of one profile takes.
+
+    On a single host, for a run that already names its node, and for anything else, that is
+    one run with the flags as they are. In a distributed installation each run names a node,
+    because without `--node` the core pushes to every node first and one that does not answer
+    stops the whole action. A `start` also visits the nodes of the proxy and of Keycloak,
+    last, so their hooks still run: a module brings proxy hosts and realm roles, and the mail
+    relay's mail server goes into the realm.
+    """
+    profile = next(
+        (f.removeprefix("--profiles=") for f in flags if f.startswith("--profiles=")), ""
+    )
+    if (
+        verb not in ("start", "stop")
+        or not profile
+        or "," in profile
+        or any(f.startswith("--node=") for f in flags)
+    ):
+        return [flags]
+    if not is_distributed(config_dir):
+        return [flags]
+    found = _placement(config_dir)
+    if found is None:
+        return [flags]
+    topology, topo = found
+    service = topology.service_of_profile(profile)
+    owner = str(topo.node_of(service)) if service else ""
+    if not owner:
+        return [flags]
+    owners = [owner]
+    if verb == "start":
+        active = set(topology.active_services(active_profiles(config_dir) | {profile}))
+        for hook_service in _HOOK_SERVICES:
+            node = str(topo.node_of(hook_service))
+            if hook_service in active and node and node not in owners:
+                owners.append(node)
+    return [(*flags, f"--node={node}") for node in owners]
 
 
 class Executor(Protocol):
