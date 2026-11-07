@@ -630,7 +630,11 @@ outcome is served by a different build than the one that started it. Progress is
 shown as the phases papaia-ctl announces, over the raw log, with the outage
 handled as a reconnect. papaia-ctl has no automatic rollback by design, so a
 failed upgrade renders its recovery commands verbatim and links the restore point
-taken beforehand.
+taken beforehand. A successful upgrade can still have skipped a provisioning step
+at the end of its start (the NPM proxy hosts or the Keycloak role sync), because
+papaia-ctl only warns about those; the result panel then lists each such step with
+the line papaia-ctl printed and the command that runs it again on the host. The
+runner logs carry stderr as well as stdout, so these warnings reach the panel.
 
 Upgrades leave the previous versions of the stack's Docker images behind. The
 upgrade dialog offers to remove them once the upgrade has succeeded (selected by
@@ -675,7 +679,7 @@ instead.
 
 **Nodes.** On a distributed installation (papAIa 1.8.0 and newer, an experimental mode of the core) an admin-only `/nodes` page lists the machines with their services, address, status, version and link health. A node that does not answer stays in the list and says so. Adding a node registers it and writes its join archive; the page shows the commands to run on the node and the host keys it offers, for the administrator to compare and confirm. Removing a node and confirming a host key are on its detail page. Each of these changes needs a fresh sign-in at Keycloak, valid for five minutes, on top of the admin role, and each is audited. On a single host the page and its sidebar entry do not exist. The image carries an SSH client for this, and its entrypoint gives the host's user id a name, which OpenSSH requires; the keys stay in the configuration directory, managed by the core.
 
-On such an installation the other pages follow the nodes. Services has a section per node, read from the core's merged `status`, and names a node that does not answer; an action on a group runs on the node that owns it. Host offers a node selector and shows the core's `nodes` and `links` checks. The dashboard's service, disk and certificate cards look at every node and name the one that needs attention, and a node without a reading keeps a card from saying everything is fine. Modules, the overlay editor and the mail settings need nothing new: `papaia-ctl start` renders, sends each node its bundle and recreates the containers there. Users & Roles and Models & Usage keep dialling `keycloak:8443` and `litellm:4000`, which the link gateway carries.
+On such an installation the other pages follow the nodes. Services has a section per node, read from the core's merged `status`, and names a node that does not answer; an action on a group runs on the node that owns it. Host offers a node selector and shows the core's `nodes` and `links` checks. The dashboard's service, disk and certificate cards look at every node and name the one that needs attention, and a node without a reading keeps a card from saying everything is fine. Modules, the overlay editor and the mail settings name the node a module runs on, and a change runs on that node and then on the nodes of the proxy and of Keycloak, whose provisioning steps add proxy hosts, roles and the realm's mail server. A failure on one of those two nodes does not undo the change, which is in place on the module's own node: the job ends with a warning that names the node and the `papaia-ctl start --node=<node>` that catches it up. Switching a module off keeps its data and its settings there, since the core does not delete volumes across nodes yet; the dialog offers no deletion and the API refuses `data` and `all`. The mail relay's state comes from its node's health reading, so the Mail page adds no `doctor` run of its own. Users & Roles and Models & Usage keep dialling `keycloak:8443` and `litellm:4000`, which the link gateway carries.
 
 Backups keep going to the controller, as in the core: the Backup page can back up one node or all, and a restore can pick a remote node as a whole, which touches no other node. The page says that a restore point is not one moment across nodes. An upgrade moves all nodes through the same detached runner; the Upgrade page shows the release per node and each node's latest step. While an upgrade has not finished or a node runs another release, every admin page says so, and starting the stack or a backup is refused with that reason. `stop`, the upgrade and a restore stay possible.
 
@@ -788,6 +792,7 @@ GET /api/v1/jobs/{id}/log
 
 POST   /api/v1/nodes                       # Distributed only; needs a fresh sign-in
 DELETE /api/v1/nodes/{name}                # Distributed only; needs a fresh sign-in
+POST   /api/v1/nodes/{name}/bundle         # Distributed only; needs a fresh sign-in: hand the node its release and bundle
 POST   /api/v1/nodes/{name}/pin            # Distributed only; needs a fresh sign-in
 GET    /api/v1/audit                       # ?user,action,result,target,since,before,limit,offset
 GET    /api/v1/audit/export                # {format=csv|jsonl} + same filters, streamed
@@ -798,11 +803,11 @@ GET    /api/v1/maintenance/restore-points
 GET    /api/v1/maintenance/restore-points/{id}
 GET    /api/v1/maintenance/restore-points/{id}/selectors  # what it can restore in part, and what that stops
 POST   /api/v1/maintenance/restore-points/delete  # {ids} → 202 {job_id}
-POST   /api/v1/maintenance/backup                 # {retention_days?} → 202 {job_id}
+POST   /api/v1/maintenance/backup                 # {retention_days?, node?} → 202 {job_id}; node: one node of a distributed installation
 GET    /api/v1/maintenance/schedule               # the schedule, next run, last backup, overdue
 PUT    /api/v1/maintenance/schedule               # {cron, timezone?, retention_days?, enabled?, run_on_startup?}
 DELETE /api/v1/maintenance/schedule               # remove it (also clears an unreadable file)
-POST   /api/v1/maintenance/restore                # {restore_point, restart_clean?} → 202
+POST   /api/v1/maintenance/restore                # {restore_point, restart_clean?} → 202; 409 for a restore point of one add-on
 POST   /api/v1/maintenance/restore/scoped         # {restore_point, only} part of a snapshot → 202 {job_id}
 GET    /api/v1/maintenance/restore/status
 DELETE /api/v1/maintenance/restore                # acknowledge a finished restore
@@ -874,7 +879,7 @@ GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | mail
                                              #   and the open setup questions (public URL) a switch-on asks
 POST   /api/v1/config/modules/{name}/enable  # {revision, variant?, public_url?, mail?} 202 with a job. public_url: rag | localai; mail: the mail
                                              #   server when none is stored. The RAG system needs no clashing add-on
-POST   /api/v1/config/modules/{name}/disable # {revision, scope?: keep|data|all, confirm?}; 202 with a job. A deletion needs the module name in confirm
+POST   /api/v1/config/modules/{name}/disable # {revision, scope?: keep|data|all, confirm?}; 202 with a job. A deletion needs the module name in confirm, and a single host
 GET    /api/v1/config/overlay                # the three editable overlay files and the other files under overlay/
 GET    /api/v1/config/overlay/{key}          # librechat | litellm | searxng: content, revision, versions
 POST   /api/v1/config/overlay/{key}/check    # {content} syntax check, nothing is written
@@ -912,6 +917,7 @@ papaia-manager/
 │       ├── core/           # ctl (whitelisted papaia-ctl calls), papaia_lib (core handshake),
 │       │                   # catalogs, snapshots, status, env-forms, jobs, audit, tiles,
 │       │                   # components (the software an add-on bundles),
+│       │                   # addon_upgrades + semver (reviewing, applying and rolling back an add-on upgrade),
 │       │                   # user_prefs (what each account chose: its language),
 │       │                   # keycloak, keycloak_users + users_service + roles_service (the Users page),
 │       │                   # resolve (cross-catalog add-on dedup),
@@ -921,6 +927,8 @@ papaia-manager/
 │       │                   # upgrade + images (core upgrade check, outdated images),
 │       │                   # backup_run + schedule + scheduler (backup schedule),
 │       │                   # host_health + docker_usage (host readings from the core's doctor),
+│       │                   # nodes (a distributed installation: the registry, the executors, the lock),
+│       │                   # litellm + model_usage + usage_view + charts (Models & Usage),
 │       │                   # rag (optional RAG system: dashboard tile, sidebar gate, settings
 │       │                   # read from the RAG module's .env) +
 │       │                   # qdrant (REST client) + rag_collections (collections and roles),
@@ -943,13 +951,17 @@ papaia-manager/
 │       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store),
 │       │                   # api_users, api_roles, users_deps (identity role, Keycloak client),
 │       │                   # api_config, ui_config, api_mail, ui_mail, api_notifications,
-│       │                   # ui_notifications, ui_widgets, account (the account's language)
+│       │                   # ui_notifications, ui_widgets, account (the account's language),
+│       │                   # api_models, ui_models, models_deps (Models & Usage),
+│       │                   # api_nodes, ui_nodes (a distributed installation),
+│       │                   # stack_guard (the refusals the configuration routes share)
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build),
 │                           # icons/ (the default tiles' logos, with NOTICE.txt)
 ├── tests/                  # pytest suite (sibling to src/)
 └── docker/
-    ├── Dockerfile          # multi-stage build; installs Docker CLI + compose plugin
+    ├── Dockerfile          # multi-stage build; installs Docker CLI + compose plugin and an SSH client
+    ├── entrypoint.sh       # names the host's user id for OpenSSH, then runs the command
     ├── docker-compose.yml  # local development compose
     ├── git-askpass.sh      # GIT_ASKPASS helper for private catalog auth
     ├── tailwind.config.js, tailwind.brand.css, tailwind.app.css   # stylesheet sources

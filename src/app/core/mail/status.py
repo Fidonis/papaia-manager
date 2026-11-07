@@ -9,7 +9,9 @@ The host health poll skips this check (`host_health._skipped`): it runs `docker 
 into the relay, and only this page has a use for the answer. So it is measured here, in
 a `doctor` of its own with every other check skipped, behind a short cache, and shared
 between concurrent callers. It never raises: an unreadable answer is a reading with a
-reason.
+reason. A relay placed on another node is read from that node's health reading instead
+(`host_health.load_node_health`): a node's `doctor` takes no flags and runs every check,
+the relay's too, and that reading is already cached per node.
 
 The core may not have the check. It is looked for in the core's own registry before it
 is asked for, because `doctor --skip` refuses a name it does not know.
@@ -25,8 +27,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from app.core import host_health, nodes
 from app.core.ctl import CtlError, run_py_cli
 from app.core.docker_usage import core_checks
+from app.core.mail.settings import PROFILE
 from app.i18n import N_, current_locale
 from app.i18n import gettext as _
 
@@ -120,17 +124,23 @@ def parse_status(stdout: str, *, checked_at: datetime | None = None) -> RelaySta
 
 
 _NO_CHECK = N_("this papAIa core has no smtp check")
+_NO_NODE_REPORT = N_("the node's doctor gave no readable answer")
 _NO_OUTPUT = N_("doctor exited with status %(code)s and no output")
 _UNEXPECTED = N_("the relay check failed unexpectedly")
 
 
 async def _run(
-    config_dir: str, workspace_dir: str
+    config_dir: str, workspace_dir: str, *, force: bool = False
 ) -> tuple[RelayStatus, str | None, tuple[str, dict[str, Any]] | None]:
     """The reading, the raw output it came from and, for a run without output, why."""
     names = core_checks(workspace_dir)
     if CHECK_NAME not in names:
         return unavailable(_(_NO_CHECK)), None, (_NO_CHECK, {})
+    node = nodes.profile_node(config_dir, PROFILE)
+    if node and node != nodes.controller_name(config_dir):
+        return await _run_on_node(
+            node, config_dir=config_dir, workspace_dir=workspace_dir, force=force
+        )
     try:
         code, out, err = await run_py_cli(
             command="doctor",
@@ -156,6 +166,23 @@ async def _run(
     return parse_status(out), out, None
 
 
+async def _run_on_node(
+    node: str, *, config_dir: str, workspace_dir: str, force: bool
+) -> tuple[RelayStatus, str | None, tuple[str, dict[str, Any]] | None]:
+    """The reading on the node the relay is placed on, from that node's health reading: no
+    `doctor` of its own over SSH. `force` (the "Re-check" button) is passed on, so the node
+    is asked again if its reading is older than a few seconds."""
+    health = await host_health.load_node_health(
+        node, config_dir=config_dir, workspace_dir=workspace_dir, force=force
+    )
+    report = host_health.cached_node_report(node)
+    if report is None:
+        if health.reason:
+            return unavailable(health.reason), None, None
+        return unavailable(_(_NO_NODE_REPORT)), None, (_NO_NODE_REPORT, {})
+    return parse_status(report), report, None
+
+
 @dataclass(frozen=True)
 class _Entry:
     at: float
@@ -179,12 +206,12 @@ def reset_cache() -> None:
     _refresh = None
 
 
-async def _measure(config_dir: str, workspace_dir: str) -> RelayStatus:
+async def _measure(config_dir: str, workspace_dir: str, force: bool = False) -> RelayStatus:
     """One run, stored. Never raises: a task nobody awaits would lose the error."""
     global _cache  # noqa: PLW0603
     reason: tuple[str, dict[str, Any]] | None
     try:
-        status, out, reason = await _run(config_dir, workspace_dir)
+        status, out, reason = await _run(config_dir, workspace_dir, force=force)
     except Exception:
         logger.exception("mail relay status: unexpected failure")
         status, out, reason = unavailable(_(_UNEXPECTED)), None, (_UNEXPECTED, {})
@@ -216,7 +243,9 @@ async def load_status(*, config_dir: str, workspace_dir: str, force: bool = Fals
     if _cache is not None and time.monotonic() - _cache.at < limit:
         return _in_current_language(_cache)
     if _refresh is None or _refresh.done():
-        _refresh = asyncio.get_running_loop().create_task(_measure(config_dir, workspace_dir))
+        _refresh = asyncio.get_running_loop().create_task(
+            _measure(config_dir, workspace_dir, force)
+        )
     # Shielded: a visitor who leaves must not cancel the run for the next.
     status = await asyncio.shield(_refresh)
     return _in_current_language(_cache) if _cache is not None else status

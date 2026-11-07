@@ -818,3 +818,14 @@ def test_the_users_page_points_at_the_mail_page_when_the_realm_has_no_mail_serve
 ) -> None:
     text = _as(client, "papaia-admin").get("/users").text
     assert "set one up on the Mail page" in text
+
+
+def test_the_status_strip_names_the_node_of_the_relay(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core import nodes
+
+    assert "on node" not in _admin(client).get("/partials/mail/status").text
+    monkeypatch.setattr(nodes, "profile_node", lambda config_dir, profile: "edge")
+    text = _admin(client).get("/partials/mail/status").text
+    assert "on node edge" in text
