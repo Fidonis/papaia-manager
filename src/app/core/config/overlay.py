@@ -44,6 +44,7 @@ OTHER_RENDER_TARGETS: tuple[str, ...] = (
     "ai/localai/models.txt",
     "ai/localai/models",
     "infra/keycloak/keycloak.conf",
+    "infra/keycloak/themes/papaia",
 )
 
 _LOCK = threading.Lock()

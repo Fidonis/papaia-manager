@@ -200,6 +200,7 @@ def test_files_the_editor_does_not_offer_are_listed_with_the_reason(config: str)
         "ai/litellm/prometheus.yml",
         "infra/keycloak/keycloak.conf",
         "ai/localai/models/extra.yaml",
+        "infra/keycloak/themes/papaia/login/theme.properties",
         "ai/librechat/typo.yaml",
         "ai/.hidden",
     ):
@@ -210,6 +211,9 @@ def test_files_the_editor_does_not_offer_are_listed_with_the_reason(config: str)
         "ai/litellm/prometheus.yml": "used by the render, not editable here",
         "infra/keycloak/keycloak.conf": "used by the render, not editable here",
         "ai/localai/models/extra.yaml": "used by the render, not editable here",
+        "infra/keycloak/themes/papaia/login/theme.properties": (
+            "used by the render, not editable here"
+        ),
         "ai/librechat/typo.yaml": "ignored by the render",
     }
 
