@@ -64,9 +64,10 @@ papaia-manager/
 │       │                   #   gettext functions, Jinja install, LocaleMiddleware
 │       ├── locale/<code>/LC_MESSAGES/messages.po   # One directory per language (de today)
 │       ├── auth/
-│       │   ├── oidc.py     # OIDC Authorization Code + PKCE client; ends the provider's session on sign-out
+│       │   ├── oidc.py     # OIDC Authorization Code + PKCE client; ends the provider's session on sign-out;
+│       │   │               #   the step-up request (prompt=login, max_age=0)
 │       │   ├── roles.py    # Authorization policy: which realm role grants what
-│       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser, IdentityAdmin
+│       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser, IdentityAdmin, SteppedUpAdmin
 │       │   ├── user_token.py # The signed-in user's own access token, from the session's refresh token
 │       │   └── csrf.py     # Session-bound CSRF Double-Submit token
 │       ├── core/
@@ -84,6 +85,9 @@ papaia-manager/
 │       │   ├── scheduler.py    # In-process APScheduler: when to start a backup, skip and
 │       │   │                   #   retry, catch-up after a start
 │       │   ├── runner.py       # Detached papaia-ctl container: restore, stack, upgrade
+│       │   ├── nodes.py        # Distributed installation: the registry from deployment.yaml, the Executor
+│       │   │                   #   protocol (LocalExecutor, SshExecutor via the core's node-exec), the
+│       │   │                   #   overview, profile_runs, lock_reason; nothing runs on a single host
 │       │   ├── images.py       # Outdated Docker images: declared vs. used vs. local, removal
 │       │   ├── upgrade.py      # Core release check: git state, target resolution,
 │       │   │                   #   add-on gate, migration plan, runner-log phases
@@ -163,7 +167,7 @@ papaia-manager/
 │       │   ├── jobs.py         # Single-flight job queue + streaming log store
 │       │   └── audit.py        # Append-only JSONL audit log
 │       ├── routers/
-│       │   ├── auth.py         # /auth/login, /auth/callback, /auth/logout
+│       │   ├── auth.py         # /auth/login, /auth/step-up, /auth/callback, /auth/logout
 │       │   ├── health.py       # GET /health (unauthenticated)
 │       │   ├── ui.py           # Server-rendered HTML pages
 │       │   ├── api_catalogs.py # /api/v1/catalogs — catalog CRUD + refresh
@@ -184,6 +188,9 @@ papaia-manager/
 │       │   ├── api_models.py   # /api/v1/models — the served models and their usage (read-only)
 │       │   ├── ui_models.py    # /models page and its /partials/models body
 │       │   ├── models_deps.py  # The transport every call to LiteLLM goes through (tests replace it)
+│       │   ├── api_nodes.py    # /api/v1/nodes — add, remove, hand a bundle, pin a host key (fresh sign-in)
+│       │   ├── ui_nodes.py     # /nodes page, its /partials/nodes list and the detail page of a node
+│       │   ├── stack_guard.py  # The refusals the configuration routes share: a runner in flight, the upgrade lock
 │       │   ├── api_notifications.py # /api/v1/notifications — recipients, their events, settings, test
 │       │   ├── ui_notifications.py  # /mail page (the Notifications tab), its status strip and log
 │       │   ├── api_tiles.py    # /api/v1/tiles — dashboard tile configuration (links and widgets)
@@ -216,6 +223,9 @@ papaia-manager/
 │       │       │                                 #   the editor's dialogs and the scripts the pages share
 │       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
 │       │       ├── models_body.html          # Models & Usage body: figures, charts, table, or why not
+│       │       ├── nav_addon_upgrades.html   # The dot on the Add-Ons entry of the sidebar while upgrades wait
+│       │       ├── nodes_list.html           # Nodes page body: one row per node, an unreachable one included
+│       │       ├── upgrade_nodes.html        # Upgrade page: the release of each node
 │       │       ├── mail_status.html          # Mail Server tab: the relay's state and queue
 │       │       ├── mail_job_status.html      # Mail Server tab: the job in flight or just finished
 │       │       ├── _mail_tabs.html           # The two tabs of Mail: Notifications, Mail Server
@@ -238,7 +248,8 @@ papaia-manager/
 │                               #   icons/ (the default tiles' logos with NOTICE.txt: sources and licences)
 ├── tests/                  # pytest suite (sibling to src/); i18n_scan.py is the template lint's lexer
 └── docker/
-    ├── Dockerfile          # Multi-stage build; installs Docker CLI + compose plugin
+    ├── Dockerfile          # Multi-stage build; installs Docker CLI + compose plugin, openssh-client, libnss-wrapper
+    ├── entrypoint.sh       # Names the host's user id through nss_wrapper (OpenSSH needs it), then execs the command
     ├── docker-compose.yml  # Local development compose
     ├── git-askpass.sh      # Three-line GIT_ASKPASS helper for private catalog auth
     ├── tailwind.config.js, tailwind.brand.css, tailwind.app.css  # Stylesheet sources; the brand layer (see CONTRIBUTING.md)
@@ -318,7 +329,7 @@ Consequences worth remembering when touching sign-out:
 
 All mutating operations (install, start, stop, upgrade, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. A scheduled backup is enqueued onto the same queue. Only one mutating job runs at a time. An embedding run is deliberately not a job: it lives in the ingester, and a run of hours must not hold up a backup or an add-on action. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
 
-**Remove.** `papaia-ctl addon remove` only marks an add-on inactive and leaves its containers running, so the Remove job runs `addon stop --clean-up` first (volumes stay) and then `addon remove`; a failing stop leaves the add-on active. The route and the job both refuse (409) when the add-on's `docker-compose.yml` is missing. papaia-ctl pins `-p <add-on>` for its Compose calls, but without that file Compose takes `COMPOSE_PROJECT_NAME` from the core `.env`, and the `down` hits the core stack, this manager included. Stop, restart and uninstall do not have this guard here; the fix for them belongs to the core (`Fidonis/papaia#244`, merged for the release after 1.6.0, so a core up to 1.6.0 still has the hazard).
+**Remove.** `papaia-ctl addon remove` only marks an add-on inactive and leaves its containers running, so the Remove job runs `addon stop --clean-up` first (volumes stay) and then `addon remove`; a failing stop leaves the add-on active. The route and the job both refuse (409) when the add-on's `docker-compose.yml` is missing. papaia-ctl pins `-p <add-on>` for its Compose calls, but without that file Compose takes `COMPOSE_PROJECT_NAME` from the core `.env`, and the `down` hits the core stack, this manager included. Stop, restart and uninstall do not have this guard here; the fix for them belongs to the core (`Fidonis/papaia#244`, fixed in papAIa 1.7.0, so a core up to 1.6.0 still has the hazard).
 
 **Output streaming.** `_stream_subprocess` in `core/ctl.py` reads the child's output in 64 KiB chunks and puts the lines together itself, because `async for` over the pipe raises when one line is longer than the reader's 64 KiB limit, and a classic image build prints its pull progress as one line of escape sequences without a newline (`Separator is not found, and chunk exceed the limit` failed the job). The pending bytes are a `bytearray` searched from where the last search stopped. A line past `MAX_LINE_BYTES` (1 MiB) is yielded cut at that length with `TRUNCATION_MARKER` appended (the cut never leaves half a multi-byte character before it) and the rest of that line, up to its newline, is dropped, wherever the newline arrives. Every yielded line goes verbatim into the job log, so the cap also bounds the log. `tests/test_ctl_stream.py` pins the chunking, the cap and the order of the output.
 

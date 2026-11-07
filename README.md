@@ -630,7 +630,11 @@ outcome is served by a different build than the one that started it. Progress is
 shown as the phases papaia-ctl announces, over the raw log, with the outage
 handled as a reconnect. papaia-ctl has no automatic rollback by design, so a
 failed upgrade renders its recovery commands verbatim and links the restore point
-taken beforehand.
+taken beforehand. A successful upgrade can still have skipped a provisioning step
+at the end of its start (the NPM proxy hosts or the Keycloak role sync), because
+papaia-ctl only warns about those; the result panel then lists each such step with
+the line papaia-ctl printed and the command that runs it again on the host. The
+runner logs carry stderr as well as stdout, so these warnings reach the panel.
 
 Upgrades leave the previous versions of the stack's Docker images behind. The
 upgrade dialog offers to remove them once the upgrade has succeeded (selected by
@@ -788,6 +792,7 @@ GET /api/v1/jobs/{id}/log
 
 POST   /api/v1/nodes                       # Distributed only; needs a fresh sign-in
 DELETE /api/v1/nodes/{name}                # Distributed only; needs a fresh sign-in
+POST   /api/v1/nodes/{name}/bundle         # Distributed only; needs a fresh sign-in: hand the node its release and bundle
 POST   /api/v1/nodes/{name}/pin            # Distributed only; needs a fresh sign-in
 GET    /api/v1/audit                       # ?user,action,result,target,since,before,limit,offset
 GET    /api/v1/audit/export                # {format=csv|jsonl} + same filters, streamed
@@ -798,11 +803,11 @@ GET    /api/v1/maintenance/restore-points
 GET    /api/v1/maintenance/restore-points/{id}
 GET    /api/v1/maintenance/restore-points/{id}/selectors  # what it can restore in part, and what that stops
 POST   /api/v1/maintenance/restore-points/delete  # {ids} → 202 {job_id}
-POST   /api/v1/maintenance/backup                 # {retention_days?} → 202 {job_id}
+POST   /api/v1/maintenance/backup                 # {retention_days?, node?} → 202 {job_id}; node: one node of a distributed installation
 GET    /api/v1/maintenance/schedule               # the schedule, next run, last backup, overdue
 PUT    /api/v1/maintenance/schedule               # {cron, timezone?, retention_days?, enabled?, run_on_startup?}
 DELETE /api/v1/maintenance/schedule               # remove it (also clears an unreadable file)
-POST   /api/v1/maintenance/restore                # {restore_point, restart_clean?} → 202
+POST   /api/v1/maintenance/restore                # {restore_point, restart_clean?} → 202; 409 for a restore point of one add-on
 POST   /api/v1/maintenance/restore/scoped         # {restore_point, only} part of a snapshot → 202 {job_id}
 GET    /api/v1/maintenance/restore/status
 DELETE /api/v1/maintenance/restore                # acknowledge a finished restore
@@ -912,6 +917,7 @@ papaia-manager/
 │       ├── core/           # ctl (whitelisted papaia-ctl calls), papaia_lib (core handshake),
 │       │                   # catalogs, snapshots, status, env-forms, jobs, audit, tiles,
 │       │                   # components (the software an add-on bundles),
+│       │                   # addon_upgrades + semver (reviewing, applying and rolling back an add-on upgrade),
 │       │                   # user_prefs (what each account chose: its language),
 │       │                   # keycloak, keycloak_users + users_service + roles_service (the Users page),
 │       │                   # resolve (cross-catalog add-on dedup),
@@ -921,6 +927,8 @@ papaia-manager/
 │       │                   # upgrade + images (core upgrade check, outdated images),
 │       │                   # backup_run + schedule + scheduler (backup schedule),
 │       │                   # host_health + docker_usage (host readings from the core's doctor),
+│       │                   # nodes (a distributed installation: the registry, the executors, the lock),
+│       │                   # litellm + model_usage + usage_view + charts (Models & Usage),
 │       │                   # rag (optional RAG system: dashboard tile, sidebar gate, settings
 │       │                   # read from the RAG module's .env) +
 │       │                   # qdrant (REST client) + rag_collections (collections and roles),
@@ -943,13 +951,17 @@ papaia-manager/
 │       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store),
 │       │                   # api_users, api_roles, users_deps (identity role, Keycloak client),
 │       │                   # api_config, ui_config, api_mail, ui_mail, api_notifications,
-│       │                   # ui_notifications, ui_widgets, account (the account's language)
+│       │                   # ui_notifications, ui_widgets, account (the account's language),
+│       │                   # api_models, ui_models, models_deps (Models & Usage),
+│       │                   # api_nodes, ui_nodes (a distributed installation),
+│       │                   # stack_guard (the refusals the configuration routes share)
 │       ├── templates/      # Jinja2 pages + HTMX partials
 │       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build),
 │                           # icons/ (the default tiles' logos, with NOTICE.txt)
 ├── tests/                  # pytest suite (sibling to src/)
 └── docker/
-    ├── Dockerfile          # multi-stage build; installs Docker CLI + compose plugin
+    ├── Dockerfile          # multi-stage build; installs Docker CLI + compose plugin and an SSH client
+    ├── entrypoint.sh       # names the host's user id for OpenSSH, then runs the command
     ├── docker-compose.yml  # local development compose
     ├── git-askpass.sh      # GIT_ASKPASS helper for private catalog auth
     ├── tailwind.config.js, tailwind.brand.css, tailwind.app.css   # stylesheet sources
