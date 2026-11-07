@@ -9739,3 +9739,6 @@ msgstr "Die Änderung ist übernommen, aber ein Node, der nur ihre Hooks ausfüh
 
 msgid "the node's doctor gave no readable answer"
 msgstr "der doctor des Nodes gab keine lesbare Antwort"
+
+msgid "ignored by the render: the core has no file of that name to merge it into"
+msgstr "vom Rendering ignoriert: Der Core hat keine Datei dieses Namens, in die sie eingeht"
