@@ -9739,3 +9739,7 @@ msgstr "Die Änderung ist übernommen, aber ein Node, der nur ihre Hooks ausfüh
 
 msgid "the node's doctor gave no readable answer"
 msgstr "der doctor des Nodes gab keine lesbare Antwort"
+
+#, python-format
+msgid "%(message)s A node that only runs its hooks did not take part either; once it answers, run: %(value)s"
+msgstr "%(message)s Ein Node, der nur ihre Hooks ausführt, war ebenfalls nicht dabei; sobald er antwortet, führen Sie aus: %(value)s"
