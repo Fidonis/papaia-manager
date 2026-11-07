@@ -242,6 +242,22 @@ def test_a_module_that_is_on_can_always_be_switched_off(tmp_path: Path) -> None:
     assert rows["rag"]["can_delete"] is False
 
 
+def test_a_distributed_installation_offers_to_keep_everything_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "config"
+    _env(config, "COMPOSE_PROFILES=nginx,rag\n")
+    _core(tmp_path / "w", profiles=("rag", "smtp", "localai"))
+    rows = {r["name"]: r for r in modules.state(str(config), str(tmp_path / "w"))}
+    assert rows["rag"]["keep_only"] == ""
+    monkeypatch.setattr(modules.nodes, "is_distributed", lambda config_dir: True)
+    monkeypatch.setattr(modules.nodes, "_placement", lambda config_dir: None)
+    rows = {r["name"]: r for r in modules.state(str(config), str(tmp_path / "w"))}
+    for name in ("rag", "mail", "localai"):
+        assert "distributed installation" in str(rows[name]["keep_only"])
+    assert rows["rag"]["can_delete"] is True
+
+
 def test_the_rag_link_is_offered_only_while_the_rag_system_is_on(tmp_path: Path) -> None:
     config = tmp_path / "config"
     _core(tmp_path / "w", profiles=("rag", "smtp"))
@@ -316,16 +332,22 @@ def test_a_module_the_core_has_no_services_for_is_refused(tmp_path: Path) -> Non
 
 
 def test_keeping_everything_needs_no_confirmation(tmp_path: Path) -> None:
-    assert modules.validate_scope("rag", "keep", None, str(tmp_path)) == "keep"
+    assert modules.validate_scope(
+        "rag", "keep", None, str(tmp_path), config_dir=str(tmp_path)
+    ) == "keep"
 
 
 @pytest.mark.parametrize("scope", ["data", "all"])
 def test_a_deletion_needs_the_modules_name_typed_back(tmp_path: Path, scope: str) -> None:
     _core(tmp_path / "w")
-    assert modules.validate_scope("rag", scope, " rag ", str(tmp_path / "w")) == scope
+    assert modules.validate_scope(
+        "rag", scope, " rag ", str(tmp_path / "w"), config_dir=str(tmp_path)
+    ) == scope
     for wrong in (None, "", "RAG", "mail", "rag data"):
         with pytest.raises(modules.ModuleError, match="Type the module name"):
-            modules.validate_scope("rag", scope, wrong, str(tmp_path / "w"))
+            modules.validate_scope(
+                "rag", scope, wrong, str(tmp_path / "w"), config_dir=str(tmp_path)
+            )
 
 
 def test_no_fourth_state_exists(tmp_path: Path) -> None:
@@ -333,14 +355,37 @@ def test_no_fourth_state_exists(tmp_path: Path) -> None:
     assert modules.SCOPES == ("keep", "data", "all")
     for scope in ("config", "settings", "", "ALL", "data,config"):
         with pytest.raises(modules.ModuleError, match="Choose"):
-            modules.validate_scope("rag", scope, "rag", str(tmp_path))
+            modules.validate_scope(
+                "rag", scope, "rag", str(tmp_path), config_dir=str(tmp_path)
+            )
 
 
 def test_a_core_that_cannot_delete_refuses_a_deletion(tmp_path: Path) -> None:
     _core(tmp_path / "w", operations=False)
     with pytest.raises(modules.ModuleError, match="can't delete"):
-        modules.validate_scope("rag", "data", "rag", str(tmp_path / "w"))
-    assert modules.validate_scope("rag", "keep", None, str(tmp_path / "w")) == "keep"
+        modules.validate_scope(
+            "rag", "data", "rag", str(tmp_path / "w"), config_dir=str(tmp_path)
+        )
+    assert modules.validate_scope(
+        "rag", "keep", None, str(tmp_path / "w"), config_dir=str(tmp_path)
+    ) == "keep"
+
+
+def test_a_distributed_installation_refuses_a_deletion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The core refuses `stop --volumes` across nodes, and `module-purge` only sees the
+    # controller's volumes.
+    _core(tmp_path / "w")
+    monkeypatch.setattr(modules.nodes, "is_distributed", lambda config_dir: True)
+    for scope in ("data", "all"):
+        with pytest.raises(modules.ModuleError, match="distributed installation"):
+            modules.validate_scope(
+                "rag", scope, "rag", str(tmp_path / "w"), config_dir=str(tmp_path)
+            )
+    assert modules.validate_scope(
+        "rag", "keep", None, str(tmp_path / "w"), config_dir=str(tmp_path)
+    ) == "keep"
 
 
 # -- what the core reports about a module -------------------------------------------------

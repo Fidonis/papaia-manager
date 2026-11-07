@@ -418,7 +418,7 @@
   async function openOffDialog(name) {
     const row = moduleRow(name);
     let info = null;
-    if (row.can_delete) {
+    if (row.can_delete && !row.keep_only) {
       const box = moduleBox(name);
       box.disabled = true;
       info = await loadInfo(name);
@@ -435,8 +435,8 @@
     offEl("module-off-confirm").classList.add("hidden");
     offEl("module-off-confirm-input").value = "";
     const note = offEl("module-off-note");
-    note.textContent = OFF_NOTES[name] || "";
-    note.classList.toggle("hidden", !OFF_NOTES[name]);
+    note.textContent = [OFF_NOTES[name], row.keep_only].filter(Boolean).join(" ");
+    note.classList.toggle("hidden", !note.textContent);
     if (info) renderScopes(name, info);
     syncOffButton();
     offEl("module-off-dialog").showModal();
