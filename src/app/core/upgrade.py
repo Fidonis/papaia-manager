@@ -136,8 +136,16 @@ async def _run_git(repo: Path, args: tuple[str, ...], limit: float) -> str:
     return raw_out.decode(errors="replace")
 
 
-async def _git(repo: Path, *args: str) -> str:
-    """A local git call. Everything except the fetch goes through here."""
+async def _git(repo: Path, *args: str, node: str | None = None) -> str:
+    """A local git call. Everything except the fetch goes through here.
+
+    `node` is refused: only the controller has a checkout with Git. A node gets a release
+    as an archive, through the core.
+    """
+    if node is not None:
+        raise UpgradeError(gettext(
+            "git cannot run on node %(node)s; a node has no Git checkout"
+        ) % {"node": node})
     return await _run_git(repo, args, _GIT_TIMEOUT)
 
 
@@ -725,8 +733,19 @@ def _strip_prefix(line: str) -> str:
     return line
 
 
+# What the second half of `papaia-ctl upgrade` announces on a distributed installation.
+_INSTALL_ON_NODES = "Installing "
+_START_ON_NODES = "Starting every node"
+_ON_EVERY_NODE = "on every node"
+
+
 def _phase_match(key: str, prefix: str, contains: str, line: str) -> bool:
-    if key == "migrations" and line.startswith(_MIGRATIONS_NONE):
+    if key == "migrations" and (
+        line.startswith(_MIGRATIONS_NONE)
+        or (line.startswith(_INSTALL_ON_NODES) and _ON_EVERY_NODE in line)
+    ):
+        return True
+    if key == "start" and line.startswith(_START_ON_NODES):
         return True
     return line.startswith(prefix) and (not contains or contains in line)
 
@@ -810,6 +829,103 @@ def _detail(key: str, seen: dict[str, str]) -> str:
     if key == "checkout" and line.startswith("Moving the checkout to "):
         return line.removeprefix("Moving the checkout to ").rstrip(".")
     return ""
+
+
+# The provisioning steps at the end of `start`. papaia-ctl only warns when one of them
+# is skipped or fails, and the upgrade still exits 0 and prints its completion line,
+# so these lines are the only sign that proxy hosts or realm roles of the release are
+# missing. A Keycloak that is not the bundled one is skipped on purpose and is no
+# warning. A distributed `start` reports a failed hook with a `WARNING:` line of its
+# own, the only sign when the node did not answer or the hook printed nothing of ours.
+_PROVISIONING_PROBLEMS: tuple[tuple[str, re.Pattern[str], str], ...] = (
+    (
+        "npm-provision",
+        re.compile(
+            r"^(?:NPM (?:provisioning skipped|proxy-host provisioning failed)"
+            r"|WARNING: npm-provision failed on node )"
+        ),
+        N_("Proxy hosts of the release were not created in Nginx Proxy Manager."),
+    ),
+    (
+        "keycloak-role-sync",
+        re.compile(
+            r"^(?:Keycloak role sync (?:skipped|failed)"
+            r"|WARNING: keycloak-role-sync failed on node )"
+        ),
+        N_("Roles and mappers of the release were not added to Keycloak."),
+    ),
+)
+_PROVISIONING_ON_PURPOSE = "AUTH_PROVIDER is not internal_keycloak"
+_RETRY_HINT = re.compile(r"\. Once (?:the stack|the services|Keycloak) (?:is|are) healthy")
+
+
+@dataclass(frozen=True)
+class ProvisioningProblem:
+    """A provisioning step `start` skipped or failed, and how to run it again."""
+
+    step: str
+    summary: str
+    line: str
+    command: str
+
+
+def provisioning_problems(
+    log: str, *, workspace_dir: str, config_dir: str, tail: int | None = None
+) -> list[ProvisioningProblem]:
+    """The provisioning steps the upgrade's `start` skipped or failed, once each, in the
+    order of the steps. Only lines after the start of the stack count: the same steps
+    are not run anywhere else in an upgrade.
+
+    `tail` is the number of lines the log was cut to. Only for a run that succeeded:
+    a full window without the start line is then read as a whole."""
+    lines = [_strip_prefix(raw.strip()) for raw in log.splitlines()]
+    # The second opening is a distributed installation's.
+    start = next(
+        (
+            i
+            for i, line in enumerate(lines)
+            if line.startswith(("Starting the stack", _START_ON_NODES))
+        ),
+        None,
+    )
+    if start is None:
+        # A full window can begin inside the start phase: Compose's pull progress
+        # alone can fill it, and a run that succeeded reaches `start` last.
+        if tail is None or len(lines) < tail:
+            return []
+        start = -1
+    ctl = repo_path(workspace_dir) / "tools" / "papaia-ctl"
+    found: list[ProvisioningProblem] = []
+    for step, pattern, summary in _PROVISIONING_PROBLEMS:
+        for line in lines[start + 1 :]:
+            if pattern.match(line) and _PROVISIONING_ON_PURPOSE not in line:
+                # The sentence only: `warn` appends a retry hint the panel gives itself.
+                text = _RETRY_HINT.split(line, maxsplit=1)[0]
+                found.append(
+                    ProvisioningProblem(
+                        step=step,
+                        summary=gettext(summary),
+                        line=text[:300],
+                        command=f"bash {ctl} {step} --config-dir={config_dir}",
+                    )
+                )
+                break
+    return found
+
+
+_NODE_LINE = re.compile(r"^node ([a-z][a-z0-9-]*): (.+)$")
+
+
+def node_progress(log: str) -> list[tuple[str, str]]:
+    """(node, what it did last) from the runner's output, in the order nodes first appear.
+
+    The core prints `node <name>: ...` for each step on a node. Empty on a single host."""
+    latest: dict[str, str] = {}
+    for raw in log.splitlines():
+        match = _NODE_LINE.match(_strip_prefix(raw.strip()))
+        if match:
+            latest[match.group(1)] = match.group(2)
+    return list(latest.items())
 
 
 def recovery_from_log(log: str) -> str:

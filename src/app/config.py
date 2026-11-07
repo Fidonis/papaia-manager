@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     # ingester's web interface, which is the browser's address for the sign-in.
     qdrant_ingest_url: str = "http://qdrant-ingest:8300"
 
+    # Where this process reaches LiteLLM's HTTP API, on the same network. The Models page reads
+    # the served models and their usage from it; it never writes. The master key is not a
+    # setting: it is read from `ai/litellm/.env` at request time like the other module secrets
+    # (see app/core/litellm.py). Not the public URL of LiteLLM's Admin UI, which is the
+    # browser's address for the link on that page.
+    litellm_url: str = "http://litellm:4000"
+
     # The Embedding page's upload area. An upload lives in a staging folder of its own that
     # is removed after a successful run; one that is left (a failed run, a forgotten upload)
     # is removed after this many hours. The sizes are per file and per upload, in MiB; the

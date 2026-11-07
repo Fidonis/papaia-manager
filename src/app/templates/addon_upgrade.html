@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+{% block title %}{% trans name=addon_name, branding=branding().name %}Upgrade {{ name }} — {{ branding }}{% endtrans %}{% endblock %}
+
+{% block page_title %}{{ addon_name }}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Review what the new version changes before it is applied{% endtrans %}</p>{% endblock %}
+{% block page_breadcrumb %}
+<a href="/addons/{{ addon_name }}" class="mb-0.5 inline-flex items-center gap-1 text-xs opacity-50 hover:opacity-80 transition-opacity">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+  </svg>
+  {{ addon_name }}
+</a>
+{% endblock %}
+
+{# The review of an upgrade. Nothing here changes the add-on until the button at the bottom
+   is pressed: the page stages the catalog's version in a directory of its own and asks
+   papaia-ctl what it would do (`addon upgrade --dry-run`), so what is shown is what the
+   upgrade will do, decided by the same code. The plan is drawn from JSON by Alpine; every
+   text is marked for translation here, and the few that are put together in the browser
+   come through the object at the top of the script. #}
+{% block content %}
+<div x-data="addonUpgrade({{ addon_name|tojson|forceescape }}, {{ upgrades_supported|tojson }})" x-init="load()" class="max-w-4xl">
+
+  {% if not upgrades_supported %}
+  <div class="alert alert-warning mb-6">
+    <span class="text-sm">{{ core_requirement }}</span>
+  </div>
+  {% endif %}
+
+  <div x-show="loading && supported" class="flex justify-center py-20">
+    <span class="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+
+  <div x-show="error" style="display:none" class="alert alert-error mb-6">
+    <span class="text-sm" x-text="error"></span>
+  </div>
+
+  <template x-if="plan">
+    <div class="space-y-6">
+
+      {# ── Summary ───────────────────────────────────────────────── #}
+      <div class="card bg-base-100 border border-base-300">
+        <div class="card-body">
+          <div class="flex flex-wrap items-center gap-3">
+            <span class="font-mono text-lg" x-text="plan.current.version"></span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+            </svg>
+            <span class="font-mono text-lg font-semibold" x-text="plan.candidate.version"></span>
+            <template x-if="plan.direction === 'upgrade'"><span class="badge badge-accent badge-sm">{% trans %}upgrade{% endtrans %}</span></template>
+            <template x-if="plan.direction === 'downgrade'"><span class="badge badge-warning badge-sm">{% trans %}older than the installed version{% endtrans %}</span></template>
+            <template x-if="plan.direction === 'same'"><span class="badge badge-ghost badge-sm">{% trans %}same version{% endtrans %}</span></template>
+            <span class="text-xs opacity-50 font-mono" x-text="data.revision"></span>
+          </div>
+          <p class="text-sm opacity-70">
+            {% trans %}If the add-on is running, it is recreated from the new version.{% endtrans %}
+          </p>
+        </div>
+      </div>
+
+      {# ── The compatibility gate ───────────────────────────────── #}
+      <div x-show="plan.blocked" style="display:none" class="alert alert-error">
+        <div class="text-sm">
+          <p class="font-semibold">{% trans %}This core does not accept the new version.{% endtrans %}</p>
+          <p x-text="plan.compat.reason"></p>
+        </div>
+      </div>
+      <div x-show="!plan.blocked && plan.compat.warnings.length" style="display:none" class="alert alert-warning">
+        <ul class="text-sm list-disc list-inside">
+          <template x-for="w in plan.compat.warnings" :key="w"><li x-text="w"></li></template>
+        </ul>
+      </div>
+
+      {# ── Components ───────────────────────────────────────────── #}
+      <div class="card bg-base-100 border border-base-300"
+           x-show="plan.components.added.length || plan.components.removed.length || plan.components.changed.length">
+        <div class="card-body">
+          <h3 class="card-title text-base mb-2">{% trans %}Components{% endtrans %}</h3>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead>
+                <tr><th>{% trans %}Component{% endtrans %}</th><th>{% trans %}Version{% endtrans %}</th><th></th></tr>
+              </thead>
+              <tbody>
+                <template x-for="c in plan.components.changed" :key="'c' + c.id">
+                  <tr>
+                    <td x-text="c.name"></td>
+                    <td class="font-mono text-xs"><span x-text="c.from"></span> → <span x-text="c.to"></span></td>
+                    <td><span class="badge badge-accent badge-xs">{% trans %}changed{% endtrans %}</span></td>
+                  </tr>
+                </template>
+                <template x-for="c in plan.components.added" :key="'a' + c.id">
+                  <tr>
+                    <td x-text="c.name"></td>
+                    <td class="font-mono text-xs" x-text="c.version"></td>
+                    <td><span class="badge badge-success badge-xs">{% trans %}new{% endtrans %}</span></td>
+                  </tr>
+                </template>
+                <template x-for="c in plan.components.removed" :key="'r' + c.id">
+                  <tr>
+                    <td x-text="c.name"></td>
+                    <td class="font-mono text-xs" x-text="c.version"></td>
+                    <td><span class="badge badge-ghost badge-xs">{% trans %}removed{% endtrans %}</span></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {# ── Configuration ────────────────────────────────────────── #}
+      <div class="card bg-base-100 border border-base-300"
+           x-show="plan.env.new.length || plan.env.removed.length || plan.env.default_changed.length">
+        <div class="card-body">
+          <h3 class="card-title text-base mb-1">{% trans %}Configuration{% endtrans %}</h3>
+          <p class="text-xs opacity-60 mb-2">
+            {% trans %}Values that are already set stay as they are. The upgrade only adds the keys the new version brings.{% endtrans %}
+          </p>
+          <div class="overflow-x-auto" x-show="plan.env.new.length">
+            <table class="table table-sm">
+              <thead><tr><th>{% trans %}New key{% endtrans %}</th><th>{% trans %}What happens{% endtrans %}</th></tr></thead>
+              <tbody>
+                <template x-for="k in plan.env.new" :key="k.key">
+                  <tr>
+                    <td class="font-mono text-xs"><span x-text="k.key"></span><span class="block font-sans opacity-60" x-text="k.label"></span></td>
+                    <td class="text-xs">
+                      <template x-if="k.class === 'generated'"><span>{% trans %}a secret is generated{% endtrans %}</span></template>
+                      <template x-if="k.class === 'change_me' && plan.needs_input.includes(k.key)"><span class="badge badge-error badge-xs">{% trans %}needs a value{% endtrans %}</span></template>
+                      <template x-if="k.class === 'change_me' && !plan.needs_input.includes(k.key)"><span>{% trans %}takes the default unless you enter a value{% endtrans %}</span></template>
+                      <template x-if="k.class === 'replace_secret'"><span class="badge badge-warning badge-xs">Keycloak</span></template>
+                      <template x-if="k.class === 'replace_secret'"><span>{% trans %}set it after the client is imported{% endtrans %}</span></template>
+                      <template x-if="k.class === 'literal'"><span><span>{% trans %}added as shipped:{% endtrans %}</span> <span class="font-mono" x-text="k.value"></span></span></template>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-3 text-xs" x-show="plan.env.removed.length">
+            <p class="font-semibold opacity-70">{% trans %}No longer in the new version (kept in your configuration):{% endtrans %}</p>
+            <p class="font-mono opacity-70" x-text="plan.env.removed.join(', ')"></p>
+          </div>
+          <div class="mt-3 text-xs" x-show="plan.env.default_changed.length">
+            <p class="font-semibold opacity-70">{% trans %}The shipped default changed (your value stays):{% endtrans %}</p>
+            <template x-for="d in plan.env.default_changed" :key="d.key">
+              <p class="font-mono opacity-70"><span x-text="d.key"></span>: <span x-text="d.from"></span> → <span x-text="d.to"></span></p>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      {# ── What else the manifest changes ───────────────────────── #}
+      <div class="card bg-base-100 border border-base-300" x-show="hasManifestChanges">
+        <div class="card-body">
+          <h3 class="card-title text-base mb-2">{% trans %}Integration{% endtrans %}</h3>
+          <ul class="text-sm space-y-1.5 list-disc list-inside">
+            <li x-show="apiChanged">
+              {% trans %}Add-on API:{% endtrans %}
+              <span class="font-mono text-xs"><span x-text="show(plan.manifest.addon_api.from)"></span> → <span x-text="show(plan.manifest.addon_api.to)"></span></span>
+            </li>
+            <li x-show="plan.manifest.attach.added.length">
+              {% trans %}Joins the services:{% endtrans %}
+              <span class="font-mono text-xs" x-text="plan.manifest.attach.added.join(', ')"></span>
+            </li>
+            <li x-show="plan.manifest.attach.removed.length">
+              {% trans %}Leaves the services:{% endtrans %}
+              <span class="font-mono text-xs" x-text="plan.manifest.attach.removed.join(', ')"></span>
+            </li>
+          </ul>
+          <div class="alert alert-info mt-3 py-2" x-show="hasManualSteps">
+            <div class="text-xs">
+              <p class="font-semibold">{% trans %}To do by hand after the upgrade:{% endtrans %}</p>
+              <ul class="list-disc list-inside">
+                <template x-for="c in plan.manifest.keycloak.clients_added" :key="c">
+                  <li><span>{% trans %}Import the Keycloak client{% endtrans %}</span> <span class="font-mono" x-text="c"></span></li>
+                </template>
+                <template x-for="(paths, client) in plan.manifest.keycloak.mappers_added" :key="client">
+                  <li><span>{% trans %}Add the protocol mappers to the Keycloak client{% endtrans %}</span> <span class="font-mono" x-text="client + ': ' + paths.join(', ')"></span></li>
+                </template>
+                <template x-for="k in plan.manifest.replace_secrets_added" :key="k">
+                  <li><span>{% trans %}Set the Keycloak client secret{% endtrans %}</span> <span class="font-mono" x-text="k"></span></li>
+                </template>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── What the add-on says changed ─────────────────────────── #}
+      {# The text is the add-on's own CHANGELOG.md for the versions the upgrade brings in,
+         shown as plain text (x-text on a <pre>), never as markup. Best effort: an add-on
+         without one shows no card. #}
+      <div class="card bg-base-100 border border-base-300" x-show="data.changelog && data.changelog.length" style="display:none">
+        <div class="card-body">
+          <h3 class="card-title text-base mb-2">{% trans %}What changed{% endtrans %}</h3>
+          <template x-for="c in data.changelog" :key="c.version">
+            <div class="mb-3">
+              <p class="text-sm font-semibold">
+                <span class="font-mono" x-text="c.version"></span>
+                <span class="font-normal opacity-60" x-show="c.date" x-text="'· ' + c.date"></span>
+              </p>
+              <pre class="mt-1 text-xs opacity-80 whitespace-pre-wrap break-words" x-text="c.body"></pre>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      {# ── Values the new version asks for ──────────────────────── #}
+      <div class="card bg-base-100 border border-base-300" x-show="data.form.length">
+        <div class="card-body">
+          <h3 class="card-title text-base mb-2">{% trans %}Values for the new version{% endtrans %}</h3>
+          <template x-for="f in data.form" :key="f.key">
+            <div class="form-control mb-3">
+              <label class="label pb-0.5">
+                <span class="label-text font-medium">
+                  <span x-text="f.label"></span>
+                  <span class="text-error" x-show="plan.needs_input.includes(f.key)">*</span>
+                </span>
+                <span class="label-text-alt font-mono opacity-50" x-text="f.key"></span>
+              </label>
+              <input class="input input-bordered input-sm w-full"
+                     :type="f.is_secret ? 'password' : 'text'"
+                     :placeholder="f.default || f.placeholder"
+                     autocomplete="off"
+                     x-model="values[f.key]">
+              <label class="label pt-0.5" x-show="f.hint">
+                <span class="label-text-alt opacity-60" x-text="f.hint"></span>
+              </label>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      {# ── Options and the button ───────────────────────────────── #}
+      <div class="card bg-base-100 border border-base-300" x-show="!applied">
+        <div class="card-body gap-3">
+          <label class="flex items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="backup" :disabled="submitting">
+            <span>
+              {% trans %}Take a restore point of this add-on first{% endtrans %}
+              <span class="block text-xs opacity-60">
+                {% trans %}Its volumes and data directories, so that a rollback can bring the data back as well. An add-on without any gets none and the upgrade goes on.{% endtrans %}
+              </span>
+            </span>
+          </label>
+          <div class="alert alert-warning py-2">
+            <span class="text-xs leading-snug">
+              {% trans %}<strong>There is no automatic rollback.</strong> If the new version does not start, the upgrade stops and the add-on page offers the way back.{% endtrans %}
+            </span>
+          </div>
+          <div class="flex items-center gap-2 justify-end">
+            <a class="btn btn-ghost btn-sm" href="/addons/{{ addon_name }}">{% trans %}Cancel{% endtrans %}</a>
+            <button class="btn btn-primary btn-sm" :disabled="!canApply" @click="apply()">
+              <span style="display:none" x-show="submitting" class="loading loading-spinner loading-xs"></span>
+              <span x-text="fmt(I18N.upgradeTo, { version: plan.candidate.version })"></span>
+            </button>
+          </div>
+          <p class="text-xs text-error text-right" x-show="missing.length" style="display:none">
+            {% trans %}Enter a value for every key marked with *.{% endtrans %}
+          </p>
+        </div>
+      </div>
+
+      {# ── The job ──────────────────────────────────────────────── #}
+      <div class="card bg-base-100 border border-base-300" x-show="applied" style="display:none">
+        <div class="card-body gap-3">
+          <div class="flex items-center gap-2">
+            <span x-show="jobStatus === 'queued' || jobStatus === 'running'" class="loading loading-spinner loading-sm"></span>
+            <span class="font-semibold" x-show="jobStatus === 'queued' || jobStatus === 'running'">{% trans %}Upgrading…{% endtrans %}</span>
+            <span class="font-semibold text-success" x-show="jobStatus === 'succeeded'" style="display:none">{% trans %}The add-on was upgraded.{% endtrans %}</span>
+            <span class="font-semibold text-error" x-show="jobStatus === 'failed'" style="display:none">{% trans %}The upgrade did not finish.{% endtrans %}</span>
+          </div>
+          <div class="alert alert-warning py-2" x-show="jobStatus === 'failed'" style="display:none">
+            <span class="text-xs">{% trans %}The add-on may already run from the new version. Open the add-on page: if an earlier version is offered there, you can go back to it.{% endtrans %}</span>
+          </div>
+          <pre class="bg-base-200 rounded-lg p-3 text-xs overflow-x-auto max-h-96 overflow-y-auto" x-text="log"></pre>
+          <div class="flex justify-end gap-2">
+            <a class="btn btn-ghost btn-sm" :href="'/jobs/' + jobId">{% trans %}Job log{% endtrans %}</a>
+            <a class="btn btn-primary btn-sm" href="/addons/{{ addon_name }}">{% trans %}Back to the add-on{% endtrans %}</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </template>
+
+  <script>
+    var UPGRADE_I18N = {
+      upgradeTo: {{ _("Upgrade to {version}")|tojson }},
+    };
+    Object.assign(I18N, UPGRADE_I18N);
+
+    function addonUpgrade(name, supported) {
+      var csrf = function () { return document.querySelector("meta[name=csrf]").content; };
+      var base = "/api/v1/addons/" + encodeURIComponent(name);
+      var messageOf = async function (r) {
+        try {
+          var e = await r.json();
+          if (e.detail && e.detail.message) return e.detail.field + ": " + e.detail.message;
+          return typeof e.detail === "string" ? e.detail : JSON.stringify(e.detail || e);
+        } catch (_) { return String(r.status); }
+      };
+      return {
+        supported: supported, loading: supported, error: "", data: null, plan: null,
+        values: {}, backup: true, submitting: false, applied: false,
+        jobId: null, jobStatus: "", log: "",
+
+        get missing() {
+          var self = this;
+          return ((this.plan && this.plan.needs_input) || []).filter(function (k) {
+            return !(self.values[k] || "").trim();
+          });
+        },
+        get canApply() {
+          return !!this.plan && !this.plan.blocked && !this.plan.in_place
+            && this.missing.length === 0 && !this.submitting;
+        },
+        get hasManifestChanges() {
+          var m = this.plan.manifest;
+          return this.apiChanged || m.attach.added.length || m.attach.removed.length
+            || this.hasManualSteps;
+        },
+        get apiChanged() {
+          var a = this.plan.manifest.addon_api;
+          return this.show(a.from) !== this.show(a.to);
+        },
+        show: function (v) {
+          if (v === null || v === undefined) return "–";
+          return Array.isArray(v) ? v.join(", ") : String(v);
+        },
+        get hasManualSteps() {
+          var m = this.plan.manifest;
+          return m.keycloak.clients_added.length || Object.keys(m.keycloak.mappers_added).length
+            || m.replace_secrets_added.length;
+        },
+
+        load: async function () {
+          if (!this.supported) return;
+          try {
+            var r = await fetch(base + "/upgrade-plan", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
+              body: "{}",
+            });
+            if (_authGuard(r)) return;
+            if (!r.ok) { this.error = await messageOf(r); return; }
+            var data = await r.json();
+            this.data = data;
+            this.plan = data.plan;
+          } catch (e) {
+            this.error = String(e);
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        apply: async function () {
+          this.submitting = true;
+          this.error = "";
+          var env = {};
+          var self = this;
+          Object.keys(this.values).forEach(function (k) {
+            var v = (self.values[k] || "").trim();
+            if (v) env[k] = v;
+          });
+          try {
+            var r = await fetch(base + "/upgrade", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
+              body: JSON.stringify({ env: env, revision: this.data.revision, backup: this.backup }),
+            });
+            if (_authGuard(r)) return;
+            if (!r.ok) { this.error = await messageOf(r); this.submitting = false; return; }
+            var job = await r.json();
+            this.jobId = job.job_id;
+            this.jobStatus = "queued";
+            this.applied = true;
+            this.follow();
+          } catch (e) {
+            this.error = String(e);
+            this.submitting = false;
+          }
+        },
+
+        follow: function () {
+          var self = this;
+          var tick = async function () {
+            try {
+              var j = await (await fetch("/api/v1/jobs/" + self.jobId)).json();
+              var l = await (await fetch("/api/v1/jobs/" + self.jobId + "/log")).json();
+              self.jobStatus = j.status;
+              self.log = l.log;
+              if (j.status === "succeeded" || j.status === "failed") return;
+            } catch (_) {}
+            setTimeout(tick, 1500);
+          };
+          tick();
+        },
+      };
+    }
+  </script>
+</div>
+{% endblock %}

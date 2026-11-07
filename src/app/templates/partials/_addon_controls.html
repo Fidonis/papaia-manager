@@ -42,19 +42,17 @@
 {% endmacro %}
 
 
-{# The secondary of the pair, offered only when there is something to update.
+{# The secondary of the pair, offered only when there is something to upgrade.
    It gets a button of its own on the detail page, where there is room and where
    the operator came looking for exactly this; on a gallery card it stays in the
-   overflow instead, next to a card that already carries an "Update" badge.
-   Hence `include_update` below -- the two call sites must not both render it, or
+   overflow instead, next to a card that already carries an "Upgrade" badge.
+   Both are a link to the review page: an upgrade is not done blind, so nothing
+   here starts one.
+   Hence `include_upgrade` below -- the two call sites must not both render it, or
    the same verb appears twice. #}
-{% macro update_action(addon, fn) %}
+{% macro upgrade_action(addon, fn) %}
 {% if addon.update_available %}
-<button class="btn btn-outline btn-sm" :disabled="busy"
-        @click="busy = true; activeVerb = 'update'; {{ fn }}('{{ addon.name }}', 'update', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-  <span style="display:none" x-show="activeVerb === 'update'" class="loading loading-dots loading-xs"></span>
-  <span x-show="activeVerb !== 'update'">{% trans %}Update{% endtrans %}</span>
-</button>
+<a class="btn btn-outline btn-sm" href="/addons/{{ addon.name }}/upgrade">{% trans %}Review upgrade{% endtrans %}</a>
 {% endif %}
 {% endmacro %}
 
@@ -63,12 +61,12 @@
    no verbs at all, and an empty kebab that opens onto nothing is worse than no
    kebab. Both destructive items carry `text-error` and open their confirmation
    dialog rather than acting on click. #}
-{% macro overflow_actions(addon, s, fn, include_update=True) %}
-{% set wants_update = include_update and addon.update_available %}
-{% if wants_update or addon.installed_version or s in ("installed", "inactive", "running") %}
+{% macro overflow_actions(addon, s, fn, include_upgrade=True) %}
+{% set wants_upgrade = include_upgrade and addon.update_available %}
+{% if wants_upgrade or addon.installed_version or s in ("installed", "inactive", "running") %}
 {% call overflow_menu(size='sm', label=_('More actions for %(name)s', name=addon.name)) %}
-  {% if wants_update %}
-  <li><a @click="busy = true; activeVerb = 'update'; {{ fn }}('{{ addon.name }}', 'update', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">{% trans %}Update{% endtrans %}</a></li>
+  {% if wants_upgrade %}
+  <li><a href="/addons/{{ addon.name }}/upgrade">{% trans %}Review upgrade{% endtrans %}</a></li>
   {% endif %}
   {% if s in ("installed", "inactive", "running") %}
   <li><a class="text-error" @click="$refs.removeModal.showModal()">{% trans %}Remove{% endtrans %}</a></li>

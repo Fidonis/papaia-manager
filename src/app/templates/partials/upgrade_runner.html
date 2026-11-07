@@ -123,10 +123,40 @@
         {% endfor %}
       </ul>
 
+      {% if node_progress %}
+      <ul class="text-xs">
+        {% for name, step in node_progress %}
+        <li class="py-0.5"><span class="font-medium">{{ name }}</span>: <span class="font-mono opacity-60">{{ step }}</span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
       <div x-show="offline" class="text-sm opacity-60">
         <span class="loading loading-dots loading-xs"></span>
         {% trans %}Manager not reachable &mdash; reconnecting&hellip;{% endtrans %}
       </div>
+
+      {# Steps `start` skipped or failed. papaia-ctl only warns about them, so the run
+         still counts as a success; what the release adds to the proxy or the realm
+         is missing until the step is run again. #}
+      {% if provisioning %}
+      <div class="rounded-lg border border-warning bg-warning/10 p-4">
+        <p class="text-sm font-semibold mb-1">{% trans %}The upgrade finished, but not every step at the end ran{% endtrans %}</p>
+        <ul class="text-sm list-disc ml-5 mb-2">
+          {% for problem in provisioning %}
+          <li>
+            {{ problem.summary }}
+            <span class="block text-xs opacity-60 font-mono break-all">{{ problem.line }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="text-xs opacity-70 mb-2 leading-relaxed">
+          {% trans %}Once the stack is healthy, run these on the host papaia-manager runs on:{% endtrans %}
+        </p>
+        <pre class="rounded bg-base-300 p-3 text-xs whitespace-pre-wrap overflow-x-auto">{% for problem in provisioning %}{{ problem.command }}
+{% endfor %}</pre>
+      </div>
+      {% endif %}
 
       {# The way back. Normally taken verbatim from papaia-ctl's output -- the
          shell already knows which of the two forms applies. `recovery_generated`

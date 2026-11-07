@@ -200,6 +200,19 @@
 </div>
 {% endif %}
 
+{# ── The installation's nodes and links, from the controller's `doctor` ── #}
+{% if cluster_checks %}
+{{ section_header(_("Nodes and links"), "") }}
+<div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  {% for check in cluster_checks %}
+  <div class="px-5 py-3 text-sm {% if not loop.first %}border-t border-base-300{% endif %}">
+    <span class="font-medium">{{ check.title }}</span>
+    <span class="{% if check.state == 'ok' %}text-success{% elif check.state == 'warn' %}text-warning{% elif check.state == 'critical' %}text-error{% else %}opacity-50{% endif %}">{{ check.summary }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {# ── Docker usage ────────────────────────────────────────────────── #}
 {# What Docker's data takes, from the daemon: it works where the data root's free
    space above cannot be measured. It is a report, not a verdict, so the rows have

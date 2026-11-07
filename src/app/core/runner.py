@@ -194,14 +194,23 @@ def runner_name(target: str, kind: RunnerKind = RESTORE_KIND) -> str:
     return f"{kind.name_prefix}{target}"
 
 
-async def _docker(*args: str) -> str:
-    """Run a docker CLI command and return stdout, raising on failure."""
+async def _docker(*args: str, node: str | None = None, merge_stderr: bool = False) -> str:
+    """Run a docker CLI command and return stdout (with stderr if `merge_stderr`), raising
+    on failure.
+
+    `node` is None for this machine. Any other value is refused: a node's forced command
+    has no raw `docker`, so its containers are reached through its node verbs.
+    """
+    if node is not None:
+        raise RunnerError(_(
+            "docker cannot run on node %(node)s; use its node verbs"
+        ) % {"node": node})
     try:
         proc = await asyncio.create_subprocess_exec(
             "docker",
             *args,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT if merge_stderr else asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.DEVNULL,
         )
     except (FileNotFoundError, OSError) as exc:
@@ -217,7 +226,9 @@ async def _docker(*args: str) -> str:
             "docker %(value)s timed out after %(_DOCKER_TIMEOUT).0fs"
         ) % {"value": args[0], "_DOCKER_TIMEOUT": _DOCKER_TIMEOUT}) from exc
     if proc.returncode != 0:
-        detail = raw_err.decode(errors="replace").strip() or f"exit code {proc.returncode}"
+        # With merged streams the error arrives on stdout, and stderr is None.
+        raw_detail = raw_out if merge_stderr else raw_err
+        detail = raw_detail.decode(errors="replace").strip() or f"exit code {proc.returncode}"
         raise RunnerError(_(
             "docker %(value)s failed: %(detail)s"
         ) % {"value": args[0], "detail": detail})
@@ -609,10 +620,11 @@ async def runner_log(name: str, *, tail: int = LOG_TAIL_LINES) -> str:
 
     papaia-ctl writes progress to stdout and warnings to stderr, and the operator
     needs both in order, so the two streams are merged the same way the job log
-    merges them for addon verbs.
+    merges them for addon verbs. `docker logs` hands a container without a TTY its
+    stderr back on the CLI's own stderr, so the merge has to happen here.
     """
     try:
-        return await _docker("logs", "--tail", str(tail), name)
+        return await _docker("logs", "--tail", str(tail), name, merge_stderr=True)
     except RunnerError as exc:
         logger.warning("cannot read restore runner log: %s", exc)
         return ""

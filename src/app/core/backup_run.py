@@ -75,6 +75,7 @@ async def enqueue_backup(
     retention_days: int | None,
     trigger: str = MANUAL,
     note: str | None = None,
+    node: str | None = None,
 ) -> Job:
     """Queue `papaia-ctl backup` and audit it when it has run.
 
@@ -90,6 +91,10 @@ async def enqueue_backup(
     params: dict[str, Any] = {"retention_days": retention_days}
     if trigger != MANUAL:
         params["trigger"] = trigger
+    if node:
+        # One node of a distributed installation, into the same catalogue on the controller.
+        flags.append(f"--only=node:{node}")
+        params["node"] = node
 
     async def _callback(ctx: JobContext) -> None:
         if note:
@@ -117,6 +122,6 @@ async def enqueue_backup(
         action="backup",
         target=str(backup_dir),
         user=user,
-        params={"retention_days": retention_days},
+        params={k: v for k, v in params.items() if k != "trigger"},
         callback=_callback,
     )

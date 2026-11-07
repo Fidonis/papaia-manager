@@ -6,7 +6,7 @@ This document provides structural and architectural context for contributors and
 
 ## What this project does
 
-papaia-manager is a web-based control plane for the papAIa stack's addon lifecycle. It provides a browser UI for discovering, installing, starting, stopping, removing, and updating papAIa addons. It wraps `papaia-ctl` as a subprocess for all mutating operations and imports `lib.*` modules directly from the mounted papAIa workspace for read-only state queries.
+papaia-manager is a web-based control plane for the papAIa stack's addon lifecycle. It provides a browser UI for discovering, installing, starting, stopping, removing, and upgrading papAIa addons. It wraps `papaia-ctl` as a subprocess for all mutating operations and imports `lib.*` modules directly from the mounted papAIa workspace for read-only state queries.
 
 It also serves the stack dashboard: a tile overview of the deployed applications, held in `manager/tiles.yaml` in the papAIa config directory and editable in place by administrators. Next to the links a group can hold **widgets**, cards that show live state (the age of the last backup, the fullest disk, how many services run, the number of open warnings, the installed release, the nearest certificate); each refreshes on its own and a card that cannot read its data says so (see the Dashboard widgets section below).
 
@@ -22,9 +22,17 @@ Backup / Restore (`/backup`) drives the stack-level `papaia-ctl` commands: `back
 
 Upgrade (`/upgrade`) moves the deployment to a newer papAIa release. It is split in two: a read-only check that resolves the target tag, gates the active add-ons against it and lists the pending migrations, and the upgrade itself, which runs `papaia-ctl upgrade` in a detached container (see the Upgrade model section below). The page also lists the Docker images an upgrade leaves behind and removes them on request.
 
+Nodes (`/nodes`) exists on a distributed installation only: the machines of the installation with their services, address, status, version and link health, adding and removing a node, and confirming a new node's host key. On a single host there is no sidebar entry, the routes answer 404 and no process runs for it: `core/nodes.py` decides from `deployment.yaml` alone. `core/nodes.py` also holds the `Executor` protocol. `LocalExecutor` is the old path; `SshExecutor` goes through the core's `node-exec`, so keys, pinned host keys and the verbs of a node's forced command stay in one place. A node has no raw `docker` and no Git, so `_docker`, `images._run`, `query_containers` and `_git` take `node` and refuse it. Every change needs a fresh sign-in (`SteppedUpAdmin`, `/auth/step-up`: `prompt=login` and `max_age=0`, valid for five minutes, and the callback checks `auth_time` and the account) on top of the admin role and CSRF, and is audited, refusals included.
+
+With nodes, `services.load_snapshot` reads the core's merged `status --json --addons` instead of `docker ps`, which sees only the controller: one reading at a time, kept for 30 seconds because each is an SSH round trip per node. `ServiceModule.node` and `StackSnapshot.nodes` carry the result; both stay empty on a single host, and the templates fall back to the old sections. A group action passes `--node=<owner>`, one run per node, because a `start` without it pushes to every node first and one silent node would stop it; a group no module places runs without a node. `link-gateway` is refused like `manager`. The add-on verbs find the owning node themselves. Modules, the overlay editor and Mail name nodes as well: `nodes.profile_runs` turns a profile's `start` or `stop` into one run per node, the profile's node from the core's own placement (`lib.topology`, read in-process, since only the core maps a profile to its catalogue service), and for a `start` then the nodes of `nginx` and `keycloak`, because the core runs `npm-provision` and `keycloak-role-sync` only on a node that is started, and the realm's mail server and a module's roles come from the latter. A core whose placement cannot be read gives one run without a node, as before. The first run is the owner's; in the module and overlay jobs (`config.service._verb` with `skipped`) a failure on a later one, a node that only runs hooks, is logged and collected, the job goes on and ends with `HookNodesFailedError` naming each retry; the relay's own start keeps failing on Keycloak's node, since that run is its point. Switching a module off offers `keep` only on a distributed installation (`modules.validate_scope`, the row's `keep_only`): the core refuses `stop --volumes` there. The pages show the node from `nodes.profile_node`, and the relay's status comes from its node's cached health reading (`host_health.cached_node_report` after `load_node_health`), not a `doctor` of its own. `host_health.load_node_health` reads another node's `doctor`, one run per node at a time, with a failure kept for `FAILURE_TTL_SECONDS`. The reading the cards use skips `nodes` and `links`, which ask every node in a row: `load_cluster_checks` reads those in the background for the Host page, which never waits for them. The service, disk and certificate widgets and the `service_unhealthy` and `cert_expiring` notifications work across all nodes; a silent node is a condition of its own and its modules stay in `was_up`.
+
+`nodes.lock_reason` reads the core's `upgrade.lock` and each node's `state.json`, the same two reasons as `cluster.skew`, from files only. It drives the banner in `base.html` and the 409s on backup, on add-on, module, overlay and mail actions (`stack_guard`), and on the stack and group actions other than `stop`. Backups take `node` (`--only=node:NAME`), and a restore offers remote nodes as `kind="node"` groups; the controller is not offered, since it is the manager's own node. The upgrade runner needs no change: `papaia-ctl upgrade` orchestrates the nodes, and `upgrade.node_progress` reads its `node <name>: ...` lines.
+
 Audit (`/audit`) reads, exports and prunes the audit log the other surfaces already write to — filtered, paginated JSON/HTML, CSV/JSONL export, and a dry-run-gated prune, all admin-only and CSRF-checked like every other mutating route.
 
 Host (`/host`) reports memory, CPU, GPU, clock synchronisation, disk space and certificate expiry of the machine underneath the deployment, and what Docker's data takes. It measures nothing itself: it runs the core's `doctor` for the six checks it needs, and in a run of its own for `docker_usage`, and shows the core's verdicts (see the Host health section below). How often it measures is a setting (Settings, "Host monitoring"). Admin-only, like Services; the sidebar status row carries its counts to every role.
+
+Models & Usage (`/models`) shows which models LiteLLM serves and what they consumed: tokens, spend and requests per day and per model, for a window of UTC days that defaults to the last seven, as stacked bars with a metric switch, a share list, a table of every model and a page per model. It reads LiteLLM's HTTP API with its master key and changes nothing there; models, prices, teams and keys stay in LiteLLM's own Admin UI, which the page links to (see the Models and usage section below). Admin-only, like Services and Host.
 
 Settings (`/settings`) holds the manager's own configuration in `$PAPAIA_CONFIG_DIR/manager/settings.yaml`, one section per topic: Branding (the name and second line at the top of the sidebar, and an uploaded logo) and Host monitoring (the interval of the Host page's measurements). Admin-only and CSRF-checked like every other mutating route, with every change audited; the logo is the one thing every role fetches, because the sidebar shows it (see the Settings and branding section below).
 
@@ -56,9 +64,10 @@ papaia-manager/
 │       │                   #   gettext functions, Jinja install, LocaleMiddleware
 │       ├── locale/<code>/LC_MESSAGES/messages.po   # One directory per language (de today)
 │       ├── auth/
-│       │   ├── oidc.py     # OIDC Authorization Code + PKCE client; ends the provider's session on sign-out
+│       │   ├── oidc.py     # OIDC Authorization Code + PKCE client; ends the provider's session on sign-out;
+│       │   │               #   the step-up request (prompt=login, max_age=0)
 │       │   ├── roles.py    # Authorization policy: which realm role grants what
-│       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser, IdentityAdmin
+│       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser, IdentityAdmin, SteppedUpAdmin
 │       │   ├── user_token.py # The signed-in user's own access token, from the session's refresh token
 │       │   └── csrf.py     # Session-bound CSRF Double-Submit token
 │       ├── core/
@@ -76,6 +85,9 @@ papaia-manager/
 │       │   ├── scheduler.py    # In-process APScheduler: when to start a backup, skip and
 │       │   │                   #   retry, catch-up after a start
 │       │   ├── runner.py       # Detached papaia-ctl container: restore, stack, upgrade
+│       │   ├── nodes.py        # Distributed installation: the registry from deployment.yaml, the Executor
+│       │   │                   #   protocol (LocalExecutor, SshExecutor via the core's node-exec), the
+│       │   │                   #   overview, profile_runs, lock_reason; nothing runs on a single host
 │       │   ├── images.py       # Outdated Docker images: declared vs. used vs. local, removal
 │       │   ├── upgrade.py      # Core release check: git state, target resolution,
 │       │   │                   #   add-on gate, migration plan, runner-log phases
@@ -128,11 +140,21 @@ papaia-manager/
 │       │   ├── docker_usage.py # What Docker's data takes (`docker system df`) via the core's
 │       │   │                   #   `doctor`: its own slower run and cache, never part of the
 │       │   │                   #   host reading; stale-while-revalidate, never raises
+│       │   ├── litellm.py      # Read-only client of LiteLLM's HTTP API (GET only, three routes) and the
+│       │   │                   #   master key from `ai/litellm/.env`; failures as msgid + parameters
+│       │   ├── model_usage.py  # The Models page's numbers: the window, the sums of LiteLLM's day
+│       │   │                   #   entries, the catalogue, colour slots; cached per window, single-flight,
+│       │   │                   #   never raises
+│       │   ├── usage_view.py   # The Models page as data for its templates: the query (the page's
+│       │   │                   #   whole state), the figures, the chart and table rows, all worded
+│       │   ├── charts.py       # Chart geometry and number/date formats; pure functions
 │       │   ├── services.py     # Container status from docker ps, by module label; declared
 │       │   │                   #   vs. live merge; shared snapshot for the addon surfaces
 │       │   ├── inventory.py    # Declared state: compose fragments × profiles, addon manifests
 │       │   ├── envfile.py      # Shared KEY=value env-file parsing
-│       │   ├── snapshots.py    # git-archive materialization + installed.yaml
+│       │   ├── snapshots.py    # git-archive materialization, revision directories, pruning + installed.yaml
+│       │   ├── addon_upgrades.py # Staging a version, `addon upgrade --dry-run`, answers file, following the registration
+│       │   ├── semver.py       # SemVer precedence for add-on versions
 │       │   ├── state.py        # Merged addon status (catalog × deployment × Docker)
 │       │   ├── envforms.py     # Env-form spec from .env.example + manifest prompts
 │       │   ├── envvalidate.py  # Server-side validation/coercion of add-on env values
@@ -145,7 +167,7 @@ papaia-manager/
 │       │   ├── jobs.py         # Single-flight job queue + streaming log store
 │       │   └── audit.py        # Append-only JSONL audit log
 │       ├── routers/
-│       │   ├── auth.py         # /auth/login, /auth/callback, /auth/logout
+│       │   ├── auth.py         # /auth/login, /auth/step-up, /auth/callback, /auth/logout
 │       │   ├── health.py       # GET /health (unauthenticated)
 │       │   ├── ui.py           # Server-rendered HTML pages
 │       │   ├── api_catalogs.py # /api/v1/catalogs — catalog CRUD + refresh
@@ -163,6 +185,12 @@ papaia-manager/
 │       │   ├── ui_config.py    # /settings/modules and /settings/overlay pages and the job strip they share
 │       │   ├── api_mail.py     # /api/v1/mail — the mail relay: settings, apply, probe, test mail
 │       │   ├── ui_mail.py      # /mail/server page (the Mail Server tab) and its status and job partials
+│       │   ├── api_models.py   # /api/v1/models — the served models and their usage (read-only)
+│       │   ├── ui_models.py    # /models page and its /partials/models body
+│       │   ├── models_deps.py  # The transport every call to LiteLLM goes through (tests replace it)
+│       │   ├── api_nodes.py    # /api/v1/nodes — add, remove, hand a bundle, pin a host key (fresh sign-in)
+│       │   ├── ui_nodes.py     # /nodes page, its /partials/nodes list and the detail page of a node
+│       │   ├── stack_guard.py  # The refusals the configuration routes share: a runner in flight, the upgrade lock
 │       │   ├── api_notifications.py # /api/v1/notifications — recipients, their events, settings, test
 │       │   ├── ui_notifications.py  # /mail page (the Notifications tab), its status strip and log
 │       │   ├── api_tiles.py    # /api/v1/tiles — dashboard tile configuration (links and widgets)
@@ -194,6 +222,10 @@ papaia-manager/
 │       │       ├── ingest_*.html, _ingest_*.html # Ingest jobs: list, job tabs, runs, credentials, leftovers,
 │       │       │                                 #   the editor's dialogs and the scripts the pages share
 │       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
+│       │       ├── models_body.html          # Models & Usage body: figures, charts, table, or why not
+│       │       ├── nav_addon_upgrades.html   # The dot on the Add-Ons entry of the sidebar while upgrades wait
+│       │       ├── nodes_list.html           # Nodes page body: one row per node, an unreachable one included
+│       │       ├── upgrade_nodes.html        # Upgrade page: the release of each node
 │       │       ├── mail_status.html          # Mail Server tab: the relay's state and queue
 │       │       ├── mail_job_status.html      # Mail Server tab: the job in flight or just finished
 │       │       ├── _mail_tabs.html           # The two tabs of Mail: Notifications, Mail Server
@@ -216,7 +248,8 @@ papaia-manager/
 │                               #   icons/ (the default tiles' logos with NOTICE.txt: sources and licences)
 ├── tests/                  # pytest suite (sibling to src/); i18n_scan.py is the template lint's lexer
 └── docker/
-    ├── Dockerfile          # Multi-stage build; installs Docker CLI + compose plugin
+    ├── Dockerfile          # Multi-stage build; installs Docker CLI + compose plugin, openssh-client, libnss-wrapper
+    ├── entrypoint.sh       # Names the host's user id through nss_wrapper (OpenSSH needs it), then execs the command
     ├── docker-compose.yml  # Local development compose
     ├── git-askpass.sh      # Three-line GIT_ASKPASS helper for private catalog auth
     ├── tailwind.config.js, tailwind.brand.css, tailwind.app.css  # Stylesheet sources; the brand layer (see CONTRIBUTING.md)
@@ -294,15 +327,31 @@ Consequences worth remembering when touching sign-out:
 
 ### Job model
 
-All mutating operations (install, start, stop, update, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. A scheduled backup is enqueued onto the same queue. Only one mutating job runs at a time. An embedding run is deliberately not a job: it lives in the ingester, and a run of hours must not hold up a backup or an add-on action. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
+All mutating operations (install, start, stop, upgrade, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. A scheduled backup is enqueued onto the same queue. Only one mutating job runs at a time. An embedding run is deliberately not a job: it lives in the ingester, and a run of hours must not hold up a backup or an add-on action. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
 
-**Remove.** `papaia-ctl addon remove` only marks an add-on inactive and leaves its containers running, so the Remove job runs `addon stop --clean-up` first (volumes stay) and then `addon remove`; a failing stop leaves the add-on active. The route and the job both refuse (409) when the add-on's `docker-compose.yml` is missing. papaia-ctl pins `-p <add-on>` for its Compose calls, but without that file Compose takes `COMPOSE_PROJECT_NAME` from the core `.env`, and the `down` hits the core stack, this manager included. Stop, restart and uninstall do not have this guard here; the fix for them belongs to the core (`Fidonis/papaia#244`, merged for the release after 1.6.0, so a core up to 1.6.0 still has the hazard).
+**Remove.** `papaia-ctl addon remove` only marks an add-on inactive and leaves its containers running, so the Remove job runs `addon stop --clean-up` first (volumes stay) and then `addon remove`; a failing stop leaves the add-on active. The route and the job both refuse (409) when the add-on's `docker-compose.yml` is missing. papaia-ctl pins `-p <add-on>` for its Compose calls, but without that file Compose takes `COMPOSE_PROJECT_NAME` from the core `.env`, and the `down` hits the core stack, this manager included. Stop, restart and uninstall do not have this guard here; the fix for them belongs to the core (`Fidonis/papaia#244`, fixed in papAIa 1.7.0, so a core up to 1.6.0 still has the hazard).
 
 **Output streaming.** `_stream_subprocess` in `core/ctl.py` reads the child's output in 64 KiB chunks and puts the lines together itself, because `async for` over the pipe raises when one line is longer than the reader's 64 KiB limit, and a classic image build prints its pull progress as one line of escape sequences without a newline (`Separator is not found, and chunk exceed the limit` failed the job). The pending bytes are a `bytearray` searched from where the last search stopped. A line past `MAX_LINE_BYTES` (1 MiB) is yielded cut at that length with `TRUNCATION_MARKER` appended (the cut never leaves half a multi-byte character before it) and the rest of that line, up to its newline, is dropped, wherever the newline arrives. Every yielded line goes verbatim into the job log, so the cap also bounds the log. `tests/test_ctl_stream.py` pins the chunking, the cap and the order of the output.
 
 ### Add-on components
 
 An add-on's `version` counts changes to the bundle, not to the software in it. The catalog states that in the manifest's `components` list (`id`, `name`, `role`, `kind`, `image_var`, `version`, `source`, `pinned: false` for a floating tag), and `core/components.py` turns it into what the gallery card (the primary components next to the add-on version) and the detail page (a table of all of them) show, and into `components` in the add-on JSON of `api_addons`. For an installed add-on each component also carries the version of the managed snapshot (`changed` when the catalog differs, so an update reads "3.0.5 → 3.1.0") and, when the add-on's `.env` in the config directory sets the component's `image_var` to another tag, that tag as `override_version`. The overrides are read from the file, not from `docker compose config`, so the pages need no Docker and no process per view; a different registry with the same tag is not told apart, because the manifest records no repository. The manifest may come from any catalog, so nothing is trusted: entries of the wrong shape are skipped, an unknown role counts as a sidecar, text is cut, at most 32 entries are read and only an `https://` source becomes a link. A catalog without `components` shows nothing extra.
+
+### Upgrading and rolling back an add-on
+
+The decisions belong to `papaia-ctl addon upgrade` and `addon rollback` (papAIa core 1.8.0, ADR 0008 there); this repository stages the files, shows the plan and keeps `installed.yaml` true. Pages: `/addons/<name>/upgrade` (the review), the Versions card and the rollback dialog on the detail page, the Upgrades tile and list on the gallery, and the dot on the Add-Ons nav entry (`/partials/nav/addon-upgrades`).
+
+- **A version is a directory, written once.** `snapshots.managed_snapshot_path(workspace, catalog, add-on, revision)` is `addons/_managed/<catalog>/<revision>/<add-on>`, with the add-on's name last because Compose names the project after it. The revision is `sha[:12]` of the catalog clone's HEAD, or `local-<timestamp>` for a local catalog (a working directory, no commit). `addon_upgrades.stage_revision` never overwrites a directory that exists, and an install uses it too. An install made before this layout is registered at `_managed/<catalog>/<add-on>`; the first upgrade leaves it as it is (it becomes `previous`) and the next one prunes it. `snapshots.prune_snapshots` keeps what is kept (registered directory, `previous`, a version being reviewed) and fills up to three with the newest; `uninstall` removes all of them.
+- **The registration is the truth, not installed.yaml.** What runs from where is `path` in deployment.yaml, which an upgrade and a rollback repoint. Everything that needs the installed directory goes through `snapshots.installed_addon_dir(deployment_entry, ...)`; `managed_snapshot_path` without a revision is only the fallback for an add-on deployment.yaml does not list. After a job, `sync_installed_after_upgrade` / `sync_installed_after_rollback` make installed.yaml say what is registered, whatever the exit status: `addon upgrade` that cannot recreate the containers has already moved the registration. `InstalledAddon.history` (three entries, newest first) is provenance for the page, never an input to papaia-ctl.
+- **The plan is papaia-ctl's.** `POST /{name}/upgrade-plan` stages the version and runs `addon upgrade --dry-run --json --path=<staged>`; `parse_plan_output` finds the document in the merged output (a lone `{` line) and a plan the gate refused (`blocked`) is still a plan. The review page draws it; nothing about it is computed here, so the page and the upgrade cannot disagree. A POST because it writes (the staged directory, pruning).
+- **What was reviewed is what is applied.** The plan returns `revision`; the upgrade body carries it back. For a git catalog a changed HEAD, and for a local one a missing directory, is a 409 "review again". A refusal before the job exists (core too old, gate `blocked`, `in_place`, a key the plan does not ask about, a value `needs_input` lacks) is an HTTP error, not a failed job.
+- **Values go through a file.** `write_answers_file` writes `KEY=VALUE` lines to a `mkstemp` file (0600), the job passes `--answers-file=`, and the file is deleted in the job's `finally`. Only keys the plan asks about (`answerable_keys`: new `change_me` and `replace_secret` keys) are accepted, checked against the candidate's own `.env.example` form. The audit entry has the keys (`answered`), never a value.
+- **Rollback is one step.** `previous_version` reads `previous` from deployment.yaml and whether its directory and its restore point (the backup catalogue) still exist; the dialog makes the operator choose between code and configuration only and code plus the data of the restore point (`--restore-data`), and the second is not offered without a restore point. Both are audited as `rollback`; `upgrade` is audited with `from`, `to`, `revision`, `backup`, `answered`.
+- **Needs core 1.8.0.** `core_supports_upgrades` looks for `cmd_addon_upgrade()` in the core's `addon.sh` (a version number would be wrong for a checkout that has the change before the release). An older core gets a 409 from the routes and a hint on the pages.
+- **The upgrade rule is SemVer precedence** (`resolve.update_available`, shared with the notification and the dashboard): a catalog that is behind offers nothing, and a version that is not SemVer counts as an upgrade when it differs. The nav dot and the count come from the catalogs on disk through `addon_upgrades.outdated_count` (a minute of cache, cleared by a catalog refresh or an upgrade); there is no network.
+- **The changelog is best effort.** `changelog_between` reads the staged add-on's `CHANGELOG.md` (Keep a Changelog headings, `## [x.y.z] - date`) and returns the sections newer than the installed version up to the candidate, at most about 6000 characters; the page shows them as plain text. An add-on without the file, or one in another format, shows no card.
+- **A scoped restore point is not a backup of the stack.** `backup.yaml` entries of `addon upgrade` carry `scope: [addon:NAME]`; `RestorePoint.is_scoped` marks them in the list, `POST /maintenance/restore` answers 409 for one (papaia-ctl refuses it too), the wizard presets "choose what to restore", and `newest_successful` (the status strip, the dashboard widget, the schedule's retention guard) skips them.
+- **Not done:** the compatibility verdict is not shown on the gallery (only the review page asks papaia-ctl), there is no "catalogs refreshed N minutes ago" line (a catalog records no refresh time), the catalogs carry no signature, so there is no "verified" mark, and a catalog that needs authentication is refreshed as before.
 
 ### Restore model
 
@@ -342,6 +391,7 @@ Consequences worth remembering when touching this area:
 - An upgrade is mutually exclusive with every job, restore and stack action, and the guards are symmetric — `api_maintenance.py` and `api_stack.py` refuse while an upgrade runs, not just `api_upgrade.py`.
 - A finished upgrade runner is **not** cleared automatically the way a stack runner is. It holds the outcome of the last attempt, and `$CONFIG_DIR/upgrade.log` is what makes dismissing it safe.
 - There is no automatic rollback, by design in papaia-ctl. The failure panel renders `_upgrade_failed`'s recovery block verbatim rather than re-deriving it.
+- A successful upgrade can still have skipped the two provisioning steps at the end of `start` (NPM proxy hosts, Keycloak role sync): papaia-ctl only warns, and the run exits 0. `upgrade.provisioning_problems` reads those lines after "Starting the stack" or "Starting every node", including the `WARNING: <hook> failed on node` line of a distributed start (a Keycloak that is not the bundled one is skipped on purpose and is no problem). When the panel's window of `UPGRADE_LOG_TAIL_LINES` is full and the start line is not in it, which a pull of new images during `start` can cause, the whole window counts, since a run that succeeded reaches `start` last. The result panel names each one with its retry command. The runner reaches the stack because the core's `start` joins it to `papaia-net` once `up` has created the network (papAIa 1.8.0); it cannot join at `docker run`, since `stop --clean-up` removes the network.
 - A dirty checkout blocks the upgrade with no override. `--force` degrades the add-on gate only, and is refused outright when the gate passed or failed on an `ERROR`.
 - The target version reaches both an argv and a container name, so it is validated with `\Z`-anchored patterns in both `core/upgrade.py` and `core/runner.py` — `$` would also match before a trailing newline.
 
@@ -411,6 +461,23 @@ Consequences worth remembering when touching this area:
 - **`doctor` is in `ALLOWED_PY_COMMANDS`.** It is read-only by the core's own contract; `tests/test_ctl.py` pins the set.
 
 Known limits: no history (that is what an observability stack is for), no GPU figures and no clock state from inside the manager container from a core that cannot read them there, the free space of the Docker data root (it is not mounted; what Docker holds is shown instead), memory and CPU figures that are the host's own (`/proc/meminfo` and the load average are not namespaced) and not those of any container limit, and thresholds that cannot be tuned from here. Memory, CPU and the clock change faster than disk and certificates, but all of them share one run and one interval.
+
+### Models and usage
+
+The Models & Usage page (`/models`, Monitor group, between Host and Jobs) and its API (`/api/v1/models`, `/api/v1/models/usage`) read LiteLLM, the stack's model gateway. `core/litellm.py` is the client, `core/model_usage.py` the numbers, `core/usage_view.py` the page as data, `core/charts.py` the geometry, and `tests/fake_litellm.py` the in-memory LiteLLM (`httpx.MockTransport`, in the shapes of 1.100) that `test_litellm_client.py`, `test_model_usage.py`, `test_ui_models.py` and `test_api_models.py` run against.
+
+- **Read-only, and provably so.** The client has no method that is not a GET and sends to three routes only: `/health/readiness` (no key), `/model/info` and `/user/daily/activity`. `READ_PATHS` is the whole list; anything else raises before a request is made, and the tests record every request the page causes. The master key is the strongest credential of the stack, which is the reason.
+- **The master key is read at request time** from `$PAPAIA_CONFIG_DIR/ai/litellm/.env` (`LITELLM_MASTER_KEY`), like the RAG secrets, so a shell on the host and the manager agree on it and the core needs no change. It goes into one header and nowhere else: not into a message, a log line, an exception text or a page, and `LitellmSecrets` hides it from a `repr`. A message names `host:port` and the exception class, never the address. Without a key nobody is asked anything.
+- **Failure is a state, not an error.** A LiteLLM that is down, a key it refuses, an error status or an answer that makes no sense is a `Reading` with a `problem` (a msgid and parameters, so the cached reading is worded in each account's language); the page shows it and offers to try again, the API answers 503. Nothing here raises into a request.
+- **Days are UTC days, and the grain is a day.** `/user/daily/activity` has no finer grain, so there is no "today" or "24 hours" window. `7d` is today and the six days before it; `30d`, `90d`, `month` (the first until today) and `custom` (`from`/`to` as `YYYY-MM-DD`, both required, `from` not after `to`, not in the future, at most 365 days) are the others. An invalid window is told to the person who typed it and replaced by the default; the API answers 422. LiteLLM writes usage in batches, so the newest requests trail by about a minute.
+- **Paging counts rows, not days.** One day can arrive on several pages and the same model from several keys, so values are added up. A window needing more than `MAX_PAGES` pages is read as far as that and marked incomplete, which the page says.
+- **Model names are the public ones.** Usage is read from `breakdown.model_groups`, the names users call, which are the `model_name` of `/model/info`; several deployments behind one name are one model. A name with usage but no deployment is shown as no longer served; a served model with no usage is listed all the same. LibreChat calls LiteLLM with the master key, so there is no attribution by user or team and the page does not pretend to one.
+- **No price, no spend.** A model without a price in LiteLLM (a local one) counts tokens and requests and has spend 0. The page shows a dash instead of `$0.00` and says so; a price is set in LiteLLM.
+- **One reading per window, shared.** `load_reading` keeps a reading for 60 s (15 s for a failure), runs one fetch at a time per window (concurrent callers share the task), folds a "Reload" inside five seconds of the last reading into it, and keeps at most 16 windows. The cache holds the raw reading, never text.
+- **The page's whole state is its query string** (`range`, `from`, `to`, `metric`, `view`, `model`; `usage_view.Query`). Every control is a link to the same page with one thing changed, which htmx swaps into `#models-body` and records as the address, so a view can be bookmarked and the page works without script. The shell loads its body from the query it was asked with.
+- **Charts are boxes, not an SVG scaled to the width.** Bars are `div`s with a height in percent, so labels keep the size of the page's text on every width; only the table's trend lines are inline SVG. Colours are the theme's `--chart-0` to `--chart-6` and `--chart-other` (`docker/tailwind.app.css`, one set per theme, validated against the card surfaces): a model keeps its slot from one window to the next, and with more than seven models the busiest keep one and the rest are drawn together as "Other". A chart is never the only way to read a number: the legend, a tooltip that is also reachable with the arrow keys, and the table of days say the same. Tooltip text is set with `x-text`, never as markup.
+
+Known limits: no budgets, teams or keys (LiteLLM's own pages), no attribution by account, no live view (a day is the grain), no export, and no download status of local models. The dashboard has no `model-usage` widget yet.
 
 ### Settings and branding
 
@@ -753,6 +820,7 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `PAPAIA_WORKSPACE_DIR` | Path to papAIa workspace (must equal host path in container) |
 | `QDRANT_URL` | Where the manager itself reaches the integrated Qdrant (default: `http://qdrant:6333`, which resolves on the network the manager shares with it). It replaces the stored address of a connection to the integrated Qdrant when connecting and is never written to the connection store |
 | `QDRANT_INGEST_URL` | Where the manager reaches the ingester's REST API (default: `http://qdrant-ingest:8300`, on the same network). Not the ingester's public URL |
+| `LITELLM_URL` | Where the manager reaches LiteLLM's HTTP API for the Models & Usage page (default: `http://litellm:4000`, on the same network). Not the public URL of LiteLLM's Admin UI. The master key is not a setting: it is read from `ai/litellm/.env` at request time, and the link to the Admin UI is built from `LITELLM_PUBLIC_URL` in the stack's `.env` |
 | `INGEST_UPLOAD_TTL_HOURS` | How long an upload that was not embedded successfully stays before it is deleted (default: 24; 1 to 720) |
 | `INGEST_MAX_UPLOAD_MB` / `INGEST_MAX_BATCH_MB` | Size limits of one uploaded file (default: 200; 1 to 10240) and of one upload (default: 2048; 1 to 102400), in MiB |
 | `SSL_CERT_FILE` | Optional path to a custom CA bundle. It is trusted for the OIDC endpoints and, next to the public CAs, for connections to a Qdrant |
@@ -779,7 +847,7 @@ mount.
 
 ## Security boundaries
 
-- **Never log** session secrets, OIDC client secrets, the mail relay's upstream password, catalog tokens, Qdrant api-keys (`QDRANT_JWT_SECRET` and the keys stored in connections), `QI_API_TOKEN`, `QI_CONNECTIONS_SECRET`, the values of ingest credentials, the webhook URLs of notification recipients or the content of overlay files (it can hold an API key). They are never part of a response or an audit entry either.
+- **Never log** session secrets, OIDC client secrets, the mail relay's upstream password, catalog tokens, Qdrant api-keys (`QDRANT_JWT_SECRET` and the keys stored in connections), `QI_API_TOKEN`, `QI_CONNECTIONS_SECRET`, `LITELLM_MASTER_KEY`, the values of ingest credentials, the webhook URLs of notification recipients or the content of overlay files (it can hold an API key). They are never part of a response or an audit entry either.
 - **The signed-in user's access token** (used by the Users page) lives in memory only: never in the session cookie, a response, an audit entry or a log line. Temporary passwords are returned once and are never part of an audit entry or a log line.
 - **docker.sock access is root-equivalent.** The manager container mounts `/var/run/docker.sock`. This is required for Compose operations and is intentional — the manager profile is off by default.
 - **Subprocess inputs are whitelisted.** All calls to `papaia-ctl` go through `core/ctl.py` which validates the verb against an allowlist and uses arg arrays (never `shell=True`). The commands that write, the core's `setup` and `module-purge`, have an allowlist of their own and are reachable only through `run_smtp_setup` and `run_module_setup` (the options of the mail relay or of one optional module) and `run_module_purge` (one module's volumes and settings, never while it is on).
