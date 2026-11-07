@@ -700,17 +700,24 @@ def _cluster_checks(by_name: dict[str, dict[str, Any]]) -> tuple[ClusterCheck, .
     )
 
 
-def parse_node_doctor(stdout: str) -> HostHealth:
-    """The `doctor` a node's forced command prints: its own report inside an envelope."""
+def node_report(stdout: str) -> str | None:
+    """The report inside the envelope a node's forced command prints for `doctor`, as JSON
+    text, or None when there is none."""
     lines = stdout.strip().splitlines()
     try:
         document = json.loads(lines[-1])
     except (ValueError, IndexError):
-        return unavailable(_("The node's doctor gave no readable answer."))
+        return None
     report = document.get("doctor") if isinstance(document, dict) else None
-    if not isinstance(report, dict):
+    return json.dumps(report) if isinstance(report, dict) else None
+
+
+def parse_node_doctor(stdout: str) -> HostHealth:
+    """The `doctor` a node's forced command prints: its own report inside an envelope."""
+    report = node_report(stdout)
+    if report is None:
         return unavailable(_("The node's doctor gave no readable answer."))
-    return parse_doctor(json.dumps(report))
+    return parse_doctor(report)
 
 
 # ---------------------------------------------------------------------------
@@ -752,6 +759,7 @@ def reset_cache() -> None:
     _refresh = None
     _node_cache.clear()
     _node_runs.clear()
+    _node_reports.clear()
     _cluster.cached = None
     _cluster.run = None
     docker_usage.reset_cache()
@@ -887,10 +895,14 @@ def _start(config_dir: str, workspace_dir: str, interval: int) -> asyncio.Task[H
 _node_cache: dict[str, tuple[float, HostHealth]] = {}
 # The run in flight per node, shared as `_refresh` is.
 _node_runs: dict[str, asyncio.Task[HostHealth]] = {}
+# The report of the last run per node, when it had one. A node's `doctor` runs every check,
+# the relay's `smtp` too, so the Mail page reads it from here (`cached_node_report`).
+_node_reports: dict[str, str] = {}
 
 
 async def _measure_node(node: str, *, config_dir: str, workspace_dir: str) -> HostHealth:
     """One run on a node, stored whatever it says. Never raises: nobody may await it."""
+    _node_reports.pop(node, None)
     try:
         code, out, err = await run_py_cli(
             command="doctor",
@@ -905,6 +917,9 @@ async def _measure_node(node: str, *, config_dir: str, workspace_dir: str) -> Ho
         logger.exception("host health: unexpected failure on node %s", node)
         health = unavailable(_(_UNEXPECTED))
     else:
+        report = node_report(out)
+        if report is not None:
+            _node_reports[node] = report
         if code != 0:
             health = unavailable(_first_line(err or out) or _(_NO_OUTPUT) % {"code": code})
         else:
@@ -937,6 +952,12 @@ async def load_node_health(
         _node_runs[node] = run
     # Shielded: cancelling this request (tab closed) must not cancel the run.
     return await asyncio.shield(run)
+
+
+def cached_node_report(node: str) -> str | None:
+    """The report behind the node's last reading (`load_node_health`), or None when that run
+    gave none."""
+    return _node_reports.get(node)
 
 
 @dataclass

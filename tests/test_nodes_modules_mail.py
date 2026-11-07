@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 import yaml
 
-from app.core import nodes
+from app.core import host_health, nodes
 from app.core.config import service as svc
 from app.core.jobs import Job, JobContext
 from app.core.mail import service as mail_service
@@ -291,29 +291,76 @@ _DOCTOR = {
 }
 
 
-def test_the_relay_status_is_read_on_the_node_it_is_placed_on(
-    distributed: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+@pytest.fixture
+def node_health(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, Any]]]:
+    """The node runs of the host health reading, recorded; its caches start empty."""
+    asked: list[dict[str, Any]] = []
+    host_health.reset_cache()
+    monkeypatch.setattr(host_health, "refresh_interval", lambda config_dir: 60)
+    yield asked
+    host_health.reset_cache()
+
+
+def test_the_relay_status_is_read_from_the_node_health_reading(
+    distributed: tuple[str, str],
+    node_health: list[dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config, workspace = distributed
-    asked: list[dict[str, Any]] = []
 
     async def fake(**kwargs: Any) -> tuple[int, str, str]:
-        asked.append(kwargs)
+        node_health.append(kwargs)
         envelope = {"node": "edge", "doctor": _DOCTOR, "links": []}
         return 0, json.dumps(envelope) + "\n", ""
 
+    async def no_local_doctor(**kwargs: Any) -> tuple[int, str, str]:
+        raise AssertionError("a relay on another node needs no doctor of its own")
+
     monkeypatch.setattr(mail_status, "core_checks", lambda workspace_dir: ["smtp", "disk"])
-    monkeypatch.setattr(mail_status, "run_py_cli", fake)
-    status, out, _ = asyncio.run(mail_status._run(config, workspace))
-    assert asked[0]["node"] == "edge"
-    assert asked[0]["command"] == "doctor"
+    monkeypatch.setattr(mail_status, "run_py_cli", no_local_doctor)
+    monkeypatch.setattr(host_health, "run_py_cli", fake)
+
+    async def twice() -> tuple[Any, ...]:
+        first = await mail_status._run(config, workspace)
+        second = await mail_status._run(config, workspace)
+        return first, second
+
+    (status, out, _), (again, _, _) = asyncio.run(twice())
+    assert [a["node"] for a in node_health] == ["edge"]
+    assert node_health[0]["command"] == "doctor"
     assert out is not None and json.loads(out) == _DOCTOR
     assert status.available
     assert status.queued == 0
+    assert again.available
+
+
+def test_a_recheck_asks_the_node_again(
+    distributed: tuple[str, str],
+    node_health: list[dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace = distributed
+
+    async def fake(**kwargs: Any) -> tuple[int, str, str]:
+        node_health.append(kwargs)
+        return 0, json.dumps({"node": "edge", "doctor": _DOCTOR, "links": []}), ""
+
+    monkeypatch.setattr(mail_status, "core_checks", lambda workspace_dir: ["smtp"])
+    monkeypatch.setattr(host_health, "run_py_cli", fake)
+    monkeypatch.setattr(host_health, "RECHECK_MIN_INTERVAL_SECONDS", 0.0)
+
+    async def run() -> None:
+        await mail_status._run(config, workspace)
+        await mail_status._run(config, workspace, force=True)
+
+    asyncio.run(run())
+    assert len(node_health) == 2
 
 
 def test_an_unreadable_node_answer_is_a_reading_that_says_so(
-    distributed: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+    distributed: tuple[str, str],
+    node_health: list[dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config, workspace = distributed
 
@@ -321,7 +368,7 @@ def test_an_unreadable_node_answer_is_a_reading_that_says_so(
         return 255, "", "ssh: connect to host 10.0.1.10 port 22: Connection timed out\n"
 
     monkeypatch.setattr(mail_status, "core_checks", lambda workspace_dir: ["smtp"])
-    monkeypatch.setattr(mail_status, "run_py_cli", fake)
+    monkeypatch.setattr(host_health, "run_py_cli", fake)
     status, out, _ = asyncio.run(mail_status._run(config, workspace))
     assert out is None
     assert not status.available
@@ -427,3 +474,115 @@ def test_switching_the_relay_off_without_keycloak_runs_the_sync(
     _disable_mail(distributed, tmp_path)
     assert ("keycloak-role-sync", []) in recorder.calls
     assert all("--profiles=keycloak" not in flags for _, flags in recorder.calls)
+
+
+# ---------------------------------------------------------------------------
+# Nodes that only run hooks
+# ---------------------------------------------------------------------------
+
+
+def test_a_hook_node_that_fails_is_skipped_and_named(
+    distributed: tuple[str, str], recorder: _Recorder, tmp_path: Path
+) -> None:
+    config, workspace = distributed
+    recorder.fail_on = "--node=edge"
+    ctx = _context(tmp_path)
+    skipped: list[str] = []
+    asyncio.run(
+        svc._verb(
+            ctx,
+            "start",
+            "--profiles=localai",
+            workspace_dir=workspace,
+            config_dir=config,
+            skipped=skipped,
+        )
+    )
+    assert [flags[-1] for _, flags in recorder.calls] == [
+        "--node=gpu", "--node=edge", "--node=internal"
+    ]
+    assert skipped == ["papaia-ctl start --profiles=localai --node=edge"]
+    assert "[warn] papaia-ctl start --profiles=localai --node=edge failed" in (
+        ctx.log_path.read_text(encoding="utf-8")
+    )
+
+
+def test_the_owner_failing_still_ends_the_step(
+    distributed: tuple[str, str], recorder: _Recorder, tmp_path: Path
+) -> None:
+    config, workspace = distributed
+    recorder.fail_on = "--node=gpu"
+    with pytest.raises(svc.StepFailedError):
+        asyncio.run(
+            svc._verb(
+                _context(tmp_path),
+                "start",
+                "--profiles=localai",
+                workspace_dir=workspace,
+                config_dir=config,
+                skipped=[],
+            )
+        )
+    assert len(recorder.calls) == 1
+
+
+def test_an_overlay_is_kept_when_only_a_hook_node_fails(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # LibreChat runs on the controller; edge (the proxy) only runs its hooks and does not
+    # answer. The new file stays, nothing is rolled back, and the job names the retry.
+    config, workspace = distributed
+    recorder.fail_on = "--node=edge"
+
+    async def healthy(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(svc, "wait_healthy", healthy)
+    assert svc.overlay.write(config, "librechat", b"old: 1\n", expected_revision="") is not None
+    callback = svc.overlay_callback(
+        key="librechat",
+        content=b"new: 1\n",
+        expected_revision=svc.overlay.read(config, "librechat").revision,
+        event="apply",
+        user="admin",
+        workspace_dir=workspace,
+        config_dir=config,
+    )
+    ctx = _context(tmp_path)
+    with pytest.raises(
+        svc.HookNodesFailedError,
+        match=r"papaia-ctl start --profiles=librechat --node=edge",
+    ):
+        asyncio.run(callback(ctx))
+    assert svc.overlay.read(config, "librechat").raw == b"new: 1\n"
+    assert "[rollback]" not in ctx.log_path.read_text(encoding="utf-8")
+    entries = [
+        json.loads(line)
+        for line in Path(config, "manager", "audit.log").read_text(encoding="utf-8").splitlines()
+    ]
+    assert entries[-1]["action"] == "config.overlay.apply"
+    assert entries[-1]["result"] == "partial"
+
+
+def test_switching_a_module_on_ends_with_the_node_it_missed(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace = distributed
+    recorder.fail_on = "--node=edge"
+
+    async def healthy(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(svc, "wait_healthy", healthy)
+    callback = svc.enable_callback(
+        module="localai", variant="cpu", user="admin", workspace_dir=workspace, config_dir=config
+    )
+    with pytest.raises(svc.HookNodesFailedError, match="--node=edge"):
+        asyncio.run(callback(_context(tmp_path)))
+    assert ("start", ["--profiles=localai", "--node=internal"]) in recorder.calls
