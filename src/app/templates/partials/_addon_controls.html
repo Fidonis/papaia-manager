@@ -14,13 +14,26 @@
    made the destructive verbs as easy to hit as the harmless ones.
 
    Macros: primary_action, overflow_actions, remove_modal, uninstall_modal,
-           install_modal, requirements_list
+           install_modal, requirements_list, required_by_list
 #}
 {% from "partials/_env_fields.html" import env_input %}
 {% from "partials/_actions.html" import overflow_menu %}
 
 {# The add-ons this one requires (`requires.addons`) and whether each is there. papaia-ctl
    refuses the install while one is missing or too old; this shows it before the click. #}
+{# The active add-ons that require this one: papaia-ctl refuses Remove and Uninstall while
+   one is there. #}
+{% macro required_by_list(addon, compact=False) %}
+  {% if addon.required_by %}
+  <div class="flex flex-wrap items-center gap-1{% if not compact %} text-sm{% endif %}">
+    <span class="opacity-60 {% if compact %}text-xs{% endif %}">{% trans %}Required by{% endtrans %}</span>
+    {% for other in addon.required_by %}
+      <a href="/addons/{{ other }}" class="badge badge-info badge-outline {% if compact %}badge-xs{% else %}badge-sm{% endif %}">{{ other }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endmacro %}
+
 {% macro requirements_list(addon, compact=False) %}
   {% if addon.requirements %}
   <div class="flex flex-wrap items-center gap-1{% if not compact %} text-sm{% endif %}">
@@ -102,11 +115,22 @@
   {% if wants_upgrade %}
   <li><a href="/addons/{{ addon.name }}/upgrade">{% trans %}Review upgrade{% endtrans %}</a></li>
   {% endif %}
+  {# papaia-ctl refuses both while an active add-on requires this one (warn mode excepted). #}
+  {% set held = addon.required_by and addon.requirements_enforced is not false %}
+  {% set held_tip = _('Required by %(names)s; remove those first', names=(addon.required_by or [])|join(', ')) %}
   {% if s in ("installed", "inactive", "running") %}
+  {% if held %}
+  <li class="disabled"><a title="{{ held_tip }}">{% trans %}Remove{% endtrans %}</a></li>
+  {% else %}
   <li><a class="text-error" @click="$refs.removeModal.showModal()">{% trans %}Remove{% endtrans %}</a></li>
   {% endif %}
+  {% endif %}
   {% if addon.installed_version %}
+  {% if held %}
+  <li class="disabled"><a title="{{ held_tip }}">{% trans %}Uninstall{% endtrans %}</a></li>
+  {% else %}
   <li><a class="text-error" @click="$refs.uninstallModal.showModal()">{% trans %}Uninstall{% endtrans %}</a></li>
+  {% endif %}
   {% endif %}
 {% endcall %}
 {% endif %}

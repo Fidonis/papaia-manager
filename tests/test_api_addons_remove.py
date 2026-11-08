@@ -279,3 +279,81 @@ def test_the_job_refuses_when_the_files_are_gone_by_the_time_it_runs(
     assert refused.value.status_code == 409
     assert calls == []
     assert [e for e in _audit() if e["action"] == "remove"] == []
+
+
+# ── refused while another active add-on requires it ───────────────────────────
+
+
+def _add_dependent(tmp_path: Path, *, active: bool = True, mode: str | None = None) -> None:
+    """Register `flows`, whose manifest requires `n8n`, next to n8n."""
+    flows = tmp_path / "flows"
+    flows.mkdir()
+    (flows / "papaia-app.yaml").write_text(
+        yaml.safe_dump({"name": "flows", "version": "1.0.0", "requires": {"addons": ["n8n"]}}),
+        encoding="utf-8",
+    )
+    deployment_path = Path(_CONFIG_DIR, "deployment.yaml")
+    deployment = yaml.safe_load(deployment_path.read_text(encoding="utf-8"))
+    deployment["addons"].append({"name": "flows", "path": str(flows), "active": active})
+    if mode is not None:
+        deployment["mode"] = mode
+    deployment_path.write_text(yaml.safe_dump(deployment), encoding="utf-8")
+
+
+def _uninstall(client: TestClient) -> Any:
+    return _as(client, "admin").post(
+        "/api/v1/addons/n8n/uninstall", json={}, headers={"X-CSRF-Token": _CSRF}
+    )
+
+
+@pytest.mark.parametrize("verb", [_remove, _uninstall])
+def test_a_required_add_on_is_refused_before_any_job(
+    client: TestClient, queue: _FakeQueue, addon_dir: Path, tmp_path: Path, verb: Any
+) -> None:
+    _add_dependent(tmp_path)
+
+    response = verb(client)
+
+    assert response.status_code == 409
+    assert "required by flows" in response.json()["detail"]
+    assert queue.enqueued == []
+
+
+def test_an_inactive_dependent_does_not_hold_the_add_on(
+    client: TestClient, queue: _FakeQueue, addon_dir: Path, tmp_path: Path
+) -> None:
+    _add_dependent(tmp_path, active=False)
+
+    assert _remove(client).status_code == 202
+
+
+def test_warn_mode_lets_the_remove_through(
+    client: TestClient,
+    queue: _FakeQueue,
+    addon_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PAPAIA_COMPAT_MODE", raising=False)
+    _add_dependent(tmp_path, mode="dev")
+
+    assert _remove(client).status_code == 202
+
+
+def test_the_job_stops_nothing_when_a_dependent_appeared_meanwhile(
+    client: TestClient,
+    queue: _FakeQueue,
+    monkeypatch: pytest.MonkeyPatch,
+    addon_dir: Path,
+    tmp_path: Path,
+) -> None:
+    """An install queued ahead of the remove can make another add-on require this one."""
+    calls = _record_verbs(monkeypatch)
+
+    assert _remove(client).status_code == 202
+    _add_dependent(tmp_path)
+    with pytest.raises(HTTPException) as refused:
+        _run_callback(queue, tmp_path / "job.log")
+
+    assert refused.value.status_code == 409
+    assert calls == []

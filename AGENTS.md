@@ -153,7 +153,8 @@ papaia-manager/
 │       │   ├── semver.py       # SemVer precedence for add-on versions and the manifest range
 │       │   │                   #   syntax (`satisfies`, papaia-ctl's pre-release rule)
 │       │   ├── requirements.py # `requires.addons`: a state per required add-on, whether
-│       │   │                   #   papaia-ctl would refuse the install and enforces that
+│       │   │                   #   papaia-ctl would refuse the install and enforces that,
+│       │   │                   #   and the active add-ons that require one (`dependents`)
 │       │   ├── state.py        # Merged addon status (catalog × deployment × Docker)
 │       │   ├── envforms.py     # Env-form spec from .env.example + manifest prompts
 │       │   ├── envvalidate.py  # Server-side validation/coercion of add-on env values
@@ -337,7 +338,8 @@ An add-on may require other add-ons (`requires.addons` in its manifest, contract
 - **The registration is the truth.** The version of a required add-on is read as papaia-ctl reads it: the manifest at the registered `path`, then `version` in deployment.yaml, and only then `manifest_version` in installed.yaml, which an `addon upgrade` or `rollback` on the host leaves behind.
 - **Warn mode installs anyway.** `requirements.compat_mode` follows the core's `compat.resolve_mode` (`PAPAIA_COMPAT_MODE`, then `mode:` in deployment.yaml, then enforce). In warn mode `requirements_enforced` is false: the badges stay, the button stays usable.
 - **Pre-releases need an opt-in.** As in the core, `1.3.0-rc.1` does not satisfy `>=1.2.0`; only a range with a pre-release bound on the same `MAJOR.MINOR.PATCH` (`>=1.3.0-rc.1`) admits it.
-- `tests/test_requirements_contract.py` compares range checks, the parsed field and the version source with the core's `semver`, `compat` and `cli_addon` and needs `PAPAIA_SRC`.
+- **The other direction: required by.** `requirements.dependents` lists the active add-ons whose `requires.addons` names an add-on, as the core's `dependent_addons` does (a manifest whose field papaia-ctl would reject counts as requiring nothing). The detail page shows them as "Required by", and while one is active and papaia-ctl enforces, *Remove* and *Uninstall* are disabled in the menu and `POST …/remove` and `…/uninstall` answer 409. The remove job checks again before `addon stop --clean-up`: refused after the teardown, the required add-on would stay active but stopped. In warn mode both stay usable, as papaia-ctl proceeds there.
+- `tests/test_requirements_contract.py` compares range checks, the parsed field, the version source and the dependents with the core's `semver`, `compat` and `cli_addon` and needs `PAPAIA_SRC`.
 
 ### Upgrading and rolling back an add-on
 

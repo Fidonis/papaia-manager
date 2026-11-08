@@ -9755,3 +9755,14 @@ msgstr "Zuerst die benötigten Add-ons installieren"
 #, python-format
 msgid "The relay is off, but the realm still names it: %(value)s"
 msgstr "Das Relay ist aus, aber der Realm nennt es noch: %(value)s"
+
+msgid "Required by"
+msgstr "Benötigt von"
+
+#, python-format
+msgid "Required by %(names)s; remove those first"
+msgstr "Benötigt von %(names)s; zuerst diese entfernen"
+
+#, python-format
+msgid "%(name)s is required by %(dependents)s; remove those first"
+msgstr "%(name)s wird von %(dependents)s benötigt; zuerst diese entfernen"

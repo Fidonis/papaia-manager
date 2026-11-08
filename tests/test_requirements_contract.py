@@ -21,6 +21,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+import yaml
 
 from app.core import requirements, semver
 
@@ -111,3 +112,25 @@ def test_the_version_of_an_active_addon_matches_the_core(
     for entry in entries:
         manager = requirements._deployed_version(entry, str(tmp_path))
         assert manager == core_versions[entry["name"]], entry["name"]
+
+
+def test_the_dependents_match_the_core(core: dict[str, ModuleType], tmp_path: Path) -> None:
+    repo = tmp_path / "papaia"
+    manifests = {
+        "wiki": {"name": "wiki", "version": "1.0.0"},
+        "demo": {"name": "demo", "requires": {"addons": ["wiki", {"name": "crm"}]}},
+        "other": {"name": "other", "requires": {"addons": [{"name": "wiki", "version": "^1"}]}},
+        "paused": {"name": "paused", "requires": {"addons": ["wiki"]}},
+        "broken": {"name": "broken", "requires": {"addons": ["wiki", 42]}},
+    }
+    entries = []
+    for name, manifest in manifests.items():
+        addon = repo / "addons" / name
+        addon.mkdir(parents=True)
+        (addon / "papaia-app.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+        entries.append({"name": name, "active": name != "paused", "path": f"addons/{name}"})
+    deployed = {"addons": entries}
+    by_name = {e["name"]: e for e in entries}
+    for name in ("wiki", "crm", "demo"):
+        expected = sorted(core["cli_addon"].dependent_addons(name, deployed, repo))
+        assert requirements.dependents(name, by_name, str(tmp_path)) == expected, name
