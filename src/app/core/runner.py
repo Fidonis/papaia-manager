@@ -180,6 +180,10 @@ class RunnerStatus:
     # Upgrade runners only: whether the operator asked for outdated images to be
     # removed. Always False for the other kinds.
     prune_images: bool = False
+    # Upgrade runners only: whether the run was started with `--no-backup`, read
+    # from the container's command line. The log cannot tell once its opening
+    # lines have fallen out of the window.
+    no_backup: bool = False
 
     @property
     def is_running(self) -> bool:
@@ -565,7 +569,9 @@ def _status_from_inspect(payload: Any, kind: RunnerKind = RESTORE_KIND) -> Runne
         raise RunnerError(_("docker inspect returned an unexpected shape for the runner"))
     entry = payload[0]
     state = entry.get("State") or {}
-    labels = ((entry.get("Config") or {}).get("Labels")) or {}
+    config = entry.get("Config") or {}
+    labels = config.get("Labels") or {}
+    command = config.get("Cmd")
     name = str(entry.get("Name") or "").lstrip("/")
     # `de.fidonis.restore-point` is what runners started before this label was
     # generalised carry. A restore recreates the manager mid-operation, so the
@@ -586,6 +592,7 @@ def _status_from_inspect(payload: Any, kind: RunnerKind = RESTORE_KIND) -> Runne
         started_at=str(state.get("StartedAt") or ""),
         finished_at=str(state.get("FinishedAt") or ""),
         prune_images=labels.get(PRUNE_LABEL_KEY) == "true",
+        no_backup=isinstance(command, list) and "--no-backup" in command,
     )
 
 
