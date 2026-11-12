@@ -287,7 +287,11 @@ async def disable_module(
         raise HTTPException(status_code=409, detail=gettext("This module is not switched on."))
     try:
         scope = modules.validate_scope(
-            name, body.scope, body.confirm, settings.papaia_workspace_dir
+            name,
+            body.scope,
+            body.confirm,
+            settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
         )
     except modules.ModuleError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

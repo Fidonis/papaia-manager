@@ -12,6 +12,135 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [1.6.0] - 2026-11-07
+
+### Added
+- Models & Usage page at `/models` (Monitor group, after Host) and its API at `/api/v1/models`
+  and `/api/v1/models/usage`: which models LiteLLM serves and what they consumed. Tokens (input
+  and output), spend in USD and requests are shown as bars per day, stacked by model, for the
+  last 7 days (the default), 30 or 90 days, this month or a custom range of up to a year, for
+  all models together and for each model, with a table of the days under every chart. The page
+  only reads: models, prices, teams, budgets and keys stay in LiteLLM's own Admin UI, which it
+  links to when `LITELLM_PUBLIC_URL` is set. Days are UTC days, a model without a price shows
+  no spend, and there is no split by account. Admin-only
+  ([#166](https://github.com/Fidonis/papaia-manager/pull/166); closes
+  [#165](https://github.com/Fidonis/papaia-manager/issues/165)).
+- New optional setting `LITELLM_URL` (default `http://litellm:4000`), documented in both
+  `.env.example` files. The master key is not a setting: it is read from `ai/litellm/.env` when
+  a request needs it
+  ([#166](https://github.com/Fidonis/papaia-manager/pull/166)).
+- Review, apply and roll back add-on upgrades. **Review upgrade** (`/addons/<name>/upgrade`)
+  stages the catalog's version and shows what `papaia-ctl addon upgrade --dry-run` reports: the
+  compatibility verdict, the components that change, new and removed configuration keys, changed
+  defaults, new Keycloak clients and service attachments, and the add-on's own changelog. Keys
+  that need a value get a form. The upgrade applies exactly the reviewed version (a catalog that
+  moved in between is a 409 "review again") and takes a restore point of the add-on first unless
+  the box is unticked. The detail page has a **Versions** card and a **Roll back** dialog: code
+  and configuration only, or code and data from that restore point. The Add-Ons page counts the
+  upgrades, lists them, can narrow the cards to them and has a **Refresh catalogs** button; the
+  Add-Ons entry of the sidebar carries a dot. API: `GET /api/v1/addons/upgrades`,
+  `POST /api/v1/addons/{name}/upgrade-plan`, `/upgrade` and `/rollback`. Needs papAIa core 1.8.0
+  ([#168](https://github.com/Fidonis/papaia-manager/pull/168); closes
+  [#167](https://github.com/Fidonis/papaia-manager/issues/167)).
+- Nodes page at `/nodes` for a distributed installation (the experimental mode of papAIa 1.8.0):
+  the machines with their services, address, status, version and link health, adding a node with
+  its enrolment commands, confirming the host keys it offers, handing it its bundle and removing
+  it. A node that does not answer stays in the list. Each change needs a fresh sign-in at
+  Keycloak (`/auth/step-up`, valid for five minutes) on top of the admin role and CSRF, and is
+  audited, refusals included. Remote calls go through the core's `node-exec`, so keys and pinned
+  host keys stay with the core. On a single host the page, its sidebar entry and its routes do
+  not exist
+  ([#175](https://github.com/Fidonis/papaia-manager/pull/175); closes
+  [#171](https://github.com/Fidonis/papaia-manager/issues/171)).
+- On a distributed installation the other pages follow the nodes. Services has a section per
+  node, read from the core's merged `status`, and a group action runs on the node that owns the
+  group. Host has a node selector and shows the core's `nodes` and `links` checks, read in the
+  background. The service, disk and certificate widgets and the `service_unhealthy` and
+  `cert_expiring` notifications look at every node and name it; a node without a reading is a
+  condition of its own
+  ([#176](https://github.com/Fidonis/papaia-manager/pull/176); part of
+  [#172](https://github.com/Fidonis/papaia-manager/issues/172)).
+- Backups, restores and upgrades across nodes. The Backup page backs up one node or all, a
+  restore can pick a remote node as a whole, and the Upgrade page shows the release per node and
+  each node's latest step. While an upgrade has not finished or a node runs another release,
+  every admin page shows a banner with the way back, and backups, starts and add-on, module,
+  overlay and mail changes answer 409; `stop`, the upgrade and a restore stay possible
+  ([#177](https://github.com/Fidonis/papaia-manager/pull/177); closes
+  [#173](https://github.com/Fidonis/papaia-manager/issues/173)).
+- Settings > Modules, the overlay editor and Mail name the node a module runs on, and a change
+  runs on that node and then on the nodes of the proxy and of Keycloak, whose provisioning steps
+  add proxy hosts, roles and the realm's mail server. A failure on one of those later nodes keeps
+  the change: the job ends with a warning that names the node and the `papaia-ctl start
+  --profiles=<profile> --node=<node>` that catches it up, and the audit entry is `partial`.
+  Switching a module off keeps its data there, since the core does not delete volumes across
+  nodes yet. The mail relay's state is read from its node's health reading
+  ([#178](https://github.com/Fidonis/papaia-manager/pull/178),
+  [#190](https://github.com/Fidonis/papaia-manager/pull/190); closes
+  [#172](https://github.com/Fidonis/papaia-manager/issues/172) and
+  [#188](https://github.com/Fidonis/papaia-manager/issues/188)).
+
+### Changed
+- An add-on's versions are directories of their own,
+  `addons/_managed/<catalog>/<revision>/<add-on>`, written once and never renamed or overwritten.
+  The one it runs from, the one a rollback goes back to and one under review stay on disk; an
+  install made before keeps working and is pruned after its first upgrade
+  ([#168](https://github.com/Fidonis/papaia-manager/pull/168)).
+- "Upgrade available" follows SemVer precedence in one place: a catalog that is behind the
+  installed version offers nothing, and a version that is not SemVer counts when it differs. The
+  dashboard and the `update_available` notification use the same rule
+  ([#168](https://github.com/Fidonis/papaia-manager/pull/168)).
+- A restore point an add-on upgrade takes holds that add-on only. The Backup page marks it, it
+  can be restored by selection only (a whole-stack restore of it answers 409) and it does not
+  count as the last successful backup of the stack
+  ([#168](https://github.com/Fidonis/papaia-manager/pull/168)).
+- The image carries an SSH client and `nss_wrapper`, and its new entrypoint gives the host's user
+  id a name, which OpenSSH requires. A user the image knows is left alone, and the command is run
+  unchanged
+  ([#175](https://github.com/Fidonis/papaia-manager/pull/175),
+  [#186](https://github.com/Fidonis/papaia-manager/pull/186)).
+
+### Removed
+- `POST /api/v1/addons/{name}/update` and the manager's own update path (stop, take the new
+  snapshot, reinstall, start). Upgrades go through `POST /api/v1/addons/{name}/upgrade-plan` and
+  `/upgrade`, which `papaia-ctl addon upgrade` carries out; the audit action is `upgrade` instead
+  of `update`
+  ([#168](https://github.com/Fidonis/papaia-manager/pull/168)).
+
+### Fixed
+- After a core upgrade that skipped or failed a provisioning step (NPM proxy hosts, Keycloak role
+  sync), the result panel lists each step with the line `papaia-ctl` printed and the command that
+  runs it again, instead of only saying "upgrade complete". This also covers a hook that failed
+  on a node. The runner logs now carry stderr, so the recovery block of `papaia-ctl` and the
+  warnings and errors of the restore and stack runners reach the panels as well. The cause, the
+  runner not joining `papaia-net`, is fixed in the core (`Fidonis/papaia#267`, papAIa 1.8.0)
+  ([#174](https://github.com/Fidonis/papaia-manager/pull/174); closes
+  [#170](https://github.com/Fidonis/papaia-manager/issues/170)).
+- Upgrading an add-on no longer fails with `Errno 39` on a Windows drive: the `_<name>.prev`
+  swap of the old update path is gone
+  ([#168](https://github.com/Fidonis/papaia-manager/pull/168)).
+- The Overlay tab names a file below `infra/keycloak/themes/papaia` as used by the render instead
+  of ignored by it; the core renders that directory since `Fidonis/papaia#261`
+  ([#192](https://github.com/Fidonis/papaia-manager/pull/192); closes
+  [#191](https://github.com/Fidonis/papaia-manager/issues/191)).
+
+### Security
+- `certifi` 2026.10.23 replaces 2026.6.17, which the 1.5.0 image carries
+  (GHSA-6q48-6c7w-9gw2, critical)
+  ([#187](https://github.com/Fidonis/papaia-manager/pull/187)).
+
+### Notes
+- **Requirements:** Upgrading and rolling back add-ons and every node feature need papAIa core
+  1.8.0. The manager starts against the same cores as 1.5.0; on an older core the add-on pages
+  show a hint instead of the upgrade, and without a topology in `deployment.yaml` nothing of the
+  nodes runs, so a single host behaves as before.
+- **Behavior change:** With a core older than 1.8.0 the manager no longer upgrades add-ons,
+  because its own update path is gone. The papAIa releases before 1.8.0 pin papaia-manager 1.5.0
+  or older, which keep it.
+- A restore point is not one moment across nodes, and the Backup page says so. A scheduled backup is not skipped while an upgrade holds the lock; the core
+  refuses it and the job fails visibly.
+- The per-node progress of an upgrade reads the core's `node <name>: ...` lines, so it depends on
+  that wording.
+
 ## [1.5.0] - 2026-10-24
 
 ### Added

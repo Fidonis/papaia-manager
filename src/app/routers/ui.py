@@ -1545,6 +1545,8 @@ async def partial_upgrade_runner(
                 log,
                 running=status_obj.is_running if status_obj else False,
                 prune_images=status_obj.prune_images if status_obj else False,
+                tail=runner.UPGRADE_LOG_TAIL_LINES,
+                no_backup=status_obj.no_backup if status_obj else False,
             ),
             recovery=recovery,
             recovery_generated=recovery_generated,
