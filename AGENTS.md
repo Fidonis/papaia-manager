@@ -24,7 +24,7 @@ Upgrade (`/upgrade`) moves the deployment to a newer papAIa release. It is split
 
 Nodes (`/nodes`) exists on a distributed installation only: the machines of the installation with their services, address, status, version and link health, adding and removing a node, and confirming a new node's host key. On a single host there is no sidebar entry, the routes answer 404 and no process runs for it: `core/nodes.py` decides from `deployment.yaml` alone. `core/nodes.py` also holds the `Executor` protocol. `LocalExecutor` is the old path; `SshExecutor` goes through the core's `node-exec`, so keys, pinned host keys and the verbs of a node's forced command stay in one place. A node has no raw `docker` and no Git, so `_docker`, `images._run`, `query_containers` and `_git` take `node` and refuse it. Every change needs a fresh sign-in (`SteppedUpAdmin`, `/auth/step-up`: `prompt=login` and `max_age=0`, valid for five minutes, and the callback checks `auth_time` and the account) on top of the admin role and CSRF, and is audited, refusals included.
 
-With nodes, `services.load_snapshot` reads the core's merged `status --json --addons` instead of `docker ps`, which sees only the controller: one reading at a time, kept for 30 seconds because each is an SSH round trip per node. `ServiceModule.node` and `StackSnapshot.nodes` carry the result; both stay empty on a single host, and the templates fall back to the old sections. A group action passes `--node=<owner>`, one run per node, because a `start` without it pushes to every node first and one silent node would stop it; a group no module places runs without a node. `link-gateway` is refused like `manager`. The add-on verbs find the owning node themselves. Modules, the overlay editor and Mail name nodes as well: `nodes.profile_runs` turns a profile's `start` or `stop` into one run per node, the profile's node from the core's own placement (`lib.topology`, read in-process, since only the core maps a profile to its catalogue service), and for a `start` then the nodes of `nginx` and `keycloak`, because the core runs `npm-provision` and `keycloak-role-sync` only on a node that is started, and the realm's mail server and a module's roles come from the latter. A core whose placement cannot be read gives one run without a node, as before. The pages show the node from `nodes.profile_node`, and the relay's status is read from the `doctor` of the node it is placed on. `host_health.load_node_health` reads another node's `doctor`, one run per node at a time, with a failure kept for `FAILURE_TTL_SECONDS`. The reading the cards use skips `nodes` and `links`, which ask every node in a row: `load_cluster_checks` reads those in the background for the Host page, which never waits for them. The service, disk and certificate widgets and the `service_unhealthy` and `cert_expiring` notifications work across all nodes; a silent node is a condition of its own and its modules stay in `was_up`.
+With nodes, `services.load_snapshot` reads the core's merged `status --json --addons` instead of `docker ps`, which sees only the controller: one reading at a time, kept for 30 seconds because each is an SSH round trip per node. `ServiceModule.node` and `StackSnapshot.nodes` carry the result; both stay empty on a single host, and the templates fall back to the old sections. A group action passes `--node=<owner>`, one run per node, because a `start` without it pushes to every node first and one silent node would stop it; a group no module places runs without a node. `link-gateway` is refused like `manager`. The add-on verbs find the owning node themselves. Modules, the overlay editor and Mail name nodes as well: `nodes.profile_runs` turns a profile's `start` or `stop` into one run per node, the profile's node from the core's own placement (`lib.topology`, read in-process, since only the core maps a profile to its catalogue service), and for a `start` then the nodes of `nginx` and `keycloak`, because the core runs `npm-provision` and `keycloak-role-sync` only on a node that is started, and the realm's mail server and a module's roles come from the latter. A core whose placement cannot be read gives one run without a node, as before. The first run is the owner's; in the module and overlay jobs (`config.service._verb` with `skipped`) a failure on a later one, a node that only runs hooks, is logged and collected, the job goes on and ends with `HookNodesFailedError` naming each retry; the relay's own start keeps failing on Keycloak's node, since that run is its point. Switching a module off offers `keep` only on a distributed installation (`modules.validate_scope`, the row's `keep_only`): the core refuses `stop --volumes` there. The pages show the node from `nodes.profile_node`, and the relay's status comes from its node's cached health reading (`host_health.cached_node_report` after `load_node_health`), not a `doctor` of its own. `host_health.load_node_health` reads another node's `doctor`, one run per node at a time, with a failure kept for `FAILURE_TTL_SECONDS`. The reading the cards use skips `nodes` and `links`, which ask every node in a row: `load_cluster_checks` reads those in the background for the Host page, which never waits for them. The service, disk and certificate widgets and the `service_unhealthy` and `cert_expiring` notifications work across all nodes; a silent node is a condition of its own and its modules stay in `was_up`.
 
 `nodes.lock_reason` reads the core's `upgrade.lock` and each node's `state.json`, the same two reasons as `cluster.skew`, from files only. It drives the banner in `base.html` and the 409s on backup, on add-on, module, overlay and mail actions (`stack_guard`), and on the stack and group actions other than `stop`. Backups take `node` (`--only=node:NAME`), and a restore offers remote nodes as `kind="node"` groups; the controller is not offered, since it is the manager's own node. The upgrade runner needs no change: `papaia-ctl upgrade` orchestrates the nodes, and `upgrade.node_progress` reads its `node <name>: ...` lines.
 
@@ -64,9 +64,10 @@ papaia-manager/
 │       │                   #   gettext functions, Jinja install, LocaleMiddleware
 │       ├── locale/<code>/LC_MESSAGES/messages.po   # One directory per language (de today)
 │       ├── auth/
-│       │   ├── oidc.py     # OIDC Authorization Code + PKCE client; ends the provider's session on sign-out
+│       │   ├── oidc.py     # OIDC Authorization Code + PKCE client; ends the provider's session on sign-out;
+│       │   │               #   the step-up request (prompt=login, max_age=0)
 │       │   ├── roles.py    # Authorization policy: which realm role grants what
-│       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser, IdentityAdmin
+│       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser, IdentityAdmin, SteppedUpAdmin
 │       │   ├── user_token.py # The signed-in user's own access token, from the session's refresh token
 │       │   └── csrf.py     # Session-bound CSRF Double-Submit token
 │       ├── core/
@@ -84,6 +85,9 @@ papaia-manager/
 │       │   ├── scheduler.py    # In-process APScheduler: when to start a backup, skip and
 │       │   │                   #   retry, catch-up after a start
 │       │   ├── runner.py       # Detached papaia-ctl container: restore, stack, upgrade
+│       │   ├── nodes.py        # Distributed installation: the registry from deployment.yaml, the Executor
+│       │   │                   #   protocol (LocalExecutor, SshExecutor via the core's node-exec), the
+│       │   │                   #   overview, profile_runs, lock_reason; nothing runs on a single host
 │       │   ├── images.py       # Outdated Docker images: declared vs. used vs. local, removal
 │       │   ├── upgrade.py      # Core release check: git state, target resolution,
 │       │   │                   #   add-on gate, migration plan, runner-log phases
@@ -166,7 +170,7 @@ papaia-manager/
 │       │   ├── jobs.py         # Single-flight job queue + streaming log store
 │       │   └── audit.py        # Append-only JSONL audit log
 │       ├── routers/
-│       │   ├── auth.py         # /auth/login, /auth/callback, /auth/logout
+│       │   ├── auth.py         # /auth/login, /auth/step-up, /auth/callback, /auth/logout
 │       │   ├── health.py       # GET /health (unauthenticated)
 │       │   ├── ui.py           # Server-rendered HTML pages
 │       │   ├── api_catalogs.py # /api/v1/catalogs — catalog CRUD + refresh
@@ -187,6 +191,9 @@ papaia-manager/
 │       │   ├── api_models.py   # /api/v1/models — the served models and their usage (read-only)
 │       │   ├── ui_models.py    # /models page and its /partials/models body
 │       │   ├── models_deps.py  # The transport every call to LiteLLM goes through (tests replace it)
+│       │   ├── api_nodes.py    # /api/v1/nodes — add, remove, hand a bundle, pin a host key (fresh sign-in)
+│       │   ├── ui_nodes.py     # /nodes page, its /partials/nodes list and the detail page of a node
+│       │   ├── stack_guard.py  # The refusals the configuration routes share: a runner in flight, the upgrade lock
 │       │   ├── api_notifications.py # /api/v1/notifications — recipients, their events, settings, test
 │       │   ├── ui_notifications.py  # /mail page (the Notifications tab), its status strip and log
 │       │   ├── api_tiles.py    # /api/v1/tiles — dashboard tile configuration (links and widgets)
@@ -219,6 +226,9 @@ papaia-manager/
 │       │       │                                 #   the editor's dialogs and the scripts the pages share
 │       │       ├── host_list.html            # Host page body: resources, disks, certificates, or why not
 │       │       ├── models_body.html          # Models & Usage body: figures, charts, table, or why not
+│       │       ├── nav_addon_upgrades.html   # The dot on the Add-Ons entry of the sidebar while upgrades wait
+│       │       ├── nodes_list.html           # Nodes page body: one row per node, an unreachable one included
+│       │       ├── upgrade_nodes.html        # Upgrade page: the release of each node
 │       │       ├── mail_status.html          # Mail Server tab: the relay's state and queue
 │       │       ├── mail_job_status.html      # Mail Server tab: the job in flight or just finished
 │       │       ├── _mail_tabs.html           # The two tabs of Mail: Notifications, Mail Server
@@ -241,7 +251,8 @@ papaia-manager/
 │                               #   icons/ (the default tiles' logos with NOTICE.txt: sources and licences)
 ├── tests/                  # pytest suite (sibling to src/); i18n_scan.py is the template lint's lexer
 └── docker/
-    ├── Dockerfile          # Multi-stage build; installs Docker CLI + compose plugin
+    ├── Dockerfile          # Multi-stage build; installs Docker CLI + compose plugin, openssh-client, libnss-wrapper
+    ├── entrypoint.sh       # Names the host's user id through nss_wrapper (OpenSSH needs it), then execs the command
     ├── docker-compose.yml  # Local development compose
     ├── git-askpass.sh      # Three-line GIT_ASKPASS helper for private catalog auth
     ├── tailwind.config.js, tailwind.brand.css, tailwind.app.css  # Stylesheet sources; the brand layer (see CONTRIBUTING.md)
@@ -321,7 +332,7 @@ Consequences worth remembering when touching sign-out:
 
 All mutating operations (install, start, stop, upgrade, remove, uninstall, catalog refresh, backup) run as `Job` objects through a single-flight FIFO queue backed by a single asyncio worker. A scheduled backup is enqueued onto the same queue. Only one mutating job runs at a time. An embedding run is deliberately not a job: it lives in the ingester, and a run of hours must not hold up a backup or an add-on action. Job state and output are persisted under `$PAPAIA_CONFIG_DIR/manager/jobs/`.
 
-**Remove.** `papaia-ctl addon remove` only marks an add-on inactive and leaves its containers running, so the Remove job runs `addon stop --clean-up` first (volumes stay) and then `addon remove`; a failing stop leaves the add-on active. The route and the job both refuse (409) when the add-on's `docker-compose.yml` is missing. papaia-ctl pins `-p <add-on>` for its Compose calls, but without that file Compose takes `COMPOSE_PROJECT_NAME` from the core `.env`, and the `down` hits the core stack, this manager included. Stop, restart and uninstall do not have this guard here; the fix for them belongs to the core (`Fidonis/papaia#244`, merged for the release after 1.6.0, so a core up to 1.6.0 still has the hazard).
+**Remove.** `papaia-ctl addon remove` only marks an add-on inactive and leaves its containers running, so the Remove job runs `addon stop --clean-up` first (volumes stay) and then `addon remove`; a failing stop leaves the add-on active. The route and the job both refuse (409) when the add-on's `docker-compose.yml` is missing. papaia-ctl pins `-p <add-on>` for its Compose calls, but without that file Compose takes `COMPOSE_PROJECT_NAME` from the core `.env`, and the `down` hits the core stack, this manager included. Stop, restart and uninstall do not have this guard here; the fix for them belongs to the core (`Fidonis/papaia#244`, fixed in papAIa 1.7.0, so a core up to 1.6.0 still has the hazard).
 
 **Output streaming.** `_stream_subprocess` in `core/ctl.py` reads the child's output in 64 KiB chunks and puts the lines together itself, because `async for` over the pipe raises when one line is longer than the reader's 64 KiB limit, and a classic image build prints its pull progress as one line of escape sequences without a newline (`Separator is not found, and chunk exceed the limit` failed the job). The pending bytes are a `bytearray` searched from where the last search stopped. A line past `MAX_LINE_BYTES` (1 MiB) is yielded cut at that length with `TRUNCATION_MARKER` appended (the cut never leaves half a multi-byte character before it) and the rest of that line, up to its newline, is dropped, wherever the newline arrives. Every yielded line goes verbatim into the job log, so the cap also bounds the log. `tests/test_ctl_stream.py` pins the chunking, the cap and the order of the output.
 
@@ -394,6 +405,7 @@ Consequences worth remembering when touching this area:
 - A finished upgrade runner is **not** cleared automatically the way a stack runner is. It holds the outcome of the last attempt, and `$CONFIG_DIR/upgrade.log` is what makes dismissing it safe.
 - There is no automatic rollback, by design in papaia-ctl. The failure panel renders `_upgrade_failed`'s recovery block verbatim rather than re-deriving it.
 - A successful upgrade can still have skipped the two provisioning steps at the end of `start` (NPM proxy hosts, Keycloak role sync): papaia-ctl only warns, and the run exits 0. `upgrade.provisioning_problems` reads those lines after "Starting the stack" or "Starting every node", including the `WARNING: <hook> failed on node` line of a distributed start (a Keycloak that is not the bundled one is skipped on purpose and is no problem). When the panel's window of `UPGRADE_LOG_TAIL_LINES` is full and the start line is not in it, which a pull of new images during `start` can cause, the whole window counts, since a run that succeeded reaches `start` last. The result panel names each one with its retry command. The runner reaches the stack because the core's `start` joins it to `papaia-net` once `up` has created the network (papAIa 1.8.0); it cannot join at `docker run`, since `stop --clean-up` removes the network.
+- The phase list has the same window problem. `upgrade.phases_from_log` calls a phase the log does not announce `skipped`, which is right for `--no-backup` in a whole log. When the window is full (`tail=UPGRADE_LOG_TAIL_LINES`), the phases before the first one it finds were passed, not skipped: they are `done` with the note that their line is earlier than the part of the log shown, and a completed run with no phase in the window has all six done. `--no-backup` is then read from the runner's command line (`RunnerStatus.no_backup`, from `Config.Cmd` in `docker inspect`), so a real skip of the backup still shows as one.
 - A dirty checkout blocks the upgrade with no override. `--force` degrades the add-on gate only, and is refused outright when the gate passed or failed on an `ERROR`.
 - The target version reaches both an argv and a container name, so it is validated with `\Z`-anchored patterns in both `core/upgrade.py` and `core/runner.py` — `$` would also match before a trailing newline.
 
