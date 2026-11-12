@@ -9713,3 +9713,6 @@ msgstr "%(profile)s verbindet die Nodes und kann nicht ausgewählt werden"
 #, python-format
 msgid "profile %(name)r connects the nodes and cannot be controlled from this panel"
 msgstr "Profil %(name)r verbindet die Nodes und kann nicht über dieses Panel gesteuert werden"
+
+msgid "earlier than the part of the log shown"
+msgstr "vor dem angezeigten Teil des Logs"
