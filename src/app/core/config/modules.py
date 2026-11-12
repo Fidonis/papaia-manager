@@ -14,6 +14,8 @@ Switching a module off can also delete what it leaves behind. The core knows wha
 are offered (`SCOPES`), and no fourth: settings can't be deleted and the data kept for the
 RAG system (its stored credentials are encrypted with a secret that belongs to the data), and
 a module whose settings were deleted but whose data stayed would not be one anybody can use.
+On a distributed installation only `keep` is offered: the core refuses `stop --volumes` there,
+and `module-purge` would only see the controller's volumes.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.core import ctl
+from app.core import ctl, nodes
 from app.core.ctl import (
     LOCALAI_VARIANTS,
     MODULE_URL_FLAGS,
@@ -233,6 +235,7 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
     on = active(config_dir)
     variant = stored_variant(config_dir)
     manages = core_manages_modules(workspace_dir)
+    distributed = nodes.is_distributed(config_dir)
     rows: list[dict[str, object]] = []
     for module in MODULES:
         services, modules = service_count(workspace_dir, module.profile)
@@ -261,10 +264,18 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
                 "note": gettext(module.note) if module.note else "",
                 "services": services,
                 "modules": modules,
+                # The node the module's services are placed on; empty on a single host.
+                "node": nodes.profile_node(config_dir, module.profile),
                 "variant": variant if module.name == "localai" else None,
                 "configured": mail_configured(config_dir) if module.name == "mail" else None,
                 "mail_defaults": mail_defaults(config_dir) if module.name == "mail" else None,
                 "can_delete": manages and module.name in PURGE_MODULES,
+                # Set when switching off can only keep everything (see the module docstring).
+                "keep_only": (
+                    gettext(DISTRIBUTED_KEEP_ONLY)
+                    if distributed and module.name in PURGE_MODULES
+                    else ""
+                ),
             }
         )
     return rows
@@ -346,14 +357,26 @@ def check_enable(
         )
 
 
-def validate_scope(name: str, scope: str, confirm: str | None, workspace_dir: str) -> str:
+# Why the switch-off dialog offers no deletion on a distributed installation.
+DISTRIBUTED_KEEP_ONLY = N_(
+    "On a distributed installation the data and the settings stay: deleting them is not "
+    "supported across nodes yet."
+)
+
+
+def validate_scope(
+    name: str, scope: str, confirm: str | None, workspace_dir: str, *, config_dir: str
+) -> str:
     """The deletion scope of a switch-off request, or raises ModuleError.
 
-    Anything that deletes needs the module's name typed back, and a core that can do it."""
+    Anything that deletes needs the module's name typed back, a core that can do it, and a
+    single host."""
     if scope not in SCOPES:
         raise ModuleError(gettext("Choose what to do with the data and the settings."))
     if scope == SCOPE_KEEP:
         return scope
+    if nodes.is_distributed(config_dir):
+        raise ModuleError(gettext(DISTRIBUTED_KEEP_ONLY))
     if not core_manages_modules(workspace_dir):
         raise ModuleError(
             gettext("This papAIa core can't delete a module's data (it needs 1.6.0).")

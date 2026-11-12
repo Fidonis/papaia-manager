@@ -33,6 +33,7 @@
           <div class="min-w-0 flex-1 basis-40">
             <p class="text-sm font-semibold" x-text="t.label"></p>
             <p class="break-all font-mono text-xs opacity-60" x-text="t.path"></p>
+            <p class="text-xs opacity-50" x-show="t.node" x-text="fmt({{ _('Recreated on node {node}')|tojson|forceescape }}, { node: t.node })"></p>
           </div>
           <span class="badge badge-sm shrink-0" :class="t.exists ? 'badge-primary' : 'badge-ghost'"
                 x-text="t.exists ? fmtPlural(t.lines, {{ _('Overlay active · {count} line')|tojson|forceescape }}, {{ _('Overlay active · {count} lines')|tojson|forceescape }}) : {{ _('No overlay')|tojson|forceescape }}"></span>

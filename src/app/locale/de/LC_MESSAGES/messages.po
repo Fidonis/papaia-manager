@@ -3,7 +3,7 @@
 
 msgid ""
 msgstr ""
-"Project-Id-Version: papaia-manager 1.5.0\n"
+"Project-Id-Version: papaia-manager 1.6.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-21 00:00+0000\n"
 "PO-Revision-Date: 2026-10-21 00:00+0000\n"
@@ -5777,6 +5777,10 @@ msgstr "in %(modules)s Modulen"
 msgid "· variant %(variant)s"
 msgstr "· Variante %(variant)s"
 
+#, python-format
+msgid "· on node %(node)s"
+msgstr "· auf Node %(node)s"
+
 msgid "No mail server is stored yet. Switching the relay on asks for it, or"
 msgstr "Es ist noch kein Mailserver gespeichert. Beim Einschalten des Relays wird danach gefragt, oder"
 
@@ -5933,6 +5937,10 @@ msgstr "Kein Overlay"
 #, python-brace-format
 msgid "Edit {label} overlay"
 msgstr "Overlay {label} bearbeiten"
+
+#, python-brace-format
+msgid "Recreated on node {node}"
+msgstr "Wird auf Node {node} neu erstellt"
 
 #, python-brace-format
 msgid "rev {revision}"
@@ -8519,6 +8527,10 @@ msgstr "Das Mail-Relay ist an"
 msgid "relay %(relay)s"
 msgstr "Relay %(relay)s"
 
+#, python-format
+msgid "on node %(node)s"
+msgstr "auf Node %(node)s"
+
 msgid "relay not created"
 msgstr "Relay nicht angelegt"
 
@@ -9713,6 +9725,20 @@ msgstr "%(profile)s verbindet die Nodes und kann nicht ausgewählt werden"
 #, python-format
 msgid "profile %(name)r connects the nodes and cannot be controlled from this panel"
 msgstr "Profil %(name)r verbindet die Nodes und kann nicht über dieses Panel gesteuert werden"
+
+#, python-format
+msgid "The relay is off, but the realm still names it: %(value)s"
+msgstr "Das Relay ist aus, aber der Realm nennt es noch: %(value)s"
+
+msgid "On a distributed installation the data and the settings stay: deleting them is not supported across nodes yet."
+msgstr "Auf einer verteilten Installation bleiben die Daten und die Einstellungen: Sie über Nodes hinweg zu löschen, wird noch nicht unterstützt."
+
+#, python-format
+msgid "The change is in place, but a node that only runs its hooks did not take part. Once it answers, run: %(value)s"
+msgstr "Die Änderung ist übernommen, aber ein Node, der nur ihre Hooks ausführt, war nicht dabei. Sobald er antwortet, führen Sie aus: %(value)s"
+
+msgid "the node's doctor gave no readable answer"
+msgstr "der doctor des Nodes gab keine lesbare Antwort"
 
 msgid "earlier than the part of the log shown"
 msgstr "vor dem angezeigten Teil des Logs"
