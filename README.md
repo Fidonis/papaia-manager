@@ -38,8 +38,12 @@ The manager mounts `/var/run/docker.sock` plus the papAIa workspace, config
 and backup directories **at their host paths** (path parity — required so that
 bind-mount sources in add-on compose files resolve identically whether
 `docker compose` is invoked by the manager or by an operator on the host
-directly). Because of this, the `manager` profile is **Linux-only**;
-Windows/macOS Docker Desktop hosts don't preserve host-path parity through
+directly). Because of this, the `manager` profile needs a **Linux host or
+Docker Desktop on macOS**. Docker Desktop on macOS shares `/Users`, `/Volumes`,
+`/private`, `/tmp` and `/var/folders` with its VM under the same paths, so the
+mounts resolve as long as the workspace, config and backup directories lie in
+one of these folders (or another one added under Settings > Resources > File
+sharing). Docker Desktop on Windows does not preserve host-path parity through
 the VM boundary.
 
 ## How it works
@@ -90,7 +94,23 @@ core reports. Settings alone are not offered: the RAG system's stored credential
 encrypted with a secret that belongs to its data, and a module without its settings
 but with its data would be of no use to anyone. The RAG documents folder is never
 deleted. Deleting needs a core with the module operations (papAIa 1.6.0); an older
-core still switches modules off and keeps everything. **Overlay** edits the customer overlay, the files under
+core still switches modules off and keeps everything.
+
+**Native LocalAI on a Mac.** On an Apple Silicon Mac the core can run LocalAI as a
+process on the Mac's GPU instead of in its container (`LOCALAI_RUNTIME=native` in the
+root `.env`, set with `papaia-ctl setup --localai-runtime=native`). The manager runs in a
+container and cannot start, stop or switch that process, so it reads the stored runtime
+and the core's doctor check `localai_native`, which probes the process at
+`host.docker.internal`. The LocalAI row of **Modules** is then read-only and names the
+command to run on the Mac (no variant, no URL question; a switch through the API is
+refused). **Services** expects no `localai` container and lists *LocalAI (native)* as
+running or stopped according to the check, next to the model download job, which still
+runs; the check's state does not hold up a job waiting for the `localai` group. **Host**
+shows the check apart from its counts: a LocalAI that does not run is no verdict on the
+machine, and the GPU check, which the core skips for the native runtime, has no row. The
+**Upgrade** page offers no LocalAI image for removal and a restore offers neither
+`localai-data` nor `localai-models`, which the native runtime does not use. The check
+needs a core that ships it; without it the process reads as *not checked yet*. **Overlay** edits the customer overlay, the files under
 `$PAPAIA_CONFIG_DIR/overlay/` that the core merges last into the LibreChat,
 LiteLLM and SearXNG configuration. The editor checks the YAML while you type,
 shows the effective result (the core merges the draft in memory and the page

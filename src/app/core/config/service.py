@@ -211,7 +211,9 @@ async def wait_healthy(
     """None once the profile's containers are healthy, else the sentence that says what isn't.
 
     An unreadable Docker (no groups reported at all) is not a verdict: the check is skipped
-    and the log says so."""
+    and the log says so. With the native LocalAI runtime the `localai` group is the model
+    download job alone: no container is expected for the process, and the process's own state
+    is not waited for (`services.build_groups`), since nothing here starts it."""
     deadline = asyncio.get_running_loop().time() + (
         HEALTH_TIMEOUT_SECONDS if limit is None else limit
     )

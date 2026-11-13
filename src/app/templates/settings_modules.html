@@ -49,7 +49,8 @@
           <p class="mt-1 text-xs opacity-50">
             {% trans count=row.services %}{{ count }} service{% pluralize %}{{ count }} services{% endtrans %}{% if row.modules > 1 %} {% trans modules=row.modules %}in {{ modules }} modules{% endtrans %}{% endif %}
             {% if row.node %} {% trans node=row.node %}· on node {{ node }}{% endtrans %}{% endif %}
-            {% if row.name == "localai" and row.enabled %} {% trans variant=row.variant %}· variant {{ variant }}{% endtrans %}{% endif %}
+            {% if row.name == "localai" and row.runtime == "native" %} {% trans %}· native on the Mac{% endtrans %}
+            {% elif row.name == "localai" and row.enabled %} {% trans variant=row.variant %}· variant {{ variant }}{% endtrans %}{% endif %}
           </p>
           {% endif %}
           {% if row.note or row.problem %}
@@ -64,7 +65,8 @@
           <p class="mt-1 text-xs"><a href="{{ row.link }}" class="link link-secondary">{{ row.link_label }}</a></p>
           {% endif %}
 
-          {% if row.name in ("localai", "rag", "mail") %}
+          {# A native LocalAI asks nothing here: it is switched on the Mac (the row's note). #}
+          {% if row.name in ("localai", "rag", "mail") and row.runtime != "native" %}
           {# What `setup` asks when the module is switched on and its settings are missing. Inline
              under the row, not in a dialog: it reads the same on a phone as on a desktop. #}
           <div id="panel-{{ row.name }}" class="mt-3 hidden space-y-3 border-t border-dashed border-base-300 pt-3">
