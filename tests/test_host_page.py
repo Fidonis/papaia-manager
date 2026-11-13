@@ -845,3 +845,54 @@ def test_the_nav_dot_follows_the_worst_state(
 def test_the_sidebar_links_to_the_host_page_for_administrators_only(client: TestClient) -> None:
     assert 'href="/host"' in _as(client, "admin").get("/host").text
     assert 'href="/host"' not in _as(client, "user").get("/").text
+
+
+# ---------------------------------------------------------------------------
+# A native LocalAI on a Mac (doctor's `localai_native`)
+# ---------------------------------------------------------------------------
+
+
+def _native_doc(name: str) -> str:
+    """All-pass resources with the GPU and LocalAI checks of a Mac with the native runtime, as
+    the core writes them (see `fixtures/doctor_localai_native_*.json`)."""
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures" / f"doctor_localai_native_{name}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    resources = [c for c in _resources(cpu_status="pass") if c["name"] != "gpu"]
+    return _doc(
+        backup_status="pass", cert_status="pass", resources=[*resources, *fixture["checks"]]
+    )
+
+
+@pytest.mark.parametrize(("name", "said"), [("pass", "running"), ("warn", "not running")])
+def test_the_page_shows_the_native_localai_apart_from_the_verdict(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch, name: str, said: str
+) -> None:
+    _prime(monkeypatch, workspace, _native_doc(name))
+
+    body = _as(client, "admin").get("/partials/host").text
+    assert "LocalAI (native)" in body
+    assert f"LocalAI (native) &nbsp;·&nbsp; {said}" in body
+    assert "http://host.docker.internal:8080/readyz" in body
+    assert "Not part of the host verdict" in body
+    if name == "warn":
+        assert "start it with /Users/operator/workspace/localai/papaia/run-localai" in body
+    # The GPU check skipped without a variant: no row for it.
+    assert "GPU" not in body.split("Resources")[1].split("LocalAI (native)")[0]
+    assert "3 measured" in body
+    # A LocalAI that does not run is no warning about the host.
+    assert "rounded-full" not in _as(client, "admin").get("/partials/nav/host-indicator").text
+    assert "All healthy" in _as(client, "user").get("/partials/service-status").text
+
+
+def test_the_container_runtime_has_no_native_section(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prime(
+        monkeypatch,
+        workspace,
+        _doc(backup_status="pass", cert_status="pass", resources=_resources(cpu_status="pass")),
+    )
+    assert "LocalAI (native)" not in _as(client, "admin").get("/partials/host").text

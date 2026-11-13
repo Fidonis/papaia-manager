@@ -1135,3 +1135,56 @@ def test_the_modules_and_the_overlays_name_their_node(
     targets = {t["key"]: t for t in _admin(client).get(f"{_BASE}/overlay").json()["targets"]}
     assert targets["litellm"]["node"] == "edge"
     assert targets["librechat"]["node"] == ""
+
+
+# -- LocalAI running natively on a Mac ------------------------------------------------
+
+
+def _native(config_dir: Path, *profiles: str) -> None:
+    (config_dir / ".env").write_text(
+        "COMPOSE_PROFILES=" + ",".join(["nginx", "librechat", *profiles]) + "\n"
+        "LOCALAI_RUNTIME=native\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize("profiles", [("localai",), ()])
+def test_a_native_localai_is_neither_switched_on_nor_off_here(
+    client: TestClient, queue: JobQueue, config_dir: Path, profiles: tuple[str, ...]
+) -> None:
+    _native(config_dir, *profiles)
+    verb = "disable" if profiles else "enable"
+    body = {"scope": "keep"} if profiles else {"variant": "cpu"}
+    response = _admin(client).post(
+        f"{_BASE}/modules/localai/{verb}",
+        json={"revision": _modules_revision(client), **body},
+        headers=_CSRF_HEADER,
+    )
+    assert response.status_code == 422
+    assert "papaia-ctl setup" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+def test_the_modules_document_has_the_native_row(client: TestClient, config_dir: Path) -> None:
+    _native(config_dir, "localai")
+    body = _admin(client).get(f"{_BASE}/modules").json()
+    localai = next(m for m in body["modules"] if m["name"] == "localai")
+    assert localai["runtime"] == "native"
+    assert localai["switchable"] is False
+    assert (localai["services"], localai["modules"]) == (1, 1)
+
+
+def test_the_native_localai_row_is_read_only_and_asks_nothing(
+    client: TestClient, config_dir: Path
+) -> None:
+    _native(config_dir, "localai")
+    html = _admin(client).get("/settings/modules").text
+    row = html.split('data-module-row="localai"')[1].split("data-module-row=")[0]
+    assert "disabled>" in row
+    assert 'onchange="moduleToggled(this)"' not in row
+    assert 'id="localai-variant"' not in html
+    assert 'id="panel-localai"' not in html
+    assert "native on the Mac" in row
+    assert "papaia-ctl setup" in row
+    # The other three still switch.
+    assert html.count('onchange="moduleToggled(this)"') == 3

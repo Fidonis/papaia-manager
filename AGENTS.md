@@ -151,6 +151,8 @@ papaia-manager/
 │       │   ├── services.py     # Container status from docker ps, by module label; declared
 │       │   │                   #   vs. live merge; shared snapshot for the addon surfaces
 │       │   ├── inventory.py    # Declared state: compose fragments × profiles, addon manifests
+│       │   ├── localai_runtime.py # LOCALAI_RUNTIME (container | native on a Mac): the stored runtime,
+│       │   │                   #   what has no container then, the doctor check `localai_native`
 │       │   ├── envfile.py      # Shared KEY=value env-file parsing
 │       │   ├── snapshots.py    # git-archive materialization, revision directories, pruning + installed.yaml
 │       │   ├── addon_upgrades.py # Staging a version, `addon upgrade --dry-run`, answers file, following the registration

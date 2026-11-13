@@ -238,7 +238,9 @@ async def enable_module(
         raise HTTPException(status_code=409, detail=gettext("This module is already switched on."))
     current_mail = load_mail_settings(settings.papaia_config_dir)
     try:
-        variant = modules.validate_enable(name, body.variant)
+        variant = modules.validate_enable(
+            name, body.variant, runtime=modules.stored_runtime(settings.papaia_config_dir)
+        )
         public_url = modules.validate_public_url(name, body.public_url)
         mail = _mail_input(name, body.mail, current_mail)
         modules.check_enable(

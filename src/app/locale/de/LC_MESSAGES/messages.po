@@ -9742,3 +9742,21 @@ msgstr "der doctor des Nodes gab keine lesbare Antwort"
 
 msgid "earlier than the part of the log shown"
 msgstr "vor dem angezeigten Teil des Logs"
+
+msgid "LocalAI (native)"
+msgstr "LocalAI (nativ)"
+
+msgid "not checked yet"
+msgstr "noch nicht geprüft"
+
+msgid "LocalAI runs natively on the Mac, outside Docker, and is switched and started there: run `papaia-ctl setup` on the Mac (`--localai-runtime=container` moves it back into its container)."
+msgstr "LocalAI läuft nativ auf dem Mac, außerhalb von Docker, und wird dort geschaltet und gestartet: Führen Sie `papaia-ctl setup` auf dem Mac aus (`--localai-runtime=container` holt es in seinen Container zurück)."
+
+msgid "· native on the Mac"
+msgstr "· nativ auf dem Mac"
+
+msgid "not running"
+msgstr "läuft nicht"
+
+msgid "Runs on the Mac outside Docker. Not part of the host verdict; the Services page lists it with LocalAI."
+msgstr "Läuft auf dem Mac außerhalb von Docker. Zählt nicht zum Urteil über den Host; die Seite Dienste führt es bei LocalAI."

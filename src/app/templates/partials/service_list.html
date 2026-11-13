@@ -76,10 +76,10 @@
               {% else %}border-l-base-300{% endif %}
               {% if ch == 'missing' %}bg-base-100/50{% else %}bg-base-100{% endif %}">
     <div class="col-span-2 md:col-span-1 min-w-0 truncate">
-      {{ container.service }}
+      {{ container.title }}
       {% if container.role %}<span class="opacity-40"> · {{ container.role }}</span>{% endif %}
     </div>
-    <div class="font-mono text-xs opacity-60 truncate">{{ container.status_display }}</div>
+    <div class="font-mono text-xs opacity-60 truncate"{% if container.native %} title="{{ container.status_display }}"{% endif %}>{{ container.status_display }}</div>
     <div class="text-xs">
       {% if ch == 'healthy' %}
         <span class="text-success">{% trans %}healthy{% endtrans %}</span>

@@ -36,6 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.localai_runtime import NATIVE_UNUSED_VOLUMES
 from app.i18n import N_
 from app.i18n import gettext as _
 
@@ -271,7 +272,7 @@ def _node_groups(
 
 
 def build_groups(
-    manifest: dict[str, Any] | None, *, controller: str = ""
+    manifest: dict[str, Any] | None, *, controller: str = "", localai_native: bool = False
 ) -> list[ScopeGroup]:
     """The selectable groups of one restore point, configuration first.
 
@@ -285,6 +286,10 @@ def build_groups(
     grouping fields: without a module on the artifacts there is no honest
     grouping to offer, and reconstructing one from volume names is exactly what
     the core refuses to do.
+
+    `localai_native` is set when LocalAI runs as a process on a Mac: it keeps its data
+    in its home there and its models in a bind mount, so the two LocalAI volumes are
+    not offered, and a LocalAI group left with nothing in it is not either.
     """
     if not manifest:
         return []
@@ -313,6 +318,14 @@ def build_groups(
             ).archives += 1
             continue
         if not module:
+            continue
+        if (
+            localai_native
+            and kind == "volume"
+            and not owner.startswith("addon:")
+            and _volume_key(target, str(raw.get("project") or core_project))
+            in NATIVE_UNUSED_VOLUMES
+        ):
             continue
 
         is_addon = owner.startswith("addon:")

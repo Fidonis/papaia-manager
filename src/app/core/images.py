@@ -65,6 +65,7 @@ from typing import Any
 
 import yaml
 
+from app.core import localai_runtime
 from app.core.state import deployment_addons_by_name, load_deployment_yaml
 from app.i18n import gettext
 
@@ -240,12 +241,17 @@ def build_report(
     local: Iterable[LocalImage],
     used: Collection[str],
     errors: Iterable[str] = (),
+    *,
+    withheld: Collection[str] = (),
 ) -> ImageReport:
     """Which local images are outdated. Pure -- every input is already read.
 
     `declared` maps a source (`core`, or an add-on's name) to the references its
     Compose files name, in iteration order of preference: the first source that
     declares a repository is the one an image is attributed to.
+
+    `withheld` names repositories whose images are never offered, whatever else
+    holds: LocalAI's while it runs natively on a Mac (see `withheld_repositories`).
     """
     problems = list(errors)
     if problems:
@@ -276,6 +282,8 @@ def build_report(
         if any((repo, digest) in declared_digests for repo, _, digest in digests):
             continue
         repos = {repo for repo, _, _ in tags} | {repo for repo, _, _ in digests}
+        if repos & set(withheld):
+            continue
         # No reference at all: a local build, or the remains of one. Nothing ties
         # it to the stack, so it is not this module's to remove.
         if not repos or not repos <= repo_source.keys():
@@ -518,6 +526,37 @@ async def declared_images(
     return {source: declared[source] for source in order}, errors
 
 
+# The repository of the LocalAI image when the core's compose file cannot be read; the same
+# name the core pins today.
+_LOCALAI_REPOSITORY = "localai/localai"
+_LOCALAI_COMPOSE = ("papaia", "src", "ai", "localai", "docker-compose.yml")
+
+
+def withheld_repositories(config_dir: str, workspace_dir: str) -> frozenset[str]:
+    """Repositories whose images are not offered for removal in this deployment.
+
+    With the native LocalAI runtime the `localai` service has no container, so none of
+    LocalAI's images is in use and every one of them would read as outdated. They are left
+    alone: going back to the container runtime is one `setup` away, and its image is
+    several GB to pull again. The repository is read from the core's compose file, as the
+    core reads its pin, with the name it has today as the fallback."""
+    if not localai_runtime.is_native(config_dir):
+        return frozenset()
+    found = {_LOCALAI_REPOSITORY}
+    try:
+        document = yaml.safe_load(
+            Path(workspace_dir).joinpath(*_LOCALAI_COMPOSE).read_text(encoding="utf-8")
+        )
+    except (OSError, yaml.YAMLError):
+        document = None
+    services = document.get("services") if isinstance(document, dict) else None
+    service = services.get("localai") if isinstance(services, dict) else None
+    image = service.get("image") if isinstance(service, dict) else None
+    if isinstance(image, str) and image.strip():
+        found.add(parse_ref(image.strip())[0])
+    return frozenset(found)
+
+
 # ---------------------------------------------------------------------------
 # Report and removal
 # ---------------------------------------------------------------------------
@@ -536,7 +575,13 @@ async def gather_report(config_dir: str, workspace_dir: str) -> ImageReport:
         )
     except ImagesError as exc:
         return ImageReport(errors=[str(exc)])
-    return build_report(declared, local, used, errors)
+    return build_report(
+        declared,
+        local,
+        used,
+        errors,
+        withheld=withheld_repositories(config_dir, workspace_dir),
+    )
 
 
 async def prune(

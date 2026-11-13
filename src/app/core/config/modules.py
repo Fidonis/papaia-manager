@@ -16,6 +16,12 @@ RAG system (its stored credentials are encrypted with a secret that belongs to t
 a module whose settings were deleted but whose data stayed would not be one anybody can use.
 On a distributed installation only `keep` is offered: the core refuses `stop --volumes` there,
 and `module-purge` would only see the controller's volumes.
+
+LocalAI can also run as a process on an Apple Silicon Mac (`LOCALAI_RUNTIME=native`, see
+`app.core.localai_runtime`). This panel cannot reach that process, and the core asks no
+variant and no URL for it, so the row is read-only then: it names the command that changes
+the runtime on the Mac, and a switch either way is refused. The runtime is not a variant (the
+variants mirror the core's image table, see `tests/test_config_contract.py`).
 """
 
 from __future__ import annotations
@@ -26,7 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.core import ctl, nodes
+from app.core import ctl, localai_runtime, nodes
 from app.core.ctl import (
     LOCALAI_VARIANTS,
     MODULE_URL_FLAGS,
@@ -178,20 +184,33 @@ def stored_variant(config_dir: str) -> str:
     return value or DEFAULT_VARIANT
 
 
+def stored_runtime(config_dir: str) -> str:
+    """Where LocalAI runs as the core stored it: `container` (the default) or `native`."""
+    return localai_runtime.stored_runtime(config_dir)
+
+
 def revision(config_dir: str) -> str:
-    """A fingerprint of what the tab shows: the profile set and the LocalAI variant.
+    """A fingerprint of what the tab shows: the profile set, the LocalAI variant and the
+    LocalAI runtime.
 
     The form carries it back, so a switch made from an older page (or on the host
     meanwhile) is refused instead of overwriting the newer state."""
     env = load_env_file(Path(config_dir) / ".env")
     profiles = ",".join(sorted(profiles_in(env)))
     material = f"{profiles}\n{env.get(KEY_VARIANT, '')}"
+    # Appended only for `native`, so the revision of a container installation stays what it
+    # was and a page loaded before an upgrade of the manager is not called stale.
+    if localai_runtime.runtime(env) == localai_runtime.NATIVE:
+        material += f"\n{localai_runtime.NATIVE}"
     return hashlib.sha256(material.encode()).hexdigest()[:16]
 
 
-def service_count(workspace_dir: str, profile: str) -> tuple[int, int]:
-    """(services, modules) the profile brings up, read from the shipped Compose fragments."""
-    items = [i for i in core_inventory(workspace_dir, {profile}) if profile in i.profiles]
+def service_count(
+    workspace_dir: str, profile: str, skip: frozenset[str] = frozenset()
+) -> tuple[int, int]:
+    """(services, modules) the profile brings up, read from the shipped Compose fragments.
+    `skip` names services that run no container here (see `inventory.core_inventory`)."""
+    items = [i for i in core_inventory(workspace_dir, {profile}, skip) if profile in i.profiles]
     return len(items), len({i.module for i in items})
 
 
@@ -234,12 +253,19 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
     """What the tab renders: one row per module, in the order of `MODULES`."""
     on = active(config_dir)
     variant = stored_variant(config_dir)
+    native = stored_runtime(config_dir) == localai_runtime.NATIVE
     manages = core_manages_modules(workspace_dir)
     distributed = nodes.is_distributed(config_dir)
     rows: list[dict[str, object]] = []
     for module in MODULES:
         services, modules = service_count(workspace_dir, module.profile)
         enabled = module.profile in on
+        if native and module.name == "localai":
+            containers, _ = service_count(
+                workspace_dir, module.profile, localai_runtime.NATIVE_SKIPPED_SERVICES
+            )
+            rows.append(_native_row(module, enabled=enabled, services=containers))
+            continue
         # A profile the core's Compose files don't have (a core older than the module): the
         # switch could only fail. The manager's own profile is always there.
         shipped = services > 0 or not module.switchable
@@ -267,6 +293,7 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
                 # The node the module's services are placed on; empty on a single host.
                 "node": nodes.profile_node(config_dir, module.profile),
                 "variant": variant if module.name == "localai" else None,
+                "runtime": localai_runtime.CONTAINER if module.name == "localai" else None,
                 "configured": mail_configured(config_dir) if module.name == "mail" else None,
                 "mail_defaults": mail_defaults(config_dir) if module.name == "mail" else None,
                 "can_delete": manages and module.name in PURGE_MODULES,
@@ -281,13 +308,59 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
     return rows
 
 
-def validate_enable(name: str, variant: str | None) -> str | None:
+# The note of the read-only LocalAI row, and the refusal of a switch, while it runs natively.
+NATIVE_NOTE = N_(
+    "LocalAI runs natively on the Mac, outside Docker, and is switched and started there: run "
+    "`papaia-ctl setup` on the Mac (`--localai-runtime=container` moves it back into its "
+    "container)."
+)
+
+
+def _native_row(module: ModuleDef, *, enabled: bool, services: int) -> dict[str, object]:
+    """The LocalAI row while it runs natively: shown, never switched from here. `services`
+    counts the containers, which is the model download job alone."""
+    return {
+        "name": module.name,
+        "profile": module.profile,
+        "title": gettext(module.title),
+        "description": gettext(module.description),
+        "enabled": enabled,
+        "switchable": False,
+        "supported": True,
+        "problem": "",
+        "link": "",
+        "link_label": "",
+        "note": gettext(NATIVE_NOTE),
+        "services": services,
+        "modules": 1 if services else 0,
+        "node": "",
+        "variant": None,
+        "runtime": localai_runtime.NATIVE,
+        "configured": None,
+        "mail_defaults": None,
+        "can_delete": False,
+        "keep_only": "",
+    }
+
+
+def refuse_native(name: str, runtime: str) -> None:
+    """Raises ModuleError for a switch of LocalAI while it runs natively."""
+    if name == "localai" and runtime == localai_runtime.NATIVE:
+        raise ModuleError(gettext(NATIVE_NOTE))
+
+
+def validate_enable(
+    name: str, variant: str | None, *, runtime: str = localai_runtime.CONTAINER
+) -> str | None:
     """The variant to store for an enable request, or raises ModuleError.
 
-    Only LocalAI has one; it is required and must be one of the variants this page offers."""
+    Only LocalAI has one; it is required and must be one of the variants this page offers.
+    `runtime` is the stored LocalAI runtime (`stored_runtime`): a native LocalAI is not
+    switched from here."""
     module = SWITCHABLE.get(name)
     if module is None:
         raise ModuleError(gettext("This module can't be switched from here."))
+    refuse_native(name, runtime)
     if name != "localai":
         if variant is not None:
             raise ModuleError(gettext("Only LocalAI takes an accelerator variant."))
@@ -370,7 +443,8 @@ def validate_scope(
     """The deletion scope of a switch-off request, or raises ModuleError.
 
     Anything that deletes needs the module's name typed back, a core that can do it, and a
-    single host."""
+    single host. A native LocalAI is not switched off from here at all."""
+    refuse_native(name, stored_runtime(config_dir))
     if scope not in SCOPES:
         raise ModuleError(gettext("Choose what to do with the data and the settings."))
     if scope == SCOPE_KEEP:

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-13T09:00:00Z",
+  "platform_version": "1.8.0",
+  "checks": [
+    {
+      "name": "gpu",
+      "status": "skip",
+      "summary": "LocalAI runs natively on the Apple GPU (see localai_native)",
+      "details": {}
+    },
+    {
+      "name": "localai_native",
+      "status": "warn",
+      "summary": "LocalAI v4.7.1 does not answer on http://host.docker.internal:8080/readyz: start it with /Users/operator/workspace/localai/papaia/run-localai",
+      "details": {
+        "url": "http://host.docker.internal:8080/readyz",
+        "home": "/Users/operator/workspace/localai/papaia",
+        "pinned": "v4.7.1",
+        "installed": "v4.7.1",
+        "ready": false
+      }
+    }
+  ],
+  "summary": {
+    "pass": 0,
+    "warn": 1,
+    "fail": 0,
+    "skip": 1
+  },
+  "ok": true
+}
