@@ -19,6 +19,10 @@ the stack, streams a log and leaves an audit entry.
   If the stop or the start fails, the previous file is put back and the group is started again.
   If the group starts but does not become healthy, the file stays and the job says so: the
   page then offers the roll back, because the previous version may be no better.
+* **Nodes that only run hooks.** In a distributed installation a `start` also visits the
+  nodes of the proxy and of Keycloak (`nodes.profile_runs`). A failure there does not undo
+  the change, which is in place on the module's own node: the job goes on, and ends with
+  the sentence that names the node and the `start` that catches it up.
 
 Only the options of one optional module reach `setup` (`app.core.ctl.ModuleSetup`). Overlay
 content is never written to the job log or the audit log.
@@ -89,6 +93,10 @@ class PurgeFailedError(Exception):
     """The module is off, but the core could not delete what was asked for."""
 
 
+class HookNodesFailedError(Exception):
+    """The change is in place, but a node that only runs hooks for it did not take part."""
+
+
 # The core's refusals are whole sentences (the RAG one names the add-on and the commands that
 # remove it); the job strip shows them as they are.
 SENTENCE_LIMIT = 700
@@ -140,16 +148,25 @@ async def _setup(
 
 
 async def _verb(
-    ctx: JobContext, verb: str, *flags: str, workspace_dir: str, config_dir: str
+    ctx: JobContext,
+    verb: str,
+    *flags: str,
+    workspace_dir: str,
+    config_dir: str,
+    skipped: list[str] | None = None,
 ) -> None:
     """Run a verb and stream its output into the log. A failure becomes StepFailedError.
 
     In a distributed installation a profile's `start` and `stop` run once per node they
-    concern (`nodes.profile_runs`), and the first that fails ends the step."""
-    for run in nodes.profile_runs(
-        verb, flags, config_dir=config_dir, workspace_dir=workspace_dir
+    concern (`nodes.profile_runs`), and the first that fails ends the step. With `skipped`,
+    a failure on a node that only runs hooks (every run after the first) does not: the log
+    says so, the command that catches the node up goes into `skipped`, and the next node
+    follows."""
+    for index, run in enumerate(
+        nodes.profile_runs(verb, flags, config_dir=config_dir, workspace_dir=workspace_dir)
     ):
-        ctx.log(f"[ctl] papaia-ctl {verb} {' '.join(run)}".rstrip())
+        command = f"papaia-ctl {verb} {' '.join(run)}".rstrip()
+        ctx.log(f"[ctl] {command}")
         lines: list[str] = []
         try:
             gen = await run_core_verb(
@@ -162,9 +179,24 @@ async def _verb(
                 ctx.log(line)
                 lines.append(line)
         except CtlError as exc:
+            problem = last_problem(lines) or str(exc)
+            if skipped is not None and index > 0:
+                ctx.log(f"[warn] {command} failed ({problem}); the change stays")
+                skipped.append(command)
+                continue
             raise StepFailedError(_(
                 "papaia-ctl %(verb)s: %(value)s"
-            ) % {"verb": verb, "value": last_problem(lines) or exc}) from exc
+            ) % {"verb": verb, "value": problem}) from exc
+
+
+def _hook_nodes_failed(skipped: list[str]) -> HookNodesFailedError:
+    """The error that ends a job whose change is in place but missed a node's hooks."""
+    return HookNodesFailedError(
+        _(
+            "The change is in place, but a node that only runs its hooks did not take part. "
+            "Once it answers, run: %(value)s"
+        ) % {"value": "; ".join(skipped)}
+    )
 
 
 async def wait_healthy(
@@ -225,7 +257,12 @@ def _setup_spec(
 
 
 async def _recreate(
-    ctx: JobContext, profiles: tuple[str, ...], *, workspace_dir: str, config_dir: str
+    ctx: JobContext,
+    profiles: tuple[str, ...],
+    *,
+    workspace_dir: str,
+    config_dir: str,
+    skipped: list[str],
 ) -> None:
     """Recreate the containers of `profiles`: render replaces the files they read, and a
     running container keeps the old one (see the overlay jobs)."""
@@ -234,16 +271,38 @@ async def _recreate(
         await _verb(
             ctx, "stop", "--clean-up", flag, workspace_dir=workspace_dir, config_dir=config_dir
         )
-        await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+        await _verb(
+            ctx,
+            "start",
+            flag,
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            skipped=skipped,
+        )
 
 
 async def _start(
-    ctx: JobContext, module: str, flag: str, *, workspace_dir: str, config_dir: str
+    ctx: JobContext,
+    module: str,
+    flag: str,
+    *,
+    workspace_dir: str,
+    config_dir: str,
+    skipped: list[str],
 ) -> str | None:
     """`start` of the module's profile. For the mail relay, the sentence that says Keycloak
-    was not given its mail server (the last step of `start` only warns), else None."""
+    was not given its mail server (the last step of `start` only warns), else None. The
+    relay's run on Keycloak's node is the point of its start, so a failure there still ends
+    the step."""
     if module != "mail":
-        await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+        await _verb(
+            ctx,
+            "start",
+            flag,
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            skipped=skipped,
+        )
         return None
     return await mail_service.run_verb(
         ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir
@@ -287,13 +346,23 @@ def enable_callback(
         )
 
     async def _callback(ctx: JobContext) -> None:
+        skipped: list[str] = []
         await _setup(ctx, spec, workspace_dir=workspace_dir, config_dir=config_dir)
         try:
             realm = await _start(
-                ctx, module, flag, workspace_dir=workspace_dir, config_dir=config_dir
+                ctx,
+                module,
+                flag,
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+                skipped=skipped,
             )
             await _recreate(
-                ctx, definition.recreate, workspace_dir=workspace_dir, config_dir=config_dir
+                ctx,
+                definition.recreate,
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+                skipped=skipped,
             )
         except StepFailedError as exc:
             write_audit_entry(
@@ -321,7 +390,7 @@ def enable_callback(
             target=f"module:{module}",
             params=params,
             job_id=ctx.job.id,
-            result="partial" if problem or realm else "ok",
+            result="partial" if problem or realm or skipped else "ok",
         )
         if realm:
             raise mail_service.RealmNotUpdatedError(
@@ -337,6 +406,8 @@ def enable_callback(
                     "switch it off again."
                 ) % {"title": definition.title, "value": problem[0].lower(), "value2": problem[1:]}
             )
+        if skipped:
+            raise _hook_nodes_failed(skipped)
         ctx.log("[info] done")
 
     return _callback
@@ -356,6 +427,7 @@ def disable_callback(
     params: dict[str, Any] = {"module": module, "scope": scope}
 
     async def _callback(ctx: JobContext) -> None:
+        skipped: list[str] = []
         # Stopped while the profile is still active: once `setup` has removed it, Compose no
         # longer knows what to stop. `--volumes` takes the anonymous volumes of the containers
         # with them, which only the `down` that removes the containers can do.
@@ -371,7 +443,11 @@ def disable_callback(
         if module == "mail":
             await _sync_realm(ctx, workspace_dir=workspace_dir, config_dir=config_dir)
         await _recreate(
-            ctx, definition.recreate, workspace_dir=workspace_dir, config_dir=config_dir
+            ctx,
+            definition.recreate,
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            skipped=skipped,
         )
         if delete_data:
             await _purge(
@@ -391,7 +467,10 @@ def disable_callback(
             target=f"module:{module}",
             params=params,
             job_id=ctx.job.id,
+            result="partial" if skipped else "ok",
         )
+        if skipped:
+            raise _hook_nodes_failed(skipped)
         ctx.log("[info] done")
 
     return _callback
@@ -554,11 +633,19 @@ def overlay_callback(
             return
 
         params["restarted"] = True
+        skipped: list[str] = []
         try:
             await _verb(
                 ctx, "stop", "--clean-up", flag, workspace_dir=workspace_dir, config_dir=config_dir
             )
-            await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+            await _verb(
+                ctx,
+                "start",
+                flag,
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+                skipped=skipped,
+            )
         except StepFailedError as exc:
             await _restore(
                 ctx,
@@ -595,7 +682,7 @@ def overlay_callback(
             target=subject,
             params=params,
             job_id=ctx.job.id,
-            result="partial" if problem else "ok",
+            result="partial" if problem or skipped else "ok",
         )
         if problem:
             raise NotHealthyError(
@@ -604,6 +691,8 @@ def overlay_callback(
                     "Versions if you want to go back."
                 ) % {"value": problem[0].lower(), "value2": problem[1:]}
             )
+        if skipped:
+            raise _hook_nodes_failed(skipped)
         ctx.log("[info] done")
 
     return _callback

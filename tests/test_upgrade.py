@@ -385,6 +385,79 @@ def test_the_checkout_phase_carries_the_tag() -> None:
     assert phases["checkout"].detail == "v1.2.0"
 
 
+# The case from the issue: `start` pulls the release's images through `up -d`, and
+# without a TTY Compose prints a line per layer and progress event. `docker logs
+# --tail` counts those lines too, so the window can begin after the opening phases.
+_TAIL = 2000
+_PULL = "".join(f" a1b2c3d4 Downloading [==>  ] {i}kB/9MB\n" for i in range(2100))
+
+
+def _window(log: str, tail: int = _TAIL) -> str:
+    return "".join(log.splitlines(keepends=True)[-tail:])
+
+
+def _cut(*, after: str, tail: int = _TAIL) -> str:
+    head, rest = _COMPLETE_LOG.split(after, 1)
+    return _window(head + after + _PULL + rest, tail)
+
+
+def test_a_full_window_after_the_start_line_reads_every_phase_as_done() -> None:
+    log = _cut(after="[papaia-ctl] Starting the stack...\n")
+    assert "Creating a restore point" not in log
+    phases = phases_from_log(log, running=False, tail=_TAIL)
+    assert {p.key: p.state for p in phases} == {p.key: PHASE_DONE for p in phases}
+    assert all(p.detail == "earlier than the part of the log shown" for p in phases)
+
+
+def test_the_same_window_without_its_size_still_reads_as_skipped() -> None:
+    # Without `tail` there is no telling a cut log from a run that skipped everything.
+    log = _cut(after="[papaia-ctl] Starting the stack...\n")
+    assert set(_states(log, running=False).values()) == {PHASE_SKIPPED}
+
+
+def test_a_full_window_keeps_the_phases_it_shows() -> None:
+    log = _cut(after="[papaia-ctl] Moving the checkout to v1.2.0...\n")
+    phases = {p.key: p for p in phases_from_log(log, running=False, tail=_TAIL)}
+    assert phases["backup"].state == PHASE_DONE
+    assert phases["backup"].detail == "earlier than the part of the log shown"
+    assert phases["checkout"].state == PHASE_DONE
+    # The first phase in the window and the ones after it are read from their lines.
+    assert phases["migrations"].state == PHASE_DONE
+    assert phases["migrations"].detail == ""
+    assert phases["start"].state == PHASE_DONE
+
+
+def test_a_real_no_backup_stays_skipped_in_a_full_window() -> None:
+    log = _cut(after="[papaia-ctl] Starting the stack...\n")
+    states = {
+        p.key: p.state
+        for p in phases_from_log(log, running=False, tail=_TAIL, no_backup=True)
+    }
+    assert states.pop("backup") == PHASE_SKIPPED
+    assert set(states.values()) == {PHASE_DONE}
+
+
+def test_a_running_upgrade_in_a_full_window_does_not_skip_what_it_passed() -> None:
+    log = _window(_COMPLETE_LOG.split("[ok] start complete.")[0] + _PULL)
+    states = {p.key: p.state for p in phases_from_log(log, running=True, tail=_TAIL)}
+    # Nothing announced in the window yet: nothing is claimed either way.
+    assert set(states.values()) == {PHASE_PENDING}
+    log = _window(_COMPLETE_LOG.split("[papaia-ctl] Starting")[0] + _PULL) + (
+        "[papaia-ctl] Starting the stack...\n"
+    )
+    states = {p.key: p.state for p in phases_from_log(log, running=True, tail=_TAIL)}
+    assert states.pop("start") == PHASE_RUNNING
+    assert set(states.values()) == {PHASE_DONE}
+
+
+def test_a_window_that_is_not_full_reads_as_before() -> None:
+    # --no-backup without the flag at hand: the log is whole, so the gap is real.
+    log = _COMPLETE_LOG.split("\n", 2)[2]
+    assert _states(log, running=False)["backup"] == PHASE_SKIPPED
+    states = {p.key: p.state for p in phases_from_log(log, running=False, tail=_TAIL)}
+    assert states["backup"] == PHASE_SKIPPED
+
+
 # ---------------------------------------------------------------------------
 # The optional image-cleanup phase
 # ---------------------------------------------------------------------------

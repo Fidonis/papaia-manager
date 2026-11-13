@@ -3,7 +3,7 @@
 
 msgid ""
 msgstr ""
-"Project-Id-Version: papaia-manager 1.5.0\n"
+"Project-Id-Version: papaia-manager 1.6.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-21 00:00+0000\n"
 "PO-Revision-Date: 2026-10-21 00:00+0000\n"
@@ -9766,3 +9766,16 @@ msgstr "Benötigt von %(names)s; zuerst diese entfernen"
 #, python-format
 msgid "%(name)s is required by %(dependents)s; remove those first"
 msgstr "%(name)s wird von %(dependents)s benötigt; zuerst diese entfernen"
+
+msgid "On a distributed installation the data and the settings stay: deleting them is not supported across nodes yet."
+msgstr "Auf einer verteilten Installation bleiben die Daten und die Einstellungen: Sie über Nodes hinweg zu löschen, wird noch nicht unterstützt."
+
+#, python-format
+msgid "The change is in place, but a node that only runs its hooks did not take part. Once it answers, run: %(value)s"
+msgstr "Die Änderung ist übernommen, aber ein Node, der nur ihre Hooks ausführt, war nicht dabei. Sobald er antwortet, führen Sie aus: %(value)s"
+
+msgid "the node's doctor gave no readable answer"
+msgstr "der doctor des Nodes gab keine lesbare Antwort"
+
+msgid "earlier than the part of the log shown"
+msgstr "vor dem angezeigten Teil des Logs"

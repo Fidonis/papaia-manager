@@ -78,6 +78,39 @@ a separate container rather than as a child of this process. Every one of these
 routes requires the admin role and a session-bound CSRF token, and writes an
 audit entry to `$PAPAIA_CONFIG_DIR/manager/audit.log`.
 
+**Add-on upgrades:** `upgrade` and `rollback` are in the add-on allowlist. They
+repoint the add-on's registration at another directory and recreate its
+containers; the restore point they take holds the add-on only and is restored with
+`restore-scoped`, so neither can replace `$PAPAIA_CONFIG_DIR` or reach the core
+stack. Each version is staged in a directory of its own that is written once and
+never overwritten. The upgrade applies the version that was reviewed and is
+refused if the catalog changed since. Values the new version asks for reach
+`papaia-ctl` through a file with mode 0600 that is deleted when the job ends, never
+through an argument. Only keys the plan asks about are accepted, and the audit
+entry names the keys, never a value.
+
+**Nodes:** The routes of a distributed installation exist only when
+`deployment.yaml` has a topology (404 otherwise). Adding and removing a node,
+handing it its bundle and trusting a host key need, on top of the admin role and
+the CSRF token, a fresh sign-in at Keycloak (`prompt=login`, `max_age=0`): the
+callback ties the answer to that request through the PKCE verifier, checks
+`auth_time` and that the account is the same, and the step-up holds for five
+minutes. Every one of these changes is audited, refusals included. The commands
+that change the set of nodes have an allowlist of their own. A node is reached
+only through the core's `node-exec`, which asks a node for its read-only verbs and
+for `compose-up` / `compose-stop`; the manager runs no raw `docker` and no Git on a
+node. SSH keys and pinned host keys stay in the configuration directory, managed by
+the core; a host key is trusted only after an administrator compared it. The image
+carries an SSH client, and its entrypoint names the host's user id through
+`nss_wrapper` for that process tree without making `/etc/passwd` writable.
+
+**Models and usage:** The client of LiteLLM sends GET requests to three routes
+only (`/health/readiness`, `/model/info`, `/user/daily/activity`) and refuses
+anything else before a request is made, so the page cannot change LiteLLM. The
+master key is read from `ai/litellm/.env` when a request needs it and goes into one
+request header: never into a log line, a message, an error text or a page.
+The page and its API are admin-only.
+
 **Configuration writers:** The core's own commands that write, `setup` and
 `module-purge`, have an allowlist of their own and are reachable only through
 typed requests. They pass nothing but the options of the mail relay or of one
@@ -89,8 +122,8 @@ change is refused with a 409 while a restore, an upgrade or a stack action runs.
 
 **Token handling:** OIDC client secrets and catalog tokens never appear
 in logs, process arguments, or HTTP responses. The same holds for the mail
-server's password, the webhook URLs of notification recipients and the secrets of
-the RAG system described next.
+server's password, the webhook URLs of notification recipients, LiteLLM's master
+key and the secrets of the RAG system described below.
 
 **Sign-out:** `POST /auth/logout` requires the session-bound CSRF token and ends
 the Keycloak session with the session's refresh token before the manager's own
