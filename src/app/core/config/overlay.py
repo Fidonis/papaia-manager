@@ -79,6 +79,13 @@ TARGETS: tuple[OverlayTarget, ...] = (
         description=N_("Models and routing of the LLM gateway."),
     ),
     OverlayTarget(
+        key="chatterbox",
+        label="Chatterbox",
+        path="ai/voice/chatterbox.yaml",
+        profile="voice",
+        description=N_("Default voice and generation settings of the speech synthesis."),
+    ),
+    OverlayTarget(
         key="searxng",
         label="SearXNG",
         path="services/searxng/settings.yml",

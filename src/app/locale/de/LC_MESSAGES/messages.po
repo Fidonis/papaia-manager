@@ -243,11 +243,12 @@ msgstr "%(module)s hat keine öffentliche URL"
 msgid "switching a module off takes no public URL"
 msgstr "Beim Abschalten eines Moduls ist keine öffentliche URL erlaubt"
 
-msgid "only LocalAI takes an image variant"
-msgstr "Nur LocalAI hat eine Image-Variante"
+#, python-format
+msgid "%(module)s takes no image variant"
+msgstr "%(module)s hat keine Image-Variante"
 
-msgid "switching LocalAI off takes no variant"
-msgstr "Beim Abschalten von LocalAI ist keine Variante erlaubt"
+msgid "switching a module off takes no variant"
+msgstr "Beim Abschalten eines Moduls ist keine Variante erlaubt"
 
 #, python-format
 msgid "variant must be one of %(value)s"
@@ -1349,6 +1350,9 @@ msgstr "Intel-GPU"
 msgid "AMD ROCm"
 msgstr "AMD ROCm"
 
+msgid "NVIDIA GPU (CUDA)"
+msgstr "NVIDIA-GPU (CUDA)"
+
 msgid "Runs language models on this host behind an OpenAI-compatible API. Sign-in goes through Keycloak."
 msgstr "Führt Sprachmodelle auf diesem Host hinter einer OpenAI-kompatiblen API aus. Die Anmeldung läuft über Keycloak."
 
@@ -1388,11 +1392,12 @@ msgstr "Dieser papAIa-Core ist zu alt, um ihn von hier aus umzuschalten."
 msgid "This module can't be switched from here."
 msgstr "Dieses Modul kann von hier aus nicht umgeschaltet werden."
 
-msgid "Only LocalAI takes an accelerator variant."
-msgstr "Nur LocalAI hat eine Beschleuniger-Variante."
+msgid "This module takes no accelerator variant."
+msgstr "Dieses Modul hat keine Beschleuniger-Variante."
 
-msgid "Choose the accelerator variant for LocalAI."
-msgstr "Wählen Sie die Beschleuniger-Variante für LocalAI."
+#, python-format
+msgid "Choose the accelerator variant for %(title)s."
+msgstr "Wählen Sie die Beschleuniger-Variante für %(title)s."
 
 #, python-format
 msgid "The %(variant)s variant is set on the host: run `papaia-ctl setup --localai-variant=%(variant)s`."
@@ -9742,3 +9747,21 @@ msgstr "der doctor des Nodes gab keine lesbare Antwort"
 
 msgid "earlier than the part of the log shown"
 msgstr "vor dem angezeigten Teil des Logs"
+
+msgid "Voice"
+msgstr "Sprache"
+
+msgid "Local speech-to-text and text-to-speech behind LiteLLM, wired into LibreChat's speech panel."
+msgstr "Lokale Spracherkennung und Sprachausgabe hinter LiteLLM, eingebunden in LibreChats Sprachfunktionen."
+
+msgid "Accelerator for the speech synthesis"
+msgstr "Beschleuniger für die Sprachausgabe"
+
+msgid "On the CPU, speech-to-text works out of the box and spoken replies use the browser's voice; a GPU makes the local voice fast enough for live playback."
+msgstr "Auf der CPU funktioniert die Spracherkennung sofort und gesprochene Antworten nutzen die Stimme des Browsers; mit einer GPU ist die lokale Stimme schnell genug für die direkte Wiedergabe."
+
+msgid "The first start downloads several GB of models."
+msgstr "Der erste Start lädt mehrere GB an Modellen herunter."
+
+msgid "Default voice and generation settings of the speech synthesis."
+msgstr "Standardstimme und Generierungseinstellungen der Sprachausgabe."

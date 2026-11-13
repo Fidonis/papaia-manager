@@ -585,8 +585,8 @@ def _spawn_recorder(monkeypatch: pytest.MonkeyPatch, seen: dict[str, Any]) -> No
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
 
 
-def test_the_purge_modules_are_the_four_optional_ones() -> None:
-    assert {"localai", "web-search", "rag", "mail"} == PURGE_MODULES
+def test_the_purge_modules_are_the_five_optional_ones() -> None:
+    assert {"localai", "web-search", "rag", "voice", "mail"} == PURGE_MODULES
 
 
 async def test_module_info_asks_the_core_for_one_named_module(

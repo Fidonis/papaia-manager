@@ -84,6 +84,7 @@ def core() -> Iterator[dict[str, ModuleType]]:
     try:
         yield {
             "gpu_detect": importlib.import_module("lib.gpu_detect"),
+            "gen_override": importlib.import_module("lib.gen_override"),
             "render_core": importlib.import_module("lib.render_core"),
             "modules": importlib.import_module("lib.modules"),
             "resolve": importlib.import_module("lib.resolve"),
@@ -103,7 +104,10 @@ def test_the_variants_the_page_offers_are_variants_the_core_has(
     catalogue = set(core["gpu_detect"].VARIANTS)
     assert set(ctl.LOCALAI_VARIANTS) | set(modules.HOST_ONLY_VARIANTS) == catalogue
     assert set(ctl.LOCALAI_VARIANTS).isdisjoint(modules.HOST_ONLY_VARIANTS)
-    assert set(modules.VARIANT_LABELS) == set(ctl.LOCALAI_VARIANTS)
+    # The voice catalogue is the core's accelerator mapping plus the pinned CPU image.
+    voice_catalogue = set(core["gen_override"]._VOICE_VARIANT_FRAGMENT) | {"cpu"}
+    assert set(ctl.VOICE_VARIANTS) == voice_catalogue
+    assert set(modules.VARIANT_LABELS) == set(ctl.LOCALAI_VARIANTS) | set(ctl.VOICE_VARIANTS)
 
 
 def test_the_core_only_looks_at_the_devices_of_the_host_for_the_variant_left_out(
@@ -144,8 +148,10 @@ def test_the_flags_the_manager_passes_are_options_the_core_knows() -> None:
         "--enable-local-ai",
         "--enable-web-search",
         "--enable-rag",
+        "--enable-voice",
         "--enable-smtp",
         "--localai-variant",
+        "--voice-variant",
         "--module",
         "--data",
         "--config",
@@ -155,6 +161,7 @@ def test_the_flags_the_manager_passes_are_options_the_core_knows() -> None:
         ModuleSetup("localai", True, "cpu"),
         ModuleSetup("web-search", False),
         ModuleSetup("rag", True),
+        ModuleSetup("voice", True, "nvidia"),
     )
     for spec in specs:
         for item in ctl.module_setup_flags(spec):
