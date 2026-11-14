@@ -901,8 +901,11 @@ _node_reports: dict[str, str] = {}
 
 
 async def _measure_node(node: str, *, config_dir: str, workspace_dir: str) -> HostHealth:
-    """One run on a node, stored whatever it says. Never raises: nobody may await it."""
-    _node_reports.pop(node, None)
+    """One run on a node, stored whatever it says. Never raises: nobody may await it.
+
+    The node's report is replaced when the run ends, together with its reading, so a reader
+    of `cached_node_report` while the run is under way still gets the last one."""
+    report: str | None = None
     try:
         code, out, err = await run_py_cli(
             command="doctor",
@@ -918,13 +921,15 @@ async def _measure_node(node: str, *, config_dir: str, workspace_dir: str) -> Ho
         health = unavailable(_(_UNEXPECTED))
     else:
         report = node_report(out)
-        if report is not None:
-            _node_reports[node] = report
         if code != 0:
             health = unavailable(_first_line(err or out) or _(_NO_OUTPUT) % {"code": code})
         else:
             health = parse_node_doctor(out)
     _node_cache[node] = (time.monotonic(), health)
+    if report is None:
+        _node_reports.pop(node, None)
+    else:
+        _node_reports[node] = report
     return health
 
 
