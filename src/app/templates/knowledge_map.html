@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+{% block title %}{% trans branding=branding().name %}Knowledge Map — {{ branding }}{% endtrans %}{% endblock %}
+
+{% block page_title %}{% trans %}Knowledge Map{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Which system answers what, for whom, and over which access path{% endtrans %}</p>{% endblock %}
+
+{% block content %}
+{% if not km_active %}
+<div class="alert max-w-3xl">
+  <span>{% trans %}The knowledge map is not switched on. It is the core profile knowledge-map; switch it on with papaia-ctl setup.{% endtrans %}</span>
+</div>
+{% else %}
+
+{# Every visible text the script writes comes from here, translated on the server. #}
+<script type="application/json" id="km-i18n">{{ {
+  "lane_topics": _("Topics"),
+  "lane_sources": _("Sources"),
+  "lane_access": _("Access paths"),
+  "lane_agents": _("Agents"),
+  "kind_source": _("Source"),
+  "kind_reference": _("Reference"),
+  "kind_mcp": _("Server"),
+  "kind_agent": _("Agent"),
+  "all_roles": _("all roles"),
+  "no_tool": _("location only, no tool"),
+  "undeclared": _("not described"),
+  "stale": _("stale"),
+  "everyone": _("Administrator (everything)"),
+  "unreachable": _("The map server can't be asked: {detail}"),
+  "saved": _("Saved. The map is rendered again."),
+  "job_failed": _("The change did not go through. See the job log."),
+  "job_running": _("Rendering the map …"),
+  "accepted": _("Accepted. The map is rendered with it."),
+  "rejected": _("Rejected. It will not be offered again."),
+  "no_results": _("The map abstains."),
+  "error": _("Something went wrong: {detail}")
+} | tojson }}</script>
+
+<div x-data="knowledgeMap()" x-init="start()" class="space-y-4">
+
+  {# ── status strip ────────────────────────────────────────────────────────── #}
+  <div class="stats stats-vertical w-full border border-base-300 bg-base-100 sm:stats-horizontal">
+    <div class="stat py-3">
+      <div class="stat-title">{% trans %}Entries{% endtrans %}</div>
+      <div class="stat-value text-2xl" x-text="entries.length"></div>
+      <div class="stat-desc" x-text="kindSummary()"></div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-title">{% trans %}Findings{% endtrans %}</div>
+      <div class="stat-value text-2xl" :class="highFindings() ? 'text-warning' : ''" x-text="findings.length"></div>
+      <div class="stat-desc"><span x-text="highFindings()"></span> {% trans %}can cause wrong answers{% endtrans %}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-title">{% trans %}Rendered{% endtrans %}</div>
+      <div class="stat-value text-lg" x-text="when(generatedAt)"></div>
+      <div class="stat-desc" x-text="server.embedder ? server.embedder : ''"></div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-title">{% trans %}Map server{% endtrans %}</div>
+      <div class="stat-value text-lg" :class="serverError ? 'text-error' : 'text-success'"
+           x-text="serverError ? {{ _('unreachable')|tojson|forceescape }} : {{ _('ready')|tojson|forceescape }}"></div>
+      <div class="stat-desc truncate" x-text="serverError"></div>
+    </div>
+  </div>
+
+  <template x-if="warnings.length">
+    <div class="alert alert-warning text-sm">
+      <ul class="list-disc pl-4"><template x-for="w in warnings"><li x-text="w"></li></template></ul>
+    </div>
+  </template>
+
+  <div x-show="message" x-transition class="alert text-sm" :class="messageClass">
+    <span x-text="message"></span>
+    <a x-show="jobLink" :href="jobLink" class="link">{% trans %}Job log{% endtrans %}</a>
+  </div>
+
+  {# ── tabs ────────────────────────────────────────────────────────────────── #}
+  <div role="tablist" class="tabs tabs-bordered overflow-x-auto">
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='map' && 'tab-active'" @click="tab='map'">{% trans %}Map{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='entries' && 'tab-active'" @click="tab='entries'">{% trans %}Entries{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='findings' && 'tab-active'" @click="tab='findings'">
+      {% trans %}Gaps & conflicts{% endtrans %} <span class="badge badge-sm ml-1" :class="highFindings() && 'badge-warning'" x-text="findings.length"></span></button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='simulate' && 'tab-active'" @click="tab='simulate'">{% trans %}Test routing{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='usage' && 'tab-active'" @click="tab='usage'; loadUsage()">{% trans %}Usage & quality{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='suggestions' && 'tab-active'" @click="tab='suggestions'; loadSuggestions()">{% trans %}Suggestions{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='files' && 'tab-active'" @click="tab='files'">{% trans %}Files{% endtrans %}</button>
+  </div>
+
+  {# ── map ─────────────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='map'" class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div class="card border border-base-300 bg-base-100">
+      <div class="card-body gap-3 p-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-sm opacity-60">{% trans %}View as{% endtrans %}</span>
+          <select class="select select-bordered select-sm" x-model="viewAs" @change="draw()">
+            <option value="*" x-text="T.everyone"></option>
+            <template x-for="r in allRoles()" :key="r"><option :value="r" x-text="r"></option></template>
+          </select>
+          <div class="ml-auto flex flex-wrap gap-3 text-xs opacity-70">
+            <span class="flex items-center gap-1"><span class="inline-block h-0 w-5 border-t-[3px] border-secondary"></span>{% trans %}source of truth{% endtrans %}</span>
+            <span class="flex items-center gap-1"><span class="inline-block h-0 w-5 border-t-2 border-dashed border-warning"></span>{% trans %}"ask there instead"{% endtrans %}</span>
+            <span class="flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full bg-error"></span>{% trans %}not described{% endtrans %}</span>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <svg id="km-graph" class="km-graph block w-full min-w-[860px]" role="img"
+               aria-label="{{ _('The knowledge map as a layered graph: topics, sources, access paths, agents') }}"></svg>
+        </div>
+        <p x-show="!entries.length" class="text-sm opacity-60">{% trans %}The map is empty: no add-on, module or operator file declares a source yet, and no MCP server is connected.{% endtrans %}</p>
+      </div>
+    </div>
+    <aside class="card h-fit border border-base-300 bg-base-100 xl:sticky xl:top-4">
+      <div class="card-body gap-2 p-4 text-sm">
+        <template x-if="!selected"><p class="opacity-60">{% trans %}Select a box to see the entry. Hover to follow its connections.{% endtrans %}</p></template>
+        <template x-if="selected">
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="badge badge-sm" x-text="kindLabel(selected.kind)"></span>
+              <h3 class="font-brand text-base font-bold" x-text="selected.system || selected.label"></h3>
+            </div>
+            <p class="font-mono text-xs opacity-60" x-text="selected.id"></p>
+            <p x-show="selected.coverage" x-text="selected.coverage"></p>
+            <template x-if="selected.access && selected.access.length">
+              <div><p class="text-xs font-semibold uppercase opacity-60">{% trans %}Access paths{% endtrans %}</p>
+                <ul class="space-y-1"><template x-for="p in selected.access">
+                  <li><span class="badge badge-outline badge-sm uppercase" x-text="p.via"></span>
+                    <span class="font-mono text-xs" x-text="p.target || p.location"></span>
+                    <span x-show="p.collection" class="text-xs opacity-60" x-text="'/ ' + p.collection"></span>
+                    <span x-show="p.best_for" class="block text-xs opacity-70" x-text="p.best_for"></span>
+                    <span x-show="p.required_roles && p.required_roles.length" class="block text-xs opacity-60" x-text="'⚿ ' + (p.required_roles||[]).join(', ')"></span>
+                  </li></template></ul></div>
+            </template>
+            <template x-if="selected.not_covered && selected.not_covered.length">
+              <div><p class="text-xs font-semibold uppercase opacity-60">{% trans %}Not here{% endtrans %}</p>
+                <ul class="list-disc pl-4"><template x-for="n in selected.not_covered"><li><span x-text="n.what"></span><span x-show="n.instead" class="opacity-60" x-text="' → ' + n.instead"></span></li></template></ul></div>
+            </template>
+            <p x-show="selected.required_roles" class="text-xs opacity-70"><span class="font-semibold">{% trans %}Roles{% endtrans %}:</span> <span x-text="rolesText(selected)"></span></p>
+            <p x-show="selected.delegate_when" class="text-xs"><span class="font-semibold">{% trans %}Delegate when{% endtrans %}:</span> <span x-text="selected.delegate_when"></span></p>
+            <p x-show="selected.declared_by" class="text-xs opacity-60"><span>{% trans %}Declared by{% endtrans %}:</span> <span x-text="selected.declared_by"></span></p>
+          </div>
+        </template>
+      </div>
+    </aside>
+  </section>
+
+  {# ── entries ─────────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='entries'" class="card border border-base-300 bg-base-100">
+    <div class="card-body gap-3 p-4">
+      <input type="search" class="input input-bordered input-sm max-w-xs" x-model="filter" placeholder="{{ _('Filter') }}">
+      <div class="overflow-x-auto">
+        <table class="table table-sm">
+          <thead><tr><th>{% trans %}Kind{% endtrans %}</th><th>{% trans %}System{% endtrans %}</th><th>{% trans %}Access paths{% endtrans %}</th><th>{% trans %}Roles{% endtrans %}</th><th>{% trans %}Declared by{% endtrans %}</th></tr></thead>
+          <tbody>
+            <template x-for="e in filtered()" :key="e.id">
+              <tr class="hover cursor-pointer" @click="selected = e; tab = 'map'; draw()">
+                <td><span class="badge badge-sm" x-text="kindLabel(e.kind)"></span>
+                    <span x-show="e.undeclared" class="badge badge-error badge-sm" x-text="T.undeclared"></span></td>
+                <td><div class="font-medium" x-text="e.system"></div><div class="font-mono text-xs opacity-50" x-text="e.id"></div></td>
+                <td><template x-for="p in e.access"><span class="mr-1 badge badge-outline badge-sm" x-text="p.via + (p.target ? ' · ' + p.target : '')"></span></template></td>
+                <td class="text-xs" x-text="rolesText(e)"></td>
+                <td class="text-xs opacity-70" x-text="e.declared_by"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  {# ── findings ────────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='findings'" class="card border border-base-300 bg-base-100">
+    <div class="card-body gap-2 p-4">
+      <p class="text-sm opacity-60">{% trans %}What the last render found that weakens the map. High: can cause a wrong answer or a wrong "not available".{% endtrans %}</p>
+      <p x-show="!findings.length" class="text-sm">{% trans %}Nothing found.{% endtrans %}</p>
+      <ul class="divide-y divide-base-300">
+        <template x-for="f in sortedFindings()">
+          <li class="flex flex-wrap items-start gap-3 py-2 text-sm">
+            <span class="badge badge-sm" :class="{'badge-error': f.severity==='high', 'badge-warning': f.severity==='medium'}" x-text="f.severity"></span>
+            <span class="flex-1" x-text="f.message"></span>
+            <button type="button" x-show="f.target" class="btn btn-ghost btn-xs" @click="selectId(f.target)">{% trans %}Show{% endtrans %}</button>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </section>
+
+  {# ── simulate ────────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='simulate'" class="card border border-base-300 bg-base-100">
+    <div class="card-body gap-3 p-4">
+      <p class="text-sm opacity-60">{% trans %}Ask the map a question as a role, the way an assistant would. Nothing is recorded.{% endtrans %}</p>
+      <form class="flex flex-wrap gap-2" @submit.prevent="simulate()">
+        <input class="input input-bordered input-sm min-w-0 flex-1" x-model="sim.need" required maxlength="500" placeholder="{{ _('e.g. which customers still have open invoices') }}">
+        <select class="select select-bordered select-sm" x-model="sim.role">
+          <option value="*" x-text="T.everyone"></option>
+          <template x-for="r in allRoles()" :key="r"><option :value="r" x-text="r"></option></template>
+        </select>
+        <button class="btn btn-primary btn-sm" :disabled="sim.busy">{% trans %}Route{% endtrans %}</button>
+      </form>
+      <template x-if="sim.result">
+        <div class="space-y-3">
+          <template x-if="sim.result.abstention">
+            <div class="alert alert-warning text-sm"><span><span x-text="T.no_results"></span> <code x-text="sim.result.abstention_code"></code> — <span x-text="sim.result.reason"></span></span></div>
+          </template>
+          <template x-for="(r, i) in sim.result.results || []" :key="r.source_id">
+            <div class="rounded-box border border-base-300 p-3 text-sm">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-brand font-bold" x-text="(i+1) + '. ' + r.system"></span>
+                <span class="badge badge-sm" x-text="r.match"></span>
+                <span x-show="r.unverified" class="badge badge-error badge-sm" x-text="T.undeclared"></span>
+                <span class="ml-auto font-mono text-xs opacity-60" x-text="Number(r.confidence).toFixed(2)"></span>
+              </div>
+              <p class="text-xs opacity-70" x-text="r.reasoning"></p>
+              <p x-show="r.instruction" class="text-xs" x-text="r.instruction"></p>
+              <div class="mt-1 flex flex-wrap gap-1"><template x-for="p in r.access || []"><span class="badge badge-outline badge-sm" x-text="p.via + ' · ' + (p.target || p.location || '') + (p.best_for ? ' — ' + p.best_for : '')"></span></template></div>
+            </div>
+          </template>
+          <template x-if="sim.result.agents && sim.result.agents.length">
+            <div class="text-sm"><p class="text-xs font-semibold uppercase opacity-60">{% trans %}Agents to delegate to{% endtrans %}</p>
+              <template x-for="a in sim.result.agents"><p><span class="font-medium" x-text="a.system"></span> <span class="opacity-60" x-text="a.delegate_when"></span></p></template></div>
+          </template>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  {# ── usage & quality ─────────────────────────────────────────────────────── #}
+  <section x-show="tab==='usage'" class="grid gap-4 lg:grid-cols-2">
+    <div class="card border border-base-300 bg-base-100">
+      <div class="card-body gap-2 p-4 text-sm">
+        <h2 class="font-brand text-base font-bold">{% trans %}Use in the last 14 days{% endtrans %}</h2>
+        <template x-if="usage">
+          <div class="space-y-2">
+            <p><span class="text-2xl font-bold" x-text="usage.totals.requests"></span> {% trans %}routing requests{% endtrans %},
+               <span x-text="Math.round(100 * (usage.totals.abstention_rate || 0)) + ' %'"></span> {% trans %}abstained{% endtrans %}</p>
+            <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Answered first by{% endtrans %}</p>
+            <template x-for="(n, id) in usage.top_sources"><div class="flex items-center gap-2"><span class="w-40 truncate" x-text="nameOf(id)"></span>
+              <progress class="progress progress-secondary flex-1" :value="n" :max="maxOf(usage.top_sources)"></progress><span class="w-8 text-right" x-text="n"></span></div></template>
+            <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Asked, but nothing fits (3 or more times){% endtrans %}</p>
+            <ul class="list-disc pl-4"><template x-for="u in usage.unmatched || []"><li><span x-text="u.need"></span> <span class="opacity-60" x-text="'×' + u.count"></span></li></template></ul>
+          </div>
+        </template>
+      </div>
+    </div>
+    <div class="card border border-base-300 bg-base-100">
+      <div class="card-body gap-2 p-4 text-sm">
+        <div class="flex items-center gap-2">
+          <h2 class="font-brand text-base font-bold">{% trans %}Gold set{% endtrans %}</h2>
+          <button type="button" class="btn btn-sm ml-auto" :disabled="evalBusy" @click="runEval()">{% trans %}Run now{% endtrans %}</button>
+        </div>
+        <template x-if="lastEval">
+          <table class="table table-xs">
+            <thead><tr><th></th><th>{% trans %}Hit@1{% endtrans %}</th><th>{% trans %}Hit@3{% endtrans %}</th><th>{% trans %}MRR{% endtrans %}</th><th>{% trans %}Abstention F1{% endtrans %}</th></tr></thead>
+            <tbody><template x-for="part in ['all', 'development', 'holdout']"><tr x-show="lastEval[part]">
+              <td x-text="partLabel(part)"></td>
+              <template x-for="m in ['hit_at_1', 'hit_at_3', 'mrr', 'abstention_f1']"><td x-text="pct(lastEval[part] && lastEval[part][m])"></td></template>
+            </tr></template></tbody>
+          </table>
+        </template>
+        <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Earlier runs{% endtrans %}</p>
+        <ul class="text-xs"><template x-for="run in history.slice(-8).reverse()"><li x-text="when(run.ts) + ' — ' + pct(run.all && run.all.hit_at_1)"></li></template></ul>
+      </div>
+    </div>
+  </section>
+
+  {# ── suggestions ─────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='suggestions'" class="card border border-base-300 bg-base-100">
+    <div class="card-body gap-2 p-4 text-sm">
+      <p class="opacity-60">{% trans %}Mined from the last four weeks of use. Nothing changes until you accept; accepting writes the change into the operator files and renders the map.{% endtrans %}</p>
+      <p x-show="suggestionsLoaded && !suggestions.length">{% trans %}No suggestions at the moment.{% endtrans %}</p>
+      <ul class="divide-y divide-base-300">
+        <template x-for="s in suggestions" :key="s.id">
+          <li class="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <div>
+              <div class="flex flex-wrap items-center gap-2"><span class="badge badge-sm" x-text="s.kind"></span><span class="font-medium" x-text="s.title"></span></div>
+              <p class="text-xs opacity-60" x-text="evidenceText(s)"></p>
+              <p x-show="s.check" class="text-xs" :class="s.check && s.check.regression ? 'text-error' : 'text-success'" x-text="checkText(s)"></p>
+              <pre class="mt-1 overflow-x-auto rounded bg-base-200 p-2 text-xs" x-text="yamlish(s.override || s.declaration || s.gold)"></pre>
+            </div>
+            <div class="flex items-start gap-2">
+              <button type="button" class="btn btn-primary btn-sm" :disabled="busy" @click="decide(s, 'accepted')">{% trans %}Accept{% endtrans %}</button>
+              <button type="button" class="btn btn-ghost btn-sm" :disabled="busy" @click="decide(s, 'rejected')">{% trans %}Reject{% endtrans %}</button>
+            </div>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </section>
+
+  {# ── files ───────────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='files'" class="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+    <ul class="menu h-fit rounded-box border border-base-300 bg-base-100">
+      <template x-for="f in files" :key="f.key">
+        <li><a :class="file && file.key===f.key && 'active'" @click="openFile(f)"><span x-text="f.label"></span><span class="font-mono text-xs opacity-60" x-text="f.filename"></span></a></li>
+      </template>
+    </ul>
+    <div class="card border border-base-300 bg-base-100" x-show="file">
+      <div class="card-body gap-2 p-4">
+        <p class="text-sm opacity-70" x-text="file && file.description"></p>
+        <textarea class="textarea textarea-bordered h-96 font-mono text-xs" x-model="draft" spellcheck="false" @input.debounce.500ms="checkDraft()"></textarea>
+        <ul x-show="problems.length" class="list-disc pl-4 text-sm text-error"><template x-for="p in problems"><li x-text="p"></li></template></ul>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-primary btn-sm" :disabled="busy || problems.length || !file || draft === file.content" @click="saveFile()">{% trans %}Save and render{% endtrans %}</button>
+          <button type="button" class="btn btn-ghost btn-sm" :disabled="!file || draft === file.content" @click="draft = file.content; problems = []">{% trans %}Discard changes{% endtrans %}</button>
+        </div>
+        <p class="text-xs opacity-60">{% trans %}The previous version of each file is kept in manager/knowledge-map-history.{% endtrans %}</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<style>
+  .km-graph text { fill: oklch(var(--bc)); font-size: 12px; }
+  .km-graph .lane { fill: oklch(var(--bc) / .5); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .km-graph .sub { fill: oklch(var(--bc) / .6); font-size: 10.5px; }
+  .km-graph .node { cursor: pointer; }
+  .km-graph .node rect.body { fill: oklch(var(--b1)); stroke: oklch(var(--b3)); }
+  .km-graph .node:hover rect.body, .km-graph .node.sel rect.body { stroke: oklch(var(--s)); stroke-width: 2; }
+  .km-graph .node.dim { opacity: .18; }
+  .km-graph .edge { fill: none; stroke: oklch(var(--bc) / .35); stroke-width: 1.3; }
+  .km-graph .edge.sot { stroke: oklch(var(--s)); stroke-width: 2.6; }
+  .km-graph .edge.instead { stroke: oklch(var(--wa)); stroke-dasharray: 5 4; stroke-width: 1.6; }
+  .km-graph .edge.dim { stroke-opacity: .05; }
+  .km-graph .edge.hi { stroke: oklch(var(--s)); stroke-width: 2.4; }
+</style>
+
+<script>
+  function knowledgeMap() {
+    const T = JSON.parse(document.getElementById("km-i18n").textContent);
+    const csrf = () => document.querySelector("meta[name=csrf]").content;
+    const NS = "http://www.w3.org/2000/svg";
+    const W = 1040, NODE_W = 200, NODE_H = 36, TOP = 40;
+    const X = { topic: 10, source: 290, access: 570, agent: 830 };
+    const STRIP = { topic: "--in", source: "--p", reference: "--n", access: "--s", agent: "--a" };
+
+    async function api(method, path, body) {
+      const res = await fetch("/api/v1/knowledge-map" + path, {
+        method,
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const d = data.detail;
+        throw new Error(typeof d === "string" ? d : (d && d.message) || res.statusText);
+      }
+      return data;
+    }
+    function el(tag, attrs, parent) {
+      const n = document.createElementNS(NS, tag);
+      for (const k in attrs) n.setAttribute(k, attrs[k]);
+      if (parent) parent.appendChild(n);
+      return n;
+    }
+    const visibleTo = (roles, required) =>
+      roles === null || !required || !required.length || required.some(r => roles.includes(r));
+
+    return {
+      T, tab: "map", entries: [], findings: [], warnings: [], files: [], generatedAt: null,
+      server: {}, serverError: "", selected: null, viewAs: "*", filter: "",
+      sim: { need: "", role: "*", busy: false, result: null },
+      usage: null, history: [], lastEval: null, evalBusy: false,
+      suggestions: [], suggestionsLoaded: false, busy: false,
+      file: null, draft: "", problems: [], message: "", messageClass: "", jobLink: "",
+
+      async start() {
+        await this.load();
+        api("GET", "/server").then(d => { this.server = d.settings || {}; })
+          .catch(e => { this.serverError = e.message; });
+      },
+      async load() {
+        const d = await api("GET", "");
+        this.entries = d.entries; this.findings = d.findings; this.warnings = d.warnings;
+        this.files = d.files; this.generatedAt = d.generated_at;
+        if (this.file) this.openFile(this.files.find(f => f.key === this.file.key));
+        this.$nextTick(() => this.draw());
+      },
+
+      // ── presentation helpers
+      kindLabel(k) { return T["kind_" + k] || k; },
+      kindSummary() {
+        const c = {}; this.entries.forEach(e => { c[e.kind] = (c[e.kind] || 0) + 1; });
+        return Object.entries(c).map(([k, n]) => n + " " + this.kindLabel(k)).join(" · ");
+      },
+      highFindings() { return this.findings.filter(f => f.severity === "high").length; },
+      sortedFindings() {
+        const o = { high: 0, medium: 1, low: 2 };
+        return [...this.findings].sort((a, b) => (o[a.severity] ?? 3) - (o[b.severity] ?? 3));
+      },
+      rolesText(e) { return (e.required_roles || []).length ? e.required_roles.join(", ") : T.all_roles; },
+      allRoles() {
+        const s = new Set();
+        this.entries.forEach(e => { (e.required_roles || []).forEach(r => s.add(r));
+          (e.access || []).forEach(p => (p.required_roles || []).forEach(r => s.add(r))); });
+        ["user"].forEach(r => s.add(r));
+        return [...s].sort();
+      },
+      filtered() {
+        const q = this.filter.toLowerCase();
+        return this.entries.filter(e => !q || (e.id + " " + e.system + " " + e.coverage).toLowerCase().includes(q));
+      },
+      nameOf(id) { const e = this.entries.find(x => x.id === id); return e ? e.system : id; },
+      maxOf(o) { return Math.max(1, ...Object.values(o || {})); },
+      when(ts) { if (!ts) return "—"; const d = new Date(ts); return isNaN(d) ? ts : d.toLocaleString(document.documentElement.lang || undefined); },
+      pct(v) { return v === null || v === undefined ? "—" : Math.round(v * 100) + " %"; },
+      partLabel(p) { return { all: {{ _('all')|tojson|forceescape }}, development: {{ _('development')|tojson|forceescape }}, holdout: {{ _('held out')|tojson|forceescape }} }[p]; },
+      evidenceText(s) { const e = s.evidence || {}; return Object.entries(e).map(([k, v]) => k + ": " + v).join(" · "); },
+      checkText(s) { const c = s.check || {}; return "Hit@1 " + (c.hit_at_1 || []).map(v => this.pct(v)).join(" → ") + (c.regression ? " ⚠" : " ✓"); },
+      yamlish(o) { return JSON.stringify(o, null, 2); },
+      selectId(id) { this.selected = this.entries.find(e => e.id === id) || null; this.tab = "map"; this.$nextTick(() => this.draw()); },
+      flash(text, cls, jobId) { this.message = text; this.messageClass = cls; this.jobLink = jobId ? "/jobs/" + jobId : ""; },
+
+      // ── the graph: four lanes, every node placed near what it connects to
+      draw() {
+        const svg = document.getElementById("km-graph"); if (!svg) return;
+        svg.innerHTML = "";
+        const roles = this.viewAs === "*" ? null : [this.viewAs, "user"];
+        const routable = this.entries.filter(e => e.kind === "source" || e.kind === "reference");
+        const agents = this.entries.filter(e => e.kind === "agent");
+        const servers = this.entries.filter(e => e.kind === "mcp");
+        const topics = new Map();
+        routable.forEach(e => e.topics.forEach(t => topics.set(t.id, t.label)));
+        // access nodes: one per (via, target) — the wiki over MCP and over RAG are two
+        const access = new Map();
+        const accKey = p => p.via + ":" + (p.target || p.location || "") + (p.collection ? "/" + p.collection : "");
+        const addAcc = (p, from) => {
+          if (p.via === "none") return null;
+          const k = accKey(p);
+          if (!access.has(k)) {
+            const server = servers.find(s => (s.access || []).some(a => a.target === p.target));
+            access.set(k, { id: "a:" + k, kind: "access", via: p.via, label: (p.via.toUpperCase()) + " · " + (p.target || ""),
+              sub: p.collection || (server && server.undeclared ? T.undeclared : ""), undeclared: !!(server && server.undeclared),
+              system: server ? server.system : p.target, coverage: server ? server.coverage : "", access: [p], from: [] });
+          }
+          if (from) access.get(k).from.push(from);
+          return access.get(k);
+        };
+        servers.forEach(s => (s.access || []).forEach(p => addAcc(p)));
+        const nodes = [], edges = [], pos = {};
+        [...topics].forEach(([id, label], i) => { const n = { id: "t:" + id, lane: "topic", label }; nodes.push(n); pos[n.id] = { x: X.topic, y: TOP + i * (NODE_H + 10) }; });
+        const meanY = ids => { const ys = ids.map(id => pos[id] && pos[id].y).filter(v => v !== undefined); return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : TOP; };
+        const place = (list, x, anchor, gap) => {
+          let last = -Infinity;
+          list.map(n => ({ n, y: anchor(n) })).sort((a, b) => a.y - b.y)
+            .forEach(w => { const y = Math.max(w.y, last + gap); pos[w.n.id] = { x, y }; last = y; });
+        };
+        const srcNodes = routable.map(e => ({ ...e, lane: e.kind === "reference" ? "reference" : "source", entry: e }));
+        place(srcNodes, X.source, n => meanY(n.topics.map(t => "t:" + t.id)), NODE_H + 18);
+        srcNodes.forEach(n => {
+          n.topics.forEach(t => edges.push({ a: "t:" + t.id, b: n.id, cls: (n.source_of_truth_for || []).includes(t.id) ? "sot" : "", roles: n.required_roles }));
+          (n.access || []).forEach(p => { const a = addAcc(p, n.id); if (a) edges.push({ a: n.id, b: a.id, cls: "", roles: p.required_roles && p.required_roles.length ? p.required_roles : n.required_roles }); });
+          (n.not_covered || []).forEach(nc => { if (nc.instead && routable.some(r => r.id === nc.instead)) edges.push({ a: n.id, b: nc.instead, cls: "instead" }); });
+        });
+        agents.forEach(g => (g.access || []).forEach(p => addAcc(p)));
+        const accNodes = [...access.values()].map(a => ({ ...a, lane: "access" }));
+        place(accNodes, X.access, n => n.from.length ? meanY(n.from) : 9999, NODE_H + 12);
+        const agNodes = agents.map(g => ({ ...g, lane: "agent", entry: g }));
+        agNodes.forEach(g => {
+          const linked = accNodes.filter(a => (g.uses || []).includes(a.access[0].target) || (g.access || []).some(p => accKey(p) === a.id.slice(2)));
+          g.linked = linked.map(a => a.id);
+          linked.forEach(a => edges.push({ a: a.id, b: g.id, cls: "", roles: g.required_roles }));
+        });
+        place(agNodes, X.agent, n => meanY(n.linked), NODE_H + 24);
+        nodes.push(...srcNodes, ...accNodes, ...agNodes);
+
+        const maxY = Math.max(TOP + NODE_H, ...Object.values(pos).map(p => p.y)) + NODE_H + 20;
+        svg.setAttribute("viewBox", `0 0 ${W} ${maxY}`);
+        [["topic", T.lane_topics], ["source", T.lane_sources], ["access", T.lane_access], ["agent", T.lane_agents]]
+          .forEach(([k, label]) => { el("text", { x: X[k], y: 18, class: "lane" }, svg).textContent = label; });
+        const gE = el("g", {}, svg), gN = el("g", {}, svg);
+        const mid = id => ({ x: pos[id].x, y: pos[id].y + NODE_H / 2 });
+        const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+        const vis = n => {
+          if (!n) return false;
+          if (n.lane === "topic") return srcNodes.some(s => s.topics.some(t => "t:" + t.id === n.id) && visibleTo(roles, s.required_roles));
+          if (n.lane === "access") return n.undeclared || n.from.length === 0 || n.from.some(f => visibleTo(roles, byId[f] && byId[f].required_roles));
+          return visibleTo(roles, n.required_roles);
+        };
+        edges.forEach(ed => {
+          if (!pos[ed.a] || !pos[ed.b]) return;
+          const A = mid(ed.a), B = mid(ed.b); let d;
+          if (ed.cls === "instead") { const x = A.x - 2, bend = 50 + Math.abs(B.y - A.y) * 0.15; d = `M${x},${A.y} C${x - bend},${A.y} ${x - bend},${B.y} ${x},${B.y}`; }
+          else { const x1 = A.x + NODE_W, dx = (B.x - x1) * 0.5; d = `M${x1},${A.y} C${x1 + dx},${A.y} ${B.x - dx},${B.y} ${B.x},${B.y}`; }
+          ed.path = el("path", { d, class: "edge " + ed.cls }, gE);
+        });
+        const self = this;
+        const css = v => "oklch(var(" + v + "))";
+        nodes.forEach(n => {
+          if (!pos[n.id]) return;
+          const g = el("g", { class: "node", transform: `translate(${pos[n.id].x},${pos[n.id].y})`, tabindex: 0, role: "button", "aria-label": n.label || n.system }, gN);
+          el("rect", { class: "body", width: NODE_W, height: NODE_H, rx: 7 }, g);
+          el("rect", { width: 4, height: NODE_H, rx: 2, fill: css(STRIP[n.lane]) }, g);
+          const title = (n.label || n.system || "");
+          el("text", { x: 12, y: n.lane === "topic" ? 22 : 15, "font-weight": 600 }, g).textContent = title.length > 28 ? title.slice(0, 27) + "…" : title;
+          if (n.lane !== "topic") {
+            const sub = n.lane === "reference" ? T.no_tool : n.lane === "access" ? n.sub : n.lane === "agent" ? (n.access && n.access.length ? "A2A" : (n.uses || []).join(", ")) : self.rolesText(n);
+            el("text", { x: 12, y: 29, class: "sub" }, g).textContent = (sub || "").slice(0, 34);
+          }
+          if (n.undeclared) el("circle", { cx: NODE_W - 12, cy: 12, r: 4.5, fill: css("--er") }, g);
+          n.g = g;
+          const pick = () => { self.selected = n.lane === "topic" ? { id: n.id.slice(2), label: n.label, kind: "topic" } : (n.entry || n); hi(); };
+          g.addEventListener("click", pick);
+          g.addEventListener("keydown", ev => { if (ev.keyCode === 13 || ev.keyCode === 32) { ev.preventDefault(); pick(); } });
+          g.addEventListener("mouseenter", () => hi(n.id));
+          g.addEventListener("mouseleave", () => hi());
+        });
+        function hi(hover) {
+          const sel = self.selected && (nodes.find(n => n.entry === self.selected || n.id === self.selected.id) || {}).id;
+          const focus = hover || sel;
+          nodes.forEach(n => { if (!n.g) return; n.g.classList.toggle("dim", !vis(n)); n.g.classList.toggle("sel", n.id === sel); });
+          edges.forEach(ed => { if (!ed.path) return; const shown = vis(byId[ed.a]) && vis(byId[ed.b]) && visibleTo(roles, ed.roles);
+            ed.path.classList.toggle("dim", !shown); ed.path.classList.toggle("hi", shown && (ed.a === focus || ed.b === focus)); });
+        }
+        hi();
+      },
+
+      // ── routing test
+      async simulate() {
+        this.sim.busy = true;
+        try { this.sim.result = await api("POST", "/simulate", { need: this.sim.need, roles: this.sim.role === "*" ? null : [this.sim.role, "user"] }); }
+        catch (e) { this.flash(T.unreachable.replace("{detail}", e.message), "alert-error"); }
+        finally { this.sim.busy = false; }
+      },
+
+      // ── usage and gold set
+      async loadUsage() {
+        try {
+          this.usage = await api("GET", "/stats?days=14");
+          this.history = (await api("GET", "/eval/history")).runs || [];
+          this.lastEval = this.history.length ? this.history[this.history.length - 1] : null;
+        } catch (e) { this.flash(T.unreachable.replace("{detail}", e.message), "alert-error"); }
+      },
+      async runEval() {
+        this.evalBusy = true;
+        try { this.lastEval = await api("POST", "/eval"); await this.loadUsage(); this.lastEval = this.history[this.history.length - 1] || this.lastEval; }
+        catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+        finally { this.evalBusy = false; }
+      },
+
+      // ── suggestions
+      async loadSuggestions() {
+        try { this.suggestions = (await api("GET", "/suggestions?days=28")).suggestions || []; this.suggestionsLoaded = true; }
+        catch (e) { this.flash(T.unreachable.replace("{detail}", e.message), "alert-error"); }
+      },
+      async decide(s, decision) {
+        this.busy = true;
+        try {
+          const r = await api("POST", "/suggestions/" + s.id, { decision });
+          if (decision === "rejected") { this.flash(T.rejected, "alert-info"); }
+          else { await this.follow(r.job_id, T.accepted); }
+          this.suggestions = this.suggestions.filter(x => x.id !== s.id);
+        } catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+        finally { this.busy = false; }
+      },
+
+      // ── operator files
+      openFile(f) { if (!f) return; this.file = f; this.draft = f.content; this.problems = []; },
+      async checkDraft() {
+        if (!this.file) return;
+        try { this.problems = (await api("POST", "/files/" + this.file.key + "/check", { content: this.draft })).problems; }
+        catch (e) { this.problems = [e.message]; }
+      },
+      async saveFile() {
+        this.busy = true;
+        try {
+          const r = await api("PUT", "/files/" + this.file.key, { content: this.draft, revision: this.file.revision });
+          await this.follow(r.job_id, T.saved);
+        } catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+        finally { this.busy = false; }
+      },
+      async follow(jobId, done) {
+        this.flash(T.job_running, "alert-info");
+        for (let i = 0; i < 300; i++) {
+          await new Promise(r => setTimeout(r, 1500));
+          const res = await fetch("/api/v1/jobs/" + jobId);
+          const job = await res.json().catch(() => ({}));
+          if (job.status === "succeeded") { this.flash(done, "alert-success", jobId); await this.load(); return; }
+          if (job.status === "failed") { this.flash(T.job_failed, "alert-error", jobId); await this.load(); return; }
+        }
+      },
+    };
+  }
+</script>
+{% endif %}
+{% endblock %}
