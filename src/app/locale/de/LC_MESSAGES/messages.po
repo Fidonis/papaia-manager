@@ -9726,6 +9726,32 @@ msgstr "%(profile)s verbindet die Nodes und kann nicht ausgewählt werden"
 msgid "profile %(name)r connects the nodes and cannot be controlled from this panel"
 msgstr "Profil %(name)r verbindet die Nodes und kann nicht über dieses Panel gesteuert werden"
 
+msgid "Requires"
+msgstr "Benötigt"
+
+#, python-format
+msgid "%(name)s is active"
+msgstr "%(name)s ist aktiv"
+
+#, python-format
+msgid "%(name)s %(version)s is active; this add-on needs %(range)s"
+msgstr "%(name)s %(version)s ist aktiv; dieses Add-on braucht %(range)s"
+
+#, python-format
+msgid "%(name)s is active; its version could not be checked against %(range)s"
+msgstr "%(name)s ist aktiv; die Version konnte nicht gegen %(range)s geprüft werden"
+
+#, python-format
+msgid "%(name)s is installed but not active"
+msgstr "%(name)s ist installiert, aber nicht aktiv"
+
+#, python-format
+msgid "%(name)s is not installed"
+msgstr "%(name)s ist nicht installiert"
+
+msgid "Install the required add-ons first"
+msgstr "Zuerst die benötigten Add-ons installieren"
+
 #, python-format
 msgid "The relay is off, but the realm still names it: %(value)s"
 msgstr "Das Relay ist aus, aber der Realm nennt es noch: %(value)s"
