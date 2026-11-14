@@ -1,7 +1,8 @@
 """REST API of the knowledge map's governance view. Administrators only.
 
-`GET /` assembles the view from disk (the rendered map, `governance.yaml`, the render's
-governance findings and add-on proposals) and from LiteLLM's model list; LiteLLM that can't be
+`GET /` assembles the view from disk (the rendered map, `governance.yaml`, and from the
+render's `lints.yaml` its governance findings, add-on proposals, policy and agent evaluation)
+and from LiteLLM's model list; LiteLLM that can't be
 read is stated in the answer and the view is evaluated from the files alone. Every change
 builds the new `governance.yaml` from the one the page read and goes through the same
 compare-and-swap job as the operator files (202 with the job id). The fact export is a download
@@ -32,7 +33,6 @@ from app.routers.models_deps import LitellmTransport
 router = APIRouter(prefix="/api/v1/knowledge-map/governance")
 
 KEY = "governance"
-_SEVERITY_ORDER = {s: i for i, s in enumerate(gov.SEVERITIES)}
 
 Classification = Literal["public", "internal", "confidential", "strictly_confidential"]
 PersonalData = Literal["none", "ordinary", "special", "criminal", "unknown"]
@@ -66,6 +66,7 @@ class ExceptionItem(BaseModel):
     subject: str = Field(min_length=1, max_length=200)
     expires: date
     reason: str | None = Field(default=None, max_length=500)
+    accepted_by_role: str | None = Field(default=None, max_length=100)
     risk_ref: str | None = Field(default=None, max_length=200)
 
 
@@ -89,15 +90,12 @@ def build_view(config_dir: str, live: gov.LiveModels, today: date) -> dict[str, 
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     rendered = km.rendered(config_dir)
     entries = rendered["entries"]
-    agents = [e for e in entries if e.get("kind") == "agent"]
-    models, model_findings, tiers = gov.model_view(document, live, agents)
+    models, model_findings, _tiers = gov.model_view(document, live, rendered)
     exceptions = gov.exceptions_view(document, today)
-    valid = [x for x in exceptions if not x["expired"]]
-    findings = gov.render_findings(rendered["findings"]) + gov.apply_exceptions(
-        model_findings, valid
+    found = gov.render_findings(rendered["findings"], today) + gov.apply_exceptions(
+        model_findings, exceptions
     )
-    findings.sort(key=lambda f: (_SEVERITY_ORDER.get(str(f.get("severity")), 3),
-                                 str(f.get("code")), str(f.get("target"))))
+    findings = gov.sort_findings([gov.localize(f) for f in found])
     return {
         "revision": state.revision,
         "exists": state.raw is not None,
@@ -106,9 +104,12 @@ def build_view(config_dir: str, live: gov.LiveModels, today: date) -> dict[str, 
         "litellm": {"available": live.available, "problem": live.problem},
         "matrix": gov.matrix(entries, document),
         "models": models,
-        "agents": gov.agents_view(entries, document, tiers),
+        "agents": gov.agents_view(entries, rendered),
         "findings": findings,
         "exceptions": exceptions,
+        "exceptable": gov.exceptable(rendered),
+        "policy": gov.lints_policy(rendered),
+        "classification_open": gov.classification_open(found),
         "enums": {
             "tiers": list(gov.TIERS),
             "classes": list(gov.CLASSES),
@@ -167,7 +168,7 @@ async def _write(
     settings: Settings, user: OIDCClaims, document: dict[str, Any], revision: str, reason: str
 ) -> dict[str, Any]:
     content = km._dump(document)  # noqa: SLF001 - the one writer of operator files
-    problems = km.check(KEY, content.decode("utf-8"))
+    problems = km.check(KEY, content.decode("utf-8"), settings.papaia_config_dir)
     if problems:
         raise HTTPException(status_code=422, detail={"message": problems[0], "problems": problems})
     username = _user_id(user)

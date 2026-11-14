@@ -65,6 +65,9 @@ WIKI = {
     ],
     "provenance": {"declared_by": "addon:mediawiki"},
 }
+# What the map server records, as its admin stats and suggestions report it.
+TELEMETRY = {"enabled": True, "learning_mode": "aggregate", "retention_days": 30,
+             "min_profiles": 3, "min_occurrences": 3}
 CALENDAR = {
     "id": "mcp.calendar",
     "kind": "mcp",
@@ -134,10 +137,15 @@ class FakeMapServer:
                 {"source_id": "wiki.main", "system": "Company wiki", "confidence": 0.8}]})
         if path == "/admin/api/suggestions":
             open_ = [s for s in self.suggestions if s["id"] not in self.decisions]
-            return httpx.Response(200, json={"suggestions": open_})
+            return httpx.Response(200, json={"suggestions": open_, "telemetry": TELEMETRY})
         if path.startswith("/admin/api/suggestions/"):
             self.decisions[path.split("/")[4]] = body["decision"]
             return httpx.Response(200, json={"recorded": True})
+        if path == "/admin/api/stats":
+            return httpx.Response(200, json={
+                "totals": {"requests": 12, "abstention_rate": 0.25},
+                "top_sources": {"wiki.main": 9}, "unmatched": [],
+                "telemetry": TELEMETRY})
         if path == "/admin/api/eval":
             return httpx.Response(200, json={"all": {"hit_at_1": 1.0}})
         return httpx.Response(404, json={"error": "not_found"})

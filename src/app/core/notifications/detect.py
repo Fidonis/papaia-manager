@@ -396,7 +396,24 @@ def core_update(current: str, newer: list[str] | None) -> list[Finding]:
     ]
 
 
-def _km_condition(finding: dict[str, Any], scope: str) -> Condition:
+def _km_conditions(findings: list[dict[str, Any]], scope: str) -> tuple[Condition, ...]:
+    """One condition per reportable finding. The key names origin, code and target; a second
+    finding with the same three gets a running number, so neither hides the other."""
+    seen: dict[str, int] = {}
+    conditions = []
+    for finding in findings:
+        if not _reportable(finding):
+            continue
+        base = "{}{}:{}:{}".format(
+            scope, finding.get("origin") or "", finding.get("code") or "",
+            finding.get("target") or finding.get("subject") or "")
+        seen[base] = seen.get(base, 0) + 1
+        key = base if seen[base] == 1 else f"{base}#{seen[base]}"
+        conditions.append(_km_condition(finding, key))
+    return tuple(conditions)
+
+
+def _km_condition(finding: dict[str, Any], key: str) -> Condition:
     code = str(finding.get("code") or "")
     target = str(finding.get("target") or finding.get("subject") or "")
     message = str(finding.get("message") or code)
@@ -414,7 +431,7 @@ def _km_condition(finding: dict[str, Any], scope: str) -> Condition:
         details["fix"] = fix
     return Condition(
         Event.KNOWLEDGE_MAP_FINDING,
-        f"{scope}{code}:{target}",
+        key,
         marker,
         target or code,
         message,
@@ -429,8 +446,9 @@ def _reportable(finding: dict[str, Any]) -> bool:
 def knowledge_map_findings(
     config_dir: str, live: km_gov.LiveModels | None, *, now: datetime
 ) -> list[Finding]:
-    """The high findings of the knowledge map that no exception covers: the render's (from
-    `lints.yaml`, every category) and the manager's own check of the models against LiteLLM.
+    """The high findings of the knowledge map that no active exception covers: the render's
+    (from `lints.yaml`, every category, exceptions checked against today) and the manager's
+    own check of the models against LiteLLM.
 
     Each source is a scope of its own. A map that is not rendered yet says nothing, and
     LiteLLM that cannot be read says nothing about the model findings: neither clears what is
@@ -444,7 +462,9 @@ def knowledge_map_findings(
         found.append(
             Finding(
                 Event.KNOWLEDGE_MAP_FINDING,
-                tuple(_km_condition(f, "render:") for f in rendered["findings"] if _reportable(f)),
+                _km_conditions(
+                    [km_gov.as_of(f, now.date()) for f in rendered["findings"]], "render:"
+                ),
                 scope="render:",
             )
         )
@@ -457,7 +477,7 @@ def knowledge_map_findings(
             found.append(
                 Finding(
                     Event.KNOWLEDGE_MAP_FINDING,
-                    tuple(_km_condition(f, "manager:") for f in own if _reportable(f)),
+                    _km_conditions(own, "manager:"),
                     scope="manager:",
                 )
             )

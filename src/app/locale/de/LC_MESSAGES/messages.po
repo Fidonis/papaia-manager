@@ -9886,18 +9886,18 @@ msgstr "Die Karte ließ sich mit dieser Änderung nicht erzeugen, deshalb ist di
 msgid "The job queue is not running."
 msgstr "Die Auftragswarteschlange läuft nicht."
 
-msgid "Knowledge Map"
-msgstr "Wissenslandkarte"
+msgid "AI Map"
+msgstr "KI-Landkarte"
 
 #, python-format
-msgid "Knowledge Map — %(branding)s"
-msgstr "Wissenslandkarte — %(branding)s"
+msgid "AI Map — %(branding)s"
+msgstr "KI-Landkarte — %(branding)s"
 
-msgid "Which system answers what, for whom, and over which access path"
-msgstr "Welches System was beantwortet, für wen und über welchen Zugang"
+msgid "Which data the AI reaches, for whom, over which path and with which model"
+msgstr "Welche Daten die KI erreicht – für wen, über welchen Weg und mit welchem Modell"
 
-msgid "The knowledge map is not switched on. It is the core profile knowledge-map; switch it on with papaia-ctl setup."
-msgstr "Die Wissenslandkarte ist nicht eingeschaltet. Sie ist das Kernprofil knowledge-map; einschalten mit papaia-ctl setup."
+msgid "The AI map is not switched on. It is the core profile knowledge-map; switch it on with papaia-ctl setup."
+msgstr "Die KI-Landkarte ist nicht eingeschaltet. Sie ist das Kernprofil knowledge-map; einschalten mit papaia-ctl setup."
 
 msgid "Topics"
 msgstr "Themen"
@@ -10046,9 +10046,6 @@ msgstr "Enthaltungen"
 msgid "Answered first by"
 msgstr "Als Erstes beantwortet von"
 
-msgid "Asked, but nothing fits (3 or more times)"
-msgstr "Gefragt, aber nichts passt (3-mal oder öfter)"
-
 msgid "Run now"
 msgstr "Jetzt ausführen"
 
@@ -10126,12 +10123,6 @@ msgstr "%(where)s ist keine Zuordnung."
 
 msgid "%(where)s needs %(field)s."
 msgstr "%(where)s braucht %(field)s."
-
-msgid "The model %(name)s has no tier in governance.yaml; it is evaluated as third_country."
-msgstr "Das Modell %(name)s hat keine Stufe in governance.yaml; es wird als third_country bewertet."
-
-msgid "The model %(name)s is listed as local, but LiteLLM serves it from %(hosts)s."
-msgstr "Das Modell %(name)s ist als lokal eingetragen, LiteLLM bedient es aber über %(hosts)s."
 
 msgid "Classification"
 msgstr "Klassifizierung"
@@ -10307,18 +10298,6 @@ msgstr "Keine."
 msgid "Owners, classification, personal data and model tiers. Documents decisions; it restricts no access."
 msgstr "Verantwortliche, Klassifizierung, personenbezogene Daten und Modellstufen. Dokumentiert Entscheidungen; beschränkt keinen Zugriff."
 
-msgid "%(where)s: %(field)s must be a list."
-msgstr "%(where)s: %(field)s muss eine Liste sein."
-
-msgid "Confirm the suggested tier %(tier)s for %(name)s on the Governance tab."
-msgstr "Bestätigen Sie die vorgeschlagene Stufe %(tier)s für %(name)s im Reiter Governance."
-
-msgid "Set the tier of %(name)s under models in governance.yaml (local, eu_hosted, third_country_contracted or third_country)."
-msgstr "Setzen Sie die Stufe von %(name)s unter models in governance.yaml (local, eu_hosted, third_country_contracted oder third_country)."
-
-msgid "Either point every LiteLLM deployment of %(name)s at an internal host, or set its tier to the one of %(hosts)s."
-msgstr "Richten Sie entweder jedes LiteLLM-Deployment von %(name)s auf einen internen Host, oder setzen Sie die Stufe auf die von %(hosts)s."
-
 msgid "There is no add-on proposal left to confirm for %(id)s."
 msgstr "Für %(id)s gibt es keinen offenen Add-on-Vorschlag mehr zu bestätigen."
 
@@ -10366,3 +10345,168 @@ msgstr "Betroffene Personen (optional)"
 
 msgid "Facts for your GRC, CMDB or wiki:"
 msgstr "Fakten für Ihr GRC-Werkzeug, Ihre CMDB oder Ihr Wiki:"
+
+msgid "'%(key)s' must be a text."
+msgstr "„%(key)s“ muss ein Text sein."
+
+msgid "%(where)s: %(finding)s is not a finding an exception can accept."
+msgstr "%(where)s: %(finding)s ist kein Befund, für den eine Ausnahme möglich ist."
+
+msgid "Files → overrides.yaml: set required_roles of %(entry)s to the roles that need it."
+msgstr "Dateien → overrides.yaml: Setzen Sie required_roles von %(entry)s auf die Rollen, die den Zugriff brauchen."
+
+msgid "%(count)s entries are not yet classified."
+msgstr "%(count)s Einträge sind noch nicht eingestuft."
+
+msgid "Governance → Sources: confirm the add-on proposal or set a classification with Edit, for %(entries)s."
+msgstr "Governance → Quellen: Bestätigen Sie den Vorschlag des Add-ons oder setzen Sie mit „Bearbeiten“ eine Einstufung, für %(entries)s."
+
+msgid "%(entry)s is classified %(classification)s, below the add-on's proposal %(proposed)s."
+msgstr "%(entry)s ist als %(classification)s eingestuft, unter dem Vorschlag des Add-ons (%(proposed)s)."
+
+msgid "Governance → Sources → Edit: set the classification of %(entry)s to %(proposed)s, or accept the finding with a reason."
+msgstr "Governance → Quellen → Bearbeiten: Setzen Sie die Einstufung von %(entry)s auf %(proposed)s oder akzeptieren Sie den Befund mit Begründung."
+
+msgid "%(entry)s: whether it holds personal data is not documented."
+msgstr "%(entry)s: Ob personenbezogene Daten enthalten sind, ist nicht dokumentiert."
+
+msgid "Governance → Sources → Edit: set the personal data of %(entry)s."
+msgstr "Governance → Quellen → Bearbeiten: Geben Sie die personenbezogenen Daten von %(entry)s an."
+
+msgid "%(entry)s holds %(personal_data)s personal data but has no record-of-processing reference."
+msgstr "%(entry)s enthält personenbezogene Daten (%(personal_data)s), hat aber keinen Verweis auf das Verarbeitungsverzeichnis."
+
+msgid "Governance → Sources → Edit: enter the record-of-processing reference of %(entry)s."
+msgstr "Governance → Quellen → Bearbeiten: Tragen Sie den Verweis auf das Verarbeitungsverzeichnis für %(entry)s ein."
+
+msgid "%(entry)s (%(classification)s) is visible without required roles or to a broad role."
+msgstr "%(entry)s (%(classification)s) ist ohne erforderliche Rollen oder für eine breite Rolle sichtbar."
+
+msgid "%(entry)s holds %(personal_data)s personal data and is visible without required roles or to a broad role."
+msgstr "%(entry)s enthält personenbezogene Daten (%(personal_data)s) und ist ohne erforderliche Rollen oder für eine breite Rolle sichtbar."
+
+msgid "%(entry)s: the vector index holds a copy of %(classification)s content that bypasses the source's rights and deletions."
+msgstr "%(entry)s: Der Vektorindex enthält eine Kopie von Inhalten der Stufe %(classification)s, an den Rechten und Löschungen der Quelle vorbei."
+
+msgid "Take %(entry)s out of the vector index, or restrict its collection to the roles of the source and ingest it again after deletions."
+msgstr "Nehmen Sie %(entry)s aus dem Vektorindex oder beschränken Sie die Collection auf die Rollen der Quelle und lesen Sie sie nach Löschungen neu ein."
+
+msgid "%(entry)s: the embedding model %(model)s (tier %(tier)s) is not allowed for %(classification)s content with personal data %(personal_data)s."
+msgstr "%(entry)s: Das Embedding-Modell %(model)s (Stufe %(tier)s) ist für Inhalte der Stufe %(classification)s mit personenbezogenen Daten „%(personal_data)s“ nicht zugelassen."
+
+msgid "Set policy.embedding_model in governance.yaml to a model of tier %(allowed_tiers)s, or take %(entry)s out of the vector index."
+msgstr "Setzen Sie in governance.yaml policy.embedding_model auf ein Modell der Stufe %(allowed_tiers)s oder nehmen Sie %(entry)s aus dem Vektorindex."
+
+msgid "%(agent)s uses the model %(model)s (tier %(tier)s), which the policy does not allow for %(entries)s."
+msgstr "%(agent)s nutzt das Modell %(model)s (Stufe %(tier)s), das die Richtlinie für %(entries)s nicht zulässt."
+
+msgid "Switch %(agent)s to a model of tier %(allowed_tiers)s and restrict its LiteLLM team or key to such models."
+msgstr "Stellen Sie %(agent)s auf ein Modell der Stufe %(allowed_tiers)s um und beschränken Sie sein LiteLLM-Team bzw. seinen Schlüssel auf solche Modelle."
+
+msgid "The model %(model)s has no tier and is evaluated as third_country."
+msgstr "Das Modell %(model)s hat keine Stufe und wird als Drittland bewertet."
+
+msgid "Governance → Models → Tier: set the tier of %(model)s."
+msgstr "Governance → Modelle → Stufe: Setzen Sie die Stufe von %(model)s."
+
+msgid "%(server)s reaches %(entries)s and can be selected in free chat with any model."
+msgstr "%(server)s erreicht %(entries)s und ist im freien Chat mit jedem Modell auswählbar."
+
+msgid "Set chatMenu: false for %(server)s in librechat.yaml and use it through agents whose model the policy allows."
+msgstr "Setzen Sie in librechat.yaml chatMenu: false für %(server)s und nutzen Sie den Server über Agenten, deren Modell die Richtlinie zulässt."
+
+msgid "%(server)s uses a shared credential to reach %(entries)s; the target system no longer sees which user asks."
+msgstr "%(server)s erreicht %(entries)s mit einer gemeinsamen Zugangskennung; das Zielsystem sieht nicht mehr, welche Person fragt."
+
+msgid "Switch the MCP server %(server)s to the user's token instead of a shared credential."
+msgstr "Stellen Sie den MCP-Server %(server)s auf das Token der Person um statt auf eine gemeinsame Zugangskennung."
+
+msgid "%(entry)s delegates to the external agent at %(host)s; what it receives is not documented."
+msgstr "%(entry)s gibt Aufgaben an den externen Agenten unter %(host)s ab; was er erhält, ist nicht dokumentiert."
+
+msgid "Check what %(host)s receives and under which contract, then record sources.%(entry)s (classification, personal_data) in governance.yaml."
+msgstr "Prüfen Sie, was %(host)s erhält und unter welchem Vertrag, und tragen Sie dann sources.%(entry)s (classification, personal_data) in governance.yaml ein."
+
+msgid "governance.yaml: the unknown key %(key)s is ignored."
+msgstr "governance.yaml: Der unbekannte Schlüssel %(key)s wird ignoriert."
+
+msgid "Files → governance.yaml: remove %(key)s."
+msgstr "Dateien → governance.yaml: Entfernen Sie %(key)s."
+
+msgid "governance.yaml describes %(entry)s, which is not on the map."
+msgstr "governance.yaml beschreibt %(entry)s, das nicht auf der Karte ist."
+
+msgid "Files → governance.yaml: remove sources.%(entry)s or correct the id."
+msgstr "Dateien → governance.yaml: Entfernen Sie sources.%(entry)s oder korrigieren Sie die ID."
+
+msgid "The accepted exception for %(finding)s on %(subject)s expired on %(expires)s."
+msgstr "Die akzeptierte Ausnahme für %(finding)s bei %(subject)s ist am %(expires)s abgelaufen."
+
+msgid "Fix the %(finding)s finding, or accept it again with “Accept until …” and a new date."
+msgstr "Beheben Sie den Befund %(finding)s oder akzeptieren Sie ihn mit „Akzeptieren bis …“ und neuem Datum erneut."
+
+msgid "The model %(model)s has no tier in governance.yaml; it is evaluated as third_country."
+msgstr "Das Modell %(model)s hat in governance.yaml keine Stufe; es wird als Drittland bewertet."
+
+msgid "The model %(model)s is listed as local, but LiteLLM serves it from %(hosts)s."
+msgstr "Das Modell %(model)s ist als lokal eingetragen, LiteLLM bedient es aber über %(hosts)s."
+
+msgid "Either point every LiteLLM deployment of %(model)s at an internal host, or set its tier under Governance → Models → Tier to the one of %(hosts)s."
+msgstr "Richten Sie entweder jede LiteLLM-Bereitstellung von %(model)s auf einen internen Host oder setzen Sie unter Governance → Modelle → Stufe die Stufe von %(hosts)s."
+
+msgid "%(count)s entries are not yet classified, %(proposed_count)s of them with an add-on proposal."
+msgstr "%(count)s Einträge sind noch nicht eingestuft, %(proposed_count)s davon mit einem Vorschlag des Add-ons."
+
+msgid "%(entry)s: whether it holds personal data is not documented; its content is copied into the vector index."
+msgstr "%(entry)s: Ob personenbezogene Daten enthalten sind, ist nicht dokumentiert; der Inhalt wird in den Vektorindex kopiert."
+
+msgid "%(entry)s: the add-on suggests %(personal_data)s personal data; there is no record-of-processing reference."
+msgstr "%(entry)s: Das Add-on schlägt personenbezogene Daten (%(personal_data)s) vor; es gibt keinen Verweis auf das Verarbeitungsverzeichnis."
+
+msgid "%(entry)s (%(classification)s, not yet classified) is visible without required roles or to a broad role."
+msgstr "%(entry)s (%(classification)s, noch nicht eingestuft) ist ohne erforderliche Rollen oder für eine breite Rolle sichtbar."
+
+msgid "Files → overrides.yaml: set required_roles of %(entry)s to the roles that need it, or classify it under Governance → Sources → Edit if it is less sensitive."
+msgstr "Dateien → overrides.yaml: Setzen Sie required_roles von %(entry)s auf die Rollen, die den Zugriff brauchen, oder stufen Sie den Eintrag unter Governance → Quellen → Bearbeiten ein, wenn er weniger sensibel ist."
+
+msgid "%(entry)s: the vector index holds a copy of %(classification)s content with %(personal_data)s personal data that bypasses the source's rights and deletions."
+msgstr "%(entry)s: Der Vektorindex enthält eine Kopie von Inhalten der Stufe %(classification)s mit personenbezogenen Daten (%(personal_data)s), an den Rechten und Löschungen der Quelle vorbei."
+
+msgid "Used by %(agents)s."
+msgstr "Genutzt von %(agents)s."
+
+msgid "Embedding model for %(embedding_for)s."
+msgstr "Embedding-Modell für %(embedding_for)s."
+
+msgid "Governance → Models: confirm the suggested tier %(suggested_tier)s for %(model)s."
+msgstr "Governance → Modelle: Bestätigen Sie die vorgeschlagene Stufe %(suggested_tier)s für %(model)s."
+
+msgid "not assessable"
+msgstr "nicht bewertbar"
+
+msgid "off: nothing is recorded"
+msgstr "aus: nichts wird aufgezeichnet"
+
+msgid "aggregated: need texts are masked"
+msgstr "aggregiert: Anfragetexte werden maskiert"
+
+msgid "full: need texts are kept verbatim"
+msgstr "vollständig: Anfragetexte werden wörtlich gespeichert"
+
+msgid "kept for {days} days"
+msgstr "aufbewahrt für {days} Tage"
+
+msgid "an unanswered need is listed once {n} different profiles asked it, {count} times or more"
+msgstr "eine unbeantwortete Anfrage erscheint erst, wenn {n} verschiedene Profile sie gestellt haben, {count}-mal oder öfter"
+
+msgid "Asked, but nothing fits"
+msgstr "Gefragt, aber nichts passt"
+
+msgid "What the map server records"
+msgstr "Was der Kartenserver aufzeichnet"
+
+msgid "Learning mode:"
+msgstr "Lernmodus:"
+
+msgid "Accepted by (role, optional)"
+msgstr "Akzeptiert von (Rolle, optional)"
