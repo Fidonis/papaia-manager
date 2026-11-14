@@ -25,6 +25,7 @@ from app.core import (
     schedule,
     upgrade,
 )
+from app.core import requirements as addon_requirements
 from app.core.actions import actions_at
 from app.core.addon_upgrades import (
     core_requirement_message,
@@ -1844,6 +1845,13 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             )
             if st in (AddonStatus.AVAILABLE, AddonStatus.INACTIVE)
             else [],
+            **addon_requirements.view(
+                resolved.manifest,
+                deployment_addons,
+                installed_map,
+                settings.papaia_workspace_dir,
+                deployment,
+            ),
         }
 
     for addon_name, deploy_entry in deployment_addons.items():
@@ -1889,6 +1897,9 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             )
             if st == AddonStatus.INACTIVE
             else [],
+            "requirements": [],
+            "requirements_met": True,
+            "requirements_enforced": True,
         }
 
     return list(addons.values())
@@ -1977,6 +1988,13 @@ async def _get_addon(
         "actions": actions_at(addon_path)
         if variant_inst and st in (AddonStatus.INSTALLED, AddonStatus.RUNNING)
         else [],
+        **addon_requirements.view(
+            manifest,
+            deployment_addons_by_name(deployment),
+            installed_map,
+            settings.papaia_workspace_dir,
+            deployment,
+        ),
         **version_state(
             settings.papaia_config_dir, settings.papaia_workspace_dir, variant_inst, deploy_entry
         ),

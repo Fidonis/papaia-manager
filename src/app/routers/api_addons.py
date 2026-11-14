@@ -13,6 +13,7 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
+from app.core import requirements as addon_requirements
 from app.core.actions import actions_at
 from app.core.addon_upgrades import (
     UpgradeError,
@@ -177,6 +178,7 @@ def _addon_summary(
     key: str | None = None,
     shadowed_by: list[str] | None = None,
     is_variant: bool = False,
+    requirements: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     st = compute_status(
         name=name,
@@ -199,6 +201,10 @@ def _addon_summary(
         "update_available": update_available(inst, manifest.get("version")),
         "managed": inst.managed if inst else True,
         "components": components_for(config_dir, workspace_dir, name, manifest, inst, deploy_entry),
+        **(
+            requirements
+            or {"requirements": [], "requirements_met": True, "requirements_enforced": True}
+        ),
     }
 
 
@@ -233,6 +239,10 @@ async def list_addons(
             running, settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
             key=resolved.key, shadowed_by=resolved.shadowed_by, is_variant=resolved.is_variant,
+            requirements=addon_requirements.view(
+                resolved.manifest, deployment_addons, installed_map, settings.papaia_workspace_dir,
+                deployment,
+            ),
         )
 
     for addon_name, deploy_entry in deployment_addons.items():
@@ -323,6 +333,13 @@ async def addon_detail(
         key=resolved.key if resolved else name,
         shadowed_by=resolved.shadowed_by if resolved else [],
         is_variant=resolved.is_variant if resolved else False,
+        requirements=addon_requirements.view(
+            manifest,
+            deployment_addons_by_name(deployment),
+            installed_map,
+            settings.papaia_workspace_dir,
+            deployment,
+        ),
     )
     return {**summary, "manifest": manifest}
 
