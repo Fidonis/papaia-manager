@@ -34,6 +34,7 @@ def test_the_targets_are_keys_and_the_paths_are_the_cores() -> None:
     assert {t.key: t.path for t in overlay.TARGETS} == {
         "librechat": "ai/librechat/librechat.yaml",
         "litellm": "ai/litellm/config.yaml",
+        "chatterbox": "ai/voice/chatterbox.yaml",
         "searxng": "services/searxng/settings.yml",
     }
 

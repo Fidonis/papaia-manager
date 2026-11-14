@@ -91,7 +91,7 @@ def health(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         return StackSnapshot(
             groups=[
                 ServiceGroup(name=name, modules=(name,), containers=1, health=state["health"])
-                for name in ("librechat", "localai", "librechat-websearch", "rag", "smtp")
+                for name in ("librechat", "localai", "librechat-websearch", "rag", "voice", "smtp")
             ]
         )
 
@@ -351,6 +351,45 @@ def test_switching_the_rag_system_off_recreates_librechat_without_it(
         ("stop", ["--clean-up", "--profiles=librechat"]),
         ("start", ["--profiles=librechat"]),
         ("purge", ("rag", True, True)),
+    ]
+
+
+def test_switching_voice_on_recreates_litellm_and_librechat_after_it_started(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    # LiteLLM holds the routes and the engine key, LibreChat the speech panel; both read
+    # their rendered files once at start.
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="voice", variant="cpu", user="admin", workspace_dir="/w", config_dir=config
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps == [
+        ("setup", ModuleSetup("voice", True, "cpu")),
+        ("start", ["--profiles=voice"]),
+        ("stop", ["--clean-up", "--profiles=litellm"]),
+        ("start", ["--profiles=litellm"]),
+        ("stop", ["--clean-up", "--profiles=librechat"]),
+        ("start", ["--profiles=librechat"]),
+    ]
+    assert [e["target"] for e in _audit(config)] == ["module:voice"]
+
+
+def test_switching_voice_off_recreates_litellm_and_librechat_without_it(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,librechat,litellm,voice")
+    _go(_off(config, "voice", "all"), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--volumes", "--profiles=voice"]),
+        ("setup", ModuleSetup("voice", False)),
+        ("stop", ["--clean-up", "--profiles=litellm"]),
+        ("start", ["--profiles=litellm"]),
+        ("stop", ["--clean-up", "--profiles=librechat"]),
+        ("start", ["--profiles=librechat"]),
+        ("purge", ("voice", True, True)),
     ]
 
 

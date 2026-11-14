@@ -49,7 +49,7 @@
           <p class="mt-1 text-xs opacity-50">
             {% trans count=row.services %}{{ count }} service{% pluralize %}{{ count }} services{% endtrans %}{% if row.modules > 1 %} {% trans modules=row.modules %}in {{ modules }} modules{% endtrans %}{% endif %}
             {% if row.node %} {% trans node=row.node %}· on node {{ node }}{% endtrans %}{% endif %}
-            {% if row.name == "localai" and row.enabled %} {% trans variant=row.variant %}· variant {{ variant }}{% endtrans %}{% endif %}
+            {% if row.variant and row.enabled %} {% trans variant=row.variant %}· variant {{ variant }}{% endtrans %}{% endif %}
           </p>
           {% endif %}
           {% if row.note or row.problem %}
@@ -64,7 +64,7 @@
           <p class="mt-1 text-xs"><a href="{{ row.link }}" class="link link-secondary">{{ row.link_label }}</a></p>
           {% endif %}
 
-          {% if row.name in ("localai", "rag", "mail") %}
+          {% if row.name in ("localai", "rag", "voice", "mail") %}
           {# What `setup` asks when the module is switched on and its settings are missing. Inline
              under the row, not in a dialog: it reads the same on a phone as on a desktop. #}
           <div id="panel-{{ row.name }}" class="mt-3 hidden space-y-3 border-t border-dashed border-base-300 pt-3">
@@ -77,6 +77,15 @@
                 {% endfor %}
               </select>
             </div>
+            {% elif row.name == "voice" %}
+            <div class="form-control w-full max-w-xs">
+              <label for="voice-variant" class="label-text mb-1 text-sm font-medium">{% trans %}Accelerator for the speech synthesis{% endtrans %}</label>
+              <select id="voice-variant" class="select select-bordered select-sm">
+                {% for v in voice_variants %}
+                <option value="{{ v.id }}" {% if v.id == stored_voice_variant %}selected{% endif %}>{{ v.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
             {% endif %}
             {% if row.name != "mail" %}
             <div data-questions class="space-y-3"></div>
@@ -86,6 +95,12 @@
               {% trans %}The manager can't detect GPUs from inside its container. Pick the variant that matches this host, or start with CPU.{% endtrans %}
               {% for v in host_only_variants %}{% trans %}The {{ v }} variant is set on the host with <code>papaia-ctl setup --localai-variant={{ v }}</code>.{% endtrans %}{% endfor %}
               {% trans %}The image download can be several GB.{% endtrans %}
+            </p>
+            {% elif row.name == "voice" %}
+            <p class="text-xs opacity-60">
+              {% trans %}The manager can't detect GPUs from inside its container. Pick the variant that matches this host, or start with CPU.{% endtrans %}
+              {% trans %}On the CPU, speech-to-text works out of the box and spoken replies use the browser's voice; a GPU makes the local voice fast enough for live playback.{% endtrans %}
+              {% trans %}The first start downloads several GB of models.{% endtrans %}
             </p>
             {% elif row.name == "mail" %}
             <form id="om-form" class="space-y-3" onsubmit="event.preventDefault(); enableModule('mail')" novalidate>
@@ -215,7 +230,7 @@
     const name = box.dataset.module;
     const row = moduleRow(name);
     if (box.checked) {
-      if (name === "localai" || name === "rag" || (name === "mail" && !row.configured)) openPanel(name);
+      if (name === "localai" || name === "rag" || name === "voice" || (name === "mail" && !row.configured)) openPanel(name);
       else enableModule(name);
     } else {
       openOffDialog(name);
@@ -547,6 +562,7 @@
     if (open) {
       const p = panel(name);
       if (name === "localai") body.variant = offEl("localai-variant").value;
+      if (name === "voice") body.variant = offEl("voice-variant").value;
       const url = p.querySelector("[data-option]");
       if (url) body.public_url = url.value.trim();
       if (name === "mail") {

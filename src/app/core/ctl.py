@@ -154,6 +154,7 @@ MODULE_SETUP_FLAGS: dict[str, str] = {
     "localai": "--enable-local-ai",
     "web-search": "--enable-web-search",
     "rag": "--enable-rag",
+    "voice": "--enable-voice",
 }
 
 # The module whose `setup` asks for a public URL when it is switched on, and the option that
@@ -166,7 +167,7 @@ MODULE_URL_FLAGS: dict[str, str] = {
 MAX_URL_LENGTH = 253
 
 # The modules `module-info` and `module-purge` know, by the core's names.
-PURGE_MODULES: frozenset[str] = frozenset({"localai", "web-search", "rag", "mail"})
+PURGE_MODULES: frozenset[str] = frozenset({"localai", "web-search", "rag", "mail", "voice"})
 
 # LocalAI image variants the manager offers. `vulkan` is left out on purpose: the core
 # decides its device list by looking at /dev while it renders, and from inside this
@@ -178,6 +179,21 @@ LOCALAI_VARIANTS: tuple[str, ...] = (
     "intel",
     "hipblas",
 )
+
+# Voice TTS image variants, the core's own catalogue (`--voice-variant`). `auto` is left
+# out for the same reason as `vulkan` above: the probe looks at the host, which this
+# container cannot see.
+VOICE_VARIANTS: tuple[str, ...] = ("cpu", "nvidia", "hipblas")
+
+# The modules whose `setup` takes an accelerator image variant, and the option for it.
+MODULE_VARIANT_FLAGS: dict[str, str] = {
+    "localai": "--localai-variant",
+    "voice": "--voice-variant",
+}
+MODULE_VARIANTS: dict[str, tuple[str, ...]] = {
+    "localai": LOCALAI_VARIANTS,
+    "voice": VOICE_VARIANTS,
+}
 
 SMTP_SECURITY_MODES: tuple[str, ...] = ("starttls", "tls", "none")
 
@@ -578,9 +594,9 @@ async def run_smtp_setup(
 class ModuleSetup:
     """What the Modules tab asks the core's `setup` to do for one optional module.
 
-    `module` is a key of `MODULE_SETUP_FLAGS`. `variant` is the LocalAI image variant and
-    only makes sense when LocalAI is switched on; it is always named then, so what is stored
-    does not depend on what happened to be sticky.
+    `module` is a key of `MODULE_SETUP_FLAGS`. `variant` is the accelerator image variant of
+    the modules in `MODULE_VARIANTS` and only makes sense when such a module is switched on;
+    it is always named then, so what is stored does not depend on what happened to be sticky.
     """
 
     module: str
@@ -634,19 +650,22 @@ def module_setup_flags(spec: ModuleSetup) -> list[str]:
         if not spec.enable:
             raise ValueError(_("switching a module off takes no public URL"))
         flags.append(f"{url_flag}={public_url(spec.public_url)}")
-    if spec.module != "localai":
+    variants = MODULE_VARIANTS.get(spec.module)
+    if variants is None:
         if spec.variant is not None:
-            raise ValueError(_("only LocalAI takes an image variant"))
+            raise ValueError(_(
+                "%(module)s takes no image variant"
+            ) % {"module": spec.module})
         return flags
     if not spec.enable:
         if spec.variant is not None:
-            raise ValueError(_("switching LocalAI off takes no variant"))
+            raise ValueError(_("switching a module off takes no variant"))
         return flags
-    if spec.variant not in LOCALAI_VARIANTS:
+    if spec.variant not in variants:
         raise ValueError(_(
             "variant must be one of %(value)s"
-        ) % {"value": ', '.join(LOCALAI_VARIANTS)})
-    flags.append(f"--localai-variant={spec.variant}")
+        ) % {"value": ', '.join(variants)})
+    flags.append(f"{MODULE_VARIANT_FLAGS[spec.module]}={spec.variant}")
     return flags
 
 

@@ -5,9 +5,10 @@ acts on and what `papaia-ctl setup --enable-...` edits (`deployment.yaml` only m
 so the state is read from there and a change is asked of `setup`
 (`app.core.ctl.run_module_setup`, `run_smtp_setup`). The manager does not write the file.
 
-Four modules are switched here, and this tab is the only place that switches them: LocalAI,
-web search, the RAG system and the mail relay. The RAG and Mail pages hold their settings and
-work with the module off as well. The manager runs this page and can't switch itself off.
+Five modules are switched here, and this tab is the only place that switches them: LocalAI,
+web search, the RAG system, voice and the mail relay. The RAG and Mail pages hold their
+settings and work with the module off as well. The manager runs this page and can't switch
+itself off.
 
 Switching a module off can also delete what it leaves behind. The core knows what that is
 (`module-info`): the named volumes the module owns and the settings it keeps. Three results
@@ -28,8 +29,8 @@ from typing import Any
 
 from app.core import ctl, nodes
 from app.core.ctl import (
-    LOCALAI_VARIANTS,
     MODULE_URL_FLAGS,
+    MODULE_VARIANTS,
     PURGE_MODULES,
     CtlError,
     run_module_info,
@@ -40,20 +41,26 @@ from app.core.mail.settings import load_mail_settings, settings_json
 from app.core.state import load_deployment_yaml
 from app.i18n import N_, gettext
 
-KEY_VARIANT = "LOCALAI_IMAGE_VARIANT"
+# The root-env key a module's stored accelerator variant lives under.
+VARIANT_KEYS: dict[str, str] = {
+    "localai": "LOCALAI_IMAGE_VARIANT",
+    "voice": "VOICE_TTS_IMAGE_VARIANT",
+}
+KEY_VARIANT = VARIANT_KEYS["localai"]
 DEFAULT_VARIANT = "cpu"
 
 VARIANT_LABELS: dict[str, str] = {
     "cpu": N_("CPU (works everywhere)"),
     "nvidia-cuda-12": N_("NVIDIA CUDA 12"),
     "nvidia-cuda-13": N_("NVIDIA CUDA 13"),
+    "nvidia": N_("NVIDIA GPU (CUDA)"),
     "intel": N_("Intel GPU"),
     "hipblas": N_("AMD ROCm"),
 }
 
-def variant_options() -> list[dict[str, str]]:
-    """The LocalAI variants the page offers, labelled in the language of the request."""
-    return [{"id": v, "label": gettext(VARIANT_LABELS[v])} for v in LOCALAI_VARIANTS]
+def variant_options(name: str = "localai") -> list[dict[str, str]]:
+    """The variants of `name` the page offers, labelled in the language of the request."""
+    return [{"id": v, "label": gettext(VARIANT_LABELS[v])} for v in MODULE_VARIANTS[name]]
 
 
 # Offered by the core, not by this page: see `app.core.ctl.LOCALAI_VARIANTS`.
@@ -134,6 +141,23 @@ MODULES: tuple[ModuleDef, ...] = (
         needs_core_modules=True,
     ),
     ModuleDef(
+        name="voice",
+        profile="voice",
+        title=N_("Voice"),
+        description=(
+            N_(
+                "Local speech-to-text and text-to-speech behind LiteLLM, wired into LibreChat's "
+                "speech panel."
+            )
+        ),
+        switchable=True,
+        # LiteLLM reads the routes of the engines from its rendered configuration and their
+        # key from its env file; LibreChat reads the speech panel from librechat.yaml. All
+        # three files change with the switch, and the containers read them once at start.
+        recreate=("litellm", "librechat"),
+        needs_core_modules=True,
+    ),
+    ModuleDef(
         name="mail",
         profile="smtp",
         title=N_("Mail Relay"),
@@ -172,20 +196,21 @@ def active(config_dir: str) -> set[str]:
     return profiles_in(load_env_file(Path(config_dir) / ".env"))
 
 
-def stored_variant(config_dir: str) -> str:
-    """The LocalAI image variant the core stored, `cpu` when none."""
-    value = load_env_file(Path(config_dir) / ".env").get(KEY_VARIANT, "").strip()
+def stored_variant(config_dir: str, name: str = "localai") -> str:
+    """The image variant the core stored for `name`, `cpu` when none."""
+    value = load_env_file(Path(config_dir) / ".env").get(VARIANT_KEYS[name], "").strip()
     return value or DEFAULT_VARIANT
 
 
 def revision(config_dir: str) -> str:
-    """A fingerprint of what the tab shows: the profile set and the LocalAI variant.
+    """A fingerprint of what the tab shows: the profile set and the stored variants.
 
     The form carries it back, so a switch made from an older page (or on the host
     meanwhile) is refused instead of overwriting the newer state."""
     env = load_env_file(Path(config_dir) / ".env")
     profiles = ",".join(sorted(profiles_in(env)))
-    material = f"{profiles}\n{env.get(KEY_VARIANT, '')}"
+    variants = "\n".join(env.get(VARIANT_KEYS[name], "") for name in sorted(VARIANT_KEYS))
+    material = f"{profiles}\n{variants}"
     return hashlib.sha256(material.encode()).hexdigest()[:16]
 
 
@@ -233,7 +258,6 @@ def mail_defaults(config_dir: str) -> dict[str, object]:
 def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
     """What the tab renders: one row per module, in the order of `MODULES`."""
     on = active(config_dir)
-    variant = stored_variant(config_dir)
     manages = core_manages_modules(workspace_dir)
     distributed = nodes.is_distributed(config_dir)
     rows: list[dict[str, object]] = []
@@ -266,7 +290,11 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
                 "modules": modules,
                 # The node the module's services are placed on; empty on a single host.
                 "node": nodes.profile_node(config_dir, module.profile),
-                "variant": variant if module.name == "localai" else None,
+                "variant": (
+                    stored_variant(config_dir, module.name)
+                    if module.name in VARIANT_KEYS
+                    else None
+                ),
                 "configured": mail_configured(config_dir) if module.name == "mail" else None,
                 "mail_defaults": mail_defaults(config_dir) if module.name == "mail" else None,
                 "can_delete": manages and module.name in PURGE_MODULES,
@@ -284,24 +312,30 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
 def validate_enable(name: str, variant: str | None) -> str | None:
     """The variant to store for an enable request, or raises ModuleError.
 
-    Only LocalAI has one; it is required and must be one of the variants this page offers."""
+    Only the modules in `MODULE_VARIANTS` have one; it is required then and must be one of
+    the variants this page offers."""
     module = SWITCHABLE.get(name)
     if module is None:
         raise ModuleError(gettext("This module can't be switched from here."))
-    if name != "localai":
+    variants = MODULE_VARIANTS.get(name)
+    if variants is None:
         if variant is not None:
-            raise ModuleError(gettext("Only LocalAI takes an accelerator variant."))
+            raise ModuleError(gettext("This module takes no accelerator variant."))
         return None
     if variant is None:
-        raise ModuleError(gettext("Choose the accelerator variant for LocalAI."))
-    if variant in HOST_ONLY_VARIANTS:
+        raise ModuleError(
+            gettext(
+                "Choose the accelerator variant for %(title)s."
+            ) % {"title": gettext(module.title)}
+        )
+    if name == "localai" and variant in HOST_ONLY_VARIANTS:
         raise ModuleError(
             gettext(
                 "The %(variant)s variant is set on the host: run `papaia-ctl setup "
                 "--localai-variant=%(variant)s`."
             ) % {"variant": variant}
         )
-    if variant not in LOCALAI_VARIANTS:
+    if variant not in variants:
         raise ModuleError(gettext("Unknown accelerator variant."))
     return variant
 

@@ -138,8 +138,12 @@ async def modules_page(
                     settings.papaia_config_dir, settings.papaia_workspace_dir
                 ),
                 variants=modules.variant_options(),
+                voice_variants=modules.variant_options("voice"),
                 host_only_variants=list(modules.HOST_ONLY_VARIANTS),
                 stored_variant=modules.stored_variant(settings.papaia_config_dir),
+                stored_voice_variant=modules.stored_variant(
+                    settings.papaia_config_dir, "voice"
+                ),
                 security_modes=SECURITY_MODES,
                 default_ports=DEFAULT_PORTS,
             ),
