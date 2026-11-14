@@ -9772,3 +9772,6 @@ msgstr "vor dem angezeigten Teil des Logs"
 #, python-format
 msgid "%(message)s A node that only runs its hooks did not take part either; once it answers, run: %(value)s"
 msgstr "%(message)s Ein Node, der nur ihre Hooks ausführt, war ebenfalls nicht dabei; sobald er antwortet, führen Sie aus: %(value)s"
+
+msgid "ignored by the render: the core has no file of that name to merge it into"
+msgstr "vom Rendering ignoriert: Der Core hat keine Datei dieses Namens, in die sie eingeht"
