@@ -1,4 +1,4 @@
-{% from "partials/_addon_controls.html" import primary_action, upgrade_action, overflow_actions, remove_modal, uninstall_modal, install_modal, requirements_list %}
+{% from "partials/_addon_controls.html" import primary_action, upgrade_action, overflow_actions, remove_modal, uninstall_modal, install_modal, requirements_list, required_by_list %}
 {% from "partials/_env_fields.html" import env_input %}
 {% set s = addon.status %}
 
@@ -54,6 +54,9 @@
 
 {% if addon.requirements %}
 <div class="mb-4">{{ requirements_list(addon) }}</div>
+{% endif %}
+{% if addon.required_by %}
+<div class="mb-4">{{ required_by_list(addon) }}</div>
 {% endif %}
 
 {% if addon.shadowed_by %}

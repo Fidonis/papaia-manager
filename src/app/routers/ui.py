@@ -1850,6 +1850,7 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
                 installed_map,
                 settings.papaia_workspace_dir,
                 deployment,
+                name=resolved.name,
             ),
         }
 
@@ -1899,6 +1900,9 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             "requirements": [],
             "requirements_met": True,
             "requirements_enforced": True,
+            "required_by": addon_requirements.dependents(
+                addon_name, deployment_addons, settings.papaia_workspace_dir
+            ),
         }
 
     return list(addons.values())
@@ -1989,6 +1993,7 @@ async def _get_addon(
             installed_map,
             settings.papaia_workspace_dir,
             deployment,
+            name=name,
         ),
         **version_state(
             settings.papaia_config_dir, settings.papaia_workspace_dir, variant_inst, deploy_entry

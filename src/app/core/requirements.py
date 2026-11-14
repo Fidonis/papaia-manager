@@ -27,7 +27,8 @@ _MET = frozenset({ACTIVE, UNCHECKED})
 
 # papaia-ctl's compat modes and their synonyms (`compat.resolve_mode` in the core). In warn
 # mode papaia-ctl installs despite an unmet requirement and only warns.
-_ENFORCE = "enforce"
+ENFORCE = "enforce"
+_ENFORCE = ENFORCE
 _WARN = "warn"
 _MODE_SYNONYMS = {
     "enforce": _ENFORCE,
@@ -65,24 +66,67 @@ def required_addons(manifest: Mapping[str, Any]) -> list[tuple[str, str | None]]
     return result
 
 
-def _deployed_version(entry: Mapping[str, Any], workspace_dir: str) -> str | None:
-    """The `version` of the manifest at the add-on's registered path, falling back to the
-    `version` deployment.yaml records, the order papaia-ctl reads them in. Relative paths are
-    relative to the core checkout, as in papaia-ctl."""
-    recorded = entry.get("version")
-    fallback = str(recorded) if recorded is not None else None
+def _registered_manifest(entry: Mapping[str, Any], workspace_dir: str) -> Mapping[str, Any] | None:
+    """The manifest at the add-on's registered path, None when it cannot be read. Relative
+    paths are relative to the core checkout, as in papaia-ctl."""
     raw = entry.get("path")
     if not isinstance(raw, str) or not raw:
-        return fallback
+        return None
     path = Path(raw)
     if not path.is_absolute():
         path = Path(workspace_dir) / "papaia" / path
     try:
         manifest = yaml.safe_load((path / "papaia-app.yaml").read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
-        return fallback
-    version = manifest.get("version") if isinstance(manifest, Mapping) else None
+        return None
+    return manifest if isinstance(manifest, Mapping) else None
+
+
+def _deployed_version(entry: Mapping[str, Any], workspace_dir: str) -> str | None:
+    """The `version` of the manifest at the add-on's registered path, falling back to the
+    `version` deployment.yaml records, the order papaia-ctl reads them in."""
+    recorded = entry.get("version")
+    fallback = str(recorded) if recorded is not None else None
+    manifest = _registered_manifest(entry, workspace_dir)
+    version = manifest.get("version") if manifest is not None else None
     return str(version) if version else fallback
+
+
+def dependents(
+    name: str, deployment_addons: Mapping[str, Mapping[str, Any]], workspace_dir: str
+) -> list[str]:
+    """The other active add-ons whose `requires.addons` names `name`, as papaia-ctl's
+    `dependent_addons` finds them: papaia-ctl refuses `remove` and `uninstall` of `name` while
+    one is active. A manifest that cannot be read, or whose field papaia-ctl would reject,
+    counts as requiring nothing."""
+    found: list[str] = []
+    for other, entry in deployment_addons.items():
+        if other == name or not entry.get("active"):
+            continue
+        manifest = _registered_manifest(entry, workspace_dir) or {}
+        requires = manifest.get("requires")
+        entries = requires.get("addons") if isinstance(requires, Mapping) else None
+        if not isinstance(entries, list) or not all(_well_formed(e) for e in entries):
+            continue
+        if any(required == name for required, _ in required_addons(manifest)):
+            found.append(other)
+    return sorted(found)
+
+
+def _well_formed(entry: object) -> bool:
+    """Whether papaia-ctl accepts one `requires.addons` entry: a name, or a mapping with a
+    name and an optional range it can parse. It rejects the whole field otherwise."""
+    if isinstance(entry, str):
+        return bool(entry)
+    if not isinstance(entry, Mapping) or not isinstance(entry.get("name"), str):
+        return False
+    version = entry.get("version")
+    if version is None:
+        return bool(entry["name"])
+    # Any valid version will do: only whether the range can be read matters here.
+    return bool(entry["name"]) and isinstance(version, str) and (
+        semver.satisfies("0.0.0", version) is not None
+    )
 
 
 def requirement_states(
@@ -130,13 +174,20 @@ def view(
     installed: Mapping[str, Any],
     workspace_dir: str,
     deployment: Mapping[str, Any] | None = None,
+    name: str | None = None,
 ) -> dict[str, Any]:
-    """The `requirements`, `requirements_met` and `requirements_enforced` keys of an add-on's
-    view model. `requirements_enforced` is False in warn mode, where papaia-ctl installs
-    despite an unmet requirement: the badges still show, the button stays usable."""
+    """The `requirements`, `requirements_met`, `requirements_enforced` and `required_by`
+    keys of an add-on's view model. `requirements_enforced` is False in warn mode, where
+    papaia-ctl installs despite an unmet requirement and removes a required add-on anyway:
+    the badges still show, the buttons stay usable. `required_by` lists the active add-ons
+    that require this one (`name`, or the manifest's name)."""
     states = requirement_states(manifest, deployment_addons, installed, workspace_dir)
+    own = name or manifest.get("name")
     return {
         "requirements": states,
         "requirements_met": requirements_met(states),
         "requirements_enforced": compat_mode(deployment) == _ENFORCE,
+        "required_by": (
+            dependents(own, deployment_addons, workspace_dir) if isinstance(own, str) else []
+        ),
     }
