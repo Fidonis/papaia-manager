@@ -14,6 +14,7 @@ from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core import requirements as addon_requirements
+from app.core.actions import actions_at
 from app.core.addon_upgrades import (
     UpgradeError,
     answerable_keys,
@@ -37,7 +38,7 @@ from app.core.catalogs import (
     load_registry,
 )
 from app.core.components import components_for
-from app.core.ctl import CtlError, run_addon_verb
+from app.core.ctl import CtlError, run_addon_action, run_addon_verb
 from app.core.envforms import EnvField, build_form, field_to_dict
 from app.core.envvalidate import EnvValidationError, coerce_env_values
 from app.core.jobs import JobContext, JobQueue
@@ -1138,6 +1139,69 @@ async def save_config(
         target=name,
         user=_username,
         params={"restart": _restart},
+        callback=_callback,
+    )
+    return {"job_id": job.id, "status": "queued"}
+
+
+def _active_addon_dir(name: str, settings: Settings) -> Path | None:
+    """The directory of an installed, active add-on, or None."""
+    entry = deployment_entry(settings.papaia_config_dir, name)
+    inst = load_installed(settings.papaia_config_dir).get(name)
+    if entry is None or not entry.get("active") or inst is None:
+        return None
+    path = installed_addon_dir(entry, settings.papaia_workspace_dir, inst.catalog, name)
+    return path if path.exists() else None
+
+
+@router.post("/{name}/actions/{action}", status_code=status.HTTP_202_ACCEPTED)
+async def run_action(
+    name: str,
+    action: str,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
+    """Run a maintenance action the add-on's manifest declares (`actions`).
+
+    Only a declared action of an active add-on is accepted; the request carries a name, never
+    a command or arguments. papaia-ctl looks the action up again and runs it."""
+    verify_csrf(request)
+    refuse_while_locked(settings)
+    declared = {a["name"] for a in actions_at(_active_addon_dir(name, settings))}
+    if action not in declared:
+        raise HTTPException(
+            status_code=404,
+            detail=gettext("Add-on %(name)s declares no action %(action)s")
+            % {"name": name, "action": action},
+        )
+    queue = _queue()
+    _username = _user_id(user)
+
+    async def _callback(ctx: JobContext) -> None:
+        ctx.log(f"[ctl] papaia-ctl addon run {name} {action}")
+        gen = await run_addon_action(
+            name=name,
+            action=action,
+            workspace_dir=settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
+        )
+        async for line in gen:
+            ctx.log(line)
+        write_audit_entry(
+            settings.papaia_config_dir,
+            user=_username,
+            action="addon_action",
+            target=name,
+            params={"action": action},
+            job_id=ctx.job.id,
+        )
+
+    job = await queue.enqueue(
+        action="addon_action",
+        target=name,
+        user=_username,
+        params={"action": action},
         callback=_callback,
     )
     return {"job_id": job.id, "status": "queued"}

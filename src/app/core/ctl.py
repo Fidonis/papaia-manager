@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from app.core.actions import ACTION_NAME_RE
 from app.core.inventory import LINK_PROFILE, SELF_PROFILE
 from app.core.services import invalidate_snapshot
 from app.i18n import gettext as _
@@ -221,6 +222,40 @@ class CtlError(Exception):
     def __init__(self, message: str, exit_code: int) -> None:
         super().__init__(message)
         self.exit_code = exit_code
+
+
+async def run_addon_action(
+    *,
+    name: str,
+    action: str,
+    workspace_dir: str,
+    config_dir: str,
+) -> AsyncGenerator[str, None]:
+    """Yield output lines from ``papaia-ctl addon run <name> <action>``.
+
+    Deliberately not a verb of ALLOWED_VERBS: `run` takes exactly one action name, which
+    papaia-ctl looks up in the add-on's manifest, and no other argument -- so nothing a
+    caller passes can turn into a command. CtlError carries the action's exit code.
+    """
+    if not _ADDON_NAME_RE.match(name):
+        raise ValueError(
+            _("addon name %(name)r does not match ^[a-z0-9][a-z0-9-]{0,31}$") % {"name": name}
+        )
+    if not ACTION_NAME_RE.match(action):
+        raise ValueError(_("action name %(action)r is not valid") % {"action": action})
+
+    cmd: list[str] = [
+        "bash",
+        str(papaia_ctl_path(workspace_dir)),
+        "addon",
+        "run",
+        name,
+        action,
+        f"--config-dir={config_dir}",
+    ]
+    env = dict(os.environ)
+    env["PAPAIA_CONFIG_DIR"] = config_dir
+    return _stream_subprocess(cmd, env)
 
 
 async def run_addon_verb(

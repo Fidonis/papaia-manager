@@ -56,6 +56,34 @@
 <div class="mb-4">{{ requirements_list(addon) }}</div>
 {% endif %}
 
+{% if addon.actions %}
+{# Maintenance actions the add-on declares. The request carries only the action name;
+   papaia-ctl looks it up in the manifest and runs it. Destructive ones ask first. #}
+<div class="mb-6" x-data="{ busy: false, activeVerb: '' }">
+  <h2 class="text-sm font-semibold opacity-70 mb-2">{% trans %}Maintenance actions{% endtrans %}</h2>
+  <div class="flex flex-wrap gap-2">
+    {% for a in addon.actions %}
+    {% set confirm_text = _('Run "%(action)s" on %(name)s? This cannot be undone.', action=a.name, name=addon.name) %}
+    <button class="btn btn-sm {% if a.destructive %}btn-outline btn-error{% else %}btn-outline{% endif %}"
+            :disabled="busy"
+            title="{{ a.description }}"
+            @click="if ({{ 'true' if a.destructive else 'false' }} && !confirm({{ confirm_text | tojson | forceescape }})) return;
+                    busy = true; activeVerb = {{ a.name | tojson | forceescape }};
+                    addonAction('{{ addon.name }}', 'actions/{{ a.name }}', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
+      <span style="display:none" x-show="activeVerb === {{ a.name | tojson | forceescape }}" class="loading loading-dots loading-xs"></span>
+      <span>{{ a.name }}</span>
+    </button>
+    {% endfor %}
+  </div>
+  {% set described = addon.actions | selectattr('description') | list %}
+  {% if described %}
+  <ul class="text-xs opacity-60 mt-2 space-y-0.5">
+    {% for a in described %}<li><span class="font-mono">{{ a.name }}</span> — {{ a.description }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if addon.shadowed_by %}
 <div class="alert alert-info py-2 mb-4 text-sm">
   <span>

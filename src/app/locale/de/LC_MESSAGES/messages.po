@@ -9752,6 +9752,21 @@ msgstr "%(name)s ist nicht installiert"
 msgid "Install the required add-ons first"
 msgstr "Zuerst die benötigten Add-ons installieren"
 
+msgid "Maintenance actions"
+msgstr "Wartungsaktionen"
+
+#, python-format
+msgid "Run \"%(action)s\" on %(name)s? This cannot be undone."
+msgstr "„%(action)s“ für %(name)s ausführen? Das lässt sich nicht rückgängig machen."
+
+#, python-format
+msgid "Add-on %(name)s declares no action %(action)s"
+msgstr "Das Add-on %(name)s deklariert keine Aktion %(action)s"
+
+#, python-format
+msgid "action name %(action)r is not valid"
+msgstr "Aktionsname %(action)r ist ungültig"
+
 #, python-format
 msgid "The relay is off, but the realm still names it: %(value)s"
 msgstr "Das Relay ist aus, aber der Realm nennt es noch: %(value)s"
