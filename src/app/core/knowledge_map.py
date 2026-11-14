@@ -8,7 +8,9 @@ under `overlay/knowledge-map/`:
 * `sources.yaml` declares entries of the operator's own (own servers, places no tool
   reaches, Agent2Agent agents),
 * `overrides.yaml` changes declared or inventoried entries,
-* `goldset.yaml` is the set of test questions the map server evaluates against.
+* `goldset.yaml` is the set of test questions the map server evaluates against,
+* `governance.yaml` documents owners, classification, personal data and model tiers (see
+  `knowledge_map_governance`); it has a write permission of its own.
 
 The manager reads the rendered map from disk (it is a file in the configuration directory, and
 reading it needs no running service) and is the only writer of the three operator files from
@@ -94,6 +96,14 @@ OPERATOR_FILES: tuple[OperatorFile, ...] = (
         N_("Test questions with the sources that must answer them."),
         False,
     ),
+    OperatorFile(
+        "governance",
+        "governance.yaml",
+        N_("Governance"),
+        N_("Owners, classification, personal data and model tiers. Documents decisions; "
+           "it restricts no access."),
+        True,
+    ),
 )
 _BY_KEY = {f.key: f for f in OPERATOR_FILES}
 
@@ -158,6 +168,17 @@ def rendered(config_dir: str) -> dict[str, Any]:
                 entries.append(_entry_view(data))
     lints = _load(base / "lints.yaml")
     lints = lints if isinstance(lints, dict) else {}
+    # The render keeps add-on proposals and agent models out of the manifests (they are
+    # model-facing) and hands them to this view through lints.yaml.
+    proposals = lints.get("proposals")
+    agent_models = lints.get("agent_models")
+    for entry in entries:
+        proposal = proposals.get(entry["id"]) if isinstance(proposals, dict) else None
+        if isinstance(proposal, dict):
+            entry["governance_proposal"] = dict(proposal)
+        model = agent_models.get(entry["id"]) if isinstance(agent_models, dict) else None
+        if isinstance(model, dict):
+            entry["model"] = dict(model)
     findings = [f for f in lints.get("findings") or [] if isinstance(f, dict)]
     warnings = [str(w) for w in lints.get("warnings") or []]
     return {
@@ -188,6 +209,10 @@ def _access(data: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def _mapping_of(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
 def _entry_view(data: dict[str, Any]) -> dict[str, Any]:
     raw_provenance = data.get("provenance")
     provenance: dict[str, Any] = raw_provenance if isinstance(raw_provenance, dict) else {}
@@ -213,6 +238,11 @@ def _entry_view(data: dict[str, Any]) -> dict[str, Any]:
         "location": data.get("location") or "",
         "owner": data.get("owner") or "",
         "declared_by": provenance.get("declared_by") or provenance.get("addon") or "",
+        # The effective handling label the render writes into a manifest; the add-on's
+        # proposal and an agent's model come from lints.yaml (see `rendered`).
+        "handling": _mapping_of(data.get("handling")),
+        "governance_proposal": _mapping_of(data.get("governance_proposal")),
+        "model": _mapping_of(data.get("model")),
         "generated_at": data.get("generated_at"),
         "valid_until": data.get("valid_until"),
     }
@@ -348,6 +378,12 @@ def check(key: str, content: str) -> list[str]:
         return []
     if not isinstance(document, dict):
         return [_("The top level must be a mapping (key: value).")]
+    if key == "governance":
+        from app.core.knowledge_map_governance import check_document  # noqa: PLC0415 - cycle
+
+        return check_document(document)
+    if key == "overrides" and "governance" in document:
+        return [_("Governance fields live in governance.yaml, not in overrides.yaml.")]
     return {"sources": _check_sources, "overrides": _check_overrides, "goldset": _check_gold}[
         key
     ](document)
@@ -404,6 +440,10 @@ def _check_overrides(document: dict[str, Any]) -> list[str]:
             problems.append(_("The changes for %(id)s are not a mapping.") % {"id": entry_id})
         elif "id" in patch and patch["id"] != entry_id:
             problems.append(_("An override must not change the id (%(id)s).") % {"id": entry_id})
+        elif "governance" in patch or "governance_proposal" in patch:
+            problems.append(
+                _("Governance fields live in governance.yaml, not in overrides.yaml.")
+            )
     return problems
 
 

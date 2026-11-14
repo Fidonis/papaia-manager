@@ -11,9 +11,10 @@ Two kinds of event, and the difference is what "new" means:
 * edge events (`backup_overdue`, `service_unhealthy`): a condition is new when it turns true.
   It is not reported again while it stays true, and a service that flaps is reported at most
   once per debounce window.
-* marker events (`update_available`, `cert_expiring`): a condition is new when its marker
-  changes -- the version on offer, the date a certificate expires. A renewed certificate or a
-  newer release is a new occurrence by itself, and the same one is never reported twice.
+* marker events (`update_available`, `cert_expiring`, `knowledge_map_finding`): a condition
+  is new when its marker changes -- the version on offer, the date a certificate expires, the
+  wording of a finding. A renewed certificate or a newer release is a new occurrence by itself,
+  and the same one is never reported twice.
 
 `job_failed` is not detected here: the job queue says so when it happens (see `service`).
 
@@ -25,6 +26,7 @@ again when the answer comes back.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -33,6 +35,8 @@ from typing import Any
 
 from app.config import Settings
 from app.core import backups, host_health, runner, schedule, services, upgrade
+from app.core import knowledge_map as km
+from app.core import knowledge_map_governance as km_gov
 from app.core.catalogs import load_registry
 from app.core.jobs import JobQueue
 from app.core.notifications.model import Event, EventSettings
@@ -392,6 +396,74 @@ def core_update(current: str, newer: list[str] | None) -> list[Finding]:
     ]
 
 
+def _km_condition(finding: dict[str, Any], scope: str) -> Condition:
+    code = str(finding.get("code") or "")
+    target = str(finding.get("target") or finding.get("subject") or "")
+    message = str(finding.get("message") or code)
+    fix = str(finding.get("fix") or "")
+    # A changed wording (the render or the manager says something else about the same thing)
+    # is a new occurrence; the same finding on every pass is not.
+    marker = hashlib.sha256(f"{message}\n{fix}".encode()).hexdigest()[:16]
+    details: dict[str, Any] = {
+        "code": code,
+        "target": target or None,
+        "origin": finding.get("origin") or None,
+        "category": finding.get("category") or None,
+    }
+    if fix:
+        details["fix"] = fix
+    return Condition(
+        Event.KNOWLEDGE_MAP_FINDING,
+        f"{scope}{code}:{target}",
+        marker,
+        target or code,
+        message,
+        details,
+    )
+
+
+def _reportable(finding: dict[str, Any]) -> bool:
+    return finding.get("severity") == "high" and not finding.get("exception")
+
+
+def knowledge_map_findings(
+    config_dir: str, live: km_gov.LiveModels | None, *, now: datetime
+) -> list[Finding]:
+    """The high findings of the knowledge map that no exception covers: the render's (from
+    `lints.yaml`, every category) and the manager's own check of the models against LiteLLM.
+
+    Each source is a scope of its own. A map that is not rendered yet says nothing, and
+    LiteLLM that cannot be read says nothing about the model findings: neither clears what is
+    remembered, so nothing is reported again when the answer comes back. A map that is
+    switched off clears both."""
+    if not km.active(config_dir):
+        return [Finding(Event.KNOWLEDGE_MAP_FINDING, ())]
+    rendered = km.rendered(config_dir)
+    found: list[Finding] = []
+    if rendered["rendered"]:
+        found.append(
+            Finding(
+                Event.KNOWLEDGE_MAP_FINDING,
+                tuple(_km_condition(f, "render:") for f in rendered["findings"] if _reportable(f)),
+                scope="render:",
+            )
+        )
+    if live is not None and live.available:
+        try:
+            own = km_gov.live_findings(config_dir, live, now.date())
+        except km.KnowledgeMapError:
+            own = None
+        if own is not None:
+            found.append(
+                Finding(
+                    Event.KNOWLEDGE_MAP_FINDING,
+                    tuple(_km_condition(f, "manager:") for f in own if _reportable(f)),
+                    scope="manager:",
+                )
+            )
+    return found
+
+
 async def stack_is_busy(queue: JobQueue | None) -> bool:
     """A job is running, or a restore, an upgrade or a stack action is.
 
@@ -456,9 +528,18 @@ def build_detectors(settings: Settings, queue: JobQueue | None) -> dict[Event, D
         findings += await asyncio.to_thread(addon_updates, config_dir, workspace_dir)
         return findings
 
+    async def knowledge_map(_: EventSettings) -> list[Finding]:
+        if not km.active(config_dir):
+            return knowledge_map_findings(config_dir, None, now=datetime.now(tz=UTC))
+        live = await km_gov.read_live_models(settings)
+        return await asyncio.to_thread(
+            knowledge_map_findings, config_dir, live, now=datetime.now(tz=UTC)
+        )
+
     return {
         Event.BACKUP_OVERDUE: backups_late,
         Event.SERVICE_UNHEALTHY: services_down,
         Event.CERT_EXPIRING: certs_expiring,
         Event.UPDATE_AVAILABLE: updates,
+        Event.KNOWLEDGE_MAP_FINDING: knowledge_map,
     }

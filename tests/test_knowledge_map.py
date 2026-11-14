@@ -208,7 +208,7 @@ def test_the_overview_reads_the_rendered_map_from_disk(client: TestClient) -> No
     assert entries["wiki.main"]["declared_by"] == "addon:mediawiki"
     assert entries["mcp.calendar"]["undeclared"] is True
     assert data["findings"][0]["code"] == "undeclared_server"
-    assert [f["key"] for f in data["files"]] == ["sources", "overrides", "goldset"]
+    assert [f["key"] for f in data["files"]] == ["sources", "overrides", "goldset", "governance"]
 
 
 def test_legacy_single_path_entries_read_as_one_path(tmp_path: Path) -> None:
@@ -271,7 +271,9 @@ def test_accepting_queues_a_write_of_the_servers_version(
     client: TestClient, queue: JobQueue
 ) -> None:
     res = _as(client, "admin").post(
-        f"{_BASE}/suggestions/aaaaaaaaaaaa", json={"decision": "accepted"}, headers=_HEADERS
+        f"{_BASE}/suggestions/aaaaaaaaaaaa",
+        json={"decision": "accepted", "confirm_no_personal_data": True},
+        headers=_HEADERS,
     )
     assert res.status_code == 202 and res.json()["file"] == "overrides"
     job = queue.get_job(res.json()["job_id"])

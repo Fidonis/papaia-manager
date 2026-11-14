@@ -34,6 +34,7 @@ from app.routers import (
     api_ingest_jobs,
     api_jobs,
     api_knowledge_map,
+    api_knowledge_map_governance,
     api_mail,
     api_maintenance,
     api_models,
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(api_addons.router)
     app.include_router(api_jobs.router)
     app.include_router(api_knowledge_map.router)
+    app.include_router(api_knowledge_map_governance.router)
     app.include_router(api_mail.router)
     app.include_router(api_maintenance.router)
     app.include_router(api_models.router)
