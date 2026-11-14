@@ -684,10 +684,35 @@ def _texts(code: str, params: dict[str, Any]) -> tuple[str, str] | None:
     return message, fix
 
 
+# Enum values as the reader sees them; the same message ids as the page's labels.
+_VALUE_LABELS: dict[str, str] = {
+    "public": N_("public"), "internal": N_("internal"), "confidential": N_("confidential"),
+    "strictly_confidential": N_("strictly confidential"),
+    "local": N_("local"), "eu_hosted": N_("EU-hosted"),
+    "third_country_contracted": N_("third country, contracted"),
+    "third_country": N_("third country"),
+    "none": N_("no personal data"), "ordinary": N_("ordinary personal data"),
+    "special": N_("special categories"), "criminal": N_("criminal offence data"),
+}
+# Params whose values are enum values; ids, names and hosts stay as they are.
+_ENUM_PARAMS = frozenset({"classification", "proposed", "personal_data", "tier",
+                          "allowed_tiers", "suggested_tier"})
+
+
+def _label(key: str, value: Any) -> Any:
+    if key in _ENUM_PARAMS and isinstance(value, str) and value in _VALUE_LABELS:
+        return _(_VALUE_LABELS[value])
+    return value
+
+
 def _values(params: dict[str, Any]) -> dict[str, Any]:
-    """The params as they go into a text: lists joined, an empty list as `none`."""
-    return {k: (", ".join(str(x) for x in v) or _(_NONE)) if isinstance(v, list) else v
-            for k, v in params.items()}
+    """The params as they go into a text: enum values as labels, lists joined, an empty list
+    as `none`."""
+    return {
+        k: (", ".join(str(_label(k, x)) for x in v) or _(_NONE)) if isinstance(v, list)
+        else _label(k, v)
+        for k, v in params.items()
+    }
 
 
 def describe(code: str, params: dict[str, Any]) -> tuple[str, str] | None:
