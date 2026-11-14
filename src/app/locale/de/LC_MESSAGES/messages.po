@@ -10090,3 +10090,6 @@ msgstr "Entwicklung"
 
 msgid "held out"
 msgstr "zurückgehalten"
+
+msgid "only for:"
+msgstr "nur für:"
