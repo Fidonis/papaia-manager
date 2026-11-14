@@ -34,7 +34,27 @@
   "accepted": _("Accepted. The map is rendered with it."),
   "rejected": _("Rejected. It will not be offered again."),
   "no_results": _("The map abstains."),
-  "error": _("Something went wrong: {detail}")
+  "error": _("Something went wrong: {detail}"),
+  "sev_high": _("Action needed: high"),
+  "sev_medium": _("Action needed: medium"),
+  "sev_low": _("Action needed: low"),
+  "origin_render": _("render"),
+  "origin_manager": _("manager"),
+  "action_needed": _("action needed"),
+  "no_action": _("no action needed"),
+  "not_set": _("not set"),
+  "suggested": _("suggested by add-on:"),
+  "until": _("accepted until {date}"),
+  "expired": _("exception expired {date}"),
+  "confirm_tier": _("Confirm {tier}"),
+  "classes": {"public": _("public"), "internal": _("internal"), "confidential": _("confidential"),
+              "strictly_confidential": _("strictly confidential")},
+  "tiers": {"local": _("local"), "eu_hosted": _("EU-hosted"),
+            "third_country_contracted": _("third country, contracted"), "third_country": _("third country")},
+  "personal_data": {"none": _("no personal data"), "ordinary": _("ordinary personal data"),
+                    "special": _("special categories"), "criminal": _("criminal offence data"), "unknown": _("unknown")},
+  "subjects": {"employees": _("employees"), "applicants": _("applicants"), "customers": _("customers"),
+               "suppliers": _("suppliers"), "patients": _("patients"), "minors": _("minors"), "other": _("other")}
 } | tojson }}</script>
 
 <div x-data="knowledgeMap()" x-init="start()" class="space-y-4">
@@ -85,6 +105,8 @@
     <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='usage' && 'tab-active'" @click="tab='usage'; loadUsage()">{% trans %}Usage & quality{% endtrans %}</button>
     <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='suggestions' && 'tab-active'" @click="tab='suggestions'; loadSuggestions()">{% trans %}Suggestions{% endtrans %}</button>
     <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='files' && 'tab-active'" @click="tab='files'">{% trans %}Files{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='governance' && 'tab-active'" @click="tab='governance'; loadGovernance()">
+      {% trans %}Governance{% endtrans %} <span x-show="gov.data" class="badge badge-sm ml-1" :class="govHigh() && 'badge-warning'" x-text="govHigh()"></span></button>
   </div>
 
   {# ── map ─────────────────────────────────────────────────────────────────── #}
@@ -277,8 +299,12 @@
               <p x-show="s.check" class="text-xs" :class="s.check && s.check.regression ? 'text-error' : 'text-success'" x-text="checkText(s)"></p>
               <pre class="mt-1 overflow-x-auto rounded bg-base-200 p-2 text-xs" x-text="yamlish(s.override || s.declaration || s.gold)"></pre>
             </div>
-            <div class="flex items-start gap-2">
-              <button type="button" class="btn btn-primary btn-sm" :disabled="busy" @click="decide(s, 'accepted')">{% trans %}Accept{% endtrans %}</button>
+            <div class="flex flex-wrap items-start gap-2">
+              <label x-show="carriesText(s)" class="label cursor-pointer gap-2 py-0 text-xs">
+                <input type="checkbox" class="checkbox checkbox-xs" x-model="s.confirmed">
+                <span>{% trans %}Contains no names of persons{% endtrans %}</span>
+              </label>
+              <button type="button" class="btn btn-primary btn-sm" :disabled="busy || (carriesText(s) && !s.confirmed)" @click="decide(s, 'accepted')">{% trans %}Accept{% endtrans %}</button>
               <button type="button" class="btn btn-ghost btn-sm" :disabled="busy" @click="decide(s, 'rejected')">{% trans %}Reject{% endtrans %}</button>
             </div>
           </li>
@@ -307,9 +333,208 @@
       </div>
     </div>
   </section>
+
+  {# ── governance ──────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='governance'" class="space-y-4">
+    <div class="alert text-sm">
+      <span>{% trans %}Wiring checks: where the configuration and the documented handling of a source disagree. The map restricts no data access and no model use; that happens in the target systems, in LiteLLM's teams and keys, and in the agent bindings of the chat.{% endtrans %}</span>
+    </div>
+    <template x-if="gov.data">
+      <div class="space-y-4">
+        <div x-show="!gov.data.litellm.available" class="alert alert-warning text-sm">
+          <span>{% trans %}LiteLLM can't be read, so the model inventory is evaluated from governance.yaml and the agents' models only:{% endtrans %} <span x-text="gov.data.litellm.problem"></span></span>
+        </div>
+        <div x-show="gov.data.parse_error" class="alert alert-error text-sm"><span x-text="gov.data.parse_error"></span></div>
+
+        <div role="tablist" class="tabs tabs-boxed w-fit flex-wrap">
+          <button type="button" role="tab" class="tab" :class="gov.sub==='findings' && 'tab-active'" @click="gov.sub='findings'">{% trans %}Findings{% endtrans %}</button>
+          <button type="button" role="tab" class="tab" :class="gov.sub==='matrix' && 'tab-active'" @click="gov.sub='matrix'">{% trans %}Sources{% endtrans %}</button>
+          <button type="button" role="tab" class="tab" :class="gov.sub==='models' && 'tab-active'" @click="gov.sub='models'">{% trans %}Models{% endtrans %}</button>
+          <button type="button" role="tab" class="tab" :class="gov.sub==='agents' && 'tab-active'" @click="gov.sub='agents'">{% trans %}Agents{% endtrans %}</button>
+        </div>
+
+        {# findings and exceptions #}
+        <div x-show="gov.sub==='findings'" class="card border border-base-300 bg-base-100">
+          <div class="card-body gap-3 p-4 text-sm">
+            <p class="opacity-60">{% trans %}Policy findings from the last render and from the live check against LiteLLM, each with what to change. An accepted finding always has an expiry; when it expires, the finding returns. New or changed findings with high action needed can be sent through Notifications.{% endtrans %}</p>
+            <p x-show="!gov.data.findings.length">{% trans %}Nothing found.{% endtrans %}</p>
+            <ul class="divide-y divide-base-300">
+              <template x-for="f in gov.data.findings" :key="f.origin + f.code + f.target">
+                <li class="flex flex-wrap items-start gap-2 py-2" :class="f.exception && 'opacity-60'">
+                  <span class="badge badge-sm whitespace-nowrap" :class="{'badge-error': f.severity==='high', 'badge-warning': f.severity==='medium'}" x-text="sevLabel(f.severity)"></span>
+                  <span class="badge badge-ghost badge-sm" x-text="T['origin_' + f.origin] || f.origin"></span>
+                  <div class="min-w-0 flex-1"><div x-text="f.message"></div>
+                    <div x-show="f.fix" class="text-xs"><span class="font-semibold">{% trans %}Fix:{% endtrans %}</span> <span x-text="f.fix"></span></div>
+                    <div class="font-mono text-xs opacity-60" x-text="f.code + (f.target ? ' · ' + f.target : '')"></div>
+                    <div x-show="f.exception" class="text-xs" x-text="excText(f)"></div></div>
+                  <button type="button" x-show="!f.exception && f.target" class="btn btn-ghost btn-xs" @click="acceptRisk(f)">{% trans %}Accept until …{% endtrans %}</button>
+                </li>
+              </template>
+            </ul>
+            <template x-if="gov.exc">
+              <form class="grid gap-2 rounded-box border border-base-300 p-3 md:grid-cols-3" @submit.prevent="saveException()">
+                <p class="font-mono text-xs md:col-span-3" x-text="gov.exc.finding + ' · ' + gov.exc.subject"></p>
+                <label class="form-control"><span class="label-text">{% trans %}Expires{% endtrans %}</span>
+                  <input type="date" class="input input-bordered input-sm" x-model="gov.exc.expires" required></label>
+                <label class="form-control"><span class="label-text">{% trans %}Reason (optional){% endtrans %}</span>
+                  <input class="input input-bordered input-sm" x-model="gov.exc.reason" maxlength="500"></label>
+                <label class="form-control"><span class="label-text">{% trans %}Risk reference (optional){% endtrans %}</span>
+                  <input class="input input-bordered input-sm" x-model="gov.exc.risk_ref" maxlength="200"></label>
+                <div class="flex gap-2 md:col-span-3">
+                  <button class="btn btn-primary btn-sm" :disabled="gov.busy">{% trans %}Save and render{% endtrans %}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="gov.exc = null">{% trans %}Cancel{% endtrans %}</button>
+                </div>
+              </form>
+            </template>
+            <h3 class="font-brand font-bold">{% trans %}Accepted findings{% endtrans %}</h3>
+            <p x-show="!gov.data.exceptions.length" class="opacity-60">{% trans %}None.{% endtrans %}</p>
+            <ul class="divide-y divide-base-300">
+              <template x-for="(x, i) in gov.data.exceptions" :key="x.finding + x.subject + i">
+                <li class="flex flex-wrap items-start gap-2 py-2">
+                  <span class="font-mono text-xs" x-text="x.finding + ' · ' + x.subject"></span>
+                  <span class="flex-1" x-text="[x.reason, x.risk_ref].filter(Boolean).join(' · ')"></span>
+                  <span class="badge badge-sm" :class="x.expired && 'badge-warning'" x-text="(x.expired ? T.expired : T.until).replace('{date}', x.expires)"></span>
+                  <button type="button" class="btn btn-ghost btn-xs" :disabled="gov.busy" @click="removeException(i)">{% trans %}Remove{% endtrans %}</button>
+                </li>
+              </template>
+            </ul>
+          </div>
+        </div>
+
+        {# sources #}
+        <div x-show="gov.sub==='matrix'" class="card border border-base-300 bg-base-100">
+          <div class="card-body gap-3 p-4">
+            <p class="text-sm opacity-60">{% trans %}One row per source, reference and server. Highlighted cells are gaps. A value the add-on suggests is never effective until you confirm it.{% endtrans %}</p>
+            <div class="overflow-x-auto">
+              <table class="table table-sm">
+                <thead><tr><th>{% trans %}Entry{% endtrans %}</th><th>{% trans %}Owner (role){% endtrans %}</th><th>{% trans %}Classification{% endtrans %}</th><th>{% trans %}Personal data{% endtrans %}</th><th>{% trans %}Data subjects{% endtrans %}</th><th>{% trans %}Record of processing{% endtrans %}</th><th></th></tr></thead>
+                <tbody>
+                  <template x-for="r in gov.data.matrix" :key="r.id">
+                    <tr class="hover align-top">
+                      <td><div class="font-medium" x-text="r.system"></div><div class="font-mono text-xs opacity-50" x-text="r.id"></div></td>
+                      <td :class="has(r, 'owner') && 'bg-warning/20'" x-text="r.owner || T.not_set"></td>
+                      <td :class="has(r, 'classification') && 'bg-warning/20'">
+                        <span class="badge badge-sm" :class="r.classification_confirmed ? 'badge-neutral' : 'badge-ghost'" x-text="r.classification_confirmed ? lbl('classes', r.classification) : T.not_set"></span>
+                        <div x-show="r.open_proposal.classification" class="text-xs opacity-60" x-text="T.suggested + ' ' + lbl('classes', r.open_proposal.classification)"></div>
+                      </td>
+                      <td :class="has(r, 'personal_data') && 'bg-warning/20'">
+                        <span x-text="lbl('personal_data', r.personal_data)"></span>
+                        <div x-show="r.open_proposal.personal_data" class="text-xs opacity-60" x-text="T.suggested + ' ' + lbl('personal_data', r.open_proposal.personal_data)"></div>
+                      </td>
+                      <td class="text-xs" x-text="r.data_subjects.map(x => lbl('subjects', x)).join(', ')"></td>
+                      <td :class="has(r, 'ropa_ref') && 'bg-warning/20'" x-text="r.ropa_ref"></td>
+                      <td class="whitespace-nowrap">
+                        <button type="button" x-show="Object.keys(r.open_proposal).length" class="btn btn-primary btn-xs" :disabled="gov.busy" @click="confirmProposal(r)">{% trans %}Confirm proposal{% endtrans %}</button>
+                        <button type="button" class="btn btn-ghost btn-xs" @click="editEntry(r)">{% trans %}Edit{% endtrans %}</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <template x-if="gov.edit">
+              <form class="grid gap-3 rounded-box border border-base-300 p-4 md:grid-cols-2" @submit.prevent="saveEntry()">
+                <h3 class="font-brand text-base font-bold md:col-span-2"><span>{% trans %}Governance of{% endtrans %}</span> <span class="font-mono" x-text="gov.edit.id"></span></h3>
+                <label class="form-control"><span class="label-text">{% trans %}Owner (a role, not a person){% endtrans %}</span>
+                  <input class="input input-bordered input-sm" x-model="gov.form.owner" maxlength="200"></label>
+                <label class="form-control"><span class="label-text">{% trans %}Classification{% endtrans %}</span>
+                  <select class="select select-bordered select-sm" x-model="gov.form.classification">
+                    <option value="" x-text="T.not_set" :selected="!gov.form.classification"></option>
+                    <template x-for="c in gov.data.enums.classes" :key="c"><option :value="c" x-text="lbl('classes', c)" :selected="c === gov.form.classification"></option></template>
+                  </select>
+                  <span x-show="gov.edit.proposal.classification" class="label-text-alt opacity-60" x-text="T.suggested + ' ' + lbl('classes', gov.edit.proposal.classification)"></span></label>
+                <label class="form-control"><span class="label-text">{% trans %}Personal data{% endtrans %}</span>
+                  <select class="select select-bordered select-sm" x-model="gov.form.personal_data">
+                    <option value="" x-text="T.not_set" :selected="!gov.form.personal_data"></option>
+                    <template x-for="p in gov.data.enums.personal_data" :key="p"><option :value="p" x-text="lbl('personal_data', p)" :selected="p === gov.form.personal_data"></option></template>
+                  </select></label>
+                <label class="form-control"><span class="label-text">{% trans %}Record of processing reference (optional){% endtrans %}</span>
+                  <input class="input input-bordered input-sm" x-model="gov.form.ropa_ref" maxlength="100"></label>
+                <fieldset class="form-control md:col-span-2"><span class="label-text">{% trans %}Data subjects (optional){% endtrans %}</span>
+                  <div class="flex flex-wrap gap-3">
+                    <template x-for="d in gov.data.enums.subjects" :key="d">
+                      <label class="label cursor-pointer gap-1 py-0 text-xs"><input type="checkbox" class="checkbox checkbox-xs" :value="d" x-model="gov.form.data_subjects"><span x-text="lbl('subjects', d)"></span></label>
+                    </template>
+                  </div></fieldset>
+                <div class="flex gap-2 md:col-span-2">
+                  <button class="btn btn-primary btn-sm" :disabled="gov.busy">{% trans %}Save and render{% endtrans %}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="gov.edit = null">{% trans %}Cancel{% endtrans %}</button>
+                </div>
+              </form>
+            </template>
+          </div>
+        </div>
+
+        {# models #}
+        <div x-show="gov.sub==='models'" class="card border border-base-300 bg-base-100">
+          <div class="card-body gap-3 p-4">
+            <p class="text-sm opacity-60">{% trans %}Every model LiteLLM serves, every model an agent names and the embedding model. A model without a tier is evaluated as third country.{% endtrans %}</p>
+            <div class="overflow-x-auto">
+              <table class="table table-sm">
+                <thead><tr><th>{% trans %}Model{% endtrans %}</th><th>{% trans %}Hosts{% endtrans %}</th><th>{% trans %}Evaluated as{% endtrans %}</th><th>{% trans %}Used by{% endtrans %}</th><th>{% trans %}Tier{% endtrans %}</th></tr></thead>
+                <tbody>
+                  <template x-for="m in gov.data.models" :key="m.name">
+                    <tr class="align-top">
+                      <td><div class="font-mono text-xs" x-text="m.name"></div>
+                        <span x-show="!m.in_litellm && gov.data.litellm.available" class="badge badge-ghost badge-sm">{% trans %}not in LiteLLM{% endtrans %}</span>
+                        <span x-show="m.mixed" class="badge badge-warning badge-sm">{% trans %}mixed hosts{% endtrans %}</span></td>
+                      <td class="font-mono text-xs" x-text="m.hosts.join(', ')"></td>
+                      <td><span class="badge badge-sm" :class="m.tier ? '' : 'badge-warning'" x-text="lbl('tiers', m.effective_tier)"></span></td>
+                      <td class="text-xs" x-text="m.used_by.concat(m.embedding ? ['RAG'] : []).join(', ')"></td>
+                      <td><div class="flex flex-wrap gap-1">
+                        <button type="button" x-show="!m.tier && m.suggested_tier" class="btn btn-primary btn-xs" :disabled="gov.busy" @click="m.choice = m.suggested_tier; saveModel(m)"
+                                x-text="T.confirm_tier.replace('{tier}', lbl('tiers', m.suggested_tier))"></button>
+                        <select class="select select-bordered select-xs" x-model="m.choice">
+                          <option value="" x-text="T.not_set" :selected="!m.choice"></option>
+                          <template x-for="t in gov.data.enums.tiers" :key="t"><option :value="t" x-text="lbl('tiers', t)" :selected="t === m.choice"></option></template>
+                        </select>
+                        <button type="button" class="btn btn-xs" :disabled="gov.busy || m.choice === (m.tier || '')" @click="saveModel(m)">{% trans %}Save{% endtrans %}</button>
+                      </div></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {# agents #}
+        <div x-show="gov.sub==='agents'" class="card border border-base-300 bg-base-100">
+          <div class="card-body gap-3 p-4">
+            <p class="text-sm opacity-60">{% trans %}Each agent with the tier of its model and the entries it reaches. Whether the policy allows that tier for an entry is shown per access path.{% endtrans %}</p>
+            <p x-show="!gov.data.agents.length" class="text-sm">{% trans %}No agents on the map.{% endtrans %}</p>
+            <div class="overflow-x-auto" x-show="gov.data.agents.length">
+              <table class="table table-sm">
+                <thead><tr><th>{% trans %}Agent{% endtrans %}</th><th>{% trans %}Model{% endtrans %}</th><th>{% trans %}Tier{% endtrans %}</th><th>{% trans %}Reaches{% endtrans %}</th><th>{% trans %}Result{% endtrans %}</th></tr></thead>
+                <tbody>
+                  <template x-for="a in gov.data.agents" :key="a.id">
+                    <tr class="align-top">
+                      <td><div class="font-medium" x-text="a.system"></div><div class="font-mono text-xs opacity-50" x-text="a.id"></div></td>
+                      <td class="font-mono text-xs" x-text="a.model || T.not_set"></td>
+                      <td><span class="badge badge-sm" :class="a.tier_declared ? '' : 'badge-warning'" x-text="lbl('tiers', a.tier)"></span></td>
+                      <td><div class="flex flex-wrap gap-1"><template x-for="x in a.reached">
+                        <span class="badge badge-outline badge-sm" :class="x.allowed ? 'badge-success' : 'badge-error'" x-text="x.system + ' · ' + x.via + ' · ' + lbl('classes', x.classification)"></span></template></div></td>
+                      <td><span class="badge badge-sm" :class="a.result === 'ok' ? 'badge-success' : 'badge-error'" x-text="a.result === 'ok' ? T.no_action : T.action_needed"></span></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+          <span class="opacity-60">{% trans %}Facts for your GRC, CMDB or wiki:{% endtrans %}</span>
+          <a class="btn btn-sm" href="/api/v1/knowledge-map/governance/export/facts.json" download>JSON</a>
+          <a class="btn btn-sm" href="/api/v1/knowledge-map/governance/export/facts.csv" download>CSV</a>
+        </div>
+      </div>
+    </template>
+  </section>
 </div>
 
 <style>
+
   .km-graph text { fill: oklch(var(--bc)); font-size: 12px; }
   .km-graph .lane { fill: oklch(var(--bc) / .5); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
   .km-graph .sub { fill: oklch(var(--bc) / .6); font-size: 10.5px; }
@@ -363,6 +588,7 @@
       usage: null, history: [], lastEval: null, evalBusy: false,
       suggestions: [], suggestionsLoaded: false, busy: false,
       file: null, draft: "", problems: [], message: "", messageClass: "", jobLink: "",
+      gov: { data: null, sub: "findings", edit: null, form: {}, exc: null, busy: false },
 
       async start() {
         await this.load();
@@ -371,7 +597,7 @@
       },
       async load() {
         const d = await api("GET", "");
-        this.entries = d.entries; this.findings = d.findings; this.warnings = d.warnings;
+        this.entries = d.entries; this.findings = d.findings.filter(f => f.category !== "governance"); this.warnings = d.warnings;
         this.files = d.files; this.generatedAt = d.generated_at;
         if (this.file) this.openFile(this.files.find(f => f.key === this.file.key));
         this.$nextTick(() => this.draw());
@@ -549,13 +775,13 @@
 
       // ── suggestions
       async loadSuggestions() {
-        try { this.suggestions = (await api("GET", "/suggestions?days=28")).suggestions || []; this.suggestionsLoaded = true; }
+        try { this.suggestions = ((await api("GET", "/suggestions?days=28")).suggestions || []).map(x => ({ ...x, confirmed: false })); this.suggestionsLoaded = true; }
         catch (e) { this.flash(T.unreachable.replace("{detail}", e.message), "alert-error"); }
       },
       async decide(s, decision) {
         this.busy = true;
         try {
-          const r = await api("POST", "/suggestions/" + s.id, { decision });
+          const r = await api("POST", "/suggestions/" + s.id, { decision, confirm_no_personal_data: !!s.confirmed });
           if (decision === "rejected") { this.flash(T.rejected, "alert-info"); }
           else { await this.follow(r.job_id, T.accepted); }
           this.suggestions = this.suggestions.filter(x => x.id !== s.id);
@@ -578,14 +804,68 @@
         } catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
         finally { this.busy = false; }
       },
+      // ── governance
+      carriesText(s) { return ["example_query", "gold_question", "not_covered"].includes(s.kind); },
+      async loadGovernance() {
+        try {
+          const d = await api("GET", "/governance");
+          d.models.forEach(m => { m.choice = m.tier || ""; });
+          this.gov.data = d;
+        } catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+      },
+      govHigh() { return this.gov.data ? this.gov.data.findings.filter(f => f.severity === "high" && !f.exception).length : 0; },
+      sevLabel(s) { return T["sev_" + s] || s; },
+      lbl(group, v) { return (T[group] && T[group][v]) || v || T.not_set; },
+      has(row, gap) { return row.gaps.includes(gap); },
+      excText(f) { const x = f.exception; return x ? T.until.replace("{date}", x.expires) : ""; },
+      editEntry(row) {
+        const g = row.governance || {};
+        this.gov.edit = row;
+        this.gov.form = { owner: g.owner || "", classification: g.classification || "", personal_data: g.personal_data || "",
+          data_subjects: [...(g.data_subjects || [])], ropa_ref: g.ropa_ref || "" };
+      },
+      async govWrite(method, path, body, after) {
+        this.gov.busy = true;
+        try {
+          const r = await api(method, "/governance" + path, { revision: this.gov.data.revision, ...body });
+          if (after) after();
+          await this.follow(r.job_id, T.saved);
+        } catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+        finally { this.gov.busy = false; }
+      },
+      saveEntry() {
+        const f = this.gov.form;
+        return this.govWrite("PUT", "/entries/" + encodeURIComponent(this.gov.edit.id), {
+          owner: f.owner, classification: f.classification || null, personal_data: f.personal_data || null,
+          data_subjects: f.data_subjects, ropa_ref: f.ropa_ref }, () => { this.gov.edit = null; });
+      },
+      confirmProposal(row) { return this.govWrite("POST", "/entries/" + encodeURIComponent(row.id) + "/confirm-proposal", {}); },
+      saveModel(m) {
+        return this.govWrite("PUT", "/models/" + m.name.split("/").map(encodeURIComponent).join("/"), { tier: m.choice || null });
+      },
+      keptExceptions() {
+        return this.gov.data.exceptions.map(x => ({ finding: x.finding, subject: x.subject, expires: x.expires,
+          reason: x.reason || null, risk_ref: x.risk_ref || null }));
+      },
+      acceptRisk(f) { this.gov.exc = { finding: f.code, subject: f.target, expires: "", reason: "", risk_ref: "" }; },
+      saveException() {
+        const x = this.gov.exc;
+        return this.govWrite("PUT", "/exceptions", { exceptions: [...this.keptExceptions(),
+          { ...x, reason: x.reason || null, risk_ref: x.risk_ref || null }] }, () => { this.gov.exc = null; });
+      },
+      removeException(i) {
+        const kept = this.keptExceptions(); kept.splice(i, 1);
+        return this.govWrite("PUT", "/exceptions", { exceptions: kept });
+      },
+
       async follow(jobId, done) {
         this.flash(T.job_running, "alert-info");
         for (let i = 0; i < 300; i++) {
           await new Promise(r => setTimeout(r, 1500));
           const res = await fetch("/api/v1/jobs/" + jobId);
           const job = await res.json().catch(() => ({}));
-          if (job.status === "succeeded") { this.flash(done, "alert-success", jobId); await this.load(); return; }
-          if (job.status === "failed") { this.flash(T.job_failed, "alert-error", jobId); await this.load(); return; }
+          if (job.status === "succeeded") { this.flash(done, "alert-success", jobId); await this.load(); if (this.gov.data) await this.loadGovernance(); return; }
+          if (job.status === "failed") { this.flash(T.job_failed, "alert-error", jobId); await this.load(); if (this.gov.data) await this.loadGovernance(); return; }
         }
       },
     };

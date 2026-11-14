@@ -35,6 +35,7 @@ class Event(StrEnum):
     SERVICE_UNHEALTHY = "service_unhealthy"
     UPDATE_AVAILABLE = "update_available"
     CERT_EXPIRING = "cert_expiring"
+    KNOWLEDGE_MAP_FINDING = "knowledge_map_finding"
 
 
 class Severity(StrEnum):
@@ -93,6 +94,13 @@ CATALOGUE: tuple[EventInfo, ...] = (
         N_("Certificate expiring"),
         N_("Certificate\nexpiring"),
         N_("a TLS certificate runs out soon"),
+        Severity.WARNING,
+    ),
+    EventInfo(
+        Event.KNOWLEDGE_MAP_FINDING,
+        N_("Knowledge map finding"),
+        N_("Knowledge map\nfinding"),
+        N_("a new or changed high finding of the knowledge map"),
         Severity.WARNING,
     ),
 )

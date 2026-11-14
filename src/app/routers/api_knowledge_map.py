@@ -1,4 +1,5 @@
-"""REST API of the knowledge-map page. Administrators only.
+"""REST API of the knowledge-map page. Administrators only. The governance view has its own
+router (`api_knowledge_map_governance`).
 
 Reading the map is a file read (`GET /`); everything the map server knows beyond the files is
 passed through from its admin API (simulation, usage, gold-set runs, suggestions), answering
@@ -22,6 +23,7 @@ from app.core import knowledge_map as km
 from app.core.audit import write_audit_entry
 from app.core.jobs import JobQueue
 from app.core.knowledge_map_client import MapServerClient, MapServerError
+from app.core.knowledge_map_governance import TEXT_SUGGESTIONS
 from app.core.knowledge_map_jobs import ACTION, write_callback
 from app.i18n import gettext
 from app.routers.api_config import _body
@@ -44,6 +46,9 @@ class FileBody(BaseModel):
 class DecisionBody(BaseModel):
     decision: str = Field(pattern="^(accepted|rejected)$")
     days: int = Field(default=28, ge=1, le=90)
+    # A suggestion that carries text people asked (an example, a gold question, a "not here")
+    # is accepted only when the administrator confirms it names no person.
+    confirm_no_personal_data: bool = False
 
 
 def _queue() -> JobQueue:
@@ -212,6 +217,13 @@ async def decide(
     suggestion = next((s for s in offered if s.get("id") == suggestion_id), None)
     if suggestion is None:
         raise HTTPException(status_code=404, detail=gettext("Unknown suggestion."))
+    if suggestion.get("kind") in TEXT_SUGGESTIONS and not body.confirm_no_personal_data:
+        raise HTTPException(
+            status_code=400,
+            detail=gettext(
+                "Confirm that the text contains no names of persons before accepting it."
+            ),
+        )
     try:
         key, content, revision = km.suggestion_change(settings.papaia_config_dir, suggestion)
     except km.KnowledgeMapError as exc:
@@ -224,7 +236,12 @@ async def decide(
         action=ACTION,
         target=f"knowledge-map:{key}",
         user=username,
-        params={"file": key, "suggestion": suggestion_id, "kind": suggestion.get("kind")},
+        params={
+            "file": key,
+            "suggestion": suggestion_id,
+            "kind": suggestion.get("kind"),
+            "confirmed_no_personal_data": body.confirm_no_personal_data,
+        },
         callback=write_callback(
             key=key,
             content=content,
