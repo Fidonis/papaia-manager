@@ -12,6 +12,16 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+### Added
+- Knowledge Map page at `/knowledge-map` (its own sidebar entry while the core runs the
+  `knowledge-map` profile) and its API at `/api/v1/knowledge-map`: the rendered map as a
+  layered graph (topics, sources, access paths, agents) that can be viewed as a role, the
+  entries with all their access paths, the render's findings, a routing test as a role, usage
+  and gold-set runs, refinement suggestions to accept or reject, and an editor for the three
+  operator files under `overlay/knowledge-map/` (own entries, overrides, gold set). A change
+  is a queued job that writes the file, renders the map and puts the previous file back when
+  the render refuses it. Admin-only
+
 ## [1.6.0] - 2026-11-07
 
 ### Added

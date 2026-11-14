@@ -9739,3 +9739,354 @@ msgstr "Die Änderung ist übernommen, aber ein Node, der nur ihre Hooks ausfüh
 
 msgid "the node's doctor gave no readable answer"
 msgstr "der doctor des Nodes gab keine lesbare Antwort"
+
+msgid "Own entries"
+msgstr "Eigene Einträge"
+
+msgid "Sources, references and Agent2Agent agents that no add-on declares."
+msgstr "Quellen, Verweise und Agent2Agent-Agenten, die kein Add-on deklariert."
+
+msgid "Overrides"
+msgstr "Anpassungen"
+
+msgid "Changes to declared or inventoried entries: roles, delimitations, examples."
+msgstr "Änderungen an deklarierten oder inventarisierten Einträgen: Rollen, Abgrenzungen, Beispiele."
+
+msgid "Gold set"
+msgstr "Gold-Set"
+
+msgid "Test questions with the sources that must answer them."
+msgstr "Testfragen mit den Quellen, die sie beantworten müssen."
+
+msgid "Unknown knowledge-map file."
+msgstr "Unbekannte Datei der Wissenslandkarte."
+
+msgid "This file is a symbolic link. Edit it on the host."
+msgstr "Diese Datei ist ein symbolischer Link. Bearbeiten Sie sie auf dem Host."
+
+#, python-format
+msgid "The file can't be read (%(value)s)."
+msgstr "Die Datei kann nicht gelesen werden (%(value)s)."
+
+msgid "The file changed after the page loaded it. Reload and try again."
+msgstr "Die Datei hat sich geändert, nachdem die Seite sie geladen hat. Laden Sie neu und versuchen Sie es noch einmal."
+
+#, python-format
+msgid "The file can't be written (%(value)s)."
+msgstr "Die Datei kann nicht geschrieben werden (%(value)s)."
+
+#, python-format
+msgid "Invalid YAML%(where)s: %(problem)s"
+msgstr "Ungültiges YAML%(where)s: %(problem)s"
+
+msgid "'sources' must be a list of entries."
+msgstr "'sources' muss eine Liste von Einträgen sein."
+
+#, python-format
+msgid "Entry %(n)s is not a mapping."
+msgstr "Eintrag %(n)s ist keine Zuordnung (key: value)."
+
+#, python-format
+msgid "Entry %(n)s has no valid id."
+msgstr "Eintrag %(n)s hat keine gültige id."
+
+#, python-format
+msgid "The id %(id)s appears twice."
+msgstr "Die id %(id)s kommt doppelt vor."
+
+#, python-format
+msgid "%(id)s: unknown kind %(kind)s."
+msgstr "%(id)s: unbekannte Art %(kind)s."
+
+#, python-format
+msgid "%(id)s needs a system and a coverage."
+msgstr "%(id)s braucht system und coverage."
+
+#, python-format
+msgid "%(id)s: unknown access path %(via)s."
+msgstr "%(id)s: unbekannter Zugangsweg %(via)s."
+
+#, python-format
+msgid "%(id)s: a %(via)s access path needs a target."
+msgstr "%(id)s: ein Zugangsweg vom Typ %(via)s braucht ein target."
+
+#, python-format
+msgid "%(id)s: a reference needs a location."
+msgstr "%(id)s: ein Verweis braucht eine location."
+
+msgid "'sources' must map entry ids to their changes."
+msgstr "'sources' muss Eintrags-ids auf ihre Änderungen abbilden."
+
+#, python-format
+msgid "The changes for %(id)s are not a mapping."
+msgstr "Die Änderungen für %(id)s sind keine Zuordnung."
+
+#, python-format
+msgid "An override must not change the id (%(id)s)."
+msgstr "Eine Anpassung darf die id nicht ändern (%(id)s)."
+
+msgid "'questions' must be a list."
+msgstr "'questions' muss eine Liste sein."
+
+#, python-format
+msgid "Question %(n)s has no text (q)."
+msgstr "Frage %(n)s hat keinen Text (q)."
+
+#, python-format
+msgid "Question %(n)s: unknown kind %(kind)s."
+msgstr "Frage %(n)s: unbekannte Art %(kind)s."
+
+#, python-format
+msgid "Question %(n)s names no expected source."
+msgstr "Frage %(n)s nennt keine erwartete Quelle."
+
+#, python-format
+msgid "%(file)s can't be parsed; fix it first."
+msgstr "%(file)s ist nicht lesbar; bitte zuerst korrigieren."
+
+msgid "overrides can't be parsed; fix it first."
+msgstr "overrides ist nicht lesbar; bitte zuerst korrigieren."
+
+msgid "sources can't be parsed; fix it first."
+msgstr "sources ist nicht lesbar; bitte zuerst korrigieren."
+
+msgid "goldset can't be parsed; fix it first."
+msgstr "goldset ist nicht lesbar; bitte zuerst korrigieren."
+
+msgid "This suggestion carries no change."
+msgstr "Dieser Vorschlag enthält keine Änderung."
+
+msgid "The knowledge map has no admin token; run setup to generate KM_ADMIN_TOKEN."
+msgstr "Die Wissenslandkarte hat kein Admin-Token; setup erzeugt KM_ADMIN_TOKEN."
+
+#, python-format
+msgid "The knowledge map server can't be reached (%(value)s)."
+msgstr "Der Server der Wissenslandkarte ist nicht erreichbar (%(value)s)."
+
+msgid "The knowledge map server runs without an admin API."
+msgstr "Der Server der Wissenslandkarte läuft ohne Admin-API."
+
+msgid "The knowledge map server refused the admin token."
+msgstr "Der Server der Wissenslandkarte hat das Admin-Token abgelehnt."
+
+#, python-format
+msgid "The knowledge map server answered %(code)s %(detail)s"
+msgstr "Der Server der Wissenslandkarte antwortete %(code)s %(detail)s"
+
+msgid "The knowledge map server sent no JSON."
+msgstr "Der Server der Wissenslandkarte hat kein JSON geschickt."
+
+msgid "Unknown suggestion."
+msgstr "Unbekannter Vorschlag."
+
+#, python-format
+msgid "The map was not rendered with this change, so the previous file is back. (%(exc)s)"
+msgstr "Die Karte ließ sich mit dieser Änderung nicht erzeugen, deshalb ist die vorherige Datei wieder in Kraft. (%(exc)s)"
+
+msgid "The job queue is not running."
+msgstr "Die Auftragswarteschlange läuft nicht."
+
+msgid "Knowledge Map"
+msgstr "Wissenslandkarte"
+
+#, python-format
+msgid "Knowledge Map — %(branding)s"
+msgstr "Wissenslandkarte — %(branding)s"
+
+msgid "Which system answers what, for whom, and over which access path"
+msgstr "Welches System was beantwortet, für wen und über welchen Zugang"
+
+msgid "The knowledge map is not switched on. It is the core profile knowledge-map; switch it on with papaia-ctl setup."
+msgstr "Die Wissenslandkarte ist nicht eingeschaltet. Sie ist das Kernprofil knowledge-map; einschalten mit papaia-ctl setup."
+
+msgid "Topics"
+msgstr "Themen"
+
+msgid "Sources"
+msgstr "Quellen"
+
+msgid "Access paths"
+msgstr "Zugangswege"
+
+msgid "Agents"
+msgstr "Agenten"
+
+msgid "Reference"
+msgstr "Verweis"
+
+msgid "Server"
+msgstr "Server"
+
+msgid "Agent"
+msgstr "Agent"
+
+msgid "all roles"
+msgstr "alle Rollen"
+
+msgid "location only, no tool"
+msgstr "nur Ablageort, kein Werkzeug"
+
+msgid "not described"
+msgstr "nicht beschrieben"
+
+msgid "stale"
+msgstr "veraltet"
+
+msgid "Administrator (everything)"
+msgstr "Administrator (alles)"
+
+msgid "The map server can't be asked: {detail}"
+msgstr "Der Kartenserver ist nicht erreichbar: {detail}"
+
+msgid "Saved. The map is rendered again."
+msgstr "Gespeichert. Die Karte wurde neu erzeugt."
+
+msgid "The change did not go through. See the job log."
+msgstr "Die Änderung ist nicht durchgegangen. Siehe Auftragsprotokoll."
+
+msgid "Rendering the map …"
+msgstr "Karte wird erzeugt …"
+
+msgid "Accepted. The map is rendered with it."
+msgstr "Übernommen. Die Karte wurde damit neu erzeugt."
+
+msgid "Rejected. It will not be offered again."
+msgstr "Abgelehnt. Er wird nicht wieder vorgeschlagen."
+
+msgid "The map abstains."
+msgstr "Die Karte enthält sich."
+
+msgid "Something went wrong: {detail}"
+msgstr "Etwas ist schiefgegangen: {detail}"
+
+msgid "Entries"
+msgstr "Einträge"
+
+msgid "Findings"
+msgstr "Befunde"
+
+msgid "can cause wrong answers"
+msgstr "können falsche Antworten verursachen"
+
+msgid "Rendered"
+msgstr "Erzeugt"
+
+msgid "Map server"
+msgstr "Kartenserver"
+
+msgid "Map"
+msgstr "Karte"
+
+msgid "Gaps & conflicts"
+msgstr "Lücken & Konflikte"
+
+msgid "Test routing"
+msgstr "Routing testen"
+
+msgid "Usage & quality"
+msgstr "Nutzung & Güte"
+
+msgid "Suggestions"
+msgstr "Vorschläge"
+
+msgid "View as"
+msgstr "Ansicht als"
+
+msgid "source of truth"
+msgstr "maßgebliche Quelle"
+
+msgid "\"ask there instead\""
+msgstr "„dort fragen\""
+
+msgid "The knowledge map as a layered graph: topics, sources, access paths, agents"
+msgstr "Die Wissenslandkarte als Ebenen-Graph: Themen, Quellen, Zugangswege, Agenten"
+
+msgid "The map is empty: no add-on, module or operator file declares a source yet, and no MCP server is connected."
+msgstr "Die Karte ist leer: Noch kein Add-on, Modul oder Betreiber-Eintrag deklariert eine Quelle, und kein MCP-Server ist angebunden."
+
+msgid "Select a box to see the entry. Hover to follow its connections."
+msgstr "Kästchen anklicken, um den Eintrag zu sehen. Mit der Maus darüberfahren, um seine Verbindungen zu verfolgen."
+
+msgid "Not here"
+msgstr "Nicht hier"
+
+msgid "Delegate when"
+msgstr "Delegieren, wenn"
+
+msgid "Declared by"
+msgstr "Deklariert von"
+
+msgid "What the last render found that weakens the map. High: can cause a wrong answer or a wrong \"not available\"."
+msgstr "Was beim letzten Erzeugen gefunden wurde und die Karte schwächt. Hoch: kann eine falsche Antwort oder ein falsches „nicht verfügbar\" verursachen."
+
+msgid "Nothing found."
+msgstr "Nichts gefunden."
+
+msgid "Ask the map a question as a role, the way an assistant would. Nothing is recorded."
+msgstr "Der Karte eine Frage als Rolle stellen, wie ein Assistent es tun würde. Es wird nichts aufgezeichnet."
+
+msgid "e.g. which customers still have open invoices"
+msgstr "z. B. welche Kunden noch offene Rechnungen haben"
+
+msgid "Route"
+msgstr "Routen"
+
+msgid "Agents to delegate to"
+msgstr "Agenten zum Delegieren"
+
+msgid "Use in the last 14 days"
+msgstr "Nutzung der letzten 14 Tage"
+
+msgid "routing requests"
+msgstr "Routing-Anfragen"
+
+msgid "abstained"
+msgstr "Enthaltungen"
+
+msgid "Answered first by"
+msgstr "Als Erstes beantwortet von"
+
+msgid "Asked, but nothing fits (3 or more times)"
+msgstr "Gefragt, aber nichts passt (3-mal oder öfter)"
+
+msgid "Run now"
+msgstr "Jetzt ausführen"
+
+msgid "Hit@1"
+msgstr "Hit@1"
+
+msgid "Hit@3"
+msgstr "Hit@3"
+
+msgid "MRR"
+msgstr "MRR"
+
+msgid "Abstention F1"
+msgstr "Enthaltung F1"
+
+msgid "Mined from the last four weeks of use. Nothing changes until you accept; accepting writes the change into the operator files and renders the map."
+msgstr "Aus der Nutzung der letzten vier Wochen abgeleitet. Nichts ändert sich, bevor Sie übernehmen; Übernehmen schreibt die Änderung in die Betreiberdateien und erzeugt die Karte neu."
+
+msgid "No suggestions at the moment."
+msgstr "Derzeit keine Vorschläge."
+
+msgid "Accept"
+msgstr "Übernehmen"
+
+msgid "Reject"
+msgstr "Ablehnen"
+
+msgid "Save and render"
+msgstr "Speichern und erzeugen"
+
+msgid "The previous version of each file is kept in manager/knowledge-map-history."
+msgstr "Die vorherige Fassung jeder Datei bleibt in manager/knowledge-map-history erhalten."
+
+msgid "all"
+msgstr "alle"
+
+msgid "development"
+msgstr "Entwicklung"
+
+msgid "held out"
+msgstr "zurückgehalten"
