@@ -59,7 +59,8 @@ def test_only_high_findings_without_exception_are_reported(tmp_path: Path) -> No
     ])
     new = _pass(config)
     assert [c.key for c in new] == [
-        "render:confidential_in_free_chat:erp.main", "render:dead_access_path:crm.main"]
+        "render:render:confidential_in_free_chat:erp.main",
+        "render:render:dead_access_path:crm.main"]
     first = new[0]
     assert first.event is Event.KNOWLEDGE_MAP_FINDING and first.subject == "erp.main"
     assert first.details["fix"] == "fix erp.main" and first.details["category"] == "governance"
@@ -69,7 +70,8 @@ def test_a_finding_is_reported_once_even_across_restarts(tmp_path: Path) -> None
     config = _config(tmp_path, [_f("agent_model_policy", "agent.offer")])
     assert len(_pass(config)) == 1
     # a restart: nothing in memory, only the state file
-    assert "knowledge_map_finding|render:agent_model_policy:agent.offer" in load_state(config).seen
+    key = "knowledge_map_finding|render:render:agent_model_policy:agent.offer"
+    assert key in load_state(config).seen
     assert _pass(config) == []
 
 
@@ -95,7 +97,8 @@ def test_an_unrendered_map_or_unreadable_litellm_clears_nothing(tmp_path: Path) 
     km.write_file(config, "governance", b"models:\n  gpt: {tier: local}\n", expected_revision="")
     live = gov.LiveModels((ModelEntry("gpt", "openai", "api.example.com"),))
     assert {c.key for c in _pass(config, live)} == {
-        "render:agent_model_policy:agent.offer", "manager:model_tier_contradiction:gpt"}
+        "render:render:agent_model_policy:agent.offer",
+        "manager:manager:model_tier_contradiction:gpt"}
     # LiteLLM down: the manager scope says nothing, so its finding is not forgotten
     down = detect.knowledge_map_findings(config, gov.LiveModels(None, "down"), now=NOW)
     assert [f.scope for f in down] == ["render:"]
@@ -123,3 +126,22 @@ def test_switching_the_map_off_forgets_its_findings(tmp_path: Path) -> None:
     (tmp_path / ".env").write_text("COMPOSE_PROFILES=librechat\n")
     assert _pass(config) == []
     assert not [k for k in load_state(config).seen if k.startswith("knowledge_map_finding")]
+
+
+def test_a_render_exception_that_expired_today_is_reported(tmp_path: Path) -> None:
+    config = _config(tmp_path, [
+        _f("open_confidential", "wiki.main", exception={"expires": "2026-11-13"}),
+        _f("open_confidential", "crm.main", exception={"expires": "2026-11-14"}),
+    ])
+    # NOW is 2026-11-14: the first expired yesterday, the second holds through today
+    assert [c.subject for c in _pass(config)] == ["wiki.main"]
+
+
+def test_the_key_names_the_origin_and_duplicates_stay_apart(tmp_path: Path) -> None:
+    config = _config(tmp_path, [
+        _f("agent_model_policy", "agent.offer"),
+        {**_f("agent_model_policy", "agent.offer"), "message": "a second one"},
+    ])
+    assert [c.key for c in _pass(config)] == [
+        "render:render:agent_model_policy:agent.offer",
+        "render:render:agent_model_policy:agent.offer#2"]

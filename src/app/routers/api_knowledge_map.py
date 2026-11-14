@@ -257,11 +257,16 @@ async def decide(
 
 
 @router.post("/files/{key}/check")
-async def check_file(key: str, request: Request, user: AdminUser) -> dict[str, Any]:
+async def check_file(
+    key: str,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
     verify_csrf(request)
     body = await _body(request, FileBody)
     try:
-        problems = km.check(key, body.content)
+        problems = km.check(key, body.content, settings.papaia_config_dir)
     except km.KnowledgeMapError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": not problems, "problems": problems}
@@ -278,7 +283,7 @@ async def write_file(
     verify_csrf(request)
     body = await _body(request, FileBody)
     try:
-        problems = km.check(key, body.content)
+        problems = km.check(key, body.content, settings.papaia_config_dir)
         current = km.read_file(settings.papaia_config_dir, key)
     except km.KnowledgeMapError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

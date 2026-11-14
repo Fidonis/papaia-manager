@@ -21,6 +21,21 @@ based on merged pull requests; this file mirrors the published releases.
   operator files under `overlay/knowledge-map/` (own entries, overrides, gold set). A change
   is a queued job that writes the file, renders the map and puts the previous file back when
   the render refuses it. Admin-only
+- Governance tab on the Knowledge Map page and its API at `/api/v1/knowledge-map/governance`:
+  owners, classification, personal data, data subjects and the record-of-processing reference
+  of each source (`overlay/knowledge-map/governance.yaml`), confirming an add-on's proposal or
+  a model's suggested tier with one click, the agents with their model tier and what they
+  reach, and the findings with what to change, each acceptable until a date. The render
+  evaluates the rules; the page shows its results in the reader's language and adds a live
+  check of the model tiers against LiteLLM. Admin-only
+- Fact export of the knowledge map as `facts.json` and `facts.csv` (entries, roles per access
+  path, models, agents, findings) for import into a GRC tool, a CMDB or a wiki
+- New notification event `knowledge_map_finding`: a new or changed high finding of the
+  knowledge map that no exception covers, reported once and remembered across restarts
+- Accepting a refinement suggestion that carries text from questions people asked needs the
+  confirmation that it names no persons
+- The usage tab of the Knowledge Map page shows what the map server records: learning mode,
+  retention and the minimum number of profiles before a need is listed
 
 ## [1.6.0] - 2026-11-07
 

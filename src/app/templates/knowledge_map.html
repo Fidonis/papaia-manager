@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}{% trans branding=branding().name %}Knowledge Map — {{ branding }}{% endtrans %}{% endblock %}
+{% block title %}{% trans branding=branding().name %}AI Map — {{ branding }}{% endtrans %}{% endblock %}
 
-{% block page_title %}{% trans %}Knowledge Map{% endtrans %}{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Which system answers what, for whom, and over which access path{% endtrans %}</p>{% endblock %}
+{% block page_title %}{% trans %}AI Map{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Which data the AI reaches, for whom, over which path and with which model{% endtrans %}</p>{% endblock %}
 
 {% block content %}
 {% if not km_active %}
 <div class="alert max-w-3xl">
-  <span>{% trans %}The knowledge map is not switched on. It is the core profile knowledge-map; switch it on with papaia-ctl setup.{% endtrans %}</span>
+  <span>{% trans %}The AI map is not switched on. It is the core profile knowledge-map; switch it on with papaia-ctl setup.{% endtrans %}</span>
 </div>
 {% else %}
 
@@ -42,6 +42,11 @@
   "origin_manager": _("manager"),
   "action_needed": _("action needed"),
   "no_action": _("no action needed"),
+  "not_assessable": _("not assessable"),
+  "learning": {"off": _("off: nothing is recorded"), "aggregate": _("aggregated: need texts are masked"),
+               "full": _("full: need texts are kept verbatim")},
+  "retention": _("kept for {days} days"),
+  "min_profiles": _("an unanswered need is listed once {n} different profiles asked it, {count} times or more"),
   "not_set": _("not set"),
   "suggested": _("suggested by add-on:"),
   "until": _("accepted until {date}"),
@@ -258,8 +263,16 @@
             <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Answered first by{% endtrans %}</p>
             <template x-for="(n, id) in usage.top_sources"><div class="flex items-center gap-2"><span class="w-40 truncate" x-text="nameOf(id)"></span>
               <progress class="progress progress-secondary flex-1" :value="n" :max="maxOf(usage.top_sources)"></progress><span class="w-8 text-right" x-text="n"></span></div></template>
-            <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Asked, but nothing fits (3 or more times){% endtrans %}</p>
+            <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Asked, but nothing fits{% endtrans %}</p>
             <ul class="list-disc pl-4"><template x-for="u in usage.unmatched || []"><li><span x-text="u.need"></span> <span class="opacity-60" x-text="'×' + u.count"></span></li></template></ul>
+            <template x-if="usage.telemetry">
+              <div class="rounded-box bg-base-200 p-2 text-xs">
+                <p class="font-semibold">{% trans %}What the map server records{% endtrans %}</p>
+                <p><span>{% trans %}Learning mode:{% endtrans %}</span> <span x-text="lbl('learning', usage.telemetry.learning_mode)"></span></p>
+                <p x-show="usage.telemetry.retention_days" x-text="T.retention.replace('{days}', usage.telemetry.retention_days)"></p>
+                <p x-show="usage.telemetry.min_profiles" x-text="T.min_profiles.replace('{n}', usage.telemetry.min_profiles).replace('{count}', usage.telemetry.min_occurrences || 1)"></p>
+              </div>
+            </template>
           </div>
         </template>
       </div>
@@ -366,8 +379,8 @@
                   <div class="min-w-0 flex-1"><div x-text="f.message"></div>
                     <div x-show="f.fix" class="text-xs"><span class="font-semibold">{% trans %}Fix:{% endtrans %}</span> <span x-text="f.fix"></span></div>
                     <div class="font-mono text-xs opacity-60" x-text="f.code + (f.target ? ' · ' + f.target : '')"></div>
-                    <div x-show="f.exception" class="text-xs" x-text="excText(f)"></div></div>
-                  <button type="button" x-show="!f.exception && f.target" class="btn btn-ghost btn-xs" @click="acceptRisk(f)">{% trans %}Accept until …{% endtrans %}</button>
+                    <div x-show="f.exception || f.expired_exception" class="text-xs" :class="f.expired_exception && 'text-warning'" x-text="excText(f)"></div></div>
+                  <button type="button" x-show="!f.exception && f.target && canAccept(f)" class="btn btn-ghost btn-xs" @click="acceptRisk(f)">{% trans %}Accept until …{% endtrans %}</button>
                 </li>
               </template>
             </ul>
@@ -378,6 +391,8 @@
                   <input type="date" class="input input-bordered input-sm" x-model="gov.exc.expires" required></label>
                 <label class="form-control"><span class="label-text">{% trans %}Reason (optional){% endtrans %}</span>
                   <input class="input input-bordered input-sm" x-model="gov.exc.reason" maxlength="500"></label>
+                <label class="form-control"><span class="label-text">{% trans %}Accepted by (role, optional){% endtrans %}</span>
+                  <input class="input input-bordered input-sm" x-model="gov.exc.accepted_by_role" maxlength="100"></label>
                 <label class="form-control"><span class="label-text">{% trans %}Risk reference (optional){% endtrans %}</span>
                   <input class="input input-bordered input-sm" x-model="gov.exc.risk_ref" maxlength="200"></label>
                 <div class="flex gap-2 md:col-span-3">
@@ -392,7 +407,7 @@
               <template x-for="(x, i) in gov.data.exceptions" :key="x.finding + x.subject + i">
                 <li class="flex flex-wrap items-start gap-2 py-2">
                   <span class="font-mono text-xs" x-text="x.finding + ' · ' + x.subject"></span>
-                  <span class="flex-1" x-text="[x.reason, x.risk_ref].filter(Boolean).join(' · ')"></span>
+                  <span class="flex-1" x-text="[x.reason, x.accepted_by_role, x.risk_ref].filter(Boolean).join(' · ')"></span>
                   <span class="badge badge-sm" :class="x.expired && 'badge-warning'" x-text="(x.expired ? T.expired : T.until).replace('{date}', x.expires)"></span>
                   <button type="button" class="btn btn-ghost btn-xs" :disabled="gov.busy" @click="removeException(i)">{% trans %}Remove{% endtrans %}</button>
                 </li>
@@ -511,10 +526,10 @@
                     <tr class="align-top">
                       <td><div class="font-medium" x-text="a.system"></div><div class="font-mono text-xs opacity-50" x-text="a.id"></div></td>
                       <td class="font-mono text-xs" x-text="a.model || T.not_set"></td>
-                      <td><span class="badge badge-sm" :class="a.tier_declared ? '' : 'badge-warning'" x-text="lbl('tiers', a.tier)"></span></td>
+                      <td><span class="badge badge-sm" :class="a.tier_declared ? '' : 'badge-warning'" x-text="a.tier ? lbl('tiers', a.tier) : T.not_set"></span></td>
                       <td><div class="flex flex-wrap gap-1"><template x-for="x in a.reached">
-                        <span class="badge badge-outline badge-sm" :class="x.allowed ? 'badge-success' : 'badge-error'" x-text="x.system + ' · ' + x.via + ' · ' + lbl('classes', x.classification)"></span></template></div></td>
-                      <td><span class="badge badge-sm" :class="a.result === 'ok' ? 'badge-success' : 'badge-error'" x-text="a.result === 'ok' ? T.no_action : T.action_needed"></span></td>
+                        <span class="badge badge-outline badge-sm" :class="x.allowed === null ? '' : (x.allowed ? 'badge-success' : 'badge-error')" x-text="x.system + ' · ' + x.via + ' · ' + lbl('classes', x.classification)"></span></template></div></td>
+                      <td><span class="badge badge-sm" :class="{'badge-success': a.result === 'ok', 'badge-error': a.result === 'attention', 'badge-ghost': a.result === 'not_assessable'}" x-text="resultLabel(a.result)"></span></td>
                     </tr>
                   </template>
                 </tbody>
@@ -817,7 +832,12 @@
       sevLabel(s) { return T["sev_" + s] || s; },
       lbl(group, v) { return (T[group] && T[group][v]) || v || T.not_set; },
       has(row, gap) { return row.gaps.includes(gap); },
-      excText(f) { const x = f.exception; return x ? T.until.replace("{date}", x.expires) : ""; },
+      excText(f) {
+        if (f.exception) return T.until.replace("{date}", f.exception.expires);
+        return f.expired_exception ? T.expired.replace("{date}", f.expired_exception.expires) : "";
+      },
+      canAccept(f) { return this.gov.data.exceptable.includes(f.code); },
+      resultLabel(r) { return { ok: T.no_action, attention: T.action_needed, not_assessable: T.not_assessable }[r] || r; },
       editEntry(row) {
         const g = row.governance || {};
         this.gov.edit = row;
@@ -845,13 +865,19 @@
       },
       keptExceptions() {
         return this.gov.data.exceptions.map(x => ({ finding: x.finding, subject: x.subject, expires: x.expires,
-          reason: x.reason || null, risk_ref: x.risk_ref || null }));
+          reason: x.reason || null, accepted_by_role: x.accepted_by_role || null, risk_ref: x.risk_ref || null }));
       },
-      acceptRisk(f) { this.gov.exc = { finding: f.code, subject: f.target, expires: "", reason: "", risk_ref: "" }; },
+      acceptRisk(f) {
+        // Renewing starts from the exception there is for this finding and subject.
+        const old = this.gov.data.exceptions.find(x => x.finding === f.code && x.subject === f.target) || {};
+        this.gov.exc = { finding: f.code, subject: f.target, expires: "", reason: old.reason || "",
+          accepted_by_role: old.accepted_by_role || "", risk_ref: old.risk_ref || "" };
+      },
       saveException() {
         const x = this.gov.exc;
-        return this.govWrite("PUT", "/exceptions", { exceptions: [...this.keptExceptions(),
-          { ...x, reason: x.reason || null, risk_ref: x.risk_ref || null }] }, () => { this.gov.exc = null; });
+        const kept = this.keptExceptions().filter(k => !(k.finding === x.finding && k.subject === x.subject));
+        return this.govWrite("PUT", "/exceptions", { exceptions: [...kept, { ...x, reason: x.reason || null,
+          accepted_by_role: x.accepted_by_role || null, risk_ref: x.risk_ref || null }] }, () => { this.gov.exc = null; });
       },
       removeException(i) {
         const kept = this.keptExceptions(); kept.splice(i, 1);

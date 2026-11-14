@@ -47,16 +47,28 @@ GOVERNANCE = {
     "sources": {"wiki.main": {"owner": "Teamleitung Service", "classification": "confidential",
                               "personal_data": "ordinary", "data_subjects": ["employees"]}},
     "models": {"qwen-local": {"tier": "local"}, "gpt-4o-mini": {"tier": "local"}},
-    "policy": {"embedding_model": "bge-m3"},
 }
 RENDER_FINDINGS = [
     {"severity": "high", "code": "confidential_in_free_chat", "target": "mcp.calendar",
      "message": "Calendar is selectable in free chat", "origin": "render",
-     "category": "governance", "fix": "set chatMenu: false for Calendar in librechat.yaml"},
+     "category": "governance", "fix": "set chatMenu: false for Calendar in librechat.yaml",
+     "params": {"entry": "mcp.calendar", "server": "Calendar", "entries": ["wiki.main"]}},
     {"severity": "high", "code": "open_confidential", "target": "wiki.main",
      "message": "Wiki is open to everyone", "origin": "render", "category": "governance",
-     "fix": "add required_roles", "exception": {"expires": "2099-01-01"}},
+     "fix": "add required_roles", "exception": {"expires": "2099-01-01"},
+     "params": {"entry": "wiki.main", "classification": "confidential", "classified": True}},
 ]
+# The render's policy (the embedding model comes from here, not from governance.yaml), the
+# codes an exception may name, and its evaluation of the agents.
+POLICY = {"allowed_tiers": {"confidential": ["local", "eu_hosted"]}, "personal_data_tiers": {},
+          "broad_roles": ["user"], "embedding_model": "bge-m3"}
+EXCEPTABLE = ["open_confidential", "confidential_in_free_chat", "unclassified_model_in_use",
+              "model_tier_contradiction", "unclassified_model"]
+AGENTS = {"agent.service": {
+    "model": {"provider": "LiteLLM", "name": "gpt-4o-mini"}, "tier": "local",
+    "tier_declared": True, "result": "ok",
+    "reached": [{"entry": "wiki.main", "classification": "confidential",
+                 "personal_data": "ordinary", "via": "mcp", "allowed": True}]}}
 
 
 def write_lints(config: Path, findings: list[dict[str, Any]], **extra: Any) -> None:
@@ -76,7 +88,7 @@ def gconfig(config_dir: Path) -> Path:  # noqa: F811 - the imported fixture, ext
         proposals={"wiki.main": {"classification": "internal", "personal_data": "ordinary"},
                    "mcp.calendar": {"classification": "public", "personal_data": "ordinary",
                                     "data_subjects": ["employees"]}},
-        agent_models={"agent.service": {"provider": "LiteLLM", "name": "gpt-4o-mini"}},
+        policy=POLICY, exceptable=EXCEPTABLE, agents=AGENTS,
     )
     (config_dir / "ai" / "litellm").mkdir(parents=True)
     (config_dir / "ai" / "litellm" / ".env").write_text(f"LITELLM_MASTER_KEY={MASTER_KEY}\n")
@@ -161,18 +173,17 @@ def test_the_matrix_shows_what_is_documented_the_gaps_and_open_proposals(
     assert wiki["classification"] == "confidential" and wiki["classification_confirmed"]
     assert wiki["gaps"] == [] and wiki["open_proposal"] == {}
     calendar = rows["mcp.calendar"]
-    # an add-on's "public" cannot lower an unconfirmed entry below internal
-    assert calendar["classification"] == "internal"
+    # the matrix shows what is documented; the proposal waits for confirmation
+    assert calendar["classification"] is None
     assert not calendar["classification_confirmed"]
     assert calendar["open_proposal"]["classification"] == "public"
     assert set(calendar["gaps"]) == {"owner", "classification", "personal_data"}
 
 
-def test_an_entry_without_proposal_counts_as_confidential() -> None:
-    assert gov.effective_class({}, {}) == "confidential"
-    assert gov.effective_class({}, {"classification": "strictly_confidential"}) == (
-        "strictly_confidential")
-    assert gov.effective_class({"classification": "public"}, {}) == "public"
+def test_the_manager_has_no_rule_code_of_its_own() -> None:
+    # the render evaluates; these used to be computed twice
+    for name in ("effective_class", "tier_allowed", "policy_of", "DEFAULT_POLICY"):
+        assert not hasattr(gov, name)
 
 
 def test_the_ropa_reference_is_only_asked_for_once_it_is_used() -> None:
@@ -207,8 +218,9 @@ def test_findings_carry_their_fix_and_origin(client: TestClient) -> None:
     assert contradiction["severity"] == "high" and contradiction["origin"] == "manager"
     assert contradiction["fix"]
     embedding = found[("unclassified_model", "bge-m3")]
-    assert embedding["severity"] == "high"  # the embedding model is in use
-    assert "Confirm the suggested tier local" in embedding["fix"]
+    assert embedding["severity"] == "high"  # the embedding model (lints policy) is in use
+    assert embedding["fix"] == "Governance → Models: confirm the suggested tier local for bge-m3."
+    assert embedding["params"] == {"model": "bge-m3", "suggested_tier": "local", "in_use": True}
     assert found[("unclassified_model", "chat-large")]["severity"] == "medium"
 
 
@@ -226,7 +238,7 @@ def test_mixed_deployments_count_as_the_worst_tier() -> None:
     document = {"models": {"mix": {"tier": "local"}}}
     live = gov.LiveModels((ModelEntry("mix", "openai", "10.0.0.5"),
                            ModelEntry("mix", "openai", "api.example.com")))
-    models, findings, tiers = gov.model_view(document, live, [])
+    models, findings, tiers = gov.model_view(document, live, {})
     assert models[0]["mixed"] is True and tiers["mix"] == "third_country"
     assert models[0]["suggested_tier"] is None
     assert [f["code"] for f in findings] == ["model_tier_contradiction"]
@@ -234,11 +246,12 @@ def test_mixed_deployments_count_as_the_worst_tier() -> None:
 
 def test_agents_show_their_model_tier_and_what_they_reach(client: TestClient) -> None:
     (agent,) = _as(client, "admin").get(_GOV).json()["agents"]
-    assert agent["model"] == "gpt-4o-mini" and agent["tier"] == "third_country"
+    # exactly as the render evaluated it, names added for display
+    assert agent["model"] == "gpt-4o-mini" and agent["tier"] == "local"
     assert agent["reached"] == [{"id": "wiki.main", "system": "Company wiki", "via": "mcp",
                                  "classification": "confidential", "personal_data": "ordinary",
-                                 "allowed": False}]
-    assert agent["result"] == "action_needed"
+                                 "allowed": True}]
+    assert agent["result"] == "ok" and agent["tier_declared"] is True
 
 
 def test_without_litellm_the_view_is_evaluated_from_the_files(
@@ -448,11 +461,13 @@ def test_the_fact_export_as_json(client: TestClient, gconfig: Path) -> None:
     assert data["kind"] == "papaia-knowledge-map-facts" and data["litellm_available"] is True
     wiki = next(e for e in data["entries"] if e["id"] == "wiki.main")
     assert wiki["owner"] == "Teamleitung Service" and wiki["classification"] == "confidential"
-    assert wiki["paths"] == ["mcp:MediaWiki", "rag:Qdrant"] and wiki["roles"] == ["staff"]
+    assert wiki["paths"] == ["mcp:MediaWiki", "rag:Qdrant"]
+    # the entry's own roles, and per access path what that path adds
+    assert wiki["roles"] == [] and wiki["path_roles"] == ["rag:Qdrant=staff"]
     assert {m["name"]: m["effective_tier"] for m in data["models"]}["qwen-local"] == "local"
     assert data["agents"][0] == {"id": "agent.service", "name": "Service assistant",
-                                 "model": "gpt-4o-mini", "tier": "third_country",
-                                 "reaches": ["wiki.main"], "result": "action_needed"}
+                                 "model": "gpt-4o-mini", "tier": "local", "tier_declared": True,
+                                 "reaches": ["wiki.main"], "result": "ok"}
     codes = {f["code"] for f in data["findings"]}
     assert {"confidential_in_free_chat", "model_tier_contradiction"} <= codes
     assert "knowledge-map.export" in audit_path(str(gconfig)).read_text()
@@ -515,3 +530,228 @@ def test_proposals_and_agent_models_come_from_lints(client: TestClient) -> None:
     entries = {e["id"]: e for e in data["entries"]}
     assert entries["agent.service"]["model"]["name"] == "gpt-4o-mini"
     assert entries["mcp.calendar"]["governance_proposal"]["classification"] == "public"
+
+
+# ── review round: the render computes, the manager displays ─────────────────────────────────
+
+
+def test_policy_exceptable_and_agents_come_from_lints(client: TestClient, gconfig: Path) -> None:
+    write_lints(gconfig, [], policy={**POLICY, "embedding_model": "qwen-local"},
+                exceptable=EXCEPTABLE, agents={
+                    "agent.service": {"model": None, "tier": None, "tier_declared": False,
+                                      "result": "not_assessable", "reached": []}})
+    data = _as(client, "admin").get(_GOV).json()
+    assert data["policy"]["embedding_model"] == "qwen-local"
+    assert set(data["exceptable"]) == set(EXCEPTABLE)
+    models = {m["name"]: m for m in data["models"]}
+    assert models["qwen-local"]["embedding"] and not models["bge-m3"]["embedding"]
+    assert models["gpt-4o-mini"]["used_by"] == []  # the agent has no model any more
+    (agent,) = data["agents"]
+    assert agent["result"] == "not_assessable" and agent["model"] == "" and agent["tier"] is None
+
+
+def test_an_old_render_without_agents_shows_none() -> None:
+    assert gov.agents_view([], {"agent_models": {"agent.x": {"name": "m"}}}) == []
+
+
+def test_an_exception_holds_through_its_expiry_day() -> None:
+    finding = {"code": "open_confidential", "target": "wiki.main", "category": "governance",
+               "exception": {"expires": "2026-11-14"}}
+    assert gov.as_of(finding, date(2026, 11, 14))["exception"]
+    lapsed = gov.as_of(finding, date(2026, 11, 15))
+    assert "exception" not in lapsed and lapsed["expired_exception"]["expires"] == "2026-11-14"
+    document = {"exceptions": [{"finding": "a", "subject": "b", "expires": "2026-11-14"}]}
+    assert gov.exceptions_view(document, date(2026, 11, 14))[0]["expired"] is False
+    assert gov.exceptions_view(document, date(2026, 11, 15))[0]["expired"] is True
+
+
+def test_a_render_exception_that_expired_since_the_render_no_longer_suppresses(
+    client: TestClient, gconfig: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(api, "_today", lambda: date(2099, 1, 2))
+    data = _as(client, "admin").get(_GOV).json()
+    found = {(f["code"], f["target"]): f for f in data["findings"]}
+    wiki = found[("open_confidential", "wiki.main")]
+    assert "exception" not in wiki and wiki["expired_exception"]["expires"] == "2099-01-01"
+
+
+def test_the_render_finding_on_an_unclassified_model_replaces_the_managers(
+    client: TestClient, gconfig: Path
+) -> None:
+    write_lints(gconfig, [{
+        "severity": "high", "code": "unclassified_model_in_use", "target": "bge-m3",
+        "message": "model 'bge-m3' has no tier", "origin": "render", "category": "governance",
+        "fix": "add models.bge-m3", "params": {"model": "bge-m3", "agents": [],
+                                               "embedding_for": ["wiki.main"]}}],
+        policy=POLICY, exceptable=EXCEPTABLE, agents=AGENTS)
+    data = _as(client, "admin").get(_GOV).json()
+    by_target = {}
+    for f in data["findings"]:
+        by_target.setdefault(f["target"], []).append(f["code"])
+    assert by_target["bge-m3"] == ["unclassified_model_in_use"]
+    assert by_target["chat-large"] == ["unclassified_model"]  # nothing in the render about it
+    (bge,) = [f for f in data["findings"] if f["target"] == "bge-m3"]
+    assert bge["message"] == ("The model bge-m3 has no tier and is evaluated as third_country. "
+                              "Embedding model for wiki.main.")
+    assert bge["fix"] == "Governance → Models → Tier: set the tier of bge-m3."
+
+
+@pytest.mark.parametrize(
+    ("content", "fragment"),
+    [
+        ("sources:\n  wiki.main: {owner: [a, b]}\n", "text"),
+        ("sources:\n  wiki.main: {ropa_ref: 12}\n", "text"),
+        ("sources:\n  wiki.main: [a]\n", "mapping"),
+        ("models:\n  a: {tier: local, role: [chat]}\n", "text"),
+        ("policy:\n  allowed_tiers: [local]\n", "mapping"),
+        ("policy:\n  allowed_tiers: {internal: local}\n", "list"),
+        ("policy:\n  personal_data_tiers: {special: local}\n", "list"),
+        ("policy:\n  broad_roles: [1]\n", "text"),
+        ("policy:\n  embedding_model: [a]\n", "text"),
+        ("exceptions:\n  - {finding: a, subject: [b], expires: 2027-01-01}\n", "text"),
+        ("exceptions:\n  - {finding: a, subject: b, expires: 2027-01-01, reason: [x]}\n",
+         "text"),
+    ],
+)
+def test_the_shape_check_matches_the_render(content: str, fragment: str) -> None:
+    problems = km.check("governance", content)
+    assert problems and any(fragment in p for p in problems), problems
+
+
+def test_an_exception_must_name_a_code_the_render_accepts(
+    client: TestClient, gconfig: Path, written: Written
+) -> None:
+    admin = _as(client, "admin")
+
+    def put(finding: str) -> int:
+        return admin.put(f"{_GOV}/exceptions", json={
+            "revision": _revision(gconfig),
+            "exceptions": [{"finding": finding, "subject": "x", "expires": "2027-01-01"}]},
+            headers=_HEADERS).status_code
+
+    assert put("classification_open") == 422  # not in exceptable (a bundled reminder)
+    assert put("model_tier_contradiction") == 202  # a manager code
+    assert put("open_confidential") == 202
+    # the file editor checks the same, and a bare check without a render does not
+    content = "exceptions:\n  - {finding: nonsense, subject: x, expires: 2027-01-01}\n"
+    res = admin.post(f"{_BASE}/files/governance/check", json={"content": content},
+                     headers=_HEADERS)
+    assert res.json()["ok"] is False and "nonsense" in res.json()["problems"][0]
+    assert km.check("governance", content) == []
+
+
+def test_renewing_replaces_the_exception_and_keeps_the_accepting_role(
+    client: TestClient, gconfig: Path, written: Written
+) -> None:
+    res = _as(client, "admin").put(f"{_GOV}/exceptions", json={
+        "revision": _revision(gconfig), "exceptions": [
+            {"finding": "open_confidential", "subject": "wiki.main", "expires": "2026-12-01"},
+            {"finding": "unclassified_model", "subject": "bge-m3", "expires": "2027-01-01"},
+            {"finding": "open_confidential", "subject": "wiki.main", "expires": "2027-06-01",
+             "accepted_by_role": "Datenschutz"}]}, headers=_HEADERS)
+    assert res.status_code == 202
+    assert written.document["exceptions"] == [
+        {"finding": "open_confidential", "subject": "wiki.main", "expires": date(2027, 6, 1),
+         "accepted_by_role": "Datenschutz"},
+        {"finding": "unclassified_model", "subject": "bge-m3", "expires": date(2027, 1, 1)}]
+
+
+def test_findings_are_sorted_by_severity_then_target() -> None:
+    found = gov.sort_findings([
+        {"severity": "low", "target": "a", "code": "x"},
+        {"severity": "high", "target": "z", "code": "x"},
+        {"severity": "medium", "target": "b", "code": "x"},
+        {"severity": "high", "target": "c", "code": "x"},
+    ])
+    assert [(f["severity"], f["target"]) for f in found] == [
+        ("high", "c"), ("high", "z"), ("medium", "b"), ("low", "a")]
+
+
+ALL_PARAMS: dict[str, dict[str, Any]] = {
+    "classification_open": {"count": 2, "proposed_count": 1, "entries": ["a.b", "c.d"]},
+    "classification_downgraded": {"entry": "a.b", "classification": "public",
+                                  "proposed": "internal"},
+    "personal_data_unknown": {"entry": "a.b", "rag": True},
+    "personal_data_without_ropa": {"entry": "a.b", "personal_data": "ordinary",
+                                   "proposed": False},
+    "open_confidential": {"entry": "a.b", "classification": "confidential", "classified": False},
+    "special_data_broad_access": {"entry": "a.b", "personal_data": "special"},
+    "rag_copy_sensitive": {"entry": "a.b", "classification": "confidential",
+                           "personal_data": "special"},
+    "embedding_model_policy": {"entry": "a.b", "classification": "confidential",
+                               "personal_data": "ordinary", "model": "m", "tier": "third_country",
+                               "allowed_tiers": []},
+    "agent_model_policy": {"agent": "agent.x", "model": "m", "tier": "third_country",
+                           "entries": ["a.b"], "allowed_tiers": ["local"]},
+    "unclassified_model_in_use": {"model": "m", "agents": ["agent.x"], "embedding_for": []},
+    "confidential_in_free_chat": {"entry": "mcp.x", "server": "X", "entries": ["a.b"]},
+    "mcp_static_credentials": {"entry": "mcp.x", "server": "X", "entries": ["a.b"]},
+    "a2a_external": {"entry": "agent.x", "host": "agents.example.com"},
+    "governance_unknown_key": {"key": "system"},
+    "governance_unknown_entry": {"entry": "a.b"},
+    "exception_expired": {"finding": "open_confidential", "subject": "a.b",
+                          "expires": "2026-11-13"},
+    "unclassified_model": {"model": "m", "suggested_tier": "", "in_use": True},
+    "model_tier_contradiction": {"model": "m", "hosts": ["api.example.com"]},
+}
+
+
+@pytest.mark.parametrize("code", sorted(ALL_PARAMS))
+def test_every_governance_code_is_said_in_german(code: str) -> None:
+    from app.i18n import use_locale
+
+    finding = {"code": code, "message": "english", "fix": "english", "params": ALL_PARAMS[code]}
+    with use_locale("de"):
+        german = gov.localize(finding)
+    english = gov.localize(finding)
+    assert german["message"] != "english" and german["fix"] != "english"
+    assert german["message"] != english["message"] and german["fix"] != english["fix"]
+    assert "%(" not in german["message"] + german["fix"]
+
+
+def test_fix_texts_point_to_the_interface_and_unknown_codes_stay_english() -> None:
+    from app.i18n import use_locale
+
+    with use_locale("de"):
+        entry = gov.localize({"code": "personal_data_unknown", "params": {"entry": "a.b",
+                                                                           "rag": False}})
+        model = gov.localize({"code": "unclassified_model_in_use",
+                              "params": {"model": "m", "agents": [], "embedding_for": []}})
+        unknown = gov.localize({"code": "new_rule", "message": "as rendered", "fix": "f",
+                                "params": {"x": 1}})
+        broken = gov.localize({"code": "a2a_external", "message": "as rendered",
+                               "params": {"entry": "a.b"}})
+    assert entry["fix"].startswith("Governance → Quellen → Bearbeiten")
+    assert model["fix"].startswith("Governance → Modelle → Stufe")
+    assert unknown["message"] == "as rendered" and broken["message"] == "as rendered"
+
+
+def test_the_export_lists_unclassified_entries_and_roles_per_path(
+    client: TestClient, gconfig: Path
+) -> None:
+    write_lints(gconfig, [{
+        "severity": "medium", "code": "classification_open", "target": None,
+        "message": "1 entries not yet classified", "origin": "render",
+        "category": "governance", "fix": "confirm", "subjects": ["mcp.calendar"],
+        "params": {"count": 1, "proposed_count": 1, "entries": ["mcp.calendar"]}}],
+        policy=POLICY, exceptable=EXCEPTABLE, agents=AGENTS)
+    admin = _as(client, "admin")
+    data = json.loads(admin.get(f"{_GOV}/export/facts.json").text)
+    assert data["classification_open"] == ["mcp.calendar"]
+    entries = {e["id"]: e for e in data["entries"]}
+    assert entries["mcp.calendar"]["classification_open"] is True
+    assert entries["wiki.main"]["classification_open"] is False
+    rows = {r["id"]: r for r in csv.DictReader(io.StringIO(
+        admin.get(f"{_GOV}/export/facts.csv").text))}
+    assert rows["mcp.calendar"]["classification_open"] == "yes"
+    assert rows["wiki.main"]["roles"] == "" and rows["wiki.main"]["path_roles"] == (
+        "rag:Qdrant=staff")
+
+
+def test_the_usage_tab_shows_what_the_map_server_records(client: TestClient) -> None:
+    admin = _as(client, "admin")
+    stats = admin.get(f"{_BASE}/stats").json()
+    assert stats["telemetry"]["learning_mode"] == "aggregate"
+    page = admin.get("/knowledge-map").text
+    assert "usage.telemetry.learning_mode" in page and "usage.telemetry.retention_days" in page
+    assert "usage.telemetry.min_profiles" in page

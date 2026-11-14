@@ -2,7 +2,7 @@
 
 The core renders the map into `$PAPAIA_CONFIG_DIR/knowledge-map/` (`index.yaml`, one manifest
 per entry under `manifests/`, the findings in `lints.yaml`) from the add-on and module
-declarations, the connected MCP servers and chat agents, and three files the operator owns
+declarations, the connected MCP servers and chat agents, and four files the operator owns
 under `overlay/knowledge-map/`:
 
 * `sources.yaml` declares entries of the operator's own (own servers, places no tool
@@ -10,12 +10,14 @@ under `overlay/knowledge-map/`:
 * `overrides.yaml` changes declared or inventoried entries,
 * `goldset.yaml` is the set of test questions the map server evaluates against,
 * `governance.yaml` documents owners, classification, personal data and model tiers (see
-  `knowledge_map_governance`); it has a write permission of its own.
+  `knowledge_map_governance`).
 
 The manager reads the rendered map from disk (it is a file in the configuration directory, and
-reading it needs no running service) and is the only writer of the three operator files from
-the interface. Like the overlay editor it writes compare-and-swap: the revision is the SHA-256
-of the file's bytes, checked again under a lock right before the rename. The map server reads
+reading it needs no running service) and is the only writer of the four operator files from
+the interface. Every governance rule is evaluated by the render; the manager displays its
+results (`lints.yaml`) and adds only its live check of the models against LiteLLM. Like the
+overlay editor it writes compare-and-swap: the revision is the SHA-256 of the file's bytes,
+checked again under a lock right before the rename. The map server reads
 the rendered files itself and reloads on change, so a write followed by the core's render is
 all it takes; nothing is restarted.
 
@@ -168,15 +170,15 @@ def rendered(config_dir: str) -> dict[str, Any]:
                 entries.append(_entry_view(data))
     lints = _load(base / "lints.yaml")
     lints = lints if isinstance(lints, dict) else {}
-    # The render keeps add-on proposals and agent models out of the manifests (they are
-    # model-facing) and hands them to this view through lints.yaml.
-    proposals = lints.get("proposals")
-    agent_models = lints.get("agent_models")
+    # The render keeps add-on proposals and its evaluation of the agents out of the manifests
+    # (they are model-facing) and hands them to this view through lints.yaml.
+    proposals = _mapping_of(lints.get("proposals"))
+    agents = {str(k): v for k, v in _mapping_of(lints.get("agents")).items() if isinstance(v, dict)}
     for entry in entries:
-        proposal = proposals.get(entry["id"]) if isinstance(proposals, dict) else None
+        proposal = proposals.get(entry["id"])
         if isinstance(proposal, dict):
             entry["governance_proposal"] = dict(proposal)
-        model = agent_models.get(entry["id"]) if isinstance(agent_models, dict) else None
+        model = _mapping_of(agents.get(entry["id"])).get("model")
         if isinstance(model, dict):
             entry["model"] = dict(model)
     findings = [f for f in lints.get("findings") or [] if isinstance(f, dict)]
@@ -187,6 +189,11 @@ def rendered(config_dir: str) -> dict[str, Any]:
         "entries": entries,
         "findings": findings,
         "warnings": warnings,
+        # The render's effective policy, the finding codes an exception may name, and its
+        # evaluation of every agent (model, tier, what it reaches, whether the tier is allowed).
+        "policy": _mapping_of(lints.get("policy")),
+        "exceptable": [str(c) for c in lints.get("exceptable") or [] if isinstance(c, str)],
+        "agents": agents,
     }
 
 
@@ -360,9 +367,11 @@ def _save_history(config_dir: str, key: str, raw: bytes) -> None:
 # ── checks ──────────────────────────────────────────────────────────────────────────────────
 
 
-def check(key: str, content: str) -> list[str]:
+def check(key: str, content: str, config_dir: str | None = None) -> list[str]:
     """What is wrong with a draft, before the core's render (the real validator) sees it.
-    Shape only: the render also scans for instruction-shaped text and refuses duplicates."""
+    Shape only: the render also scans for instruction-shaped text and refuses duplicates.
+    With `config_dir`, an exception in governance.yaml must name a code the last render
+    accepts."""
     operator_file(key)
     raw = content.encode("utf-8")
     if len(raw) > MAX_BYTES:
@@ -379,9 +388,10 @@ def check(key: str, content: str) -> list[str]:
     if not isinstance(document, dict):
         return [_("The top level must be a mapping (key: value).")]
     if key == "governance":
-        from app.core.knowledge_map_governance import check_document  # noqa: PLC0415 - cycle
+        from app.core import knowledge_map_governance as gov  # noqa: PLC0415 - cycle
 
-        return check_document(document)
+        codes = rendered(config_dir).get("exceptable") if config_dir else None
+        return gov.check_document(document, gov.MANAGER_CODES + tuple(codes) if codes else None)
     if key == "overrides" and "governance" in document:
         return [_("Governance fields live in governance.yaml, not in overrides.yaml.")]
     return {"sources": _check_sources, "overrides": _check_overrides, "goldset": _check_gold}[
