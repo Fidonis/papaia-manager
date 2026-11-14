@@ -529,7 +529,9 @@ _DONE_LOG = (
 )
 
 
-def _finished(monkeypatch: pytest.MonkeyPatch, *, log: str, exit_code: int) -> None:
+def _finished(
+    monkeypatch: pytest.MonkeyPatch, *, log: str, exit_code: int, no_backup: bool = False
+) -> None:
     status = runner.RunnerStatus(
         name="papaia-upgrade-1.7.0",
         target="1.7.0",
@@ -537,6 +539,7 @@ def _finished(monkeypatch: pytest.MonkeyPatch, *, log: str, exit_code: int) -> N
         exit_code=exit_code,
         started_at="2026-10-26T10:00:00Z",
         finished_at="2026-10-26T10:09:00Z",
+        no_backup=no_backup,
     )
 
     async def found(kind: object = None) -> runner.RunnerStatus:
@@ -594,3 +597,23 @@ def test_a_pull_that_fills_the_window_still_names_the_skipped_step(
     html = _admin(client).get("/partials/upgrade/runner").text
     assert "not every step at the end ran" in html
     assert "npm-provision --config-dir=" in html
+    # The phases announced before the window were passed, not skipped (#179): the
+    # route hands the window size to the phase reading.
+    assert "&mdash; skipped" not in html
+    assert "earlier than the part of the log shown" in html
+
+
+def test_a_full_window_still_shows_a_backup_left_out_on_the_command_line(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pull = "".join(f" a1b2c3d4 Extracting [==>  ] {i}kB/9MB\n" for i in range(2100))
+    log = _DONE_LOG.replace("Starting the stack...\n", "Starting the stack...\n" + pull)
+    _finished(monkeypatch, log=log, exit_code=0, no_backup=True)
+
+    async def cut(name: str, *, tail: int = 0) -> str:
+        return "".join(log.splitlines(keepends=True)[-tail:])
+
+    monkeypatch.setattr(runner, "runner_log", cut)
+    html = _admin(client).get("/partials/upgrade/runner").text
+    assert "Create a restore point &mdash; skipped" in html
+    assert "Remove the containers &mdash; skipped" not in html
