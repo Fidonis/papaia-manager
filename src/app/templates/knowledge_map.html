@@ -22,6 +22,7 @@
   "kind_mcp": _("Server"),
   "kind_agent": _("Agent"),
   "all_roles": _("all roles"),
+  "roles_only": _("only for:"),
   "no_tool": _("location only, no tool"),
   "undeclared": _("not described"),
   "stale": _("stale"),
@@ -103,7 +104,7 @@
           </div>
         </div>
         <div class="overflow-x-auto">
-          <svg id="km-graph" class="km-graph block w-full min-w-[860px]" role="img"
+          <svg id="km-graph" class="km-graph block w-full min-w-[760px]" role="img"
                aria-label="{{ _('The knowledge map as a layered graph: topics, sources, access paths, agents') }}"></svg>
         </div>
         <p x-show="!entries.length" class="text-sm opacity-60">{% trans %}The map is empty: no add-on, module or operator file declares a source yet, and no MCP server is connected.{% endtrans %}</p>
@@ -127,7 +128,7 @@
                     <span class="font-mono text-xs" x-text="p.target || p.location"></span>
                     <span x-show="p.collection" class="text-xs opacity-60" x-text="'/ ' + p.collection"></span>
                     <span x-show="p.best_for" class="block text-xs opacity-70" x-text="p.best_for"></span>
-                    <span x-show="p.required_roles && p.required_roles.length" class="block text-xs opacity-60" x-text="'⚿ ' + (p.required_roles||[]).join(', ')"></span>
+                    <span x-show="p.required_roles && p.required_roles.length" class="block text-xs opacity-60" x-text="T.roles_only + ' ' + (p.required_roles||[]).join(', ')"></span>
                   </li></template></ul></div>
             </template>
             <template x-if="selected.not_covered && selected.not_covered.length">
@@ -209,7 +210,7 @@
                 <span x-show="r.unverified" class="badge badge-error badge-sm" x-text="T.undeclared"></span>
                 <span class="ml-auto font-mono text-xs opacity-60" x-text="Number(r.confidence).toFixed(2)"></span>
               </div>
-              <p class="text-xs opacity-70" x-text="r.reasoning"></p>
+              <p class="text-xs opacity-70" x-text="r.why || r.reasoning"></p>
               <p x-show="r.instruction" class="text-xs" x-text="r.instruction"></p>
               <div class="mt-1 flex flex-wrap gap-1"><template x-for="p in r.access || []"><span class="badge badge-outline badge-sm" x-text="p.via + ' · ' + (p.target || p.location || '') + (p.best_for ? ' — ' + p.best_for : '')"></span></template></div>
             </div>
@@ -257,7 +258,7 @@
           </table>
         </template>
         <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Earlier runs{% endtrans %}</p>
-        <ul class="text-xs"><template x-for="run in history.slice(-8).reverse()"><li x-text="when(run.ts) + ' — ' + pct(run.all && run.all.hit_at_1)"></li></template></ul>
+        <ul class="text-xs"><template x-for="run in history.slice(-8).reverse()"><li x-text="when(run.at) + ' — Hit@1 ' + pct(run.hit_at_1) + ' · F1 ' + pct(run.abstention_f1)"></li></template></ul>
       </div>
     </div>
   </section>
@@ -351,6 +352,7 @@
       if (parent) parent.appendChild(n);
       return n;
     }
+    const hostOf = url => { try { return new URL(url).host; } catch (e) { return url || ""; } };
     const visibleTo = (roles, required) =>
       roles === null || !required || !required.length || required.some(r => roles.includes(r));
 
@@ -402,7 +404,7 @@
       maxOf(o) { return Math.max(1, ...Object.values(o || {})); },
       when(ts) { if (!ts) return "—"; const d = new Date(ts); return isNaN(d) ? ts : d.toLocaleString(document.documentElement.lang || undefined); },
       pct(v) { return v === null || v === undefined ? "—" : Math.round(v * 100) + " %"; },
-      partLabel(p) { return { all: {{ _('all')|tojson|forceescape }}, development: {{ _('development')|tojson|forceescape }}, holdout: {{ _('held out')|tojson|forceescape }} }[p]; },
+      partLabel(p) { return { all: {{ _('all')|tojson }}, development: {{ _('development')|tojson }}, holdout: {{ _('held out')|tojson }} }[p]; },
       evidenceText(s) { const e = s.evidence || {}; return Object.entries(e).map(([k, v]) => k + ": " + v).join(" · "); },
       checkText(s) { const c = s.check || {}; return "Hit@1 " + (c.hit_at_1 || []).map(v => this.pct(v)).join(" → ") + (c.regression ? " ⚠" : " ✓"); },
       yamlish(o) { return JSON.stringify(o, null, 2); },
@@ -427,21 +429,22 @@
           const k = accKey(p);
           if (!access.has(k)) {
             const server = servers.find(s => (s.access || []).some(a => a.target === p.target));
-            access.set(k, { id: "a:" + k, kind: "access", via: p.via, label: (p.via.toUpperCase()) + " · " + (p.target || ""),
+            access.set(k, { id: "a:" + k, kind: "access", via: p.via, label: p.via.toUpperCase() + " · " + (p.via === "a2a" ? hostOf(p.target) : (p.target || "")),
               sub: p.collection || (server && server.undeclared ? T.undeclared : ""), undeclared: !!(server && server.undeclared),
-              system: server ? server.system : p.target, coverage: server ? server.coverage : "", access: [p], from: [] });
+              system: server ? server.system : p.target, coverage: server ? server.coverage : "", access: [p], from: [], via_roles: [] });
           }
-          if (from) access.get(k).from.push(from);
+          if (from) { access.get(k).from.push(from); access.get(k).via_roles.push(p.required_roles || []); }
           return access.get(k);
         };
-        servers.forEach(s => (s.access || []).forEach(p => addAcc(p)));
         const nodes = [], edges = [], pos = {};
         [...topics].forEach(([id, label], i) => { const n = { id: "t:" + id, lane: "topic", label }; nodes.push(n); pos[n.id] = { x: X.topic, y: TOP + i * (NODE_H + 10) }; });
-        const meanY = ids => { const ys = ids.map(id => pos[id] && pos[id].y).filter(v => v !== undefined); return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : TOP; };
+        const meanY = ids => { const ys = ids.map(id => pos[id] && pos[id].y).filter(v => v !== undefined); return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : Infinity; };
+        // Each node sits level with what it connects to; a node with nothing to line up
+        // with (an undescribed server, an Agent2Agent agent) goes below the others.
         const place = (list, x, anchor, gap) => {
-          let last = -Infinity;
+          let last = TOP - gap;
           list.map(n => ({ n, y: anchor(n) })).sort((a, b) => a.y - b.y)
-            .forEach(w => { const y = Math.max(w.y, last + gap); pos[w.n.id] = { x, y }; last = y; });
+            .forEach(w => { const y = Number.isFinite(w.y) ? Math.max(w.y, last + gap) : last + gap; pos[w.n.id] = { x, y }; last = y; });
         };
         const srcNodes = routable.map(e => ({ ...e, lane: e.kind === "reference" ? "reference" : "source", entry: e }));
         place(srcNodes, X.source, n => meanY(n.topics.map(t => "t:" + t.id)), NODE_H + 18);
@@ -451,8 +454,13 @@
           (n.not_covered || []).forEach(nc => { if (nc.instead && routable.some(r => r.id === nc.instead)) edges.push({ a: n.id, b: nc.instead, cls: "instead" }); });
         });
         agents.forEach(g => (g.access || []).forEach(p => addAcc(p)));
+        // A connected server no source reaches still gets its box; one a source already
+        // reaches (over MCP or as the vector index) is that box.
+        servers.forEach(s => (s.access || []).forEach(p => {
+          if (![...access.values()].some(a => a.access[0].target === p.target)) addAcc(p);
+        }));
         const accNodes = [...access.values()].map(a => ({ ...a, lane: "access" }));
-        place(accNodes, X.access, n => n.from.length ? meanY(n.from) : 9999, NODE_H + 12);
+        place(accNodes, X.access, n => n.from.length ? meanY(n.from) : Infinity, NODE_H + 12);
         const agNodes = agents.map(g => ({ ...g, lane: "agent", entry: g }));
         agNodes.forEach(g => {
           const linked = accNodes.filter(a => (g.uses || []).includes(a.access[0].target) || (g.access || []).some(p => accKey(p) === a.id.slice(2)));
@@ -472,7 +480,8 @@
         const vis = n => {
           if (!n) return false;
           if (n.lane === "topic") return srcNodes.some(s => s.topics.some(t => "t:" + t.id === n.id) && visibleTo(roles, s.required_roles));
-          if (n.lane === "access") return n.undeclared || n.from.length === 0 || n.from.some(f => visibleTo(roles, byId[f] && byId[f].required_roles));
+          if (n.lane === "access") return n.undeclared || n.from.length === 0
+            || n.from.some((f, i) => visibleTo(roles, byId[f] && byId[f].required_roles) && visibleTo(roles, n.via_roles[i]));
           return visibleTo(roles, n.required_roles);
         };
         edges.forEach(ed => {
@@ -525,13 +534,15 @@
       async loadUsage() {
         try {
           this.usage = await api("GET", "/stats?days=14");
+          // The history keeps the figures over all questions of each run; the split into
+          // development and held-out questions exists only for a run made on this page.
           this.history = (await api("GET", "/eval/history")).runs || [];
-          this.lastEval = this.history.length ? this.history[this.history.length - 1] : null;
+          if (!this.lastEval && this.history.length) this.lastEval = { all: this.history[this.history.length - 1] };
         } catch (e) { this.flash(T.unreachable.replace("{detail}", e.message), "alert-error"); }
       },
       async runEval() {
         this.evalBusy = true;
-        try { this.lastEval = await api("POST", "/eval"); await this.loadUsage(); this.lastEval = this.history[this.history.length - 1] || this.lastEval; }
+        try { this.lastEval = await api("POST", "/eval"); await this.loadUsage(); }
         catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
         finally { this.evalBusy = false; }
       },
