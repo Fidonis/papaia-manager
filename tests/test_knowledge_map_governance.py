@@ -755,3 +755,19 @@ def test_the_usage_tab_shows_what_the_map_server_records(client: TestClient) -> 
     page = admin.get("/knowledge-map").text
     assert "usage.telemetry.learning_mode" in page and "usage.telemetry.retention_days" in page
     assert "usage.telemetry.min_profiles" in page
+
+
+def test_enum_values_in_finding_texts_read_as_labels() -> None:
+    texts = gov.describe("classification_downgraded", {
+        "entry": "erp.main", "classification": "strictly_confidential", "proposed": "confidential",
+    })
+    assert texts is not None
+    assert "strictly confidential" in texts[0]
+    assert "strictly_confidential" not in texts[0]
+    model = gov.describe("agent_model_policy", {
+        "agent": "agent.offer", "model": "m", "tier": "third_country_contracted",
+        "entries": ["crm.main"], "allowed_tiers": ["local", "eu_hosted"],
+    })
+    assert model is not None
+    assert "third country, contracted" in model[0]
+    assert "EU-hosted" in model[1] or "EU-hosted" in model[0]
