@@ -256,6 +256,12 @@ def _entry_of(item: Mapping[str, Any]) -> ModelEntry | None:
     )
 
 
+def parse_deployments(data: Iterable[Mapping[str, Any]]) -> tuple[ModelEntry, ...]:
+    """One entry per deployment, unmerged: what the knowledge map's governance view needs to see
+    a name served from an internal and a public host at once."""
+    return tuple(entry for entry in map(_entry_of, data) if entry is not None)
+
+
 def parse_catalog(data: Iterable[Mapping[str, Any]]) -> tuple[ModelEntry, ...]:
     """One entry per model name. Several deployments behind one name are one model (LiteLLM
     spreads the requests over them), described by the first, with a gap filled by a later one."""

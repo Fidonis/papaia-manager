@@ -1,0 +1,901 @@
+{% extends "base.html" %}
+{% block title %}{% trans branding=branding().name %}AI Map — {{ branding }}{% endtrans %}{% endblock %}
+
+{% block page_title %}{% trans %}AI Map{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Which data the AI reaches, for whom, over which path and with which model{% endtrans %}</p>{% endblock %}
+
+{% block content %}
+{% if not km_active %}
+<div class="alert max-w-3xl">
+  <span>{% trans %}The AI map is not switched on. It is the core profile knowledge-map; switch it on with papaia-ctl setup.{% endtrans %}</span>
+</div>
+{% else %}
+
+{# Every visible text the script writes comes from here, translated on the server. #}
+<script type="application/json" id="km-i18n">{{ {
+  "lane_topics": _("Topics"),
+  "lane_sources": _("Sources"),
+  "lane_access": _("Access paths"),
+  "lane_agents": _("Agents"),
+  "kind_source": _("Source"),
+  "kind_reference": _("Reference"),
+  "kind_mcp": _("Server"),
+  "kind_agent": _("Agent"),
+  "all_roles": _("all roles"),
+  "roles_only": _("only for:"),
+  "no_tool": _("location only, no tool"),
+  "undeclared": _("not described"),
+  "stale": _("stale"),
+  "everyone": _("Administrator (everything)"),
+  "unreachable": _("The map server can't be asked: {detail}"),
+  "saved": _("Saved. The map is rendered again."),
+  "job_failed": _("The change did not go through. See the job log."),
+  "job_running": _("Rendering the map …"),
+  "accepted": _("Accepted. The map is rendered with it."),
+  "rejected": _("Rejected. It will not be offered again."),
+  "no_results": _("The map abstains."),
+  "error": _("Something went wrong: {detail}"),
+  "sev_high": _("Action needed: high"),
+  "sev_medium": _("Action needed: medium"),
+  "sev_low": _("Action needed: low"),
+  "origin_render": _("render"),
+  "origin_manager": _("manager"),
+  "action_needed": _("action needed"),
+  "no_action": _("no action needed"),
+  "not_assessable": _("not assessable"),
+  "learning": {"off": _("off: nothing is recorded"), "aggregate": _("aggregated: need texts are masked"),
+               "full": _("full: need texts are kept verbatim")},
+  "retention": _("kept for {days} days"),
+  "min_profiles": _("an unanswered need is listed once {n} different profiles asked it, {count} times or more"),
+  "not_set": _("not set"),
+  "suggested": _("suggested by add-on:"),
+  "until": _("accepted until {date}"),
+  "expired": _("exception expired {date}"),
+  "confirm_tier": _("Confirm {tier}"),
+  "classes": {"public": _("public"), "internal": _("internal"), "confidential": _("confidential"),
+              "strictly_confidential": _("strictly confidential")},
+  "tiers": {"local": _("local"), "eu_hosted": _("EU-hosted"),
+            "third_country_contracted": _("third country, contracted"), "third_country": _("third country")},
+  "personal_data": {"none": _("no personal data"), "ordinary": _("ordinary personal data"),
+                    "special": _("special categories"), "criminal": _("criminal offence data"), "unknown": _("unknown")},
+  "subjects": {"employees": _("employees"), "applicants": _("applicants"), "customers": _("customers"),
+               "suppliers": _("suppliers"), "patients": _("patients"), "minors": _("minors"), "other": _("other")}
+} | tojson }}</script>
+
+<div x-data="knowledgeMap()" x-init="start()" class="space-y-4">
+
+  {# ── status strip ────────────────────────────────────────────────────────── #}
+  <div class="stats stats-vertical w-full border border-base-300 bg-base-100 sm:stats-horizontal">
+    <div class="stat py-3">
+      <div class="stat-title">{% trans %}Entries{% endtrans %}</div>
+      <div class="stat-value text-2xl" x-text="entries.length"></div>
+      <div class="stat-desc" x-text="kindSummary()"></div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-title">{% trans %}Findings{% endtrans %}</div>
+      <div class="stat-value text-2xl" :class="highFindings() ? 'text-warning' : ''" x-text="findings.length"></div>
+      <div class="stat-desc"><span x-text="highFindings()"></span> {% trans %}can cause wrong answers{% endtrans %}</div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-title">{% trans %}Rendered{% endtrans %}</div>
+      <div class="stat-value text-lg" x-text="when(generatedAt)"></div>
+      <div class="stat-desc" x-text="server.embedder ? server.embedder : ''"></div>
+    </div>
+    <div class="stat py-3">
+      <div class="stat-title">{% trans %}Map server{% endtrans %}</div>
+      <div class="stat-value text-lg" :class="serverError ? 'text-error' : 'text-success'"
+           x-text="serverError ? {{ _('unreachable')|tojson|forceescape }} : {{ _('ready')|tojson|forceescape }}"></div>
+      <div class="stat-desc truncate" x-text="serverError"></div>
+    </div>
+  </div>
+
+  <template x-if="warnings.length">
+    <div class="alert alert-warning text-sm">
+      <ul class="list-disc pl-4"><template x-for="w in warnings"><li x-text="w"></li></template></ul>
+    </div>
+  </template>
+
+  <div x-show="message" x-transition class="alert text-sm" :class="messageClass">
+    <span x-text="message"></span>
+    <a x-show="jobLink" :href="jobLink" class="link">{% trans %}Job log{% endtrans %}</a>
+  </div>
+
+  {# ── tabs ────────────────────────────────────────────────────────────────── #}
+  <div role="tablist" class="tabs tabs-bordered overflow-x-auto">
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='map' && 'tab-active'" @click="tab='map'">{% trans %}Map{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='entries' && 'tab-active'" @click="tab='entries'">{% trans %}Entries{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='findings' && 'tab-active'" @click="tab='findings'">
+      {% trans %}Gaps & conflicts{% endtrans %} <span class="badge badge-sm ml-1" :class="highFindings() && 'badge-warning'" x-text="findings.length"></span></button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='simulate' && 'tab-active'" @click="tab='simulate'">{% trans %}Test routing{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='usage' && 'tab-active'" @click="tab='usage'; loadUsage()">{% trans %}Usage & quality{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='suggestions' && 'tab-active'" @click="tab='suggestions'; loadSuggestions()">{% trans %}Suggestions{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='files' && 'tab-active'" @click="tab='files'">{% trans %}Files{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='governance' && 'tab-active'" @click="tab='governance'; loadGovernance()">
+      {% trans %}Governance{% endtrans %} <span x-show="gov.data" class="badge badge-sm ml-1" :class="govHigh() && 'badge-warning'" x-text="govHigh()"></span></button>
+  </div>
+
+  {# ── map ─────────────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='map'" class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div class="card border border-base-300 bg-base-100">
+      <div class="card-body gap-3 p-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-sm opacity-60">{% trans %}View as{% endtrans %}</span>
+          <select class="select select-bordered select-sm" x-model="viewAs" @change="draw()">
+            <option value="*" x-text="T.everyone"></option>
+            <template x-for="r in allRoles()" :key="r"><option :value="r" x-text="r"></option></template>
+          </select>
+          <div class="ml-auto flex flex-wrap gap-3 text-xs opacity-70">
+            <span class="flex items-center gap-1"><span class="inline-block h-0 w-5 border-t-[3px] border-secondary"></span>{% trans %}source of truth{% endtrans %}</span>
+            <span class="flex items-center gap-1"><span class="inline-block h-0 w-5 border-t-2 border-dashed border-warning"></span>{% trans %}"ask there instead"{% endtrans %}</span>
+            <span class="flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full bg-error"></span>{% trans %}not described{% endtrans %}</span>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <svg id="km-graph" class="km-graph block w-full min-w-[760px]" role="img"
+               aria-label="{{ _('The knowledge map as a layered graph: topics, sources, access paths, agents') }}"></svg>
+        </div>
+        <p x-show="!entries.length" class="text-sm opacity-60">{% trans %}The map is empty: no add-on, module or operator file declares a source yet, and no MCP server is connected.{% endtrans %}</p>
+      </div>
+    </div>
+    <aside class="card h-fit border border-base-300 bg-base-100 xl:sticky xl:top-4">
+      <div class="card-body gap-2 p-4 text-sm">
+        <template x-if="!selected"><p class="opacity-60">{% trans %}Select a box to see the entry. Hover to follow its connections.{% endtrans %}</p></template>
+        <template x-if="selected">
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="badge badge-sm" x-text="kindLabel(selected.kind)"></span>
+              <h3 class="font-brand text-base font-bold" x-text="selected.system || selected.label"></h3>
+            </div>
+            <p class="font-mono text-xs opacity-60" x-text="selected.id"></p>
+            <p x-show="selected.coverage" x-text="selected.coverage"></p>
+            <template x-if="selected.access && selected.access.length">
+              <div><p class="text-xs font-semibold uppercase opacity-60">{% trans %}Access paths{% endtrans %}</p>
+                <ul class="space-y-1"><template x-for="p in selected.access">
+                  <li><span class="badge badge-outline badge-sm uppercase" x-text="p.via"></span>
+                    <span class="font-mono text-xs" x-text="p.target || p.location"></span>
+                    <span x-show="p.collection" class="text-xs opacity-60" x-text="'/ ' + p.collection"></span>
+                    <span x-show="p.best_for" class="block text-xs opacity-70" x-text="p.best_for"></span>
+                    <span x-show="p.required_roles && p.required_roles.length" class="block text-xs opacity-60" x-text="T.roles_only + ' ' + (p.required_roles||[]).join(', ')"></span>
+                  </li></template></ul></div>
+            </template>
+            <template x-if="selected.not_covered && selected.not_covered.length">
+              <div><p class="text-xs font-semibold uppercase opacity-60">{% trans %}Not here{% endtrans %}</p>
+                <ul class="list-disc pl-4"><template x-for="n in selected.not_covered"><li><span x-text="n.what"></span><span x-show="n.instead" class="opacity-60" x-text="' → ' + n.instead"></span></li></template></ul></div>
+            </template>
+            <p x-show="selected.required_roles" class="text-xs opacity-70"><span class="font-semibold">{% trans %}Roles{% endtrans %}:</span> <span x-text="rolesText(selected)"></span></p>
+            <p x-show="selected.delegate_when" class="text-xs"><span class="font-semibold">{% trans %}Delegate when{% endtrans %}:</span> <span x-text="selected.delegate_when"></span></p>
+            <p x-show="selected.declared_by" class="text-xs opacity-60"><span>{% trans %}Declared by{% endtrans %}:</span> <span x-text="selected.declared_by"></span></p>
+          </div>
+        </template>
+      </div>
+    </aside>
+  </section>
+
+  {# ── entries ─────────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='entries'" class="card border border-base-300 bg-base-100">
+    <div class="card-body gap-3 p-4">
+      <input type="search" class="input input-bordered input-sm max-w-xs" x-model="filter" placeholder="{{ _('Filter') }}">
+      <div class="overflow-x-auto">
+        <table class="table table-sm">
+          <thead><tr><th>{% trans %}Kind{% endtrans %}</th><th>{% trans %}System{% endtrans %}</th><th>{% trans %}Access paths{% endtrans %}</th><th>{% trans %}Roles{% endtrans %}</th><th>{% trans %}Declared by{% endtrans %}</th></tr></thead>
+          <tbody>
+            <template x-for="e in filtered()" :key="e.id">
+              <tr class="hover cursor-pointer" @click="selected = e; tab = 'map'; draw()">
+                <td><span class="badge badge-sm" x-text="kindLabel(e.kind)"></span>
+                    <span x-show="e.undeclared" class="badge badge-error badge-sm" x-text="T.undeclared"></span></td>
+                <td><div class="font-medium" x-text="e.system"></div><div class="font-mono text-xs opacity-50" x-text="e.id"></div></td>
+                <td><template x-for="p in e.access"><span class="mr-1 badge badge-outline badge-sm" x-text="p.via + (p.target ? ' · ' + p.target : '')"></span></template></td>
+                <td class="text-xs" x-text="rolesText(e)"></td>
+                <td class="text-xs opacity-70" x-text="e.declared_by"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  {# ── findings ────────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='findings'" class="card border border-base-300 bg-base-100">
+    <div class="card-body gap-2 p-4">
+      <p class="text-sm opacity-60">{% trans %}What the last render found that weakens the map. High: can cause a wrong answer or a wrong "not available".{% endtrans %}</p>
+      <p x-show="!findings.length" class="text-sm">{% trans %}Nothing found.{% endtrans %}</p>
+      <ul class="divide-y divide-base-300">
+        <template x-for="f in sortedFindings()">
+          <li class="flex flex-wrap items-start gap-3 py-2 text-sm">
+            <span class="badge badge-sm" :class="{'badge-error': f.severity==='high', 'badge-warning': f.severity==='medium'}" x-text="f.severity"></span>
+            <span class="flex-1" x-text="f.message"></span>
+            <button type="button" x-show="f.target" class="btn btn-ghost btn-xs" @click="selectId(f.target)">{% trans %}Show{% endtrans %}</button>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </section>
+
+  {# ── simulate ────────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='simulate'" class="card border border-base-300 bg-base-100">
+    <div class="card-body gap-3 p-4">
+      <p class="text-sm opacity-60">{% trans %}Ask the map a question as a role, the way an assistant would. Nothing is recorded.{% endtrans %}</p>
+      <form class="flex flex-wrap gap-2" @submit.prevent="simulate()">
+        <input class="input input-bordered input-sm min-w-0 flex-1" x-model="sim.need" required maxlength="500" placeholder="{{ _('e.g. which customers still have open invoices') }}">
+        <select class="select select-bordered select-sm" x-model="sim.role">
+          <option value="*" x-text="T.everyone"></option>
+          <template x-for="r in allRoles()" :key="r"><option :value="r" x-text="r"></option></template>
+        </select>
+        <button class="btn btn-primary btn-sm" :disabled="sim.busy">{% trans %}Route{% endtrans %}</button>
+      </form>
+      <template x-if="sim.result">
+        <div class="space-y-3">
+          <template x-if="sim.result.abstention">
+            <div class="alert alert-warning text-sm"><span><span x-text="T.no_results"></span> <code x-text="sim.result.abstention_code"></code> — <span x-text="sim.result.reason"></span></span></div>
+          </template>
+          <template x-for="(r, i) in sim.result.results || []" :key="r.source_id">
+            <div class="rounded-box border border-base-300 p-3 text-sm">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-brand font-bold" x-text="(i+1) + '. ' + r.system"></span>
+                <span class="badge badge-sm" x-text="r.match"></span>
+                <span x-show="r.unverified" class="badge badge-error badge-sm" x-text="T.undeclared"></span>
+                <span class="ml-auto font-mono text-xs opacity-60" x-text="Number(r.confidence).toFixed(2)"></span>
+              </div>
+              <p class="text-xs opacity-70" x-text="r.why || r.reasoning"></p>
+              <p x-show="r.instruction" class="text-xs" x-text="r.instruction"></p>
+              <div class="mt-1 flex flex-wrap gap-1"><template x-for="p in r.access || []"><span class="badge badge-outline badge-sm" x-text="p.via + ' · ' + (p.target || p.location || '') + (p.best_for ? ' — ' + p.best_for : '')"></span></template></div>
+            </div>
+          </template>
+          <template x-if="sim.result.agents && sim.result.agents.length">
+            <div class="text-sm"><p class="text-xs font-semibold uppercase opacity-60">{% trans %}Agents to delegate to{% endtrans %}</p>
+              <template x-for="a in sim.result.agents"><p><span class="font-medium" x-text="a.system"></span> <span class="opacity-60" x-text="a.delegate_when"></span></p></template></div>
+          </template>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  {# ── usage & quality ─────────────────────────────────────────────────────── #}
+  <section x-show="tab==='usage'" class="grid gap-4 lg:grid-cols-2">
+    <div class="card border border-base-300 bg-base-100">
+      <div class="card-body gap-2 p-4 text-sm">
+        <h2 class="font-brand text-base font-bold">{% trans %}Use in the last 14 days{% endtrans %}</h2>
+        <template x-if="usage">
+          <div class="space-y-2">
+            <p><span class="text-2xl font-bold" x-text="usage.totals.requests"></span> {% trans %}routing requests{% endtrans %},
+               <span x-text="Math.round(100 * (usage.totals.abstention_rate || 0)) + ' %'"></span> {% trans %}abstained{% endtrans %}</p>
+            <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Answered first by{% endtrans %}</p>
+            <template x-for="(n, id) in usage.top_sources"><div class="flex items-center gap-2"><span class="w-40 truncate" x-text="nameOf(id)"></span>
+              <progress class="progress progress-secondary flex-1" :value="n" :max="maxOf(usage.top_sources)"></progress><span class="w-8 text-right" x-text="n"></span></div></template>
+            <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Asked, but nothing fits{% endtrans %}</p>
+            <ul class="list-disc pl-4"><template x-for="u in usage.unmatched || []"><li><span x-text="u.need"></span> <span class="opacity-60" x-text="'×' + u.count"></span></li></template></ul>
+            <template x-if="usage.telemetry">
+              <div class="rounded-box bg-base-200 p-2 text-xs">
+                <p class="font-semibold">{% trans %}What the map server records{% endtrans %}</p>
+                <p><span>{% trans %}Learning mode:{% endtrans %}</span> <span x-text="lbl('learning', usage.telemetry.learning_mode)"></span></p>
+                <p x-show="usage.telemetry.retention_days" x-text="T.retention.replace('{days}', usage.telemetry.retention_days)"></p>
+                <p x-show="usage.telemetry.min_profiles" x-text="T.min_profiles.replace('{n}', usage.telemetry.min_profiles).replace('{count}', usage.telemetry.min_occurrences || 1)"></p>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+    <div class="card border border-base-300 bg-base-100">
+      <div class="card-body gap-2 p-4 text-sm">
+        <div class="flex items-center gap-2">
+          <h2 class="font-brand text-base font-bold">{% trans %}Gold set{% endtrans %}</h2>
+          <button type="button" class="btn btn-sm ml-auto" :disabled="evalBusy" @click="runEval()">{% trans %}Run now{% endtrans %}</button>
+        </div>
+        <template x-if="lastEval">
+          <table class="table table-xs">
+            <thead><tr><th></th><th>{% trans %}Hit@1{% endtrans %}</th><th>{% trans %}Hit@3{% endtrans %}</th><th>{% trans %}MRR{% endtrans %}</th><th>{% trans %}Abstention F1{% endtrans %}</th></tr></thead>
+            <tbody><template x-for="part in ['all', 'development', 'holdout']"><tr x-show="lastEval[part]">
+              <td x-text="partLabel(part)"></td>
+              <template x-for="m in ['hit_at_1', 'hit_at_3', 'mrr', 'abstention_f1']"><td x-text="pct(lastEval[part] && lastEval[part][m])"></td></template>
+            </tr></template></tbody>
+          </table>
+        </template>
+        <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Earlier runs{% endtrans %}</p>
+        <ul class="text-xs"><template x-for="run in history.slice(-8).reverse()"><li x-text="when(run.at) + ' — Hit@1 ' + pct(run.hit_at_1) + ' · F1 ' + pct(run.abstention_f1)"></li></template></ul>
+      </div>
+    </div>
+  </section>
+
+  {# ── suggestions ─────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='suggestions'" class="card border border-base-300 bg-base-100">
+    <div class="card-body gap-2 p-4 text-sm">
+      <p class="opacity-60">{% trans %}Mined from the last four weeks of use. Nothing changes until you accept; accepting writes the change into the operator files and renders the map.{% endtrans %}</p>
+      <p x-show="suggestionsLoaded && !suggestions.length">{% trans %}No suggestions at the moment.{% endtrans %}</p>
+      <ul class="divide-y divide-base-300">
+        <template x-for="s in suggestions" :key="s.id">
+          <li class="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <div>
+              <div class="flex flex-wrap items-center gap-2"><span class="badge badge-sm" x-text="s.kind"></span><span class="font-medium" x-text="s.title"></span></div>
+              <p class="text-xs opacity-60" x-text="evidenceText(s)"></p>
+              <p x-show="s.check" class="text-xs" :class="s.check && s.check.regression ? 'text-error' : 'text-success'" x-text="checkText(s)"></p>
+              <pre class="mt-1 overflow-x-auto rounded bg-base-200 p-2 text-xs" x-text="yamlish(s.override || s.declaration || s.gold)"></pre>
+            </div>
+            <div class="flex flex-wrap items-start gap-2">
+              <label x-show="carriesText(s)" class="label cursor-pointer gap-2 py-0 text-xs">
+                <input type="checkbox" class="checkbox checkbox-xs" x-model="s.confirmed">
+                <span>{% trans %}Contains no names of persons{% endtrans %}</span>
+              </label>
+              <button type="button" class="btn btn-primary btn-sm" :disabled="busy || (carriesText(s) && !s.confirmed)" @click="decide(s, 'accepted')">{% trans %}Accept{% endtrans %}</button>
+              <button type="button" class="btn btn-ghost btn-sm" :disabled="busy" @click="decide(s, 'rejected')">{% trans %}Reject{% endtrans %}</button>
+            </div>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </section>
+
+  {# ── files ───────────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='files'" class="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+    <ul class="menu h-fit rounded-box border border-base-300 bg-base-100">
+      <template x-for="f in files" :key="f.key">
+        <li><a :class="file && file.key===f.key && 'active'" @click="openFile(f)"><span x-text="f.label"></span><span class="font-mono text-xs opacity-60" x-text="f.filename"></span></a></li>
+      </template>
+    </ul>
+    <div class="card border border-base-300 bg-base-100" x-show="file">
+      <div class="card-body gap-2 p-4">
+        <p class="text-sm opacity-70" x-text="file && file.description"></p>
+        <textarea class="textarea textarea-bordered h-96 font-mono text-xs" x-model="draft" spellcheck="false" @input.debounce.500ms="checkDraft()"></textarea>
+        <ul x-show="problems.length" class="list-disc pl-4 text-sm text-error"><template x-for="p in problems"><li x-text="p"></li></template></ul>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-primary btn-sm" :disabled="busy || problems.length || !file || draft === file.content" @click="saveFile()">{% trans %}Save and render{% endtrans %}</button>
+          <button type="button" class="btn btn-ghost btn-sm" :disabled="!file || draft === file.content" @click="draft = file.content; problems = []">{% trans %}Discard changes{% endtrans %}</button>
+        </div>
+        <p class="text-xs opacity-60">{% trans %}The previous version of each file is kept in manager/knowledge-map-history.{% endtrans %}</p>
+      </div>
+    </div>
+  </section>
+
+  {# ── governance ──────────────────────────────────────────────────────────── #}
+  <section x-show="tab==='governance'" class="space-y-4">
+    <div class="alert text-sm">
+      <span>{% trans %}Wiring checks: where the configuration and the documented handling of a source disagree. The map restricts no data access and no model use; that happens in the target systems, in LiteLLM's teams and keys, and in the agent bindings of the chat.{% endtrans %}</span>
+    </div>
+    <template x-if="gov.data">
+      <div class="space-y-4">
+        <div x-show="!gov.data.litellm.available" class="alert alert-warning text-sm">
+          <span>{% trans %}LiteLLM can't be read, so the model inventory is evaluated from governance.yaml and the agents' models only:{% endtrans %} <span x-text="gov.data.litellm.problem"></span></span>
+        </div>
+        <div x-show="gov.data.parse_error" class="alert alert-error text-sm"><span x-text="gov.data.parse_error"></span></div>
+
+        <div role="tablist" class="tabs tabs-boxed w-fit flex-wrap">
+          <button type="button" role="tab" class="tab" :class="gov.sub==='findings' && 'tab-active'" @click="gov.sub='findings'">{% trans %}Findings{% endtrans %}</button>
+          <button type="button" role="tab" class="tab" :class="gov.sub==='matrix' && 'tab-active'" @click="gov.sub='matrix'">{% trans %}Sources{% endtrans %}</button>
+          <button type="button" role="tab" class="tab" :class="gov.sub==='models' && 'tab-active'" @click="gov.sub='models'">{% trans %}Models{% endtrans %}</button>
+          <button type="button" role="tab" class="tab" :class="gov.sub==='agents' && 'tab-active'" @click="gov.sub='agents'">{% trans %}Agents{% endtrans %}</button>
+        </div>
+
+        {# findings and exceptions #}
+        <div x-show="gov.sub==='findings'" class="card border border-base-300 bg-base-100">
+          <div class="card-body gap-3 p-4 text-sm">
+            <p class="opacity-60">{% trans %}Policy findings from the last render and from the live check against LiteLLM, each with what to change. An accepted finding always has an expiry; when it expires, the finding returns. New or changed findings with high action needed can be sent through Notifications.{% endtrans %}</p>
+            <p x-show="!gov.data.findings.length">{% trans %}Nothing found.{% endtrans %}</p>
+            <ul class="divide-y divide-base-300">
+              <template x-for="f in gov.data.findings" :key="f.origin + f.code + f.target">
+                <li class="flex flex-wrap items-start gap-2 py-2" :class="f.exception && 'opacity-60'">
+                  <span class="badge badge-sm whitespace-nowrap" :class="{'badge-error': f.severity==='high', 'badge-warning': f.severity==='medium'}" x-text="sevLabel(f.severity)"></span>
+                  <span class="badge badge-ghost badge-sm" x-text="T['origin_' + f.origin] || f.origin"></span>
+                  <div class="min-w-0 flex-1"><div x-text="f.message"></div>
+                    <div x-show="f.fix" class="text-xs"><span class="font-semibold">{% trans %}Fix:{% endtrans %}</span> <span x-text="f.fix"></span></div>
+                    <div class="font-mono text-xs opacity-60" x-text="f.code + (f.target ? ' · ' + f.target : '')"></div>
+                    <div x-show="f.exception || f.expired_exception" class="text-xs" :class="f.expired_exception && 'text-warning'" x-text="excText(f)"></div></div>
+                  <button type="button" x-show="!f.exception && f.target && canAccept(f)" class="btn btn-ghost btn-xs" @click="acceptRisk(f)">{% trans %}Accept until …{% endtrans %}</button>
+                </li>
+              </template>
+            </ul>
+            <template x-if="gov.exc">
+              <form class="grid gap-2 rounded-box border border-base-300 p-3 md:grid-cols-3" @submit.prevent="saveException()">
+                <p class="font-mono text-xs md:col-span-3" x-text="gov.exc.finding + ' · ' + gov.exc.subject"></p>
+                <label class="form-control"><span class="label-text">{% trans %}Expires{% endtrans %}</span>
+                  <input type="date" class="input input-bordered input-sm" x-model="gov.exc.expires" required></label>
+                <label class="form-control"><span class="label-text">{% trans %}Reason (optional){% endtrans %}</span>
+                  <input class="input input-bordered input-sm" x-model="gov.exc.reason" maxlength="500"></label>
+                <label class="form-control"><span class="label-text">{% trans %}Accepted by (role, optional){% endtrans %}</span>
+                  <input class="input input-bordered input-sm" x-model="gov.exc.accepted_by_role" maxlength="100"></label>
+                <label class="form-control"><span class="label-text">{% trans %}Risk reference (optional){% endtrans %}</span>
+                  <input class="input input-bordered input-sm" x-model="gov.exc.risk_ref" maxlength="200"></label>
+                <div class="flex gap-2 md:col-span-3">
+                  <button class="btn btn-primary btn-sm" :disabled="gov.busy">{% trans %}Save and render{% endtrans %}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="gov.exc = null">{% trans %}Cancel{% endtrans %}</button>
+                </div>
+              </form>
+            </template>
+            <h3 class="font-brand font-bold">{% trans %}Accepted findings{% endtrans %}</h3>
+            <p x-show="!gov.data.exceptions.length" class="opacity-60">{% trans %}None.{% endtrans %}</p>
+            <ul class="divide-y divide-base-300">
+              <template x-for="(x, i) in gov.data.exceptions" :key="x.finding + x.subject + i">
+                <li class="flex flex-wrap items-start gap-2 py-2">
+                  <span class="font-mono text-xs" x-text="x.finding + ' · ' + x.subject"></span>
+                  <span class="flex-1" x-text="[x.reason, x.accepted_by_role, x.risk_ref].filter(Boolean).join(' · ')"></span>
+                  <span class="badge badge-sm" :class="x.expired && 'badge-warning'" x-text="(x.expired ? T.expired : T.until).replace('{date}', x.expires)"></span>
+                  <button type="button" class="btn btn-ghost btn-xs" :disabled="gov.busy" @click="removeException(i)">{% trans %}Remove{% endtrans %}</button>
+                </li>
+              </template>
+            </ul>
+          </div>
+        </div>
+
+        {# sources #}
+        <div x-show="gov.sub==='matrix'" class="card border border-base-300 bg-base-100">
+          <div class="card-body gap-3 p-4">
+            <p class="text-sm opacity-60">{% trans %}One row per source, reference and server. Highlighted cells are gaps. A value the add-on suggests is never effective until you confirm it.{% endtrans %}</p>
+            <div class="overflow-x-auto">
+              <table class="table table-sm">
+                <thead><tr><th>{% trans %}Entry{% endtrans %}</th><th>{% trans %}Owner (role){% endtrans %}</th><th>{% trans %}Classification{% endtrans %}</th><th>{% trans %}Personal data{% endtrans %}</th><th>{% trans %}Data subjects{% endtrans %}</th><th>{% trans %}Record of processing{% endtrans %}</th><th></th></tr></thead>
+                <tbody>
+                  <template x-for="r in gov.data.matrix" :key="r.id">
+                    <tr class="hover align-top">
+                      <td><div class="font-medium" x-text="r.system"></div><div class="font-mono text-xs opacity-50" x-text="r.id"></div></td>
+                      <td :class="has(r, 'owner') && 'bg-warning/20'" x-text="r.owner || T.not_set"></td>
+                      <td :class="has(r, 'classification') && 'bg-warning/20'">
+                        <span class="badge badge-sm" :class="r.classification_confirmed ? 'badge-neutral' : 'badge-ghost'" x-text="r.classification_confirmed ? lbl('classes', r.classification) : T.not_set"></span>
+                        <div x-show="r.open_proposal.classification" class="text-xs opacity-60" x-text="T.suggested + ' ' + lbl('classes', r.open_proposal.classification)"></div>
+                      </td>
+                      <td :class="has(r, 'personal_data') && 'bg-warning/20'">
+                        <span x-text="lbl('personal_data', r.personal_data)"></span>
+                        <div x-show="r.open_proposal.personal_data" class="text-xs opacity-60" x-text="T.suggested + ' ' + lbl('personal_data', r.open_proposal.personal_data)"></div>
+                      </td>
+                      <td class="text-xs" x-text="r.data_subjects.map(x => lbl('subjects', x)).join(', ')"></td>
+                      <td :class="has(r, 'ropa_ref') && 'bg-warning/20'" x-text="r.ropa_ref"></td>
+                      <td class="whitespace-nowrap">
+                        <button type="button" x-show="Object.keys(r.open_proposal).length" class="btn btn-primary btn-xs" :disabled="gov.busy" @click="confirmProposal(r)">{% trans %}Confirm proposal{% endtrans %}</button>
+                        <button type="button" class="btn btn-ghost btn-xs" @click="editEntry(r)">{% trans %}Edit{% endtrans %}</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <template x-if="gov.edit">
+              <form class="grid gap-3 rounded-box border border-base-300 p-4 md:grid-cols-2" @submit.prevent="saveEntry()">
+                <h3 class="font-brand text-base font-bold md:col-span-2"><span>{% trans %}Governance of{% endtrans %}</span> <span class="font-mono" x-text="gov.edit.id"></span></h3>
+                <label class="form-control"><span class="label-text">{% trans %}Owner (a role, not a person){% endtrans %}</span>
+                  <input class="input input-bordered input-sm" x-model="gov.form.owner" maxlength="200"></label>
+                <label class="form-control"><span class="label-text">{% trans %}Classification{% endtrans %}</span>
+                  <select class="select select-bordered select-sm" x-model="gov.form.classification">
+                    <option value="" x-text="T.not_set" :selected="!gov.form.classification"></option>
+                    <template x-for="c in gov.data.enums.classes" :key="c"><option :value="c" x-text="lbl('classes', c)" :selected="c === gov.form.classification"></option></template>
+                  </select>
+                  <span x-show="gov.edit.proposal.classification" class="label-text-alt opacity-60" x-text="T.suggested + ' ' + lbl('classes', gov.edit.proposal.classification)"></span></label>
+                <label class="form-control"><span class="label-text">{% trans %}Personal data{% endtrans %}</span>
+                  <select class="select select-bordered select-sm" x-model="gov.form.personal_data">
+                    <option value="" x-text="T.not_set" :selected="!gov.form.personal_data"></option>
+                    <template x-for="p in gov.data.enums.personal_data" :key="p"><option :value="p" x-text="lbl('personal_data', p)" :selected="p === gov.form.personal_data"></option></template>
+                  </select></label>
+                <label class="form-control"><span class="label-text">{% trans %}Record of processing reference (optional){% endtrans %}</span>
+                  <input class="input input-bordered input-sm" x-model="gov.form.ropa_ref" maxlength="100"></label>
+                <fieldset class="form-control md:col-span-2"><span class="label-text">{% trans %}Data subjects (optional){% endtrans %}</span>
+                  <div class="flex flex-wrap gap-3">
+                    <template x-for="d in gov.data.enums.subjects" :key="d">
+                      <label class="label cursor-pointer gap-1 py-0 text-xs"><input type="checkbox" class="checkbox checkbox-xs" :value="d" x-model="gov.form.data_subjects"><span x-text="lbl('subjects', d)"></span></label>
+                    </template>
+                  </div></fieldset>
+                <div class="flex gap-2 md:col-span-2">
+                  <button class="btn btn-primary btn-sm" :disabled="gov.busy">{% trans %}Save and render{% endtrans %}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" @click="gov.edit = null">{% trans %}Cancel{% endtrans %}</button>
+                </div>
+              </form>
+            </template>
+          </div>
+        </div>
+
+        {# models #}
+        <div x-show="gov.sub==='models'" class="card border border-base-300 bg-base-100">
+          <div class="card-body gap-3 p-4">
+            <p class="text-sm opacity-60">{% trans %}Every model LiteLLM serves, every model an agent names and the embedding model. A model without a tier is evaluated as third country.{% endtrans %}</p>
+            <div class="overflow-x-auto">
+              <table class="table table-sm">
+                <thead><tr><th>{% trans %}Model{% endtrans %}</th><th>{% trans %}Hosts{% endtrans %}</th><th>{% trans %}Evaluated as{% endtrans %}</th><th>{% trans %}Used by{% endtrans %}</th><th>{% trans %}Tier{% endtrans %}</th></tr></thead>
+                <tbody>
+                  <template x-for="m in gov.data.models" :key="m.name">
+                    <tr class="align-top">
+                      <td><div class="font-mono text-xs" x-text="m.name"></div>
+                        <span x-show="!m.in_litellm && gov.data.litellm.available" class="badge badge-ghost badge-sm">{% trans %}not in LiteLLM{% endtrans %}</span>
+                        <span x-show="m.mixed" class="badge badge-warning badge-sm">{% trans %}mixed hosts{% endtrans %}</span></td>
+                      <td class="font-mono text-xs" x-text="m.hosts.join(', ')"></td>
+                      <td><span class="badge badge-sm" :class="m.tier ? '' : 'badge-warning'" x-text="lbl('tiers', m.effective_tier)"></span></td>
+                      <td class="text-xs" x-text="m.used_by.concat(m.embedding ? ['RAG'] : []).join(', ')"></td>
+                      <td><div class="flex flex-wrap gap-1">
+                        <button type="button" x-show="!m.tier && m.suggested_tier" class="btn btn-primary btn-xs" :disabled="gov.busy" @click="m.choice = m.suggested_tier; saveModel(m)"
+                                x-text="T.confirm_tier.replace('{tier}', lbl('tiers', m.suggested_tier))"></button>
+                        <select class="select select-bordered select-xs" x-model="m.choice">
+                          <option value="" x-text="T.not_set" :selected="!m.choice"></option>
+                          <template x-for="t in gov.data.enums.tiers" :key="t"><option :value="t" x-text="lbl('tiers', t)" :selected="t === m.choice"></option></template>
+                        </select>
+                        <button type="button" class="btn btn-xs" :disabled="gov.busy || m.choice === (m.tier || '')" @click="saveModel(m)">{% trans %}Save{% endtrans %}</button>
+                      </div></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {# agents #}
+        <div x-show="gov.sub==='agents'" class="card border border-base-300 bg-base-100">
+          <div class="card-body gap-3 p-4">
+            <p class="text-sm opacity-60">{% trans %}Each agent with the tier of its model and the entries it reaches. Whether the policy allows that tier for an entry is shown per access path.{% endtrans %}</p>
+            <p x-show="!gov.data.agents.length" class="text-sm">{% trans %}No agents on the map.{% endtrans %}</p>
+            <div class="overflow-x-auto" x-show="gov.data.agents.length">
+              <table class="table table-sm">
+                <thead><tr><th>{% trans %}Agent{% endtrans %}</th><th>{% trans %}Model{% endtrans %}</th><th>{% trans %}Tier{% endtrans %}</th><th>{% trans %}Reaches{% endtrans %}</th><th>{% trans %}Result{% endtrans %}</th></tr></thead>
+                <tbody>
+                  <template x-for="a in gov.data.agents" :key="a.id">
+                    <tr class="align-top">
+                      <td><div class="font-medium" x-text="a.system"></div><div class="font-mono text-xs opacity-50" x-text="a.id"></div></td>
+                      <td class="font-mono text-xs" x-text="a.model || T.not_set"></td>
+                      <td><span class="badge badge-sm" :class="a.tier_declared ? '' : 'badge-warning'" x-text="a.tier ? lbl('tiers', a.tier) : T.not_set"></span></td>
+                      <td><div class="flex flex-wrap gap-1"><template x-for="x in a.reached">
+                        <span class="badge badge-outline badge-sm" :class="x.allowed === null ? '' : (x.allowed ? 'badge-success' : 'badge-error')" x-text="x.system + ' · ' + x.via + ' · ' + lbl('classes', x.classification)"></span></template></div></td>
+                      <td><span class="badge badge-sm" :class="{'badge-success': a.result === 'ok', 'badge-error': a.result === 'attention', 'badge-ghost': a.result === 'not_assessable'}" x-text="resultLabel(a.result)"></span></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+          <span class="opacity-60">{% trans %}Facts for your GRC, CMDB or wiki:{% endtrans %}</span>
+          <a class="btn btn-sm" href="/api/v1/knowledge-map/governance/export/facts.json" download>JSON</a>
+          <a class="btn btn-sm" href="/api/v1/knowledge-map/governance/export/facts.csv" download>CSV</a>
+        </div>
+      </div>
+    </template>
+  </section>
+</div>
+
+<style>
+
+  .km-graph text { fill: oklch(var(--bc)); font-size: 12px; }
+  .km-graph .lane { fill: oklch(var(--bc) / .5); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .km-graph .sub { fill: oklch(var(--bc) / .6); font-size: 10.5px; }
+  .km-graph .node { cursor: pointer; }
+  .km-graph .node rect.body { fill: oklch(var(--b1)); stroke: oklch(var(--b3)); }
+  .km-graph .node:hover rect.body, .km-graph .node.sel rect.body { stroke: oklch(var(--s)); stroke-width: 2; }
+  .km-graph .node.dim { opacity: .18; }
+  .km-graph .edge { fill: none; stroke: oklch(var(--bc) / .35); stroke-width: 1.3; }
+  .km-graph .edge.sot { stroke: oklch(var(--s)); stroke-width: 2.6; }
+  .km-graph .edge.instead { stroke: oklch(var(--wa)); stroke-dasharray: 5 4; stroke-width: 1.6; }
+  .km-graph .edge.dim { stroke-opacity: .05; }
+  .km-graph .edge.hi { stroke: oklch(var(--s)); stroke-width: 2.4; }
+</style>
+
+<script>
+  function knowledgeMap() {
+    const T = JSON.parse(document.getElementById("km-i18n").textContent);
+    const csrf = () => document.querySelector("meta[name=csrf]").content;
+    const NS = "http://www.w3.org/2000/svg";
+    const W = 1040, NODE_W = 200, NODE_H = 36, TOP = 40;
+    const X = { topic: 10, source: 290, access: 570, agent: 830 };
+    const STRIP = { topic: "--in", source: "--p", reference: "--n", access: "--s", agent: "--a" };
+
+    async function api(method, path, body) {
+      const res = await fetch("/api/v1/knowledge-map" + path, {
+        method,
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const d = data.detail;
+        throw new Error(typeof d === "string" ? d : (d && d.message) || res.statusText);
+      }
+      return data;
+    }
+    function el(tag, attrs, parent) {
+      const n = document.createElementNS(NS, tag);
+      for (const k in attrs) n.setAttribute(k, attrs[k]);
+      if (parent) parent.appendChild(n);
+      return n;
+    }
+    const hostOf = url => { try { return new URL(url).host; } catch (e) { return url || ""; } };
+    const visibleTo = (roles, required) =>
+      roles === null || !required || !required.length || required.some(r => roles.includes(r));
+
+    return {
+      T, tab: "map", entries: [], findings: [], warnings: [], files: [], generatedAt: null,
+      server: {}, serverError: "", selected: null, viewAs: "*", filter: "",
+      sim: { need: "", role: "*", busy: false, result: null },
+      usage: null, history: [], lastEval: null, evalBusy: false,
+      suggestions: [], suggestionsLoaded: false, busy: false,
+      file: null, draft: "", problems: [], message: "", messageClass: "", jobLink: "",
+      gov: { data: null, sub: "findings", edit: null, form: {}, exc: null, busy: false },
+
+      async start() {
+        await this.load();
+        api("GET", "/server").then(d => { this.server = d.settings || {}; })
+          .catch(e => { this.serverError = e.message; });
+      },
+      async load() {
+        const d = await api("GET", "");
+        this.entries = d.entries; this.findings = d.findings.filter(f => f.category !== "governance"); this.warnings = d.warnings;
+        this.files = d.files; this.generatedAt = d.generated_at;
+        if (this.file) this.openFile(this.files.find(f => f.key === this.file.key));
+        this.$nextTick(() => this.draw());
+      },
+
+      // ── presentation helpers
+      kindLabel(k) { return T["kind_" + k] || k; },
+      kindSummary() {
+        const c = {}; this.entries.forEach(e => { c[e.kind] = (c[e.kind] || 0) + 1; });
+        return Object.entries(c).map(([k, n]) => n + " " + this.kindLabel(k)).join(" · ");
+      },
+      highFindings() { return this.findings.filter(f => f.severity === "high").length; },
+      sortedFindings() {
+        const o = { high: 0, medium: 1, low: 2 };
+        return [...this.findings].sort((a, b) => (o[a.severity] ?? 3) - (o[b.severity] ?? 3));
+      },
+      rolesText(e) { return (e.required_roles || []).length ? e.required_roles.join(", ") : T.all_roles; },
+      allRoles() {
+        const s = new Set();
+        this.entries.forEach(e => { (e.required_roles || []).forEach(r => s.add(r));
+          (e.access || []).forEach(p => (p.required_roles || []).forEach(r => s.add(r))); });
+        ["user"].forEach(r => s.add(r));
+        return [...s].sort();
+      },
+      filtered() {
+        const q = this.filter.toLowerCase();
+        return this.entries.filter(e => !q || (e.id + " " + e.system + " " + e.coverage).toLowerCase().includes(q));
+      },
+      nameOf(id) { const e = this.entries.find(x => x.id === id); return e ? e.system : id; },
+      maxOf(o) { return Math.max(1, ...Object.values(o || {})); },
+      when(ts) { if (!ts) return "—"; const d = new Date(ts); return isNaN(d) ? ts : d.toLocaleString(document.documentElement.lang || undefined); },
+      pct(v) { return v === null || v === undefined ? "—" : Math.round(v * 100) + " %"; },
+      partLabel(p) { return { all: {{ _('all')|tojson }}, development: {{ _('development')|tojson }}, holdout: {{ _('held out')|tojson }} }[p]; },
+      evidenceText(s) { const e = s.evidence || {}; return Object.entries(e).map(([k, v]) => k + ": " + v).join(" · "); },
+      checkText(s) { const c = s.check || {}; return "Hit@1 " + (c.hit_at_1 || []).map(v => this.pct(v)).join(" → ") + (c.regression ? " ⚠" : " ✓"); },
+      yamlish(o) { return JSON.stringify(o, null, 2); },
+      selectId(id) { this.selected = this.entries.find(e => e.id === id) || null; this.tab = "map"; this.$nextTick(() => this.draw()); },
+      flash(text, cls, jobId) { this.message = text; this.messageClass = cls; this.jobLink = jobId ? "/jobs/" + jobId : ""; },
+
+      // ── the graph: four lanes, every node placed near what it connects to
+      draw() {
+        const svg = document.getElementById("km-graph"); if (!svg) return;
+        svg.innerHTML = "";
+        const roles = this.viewAs === "*" ? null : [this.viewAs, "user"];
+        const routable = this.entries.filter(e => e.kind === "source" || e.kind === "reference");
+        const agents = this.entries.filter(e => e.kind === "agent");
+        const servers = this.entries.filter(e => e.kind === "mcp");
+        const topics = new Map();
+        routable.forEach(e => e.topics.forEach(t => topics.set(t.id, t.label)));
+        // access nodes: one per (via, target) — the wiki over MCP and over RAG are two
+        const access = new Map();
+        const accKey = p => p.via + ":" + (p.target || p.location || "") + (p.collection ? "/" + p.collection : "");
+        const addAcc = (p, from) => {
+          if (p.via === "none") return null;
+          const k = accKey(p);
+          if (!access.has(k)) {
+            const server = servers.find(s => (s.access || []).some(a => a.target === p.target));
+            access.set(k, { id: "a:" + k, kind: "access", via: p.via, label: p.via.toUpperCase() + " · " + (p.via === "a2a" ? hostOf(p.target) : (p.target || "")),
+              sub: p.collection || (server && server.undeclared ? T.undeclared : ""), undeclared: !!(server && server.undeclared),
+              system: server ? server.system : p.target, coverage: server ? server.coverage : "", access: [p], from: [], via_roles: [] });
+          }
+          if (from) { access.get(k).from.push(from); access.get(k).via_roles.push(p.required_roles || []); }
+          return access.get(k);
+        };
+        const nodes = [], edges = [], pos = {};
+        [...topics].forEach(([id, label], i) => { const n = { id: "t:" + id, lane: "topic", label }; nodes.push(n); pos[n.id] = { x: X.topic, y: TOP + i * (NODE_H + 10) }; });
+        const meanY = ids => { const ys = ids.map(id => pos[id] && pos[id].y).filter(v => v !== undefined); return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : Infinity; };
+        // Each node sits level with what it connects to; a node with nothing to line up
+        // with (an undescribed server, an Agent2Agent agent) goes below the others.
+        const place = (list, x, anchor, gap) => {
+          let last = TOP - gap;
+          list.map(n => ({ n, y: anchor(n) })).sort((a, b) => a.y - b.y)
+            .forEach(w => { const y = Number.isFinite(w.y) ? Math.max(w.y, last + gap) : last + gap; pos[w.n.id] = { x, y }; last = y; });
+        };
+        const srcNodes = routable.map(e => ({ ...e, lane: e.kind === "reference" ? "reference" : "source", entry: e }));
+        place(srcNodes, X.source, n => meanY(n.topics.map(t => "t:" + t.id)), NODE_H + 18);
+        srcNodes.forEach(n => {
+          n.topics.forEach(t => edges.push({ a: "t:" + t.id, b: n.id, cls: (n.source_of_truth_for || []).includes(t.id) ? "sot" : "", roles: n.required_roles }));
+          (n.access || []).forEach(p => { const a = addAcc(p, n.id); if (a) edges.push({ a: n.id, b: a.id, cls: "", roles: p.required_roles && p.required_roles.length ? p.required_roles : n.required_roles }); });
+          (n.not_covered || []).forEach(nc => { if (nc.instead && routable.some(r => r.id === nc.instead)) edges.push({ a: n.id, b: nc.instead, cls: "instead" }); });
+        });
+        agents.forEach(g => (g.access || []).forEach(p => addAcc(p)));
+        // A connected server no source reaches still gets its box; one a source already
+        // reaches (over MCP or as the vector index) is that box.
+        servers.forEach(s => (s.access || []).forEach(p => {
+          if (![...access.values()].some(a => a.access[0].target === p.target)) addAcc(p);
+        }));
+        const accNodes = [...access.values()].map(a => ({ ...a, lane: "access" }));
+        place(accNodes, X.access, n => n.from.length ? meanY(n.from) : Infinity, NODE_H + 12);
+        const agNodes = agents.map(g => ({ ...g, lane: "agent", entry: g }));
+        agNodes.forEach(g => {
+          const linked = accNodes.filter(a => (g.uses || []).includes(a.access[0].target) || (g.access || []).some(p => accKey(p) === a.id.slice(2)));
+          g.linked = linked.map(a => a.id);
+          linked.forEach(a => edges.push({ a: a.id, b: g.id, cls: "", roles: g.required_roles }));
+        });
+        place(agNodes, X.agent, n => meanY(n.linked), NODE_H + 24);
+        nodes.push(...srcNodes, ...accNodes, ...agNodes);
+
+        const maxY = Math.max(TOP + NODE_H, ...Object.values(pos).map(p => p.y)) + NODE_H + 20;
+        svg.setAttribute("viewBox", `0 0 ${W} ${maxY}`);
+        [["topic", T.lane_topics], ["source", T.lane_sources], ["access", T.lane_access], ["agent", T.lane_agents]]
+          .forEach(([k, label]) => { el("text", { x: X[k], y: 18, class: "lane" }, svg).textContent = label; });
+        const gE = el("g", {}, svg), gN = el("g", {}, svg);
+        const mid = id => ({ x: pos[id].x, y: pos[id].y + NODE_H / 2 });
+        const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+        const vis = n => {
+          if (!n) return false;
+          if (n.lane === "topic") return srcNodes.some(s => s.topics.some(t => "t:" + t.id === n.id) && visibleTo(roles, s.required_roles));
+          if (n.lane === "access") return n.undeclared || n.from.length === 0
+            || n.from.some((f, i) => visibleTo(roles, byId[f] && byId[f].required_roles) && visibleTo(roles, n.via_roles[i]));
+          return visibleTo(roles, n.required_roles);
+        };
+        edges.forEach(ed => {
+          if (!pos[ed.a] || !pos[ed.b]) return;
+          const A = mid(ed.a), B = mid(ed.b); let d;
+          if (ed.cls === "instead") { const x = A.x - 2, bend = 50 + Math.abs(B.y - A.y) * 0.15; d = `M${x},${A.y} C${x - bend},${A.y} ${x - bend},${B.y} ${x},${B.y}`; }
+          else { const x1 = A.x + NODE_W, dx = (B.x - x1) * 0.5; d = `M${x1},${A.y} C${x1 + dx},${A.y} ${B.x - dx},${B.y} ${B.x},${B.y}`; }
+          ed.path = el("path", { d, class: "edge " + ed.cls }, gE);
+        });
+        const self = this;
+        const css = v => "oklch(var(" + v + "))";
+        nodes.forEach(n => {
+          if (!pos[n.id]) return;
+          const g = el("g", { class: "node", transform: `translate(${pos[n.id].x},${pos[n.id].y})`, tabindex: 0, role: "button", "aria-label": n.label || n.system }, gN);
+          el("rect", { class: "body", width: NODE_W, height: NODE_H, rx: 7 }, g);
+          el("rect", { width: 4, height: NODE_H, rx: 2, fill: css(STRIP[n.lane]) }, g);
+          const title = (n.label || n.system || "");
+          el("text", { x: 12, y: n.lane === "topic" ? 22 : 15, "font-weight": 600 }, g).textContent = title.length > 28 ? title.slice(0, 27) + "…" : title;
+          if (n.lane !== "topic") {
+            const sub = n.lane === "reference" ? T.no_tool : n.lane === "access" ? n.sub : n.lane === "agent" ? (n.access && n.access.length ? "A2A" : (n.uses || []).join(", ")) : self.rolesText(n);
+            el("text", { x: 12, y: 29, class: "sub" }, g).textContent = (sub || "").slice(0, 34);
+          }
+          if (n.undeclared) el("circle", { cx: NODE_W - 12, cy: 12, r: 4.5, fill: css("--er") }, g);
+          n.g = g;
+          const pick = () => { self.selected = n.lane === "topic" ? { id: n.id.slice(2), label: n.label, kind: "topic" } : (n.entry || n); hi(); };
+          g.addEventListener("click", pick);
+          g.addEventListener("keydown", ev => { if (ev.keyCode === 13 || ev.keyCode === 32) { ev.preventDefault(); pick(); } });
+          g.addEventListener("mouseenter", () => hi(n.id));
+          g.addEventListener("mouseleave", () => hi());
+        });
+        function hi(hover) {
+          const sel = self.selected && (nodes.find(n => n.entry === self.selected || n.id === self.selected.id) || {}).id;
+          const focus = hover || sel;
+          nodes.forEach(n => { if (!n.g) return; n.g.classList.toggle("dim", !vis(n)); n.g.classList.toggle("sel", n.id === sel); });
+          edges.forEach(ed => { if (!ed.path) return; const shown = vis(byId[ed.a]) && vis(byId[ed.b]) && visibleTo(roles, ed.roles);
+            ed.path.classList.toggle("dim", !shown); ed.path.classList.toggle("hi", shown && (ed.a === focus || ed.b === focus)); });
+        }
+        hi();
+      },
+
+      // ── routing test
+      async simulate() {
+        this.sim.busy = true;
+        try { this.sim.result = await api("POST", "/simulate", { need: this.sim.need, roles: this.sim.role === "*" ? null : [this.sim.role, "user"] }); }
+        catch (e) { this.flash(T.unreachable.replace("{detail}", e.message), "alert-error"); }
+        finally { this.sim.busy = false; }
+      },
+
+      // ── usage and gold set
+      async loadUsage() {
+        try {
+          this.usage = await api("GET", "/stats?days=14");
+          // The history keeps the figures over all questions of each run; the split into
+          // development and held-out questions exists only for a run made on this page.
+          this.history = (await api("GET", "/eval/history")).runs || [];
+          if (!this.lastEval && this.history.length) this.lastEval = { all: this.history[this.history.length - 1] };
+        } catch (e) { this.flash(T.unreachable.replace("{detail}", e.message), "alert-error"); }
+      },
+      async runEval() {
+        this.evalBusy = true;
+        try { this.lastEval = await api("POST", "/eval"); await this.loadUsage(); }
+        catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+        finally { this.evalBusy = false; }
+      },
+
+      // ── suggestions
+      async loadSuggestions() {
+        try { this.suggestions = ((await api("GET", "/suggestions?days=28")).suggestions || []).map(x => ({ ...x, confirmed: false })); this.suggestionsLoaded = true; }
+        catch (e) { this.flash(T.unreachable.replace("{detail}", e.message), "alert-error"); }
+      },
+      async decide(s, decision) {
+        this.busy = true;
+        try {
+          const r = await api("POST", "/suggestions/" + s.id, { decision, confirm_no_personal_data: !!s.confirmed });
+          if (decision === "rejected") { this.flash(T.rejected, "alert-info"); }
+          else { await this.follow(r.job_id, T.accepted); }
+          this.suggestions = this.suggestions.filter(x => x.id !== s.id);
+        } catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+        finally { this.busy = false; }
+      },
+
+      // ── operator files
+      openFile(f) { if (!f) return; this.file = f; this.draft = f.content; this.problems = []; },
+      async checkDraft() {
+        if (!this.file) return;
+        try { this.problems = (await api("POST", "/files/" + this.file.key + "/check", { content: this.draft })).problems; }
+        catch (e) { this.problems = [e.message]; }
+      },
+      async saveFile() {
+        this.busy = true;
+        try {
+          const r = await api("PUT", "/files/" + this.file.key, { content: this.draft, revision: this.file.revision });
+          await this.follow(r.job_id, T.saved);
+        } catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+        finally { this.busy = false; }
+      },
+      // ── governance
+      carriesText(s) { return ["example_query", "gold_question", "not_covered"].includes(s.kind); },
+      async loadGovernance() {
+        try {
+          const d = await api("GET", "/governance");
+          d.models.forEach(m => { m.choice = m.tier || ""; });
+          this.gov.data = d;
+        } catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+      },
+      govHigh() { return this.gov.data ? this.gov.data.findings.filter(f => f.severity === "high" && !f.exception).length : 0; },
+      sevLabel(s) { return T["sev_" + s] || s; },
+      lbl(group, v) { return (T[group] && T[group][v]) || v || T.not_set; },
+      has(row, gap) { return row.gaps.includes(gap); },
+      excText(f) {
+        if (f.exception) return T.until.replace("{date}", f.exception.expires);
+        return f.expired_exception ? T.expired.replace("{date}", f.expired_exception.expires) : "";
+      },
+      canAccept(f) { return this.gov.data.exceptable.includes(f.code); },
+      resultLabel(r) { return { ok: T.no_action, attention: T.action_needed, not_assessable: T.not_assessable }[r] || r; },
+      editEntry(row) {
+        const g = row.governance || {};
+        this.gov.edit = row;
+        this.gov.form = { owner: g.owner || "", classification: g.classification || "", personal_data: g.personal_data || "",
+          data_subjects: [...(g.data_subjects || [])], ropa_ref: g.ropa_ref || "" };
+      },
+      async govWrite(method, path, body, after) {
+        this.gov.busy = true;
+        try {
+          const r = await api(method, "/governance" + path, { revision: this.gov.data.revision, ...body });
+          if (after) after();
+          await this.follow(r.job_id, T.saved);
+        } catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+        finally { this.gov.busy = false; }
+      },
+      saveEntry() {
+        const f = this.gov.form;
+        return this.govWrite("PUT", "/entries/" + encodeURIComponent(this.gov.edit.id), {
+          owner: f.owner, classification: f.classification || null, personal_data: f.personal_data || null,
+          data_subjects: f.data_subjects, ropa_ref: f.ropa_ref }, () => { this.gov.edit = null; });
+      },
+      confirmProposal(row) { return this.govWrite("POST", "/entries/" + encodeURIComponent(row.id) + "/confirm-proposal", {}); },
+      saveModel(m) {
+        return this.govWrite("PUT", "/models/" + m.name.split("/").map(encodeURIComponent).join("/"), { tier: m.choice || null });
+      },
+      keptExceptions() {
+        return this.gov.data.exceptions.map(x => ({ finding: x.finding, subject: x.subject, expires: x.expires,
+          reason: x.reason || null, accepted_by_role: x.accepted_by_role || null, risk_ref: x.risk_ref || null }));
+      },
+      acceptRisk(f) {
+        // Renewing starts from the exception there is for this finding and subject.
+        const old = this.gov.data.exceptions.find(x => x.finding === f.code && x.subject === f.target) || {};
+        this.gov.exc = { finding: f.code, subject: f.target, expires: "", reason: old.reason || "",
+          accepted_by_role: old.accepted_by_role || "", risk_ref: old.risk_ref || "" };
+      },
+      saveException() {
+        const x = this.gov.exc;
+        const kept = this.keptExceptions().filter(k => !(k.finding === x.finding && k.subject === x.subject));
+        return this.govWrite("PUT", "/exceptions", { exceptions: [...kept, { ...x, reason: x.reason || null,
+          accepted_by_role: x.accepted_by_role || null, risk_ref: x.risk_ref || null }] }, () => { this.gov.exc = null; });
+      },
+      removeException(i) {
+        const kept = this.keptExceptions(); kept.splice(i, 1);
+        return this.govWrite("PUT", "/exceptions", { exceptions: kept });
+      },
+
+      async follow(jobId, done) {
+        this.flash(T.job_running, "alert-info");
+        for (let i = 0; i < 300; i++) {
+          await new Promise(r => setTimeout(r, 1500));
+          const res = await fetch("/api/v1/jobs/" + jobId);
+          const job = await res.json().catch(() => ({}));
+          if (job.status === "succeeded") { this.flash(done, "alert-success", jobId); await this.load(); if (this.gov.data) await this.loadGovernance(); return; }
+          if (job.status === "failed") { this.flash(T.job_failed, "alert-error", jobId); await this.load(); if (this.gov.data) await this.loadGovernance(); return; }
+        }
+      },
+    };
+  }
+</script>
+{% endif %}
+{% endblock %}

@@ -21,6 +21,7 @@ from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_identity_admin
 from app.config import get_settings
 from app.core.ingest import display
+from app.core.knowledge_map import active as knowledge_map_active
 from app.core.nodes import is_distributed, lock_reason
 from app.core.rag import rag_active
 from app.core.settings_store import EffectiveBranding, effective_branding
@@ -113,6 +114,21 @@ def rag_enabled(context: dict[str, object]) -> bool:
 
 
 templates.env.globals["rag_enabled"] = rag_enabled
+
+
+@pass_context
+def knowledge_map_enabled(context: dict[str, object]) -> bool:
+    """Whether the core runs the knowledge map; what its sidebar entry hangs off.
+
+    A global for the same reason as `rag_enabled`."""
+    request = context.get("request")
+    resolver = get_settings
+    if isinstance(request, Request):
+        resolver = request.app.dependency_overrides.get(get_settings, get_settings)
+    return knowledge_map_active(resolver().papaia_config_dir)
+
+
+templates.env.globals["knowledge_map_enabled"] = knowledge_map_enabled
 
 
 @pass_context

@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     # ingester's web interface, which is the browser's address for the sign-in.
     qdrant_ingest_url: str = "http://qdrant-ingest:8300"
 
+    # Where this process reaches the admin API of the core's knowledge-map server, on the same
+    # network. Its bearer (`KM_ADMIN_TOKEN`) is read from the module's `.env` at request time
+    # (see app/core/knowledge_map.py). The server publishes no port; there is no browser URL.
+    knowledge_map_url: str = "http://knowledge-map-mcp:8200"
+
     # Where this process reaches LiteLLM's HTTP API, on the same network. The Models page reads
     # the served models and their usage from it; it never writes. The master key is not a
     # setting: it is read from `ai/litellm/.env` at request time like the other module secrets
