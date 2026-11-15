@@ -55,6 +55,8 @@
     // sentence that carries markup and escapes the values.
     var I18N = {
       addonFailed: {{ _("The add-on action failed: {detail}")|tojson }},
+      maintenanceActionFailed: {{ _('The action "{action}" failed &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
+      maintenanceActionFinished: {{ _('The action "{action}" finished &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
       requestRefused: {{ _("The request was refused: {detail}")|tojson }},
       stackActionFailed: {{ _('The stack action failed &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
       stackActionFinished: {{ _("The stack action finished.")|tojson }},
@@ -243,6 +245,24 @@
         _pollJob(data.job_id, () =>
           htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" })
         );
+        return true;
+      });
+    }
+
+    // addonMaintenanceAction: run an action the add-on declares, refresh the panel when the job
+    // ends and say how it went, with a link to the log: the output is often the point.
+    function addonMaintenanceAction(name, action) {
+      return _addonPost(name, "actions/" + action, {}).then(data => {
+        if (!data) return false;
+        _pollJob(data.job_id, job => {
+          htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" });
+          const values = { action: action, href: "/jobs/" + job.id };
+          if (job.status === "failed") {
+            showToast("error", fmtHtml(I18N.maintenanceActionFailed, values));
+          } else {
+            showToast("success", fmtHtml(I18N.maintenanceActionFinished, values));
+          }
+        });
         return true;
       });
     }
