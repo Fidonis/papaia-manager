@@ -9794,8 +9794,8 @@ msgstr "Gold-Set"
 msgid "Test questions with the sources that must answer them."
 msgstr "Testfragen mit den Quellen, die sie beantworten müssen."
 
-msgid "Unknown knowledge-map file."
-msgstr "Unbekannte Datei der Wissenslandkarte."
+msgid "Unknown AI map file."
+msgstr "Unbekannte Datei der KI-Landkarte."
 
 msgid "This file is a symbolic link. Edit it on the host."
 msgstr "Diese Datei ist ein symbolischer Link. Bearbeiten Sie sie auf dem Host."
@@ -9892,25 +9892,25 @@ msgstr "goldset ist nicht lesbar; bitte zuerst korrigieren."
 msgid "This suggestion carries no change."
 msgstr "Dieser Vorschlag enthält keine Änderung."
 
-msgid "The knowledge map has no admin token; run setup to generate KM_ADMIN_TOKEN."
-msgstr "Die Wissenslandkarte hat kein Admin-Token; setup erzeugt KM_ADMIN_TOKEN."
+msgid "The AI map has no admin token; run setup to generate KM_ADMIN_TOKEN."
+msgstr "Die KI-Landkarte hat kein Admin-Token; setup erzeugt KM_ADMIN_TOKEN."
 
 #, python-format
-msgid "The knowledge map server can't be reached (%(value)s)."
-msgstr "Der Server der Wissenslandkarte ist nicht erreichbar (%(value)s)."
+msgid "The AI map server can't be reached (%(value)s)."
+msgstr "Der Server der KI-Landkarte ist nicht erreichbar (%(value)s)."
 
-msgid "The knowledge map server runs without an admin API."
-msgstr "Der Server der Wissenslandkarte läuft ohne Admin-API."
+msgid "The AI map server runs without an admin API."
+msgstr "Der Server der KI-Landkarte läuft ohne Admin-API."
 
-msgid "The knowledge map server refused the admin token."
-msgstr "Der Server der Wissenslandkarte hat das Admin-Token abgelehnt."
+msgid "The AI map server refused the admin token."
+msgstr "Der Server der KI-Landkarte hat das Admin-Token abgelehnt."
 
 #, python-format
-msgid "The knowledge map server answered %(code)s %(detail)s"
-msgstr "Der Server der Wissenslandkarte antwortete %(code)s %(detail)s"
+msgid "The AI map server answered %(code)s %(detail)s"
+msgstr "Der Server der KI-Landkarte antwortete %(code)s %(detail)s"
 
-msgid "The knowledge map server sent no JSON."
-msgstr "Der Server der Wissenslandkarte hat kein JSON geschickt."
+msgid "The AI map server sent no JSON."
+msgstr "Der Server der KI-Landkarte hat kein JSON geschickt."
 
 msgid "Unknown suggestion."
 msgstr "Unbekannter Vorschlag."
@@ -10034,8 +10034,8 @@ msgstr "maßgebliche Quelle"
 msgid "\"ask there instead\""
 msgstr "„dort fragen\""
 
-msgid "The knowledge map as a layered graph: topics, sources, access paths, agents"
-msgstr "Die Wissenslandkarte als Ebenen-Graph: Themen, Quellen, Zugangswege, Agenten"
+msgid "The AI map as a layered graph: topics, sources, access paths, agents"
+msgstr "Die KI-Landkarte als Ebenen-Graph: Themen, Quellen, Zugangswege, Agenten"
 
 msgid "The map is empty: no add-on, module or operator file declares a source yet, and no MCP server is connected."
 msgstr "Die Karte ist leer: Noch kein Add-on, Modul oder Betreiber-Eintrag deklariert eine Quelle, und kein MCP-Server ist angebunden."
@@ -10337,14 +10337,14 @@ msgstr "Verantwortliche, Klassifizierung, personenbezogene Daten und Modellstufe
 msgid "There is no add-on proposal left to confirm for %(id)s."
 msgstr "Für %(id)s gibt es keinen offenen Add-on-Vorschlag mehr zu bestätigen."
 
-msgid "Knowledge map finding"
-msgstr "Befund der Wissenslandkarte"
+msgid "AI map finding"
+msgstr "Befund der KI-Landkarte"
 
-msgid "Knowledge map\nfinding"
-msgstr "Befund der\nWissenslandkarte"
+msgid "AI map\nfinding"
+msgstr "Befund der\nKI-Landkarte"
 
-msgid "a new or changed high finding of the knowledge map"
-msgstr "ein neuer oder geänderter Befund der Wissenslandkarte mit hohem Handlungsbedarf"
+msgid "a new or changed high finding of the AI map"
+msgstr "ein neuer oder geänderter Befund der KI-Landkarte mit hohem Handlungsbedarf"
 
 msgid "Confirm {tier}"
 msgstr "{tier} bestätigen"
@@ -10546,3 +10546,35 @@ msgstr "Lernmodus:"
 
 msgid "Accepted by (role, optional)"
 msgstr "Akzeptiert von (Rolle, optional)"
+
+#, python-format
+msgid "%(count)s entry is not yet classified; it has an add-on proposal."
+msgid_plural "%(count)s entries are not yet classified, %(proposed_count)s of them with an add-on proposal."
+msgstr[0] "%(count)s Eintrag ist noch nicht eingestuft; für ihn gibt es einen Vorschlag des Add-ons."
+msgstr[1] "%(count)s Einträge sind noch nicht eingestuft, für %(proposed_count)s davon gibt es einen Vorschlag des Add-ons."
+
+#, python-format
+msgid "%(count)s entry is not yet classified."
+msgid_plural "%(count)s entries are not yet classified."
+msgstr[0] "%(count)s Eintrag ist noch nicht eingestuft."
+msgstr[1] "%(count)s Einträge sind noch nicht eingestuft."
+
+msgid "{n} source"
+msgid_plural "{n} sources"
+msgstr[0] "{n} Quelle"
+msgstr[1] "{n} Quellen"
+
+msgid "{n} reference"
+msgid_plural "{n} references"
+msgstr[0] "{n} Verweis"
+msgstr[1] "{n} Verweise"
+
+msgid "{n} server"
+msgid_plural "{n} servers"
+msgstr[0] "{n} Server"
+msgstr[1] "{n} Server"
+
+msgid "{n} agent"
+msgid_plural "{n} agents"
+msgstr[0] "{n} Agent"
+msgstr[1] "{n} Agenten"

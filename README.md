@@ -171,7 +171,7 @@ administrators:
 
 **Mail.** Administrators open **Mail** (System), which has two tabs: **Notifications** (the page the menu entry opens) and **Mail Server**.
 
-**Notifications.** The first tab is where the manager tells people when something needs attention. A recipient is one email address or one webhook URL, and each recipient ticks which events it receives, in a matrix of recipients and events that saves at once. The events: a **job failed** (a job in the manager's queue ended with an error, reported when it ends); the **backup is overdue** (the newest good backup is older than the backup schedule allows, so it needs a schedule); a **service is unhealthy** (a service a check saw brought up is now stopped, unhealthy or gone, also after you stopped it in the manager, with or without “Clean up”; a check runs right after every job in the manager ends; at most once per debounce window for each service); an **update is available** (a newer papAIa release, or a newer version of an installed add-on in a catalog on disk; catalogs are refreshed by hand, so an add-on update shows up after the refresh); a **certificate is expiring** (within the lead time, among the certificates the host check sees). The check interval (default 5 minutes), the debounce (30 minutes) and the lead time (14 days) are the same for every recipient. Each event is reported once per occurrence, and the manager remembers what it reported (`manager/notifications-state.json`), so a restart sends nothing twice. Email goes through the mail relay: while the Mail Server is not set up, the tab says so and email recipients wait, and webhooks keep working. A webhook gets a JSON `POST` of `{event, severity, message, timestamp, details}`; redirects are not followed and a network error or a 5xx answer is tried once more. Its URL is kept in `manager/notifications.yaml` (mode 0600, part of the configuration directory's backups) and is never shown again after it is saved, only its host. **Send test** checks a recipient, and the tab lists what was sent lately. A notification carries no job log and no error text, only what is needed to find the job. Restores, upgrades and whole-stack actions run outside the job queue and are not reported.
+**Notifications.** The first tab is where the manager tells people when something needs attention. A recipient is one email address or one webhook URL, and each recipient ticks which events it receives, in a matrix of recipients and events that saves at once. The events: a **job failed** (a job in the manager's queue ended with an error, reported when it ends); the **backup is overdue** (the newest good backup is older than the backup schedule allows, so it needs a schedule); a **service is unhealthy** (a service a check saw brought up is now stopped, unhealthy or gone, also after you stopped it in the manager, with or without “Clean up”; a check runs right after every job in the manager ends; at most once per debounce window for each service); an **update is available** (a newer papAIa release, or a newer version of an installed add-on in a catalog on disk; catalogs are refreshed by hand, so an add-on update shows up after the refresh); a **certificate is expiring** (within the lead time, among the certificates the host check sees); an **AI map finding** (a new or changed high finding of the AI map that no exception covers, from the core's render or from the manager's check of the models against LiteLLM; only while the `knowledge-map` profile runs). The check interval (default 5 minutes), the debounce (30 minutes) and the lead time (14 days) are the same for every recipient. Each event is reported once per occurrence, and the manager remembers what it reported (`manager/notifications-state.json`), so a restart sends nothing twice. Email goes through the mail relay: while the Mail Server is not set up, the tab says so and email recipients wait, and webhooks keep working. A webhook gets a JSON `POST` of `{event, severity, message, timestamp, details}`; redirects are not followed and a network error or a 5xx answer is tried once more. Its URL is kept in `manager/notifications.yaml` (mode 0600, part of the configuration directory's backups) and is never shown again after it is saved, only its host. **Send test** checks a recipient, and the tab lists what was sent lately. A notification carries no job log and no error text, only what is needed to find the job. Restores, upgrades and whole-stack actions run outside the job queue and are not reported.
 
 **Mail Server.** The second tab sets up the stack's outbound mail relay, the optional `smtp` profile of papAIa 1.6.0 and newer. One internal relay holds the credentials of your mail server and forwards to it, and Keycloak, and add-ons that attach it, send through it. The page edits the mail server behind the relay, with the relay on or off: host, connection security (STARTTLS, TLS or none), port, login, password, sender address and sender name. The password is write-only: it is never shown, an empty field keeps the stored one, and a stored password is only used for the host, port and login it was stored with. **Save and apply** is a queued job: the core's own `setup` stores the values (so its validation, sticky values and password revision stay in one place), and while the relay is on `papaia-ctl start --profiles=smtp` recreates it and Keycloak's realm gets the relay as its mail server, so the Users page offers "email a link" from then on. With the relay off the button is **Save settings** and only stores the values. The relay is switched on and off in Settings > Modules. A job whose last step could not reach Keycloak fails with that reason instead of reporting success. **Test connection** talks to the mail server with the values in the form (greeting, STARTTLS or TLS, login) without sending a mail or saving anything, and **Send test mail** hands one message to the relay: "sent" means the relay took it, not that it arrived, because the relay queues and retries for a day. The page shows whether the relay runs and how many messages wait in its queue. Switching the relay off (in Settings > Modules) stops it, takes it out of the stack's profiles and removes the mail server it put into the realm; the settings and the password are kept unless you choose to delete them there. The page needs a core with the relay and tells you so otherwise.
 
@@ -521,6 +521,33 @@ logs or sends anywhere else; a LiteLLM that is down, or a key it refuses, is a m
 page and not an error. A reading is kept for a minute and shared between everyone who has the
 page open.
 
+**AI map.** An admin-only page at `/knowledge-map` with its own sidebar entry, shown while the
+core runs its `knowledge-map` profile (without it, the page says how to switch it on). It shows which data the AI reaches, for whom, over which access path
+and with which model. The **Map** tab draws the rendered map as a layered graph (topics,
+sources, access paths, agents) and can show it as a chosen role; the **Entries** tab lists every
+entry with all its access paths and their roles; **Findings** lists what the core's render
+reports. **Test routing** asks the map server which source would answer a question for a set
+of roles, without recording the question. **Usage** shows what the map server records (its
+learning mode, how long it keeps records and how many distinct profiles a need must come from
+before it is listed) and the gold-set runs (the **Usage & quality** tab); **Suggestions** offers refinements the map server
+mined from use, to accept or reject: a suggestion that carries text people asked is only
+accepted with the confirmation that it names no person. **Files** edits the operator files under
+`overlay/knowledge-map/` (own entries, overrides, gold set). The **Governance** tab documents
+owner, classification, personal data, data subjects and the record-of-processing reference of
+each source and the tier of each model (`overlay/knowledge-map/governance.yaml`), confirms an
+add-on's proposal or a model's suggested tier with one click, lists the agents with their model
+tier and what they reach, and shows the findings with what to change, each acceptable until a
+date; the render evaluates the rules, the page shows its results in the reader's language and
+adds a live check of the model tiers against LiteLLM. The facts can be exported as
+`facts.json` or `facts.csv` for a GRC tool, a CMDB or a wiki. Every change is a queued job that
+checks the file, writes it, renders the map and puts the previous file back when the render
+refuses it. The page reads the map from the configuration directory and the rest from the map
+server's admin API at `KNOWLEDGE_MAP_URL` (default `http://knowledge-map-mcp:8200`) with the
+bearer `KM_ADMIN_TOKEN` from `ai/knowledge-map/.env`, which it never shows, logs or sends
+anywhere else; a map server that can't be asked is a message on the page. Neither the map nor
+the page restricts data access or model use; the target systems, LiteLLM and the chat's agent
+bindings do.
+
 **Catalogs.** A catalog is a source of add-ons — a public or private Git
 repository, or a local directory — registered at runtime (not versioned in
 this repo). Each catalog is scanned for top-level `papaia-app.yaml`
@@ -842,6 +869,24 @@ GET    /api/v1/models                        # the models LiteLLM serves: type, 
 GET    /api/v1/models/usage                  # ?range=7d|30d|90d|month|custom&from=&to= (UTC days):
                                              #   totals, per day and per model; 422 for a window that
                                              #   makes no sense, 503 when LiteLLM cannot be read
+GET    /api/v1/knowledge-map                 # the rendered map: entries, findings, warnings, operator files
+GET    /api/v1/knowledge-map/server          # the map server's own view; 503 when it can't be asked
+POST   /api/v1/knowledge-map/simulate        # {need, roles?} route a question as a role set (not recorded)
+GET    /api/v1/knowledge-map/stats           # usage aggregates and what the server records
+GET    /api/v1/knowledge-map/eval/history    # the gold-set runs
+POST   /api/v1/knowledge-map/eval            # run the gold set
+GET    /api/v1/knowledge-map/suggestions     # ?days= refinements mined from use
+POST   /api/v1/knowledge-map/suggestions/{id}  # {decision: accepted|rejected, days?, confirm_no_personal_data?}
+                                             #   accepted → 202 {job_id}; 422 when the merged file fails the check
+POST   /api/v1/knowledge-map/files/{key}/check # {content} → {ok, problems}; key: sources|overrides|goldset|governance
+PUT    /api/v1/knowledge-map/files/{key}     # {content, revision} → 202 {job_id}
+GET    /api/v1/knowledge-map/governance      # sources, models, agents and findings of the Governance tab
+PUT    /api/v1/knowledge-map/governance/entries/{id}   # {revision, owner?, classification?, personal_data?,
+                                             #   data_subjects?, ropa_ref?} → 202 {job_id}
+POST   /api/v1/knowledge-map/governance/entries/{id}/confirm-proposal  # {revision} → 202 {job_id}
+PUT    /api/v1/knowledge-map/governance/models/{name}  # {revision, tier?, role?}; no tier removes it → 202
+PUT    /api/v1/knowledge-map/governance/exceptions     # {revision, exceptions} → 202 {job_id}
+GET    /api/v1/knowledge-map/governance/export/{name}  # facts.json or facts.csv
 GET    /brand/logo                           # the stored logo, for any signed-in user
 POST   /account/language                     # form fields locale (auto or a shipped language), csrf_token, next?: the
                                              #   signed-in account's own language, for every role; 303 back to the page
@@ -929,6 +974,8 @@ papaia-manager/
 │       │                   # host_health + docker_usage (host readings from the core's doctor),
 │       │                   # nodes (a distributed installation: the registry, the executors, the lock),
 │       │                   # litellm + model_usage + usage_view + charts (Models & Usage),
+│       │                   # knowledge_map + knowledge_map_client + knowledge_map_jobs +
+│       │                   # knowledge_map_governance (the AI map page),
 │       │                   # rag (optional RAG system: dashboard tile, sidebar gate, settings
 │       │                   # read from the RAG module's .env) +
 │       │                   # qdrant (REST client) + rag_collections (collections and roles),
@@ -953,6 +1000,8 @@ papaia-manager/
 │       │                   # api_config, ui_config, api_mail, ui_mail, api_notifications,
 │       │                   # ui_notifications, ui_widgets, account (the account's language),
 │       │                   # api_models, ui_models, models_deps (Models & Usage),
+│       │                   # api_knowledge_map, api_knowledge_map_governance, ui_knowledge_map,
+│       │                   # knowledge_map_deps (the AI map page),
 │       │                   # api_nodes, ui_nodes (a distributed installation),
 │       │                   # stack_guard (the refusals the configuration routes share)
 │       ├── templates/      # Jinja2 pages + HTMX partials

@@ -60,7 +60,7 @@ def write_callback(
         }
         rendered = spec.renders and km.PROFILE in modules.active(config_dir)
         if spec.renders and not rendered:
-            ctx.log("[info] the knowledge map is not switched on; the file applies at its start")
+            ctx.log("[info] the AI map is not switched on; the file applies at its start")
         if rendered:
             try:
                 await _verb(ctx, "start", _FLAG, workspace_dir=workspace_dir, config_dir=config_dir)

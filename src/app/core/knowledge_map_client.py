@@ -50,7 +50,7 @@ class MapServerClient:
     ) -> dict[str, Any]:
         if not self._token:
             raise MapServerError(
-                _("The knowledge map has no admin token; run setup to generate KM_ADMIN_TOKEN.")
+                _("The AI map has no admin token; run setup to generate KM_ADMIN_TOKEN.")
             )
         try:
             async with httpx.AsyncClient(
@@ -65,27 +65,27 @@ class MapServerClient:
                 )
         except httpx.HTTPError as exc:
             raise MapServerError(
-                _("The knowledge map server can't be reached (%(value)s).")
+                _("The AI map server can't be reached (%(value)s).")
                 % {"value": type(exc).__name__}
             ) from exc
         if response.status_code == 404 and path.startswith("/admin/api/map"):
-            raise MapServerError(_("The knowledge map server runs without an admin API."))
+            raise MapServerError(_("The AI map server runs without an admin API."))
         if response.status_code in (401, 403):
-            raise MapServerError(_("The knowledge map server refused the admin token."))
+            raise MapServerError(_("The AI map server refused the admin token."))
         if response.status_code >= 400:
             detail = ""
             with contextlib.suppress(ValueError, AttributeError):
                 detail = str(response.json().get("error") or "")
             raise MapServerError(
-                _("The knowledge map server answered %(code)s %(detail)s")
+                _("The AI map server answered %(code)s %(detail)s")
                 % {"code": response.status_code, "detail": detail}
             )
         try:
             data = response.json()
         except ValueError as exc:
-            raise MapServerError(_("The knowledge map server sent no JSON.")) from exc
+            raise MapServerError(_("The AI map server sent no JSON.")) from exc
         if not isinstance(data, dict):
-            raise MapServerError(_("The knowledge map server sent no JSON."))
+            raise MapServerError(_("The AI map server sent no JSON."))
         return data
 
     async def map(self) -> dict[str, Any]:
@@ -116,4 +116,3 @@ class MapServerClient:
             f"/admin/api/suggestions/{suggestion_id}/decision",
             json={"decision": decision},
         )
-

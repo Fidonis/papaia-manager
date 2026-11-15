@@ -226,8 +226,13 @@ async def decide(
         )
     try:
         key, content, revision = km.suggestion_change(settings.papaia_config_dir, suggestion)
+        problems = km.check(key, content.decode("utf-8"), settings.papaia_config_dir)
     except km.KnowledgeMapError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # The same check as a file saved by hand: a merged file the render would refuse is
+    # answered here, not by a failed job and its rollback.
+    if problems:
+        raise HTTPException(status_code=422, detail={"message": problems[0], "problems": problems})
 
     async def _tell_server() -> None:
         await client.decide(suggestion_id, "accepted")

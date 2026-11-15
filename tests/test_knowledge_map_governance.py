@@ -771,3 +771,54 @@ def test_enum_values_in_finding_texts_read_as_labels() -> None:
     assert model is not None
     assert "third country, contracted" in model[0]
     assert "EU-hosted" in model[1] or "EU-hosted" in model[0]
+
+
+def test_a_numeric_model_name_is_read_as_its_text() -> None:
+    # YAML reads `1.5:` as a float; the render accepts it, so the view must not fail on it.
+    document = yaml.safe_load("models:\n  1.5: {tier: local}\n  b: {tier: eu_hosted}\n")
+    models, _findings, tiers = gov.model_view(document, gov.LiveModels(()), {})
+    assert [m["name"] for m in models] == ["1.5", "b"]
+    assert tiers["1.5"] == "local"
+
+
+@pytest.mark.parametrize(
+    ("params", "english", "german"),
+    [({"count": 1, "proposed_count": 0, "entries": ["a.b"]},
+      "1 entry is not yet classified.", "1 Eintrag ist noch nicht eingestuft."),
+     ({"count": 2, "proposed_count": 0, "entries": ["a.b", "c.d"]},
+      "2 entries are not yet classified.", "2 Einträge sind noch nicht eingestuft."),
+     ({"count": 1, "proposed_count": 1, "entries": ["a.b"]},
+      "1 entry is not yet classified; it has an add-on proposal.",
+      "1 Eintrag ist noch nicht eingestuft; für ihn gibt es einen Vorschlag des Add-ons."),
+     ({"count": 3, "proposed_count": 2, "entries": ["a.b", "c.d", "e.f"]},
+      "3 entries are not yet classified, 2 of them with an add-on proposal.",
+      "3 Einträge sind noch nicht eingestuft, für 2 davon gibt es einen Vorschlag des Add-ons.")],
+)
+def test_the_open_classification_count_is_singular_or_plural(
+    params: dict[str, Any], english: str, german: str
+) -> None:
+    from app.i18n import use_locale
+
+    texts = gov.describe("classification_open", params)
+    assert texts is not None and texts[0] == english
+    with use_locale("de"):
+        texts = gov.describe("classification_open", params)
+    assert texts is not None and texts[0] == german
+
+
+def test_the_internal_host_suffixes_match_the_core() -> None:
+    assert gov.host_is_internal("models.localhost", "openai") is True
+    assert gov.host_is_internal("gpu.localdomain", "openai") is True
+
+
+def test_an_accepted_suggestion_is_checked_before_it_is_queued(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(_dir: str, _suggestion: dict[str, Any]) -> tuple[str, bytes, str]:
+        return "overrides", b"sources: [unclosed\n", "rev"
+
+    monkeypatch.setattr(km, "suggestion_change", broken)
+    res = _as(client, "admin").post(f"{_BASE}/suggestions/cccccccccccc",
+                                    json={"decision": "accepted"}, headers=_HEADERS)
+    assert res.status_code == 422
+    assert res.json()["detail"]["problems"]

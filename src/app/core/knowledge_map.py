@@ -135,7 +135,7 @@ def admin_token(config_dir: str) -> str:
 def operator_file(key: str) -> OperatorFile:
     found = _BY_KEY.get(key)
     if found is None:
-        raise KnowledgeMapError(_("Unknown knowledge-map file."))
+        raise KnowledgeMapError(_("Unknown AI map file."))
     return found
 
 

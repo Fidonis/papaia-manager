@@ -98,9 +98,9 @@ CATALOGUE: tuple[EventInfo, ...] = (
     ),
     EventInfo(
         Event.KNOWLEDGE_MAP_FINDING,
-        N_("Knowledge map finding"),
-        N_("Knowledge map\nfinding"),
-        N_("a new or changed high finding of the knowledge map"),
+        N_("AI map finding"),
+        N_("AI map\nfinding"),
+        N_("a new or changed high finding of the AI map"),
         Severity.WARNING,
     ),
 )

@@ -11,7 +11,8 @@
 </div>
 {% else %}
 
-{# Every visible text the script writes comes from here, translated on the server. #}
+{# Every visible text the script writes comes from here, translated on the server. The
+   count_* entries hold the singular and the plural form; the script fills in "{n}". #}
 <script type="application/json" id="km-i18n">{{ {
   "lane_topics": _("Topics"),
   "lane_sources": _("Sources"),
@@ -21,6 +22,10 @@
   "kind_reference": _("Reference"),
   "kind_mcp": _("Server"),
   "kind_agent": _("Agent"),
+  "count_source": [ngettext("{n} source", "{n} sources", 1), ngettext("{n} source", "{n} sources", 2)],
+  "count_reference": [ngettext("{n} reference", "{n} references", 1), ngettext("{n} reference", "{n} references", 2)],
+  "count_mcp": [ngettext("{n} server", "{n} servers", 1), ngettext("{n} server", "{n} servers", 2)],
+  "count_agent": [ngettext("{n} agent", "{n} agents", 1), ngettext("{n} agent", "{n} agents", 2)],
   "all_roles": _("all roles"),
   "roles_only": _("only for:"),
   "no_tool": _("location only, no tool"),
@@ -132,7 +137,7 @@
         </div>
         <div class="overflow-x-auto">
           <svg id="km-graph" class="km-graph block w-full min-w-[760px]" role="img"
-               aria-label="{{ _('The knowledge map as a layered graph: topics, sources, access paths, agents') }}"></svg>
+               aria-label="{{ _('The AI map as a layered graph: topics, sources, access paths, agents') }}"></svg>
         </div>
         <p x-show="!entries.length" class="text-sm opacity-60">{% trans %}The map is empty: no add-on, module or operator file declares a source yet, and no MCP server is connected.{% endtrans %}</p>
       </div>
@@ -622,7 +627,10 @@
       kindLabel(k) { return T["kind_" + k] || k; },
       kindSummary() {
         const c = {}; this.entries.forEach(e => { c[e.kind] = (c[e.kind] || 0) + 1; });
-        return Object.entries(c).map(([k, n]) => n + " " + this.kindLabel(k)).join(" · ");
+        return Object.entries(c).map(([k, n]) => {
+          const forms = T["count_" + k];
+          return forms ? forms[n === 1 ? 0 : 1].replace("{n}", n) : n + " " + this.kindLabel(k);
+        }).join(" · ");
       },
       highFindings() { return this.findings.filter(f => f.severity === "high").length; },
       sortedFindings() {

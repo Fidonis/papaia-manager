@@ -41,7 +41,7 @@ from app.core.knowledge_map import _ID_RE
 from app.core.litellm import NO_KEY, LitellmClient, LitellmError, Problem, litellm_secrets
 from app.core.model_usage import ModelEntry, parse_deployments
 from app.core.qdrant import tls_verify
-from app.i18n import N_
+from app.i18n import N_, ngettext
 from app.i18n import gettext as _
 
 TIERS = ("local", "eu_hosted", "third_country_contracted", "third_country")
@@ -68,7 +68,9 @@ EXPORTS = ("facts.json", "facts.csv")
 
 # Providers whose LiteLLM default address is on the same host (no api_base needed).
 _LOCAL_PROVIDERS = frozenset({"ollama", "ollama_chat"})
-_INTERNAL_SUFFIXES = (".local", ".internal", ".lan", ".home.arpa", ".localdomain")
+_INTERNAL_SUFFIXES = (
+    ".local", ".internal", ".lan", ".home.arpa", ".localdomain", ".localhost"
+)
 
 
 class GovernanceError(Exception):
@@ -337,7 +339,8 @@ def model_view(
     """(the model inventory, the manager's model findings, the tier each model is evaluated
     with). Which agent uses which model and the embedding model come from the render; without
     LiteLLM only those names and the ones in governance.yaml are known."""
-    declared = _mapping(document.get("models"))
+    # YAML reads a bare `1.5:` as a number; the render accepts it, so the view must too.
+    declared = {str(k): v for k, v in _mapping(document.get("models")).items()}
     embedding = str(lints_policy(rendered).get("embedding_model") or "")
     used_by: dict[str, list[str]] = {}
     for agent_id, agent in _mapping(rendered.get("agents")).items():
@@ -715,6 +718,20 @@ def _values(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _open_count(params: dict[str, Any]) -> str:
+    """The classification_open message in the singular or plural the count asks for."""
+    count = int(params.get("count") or 0)
+    if params.get("proposed_count"):
+        return ngettext(
+            "%(count)s entry is not yet classified; it has an add-on proposal.",
+            "%(count)s entries are not yet classified, %(proposed_count)s of them with an "
+            "add-on proposal.",
+            count,
+        )
+    return ngettext("%(count)s entry is not yet classified.",
+                    "%(count)s entries are not yet classified.", count)
+
+
 def describe(code: str, params: dict[str, Any]) -> tuple[str, str] | None:
     """The message and fix of a finding in the reader's language, None when the code is not
     known here or its params don't fit."""
@@ -724,6 +741,8 @@ def describe(code: str, params: dict[str, Any]) -> tuple[str, str] | None:
     values = _values(params)
     try:
         message, fix = _(texts[0]) % values, _(texts[1]) % values
+        if code == "classification_open":
+            message = _open_count(params) % values
     except (KeyError, TypeError, ValueError):
         return None
     extra = [
