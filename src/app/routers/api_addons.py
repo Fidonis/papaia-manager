@@ -141,6 +141,23 @@ def _require_compose_file(name: str, settings: Settings) -> None:
         ) % {"name": name, "path": str(path)})
 
 
+
+def _refuse_while_required(name: str, settings: Settings) -> None:
+    """409 while another active add-on requires `name` (`requires.addons`), as
+    `addon remove`/`uninstall` would refuse. papaia-ctl refuses in warn mode too (only
+    `--force` gets past it), so this does not look at the compat mode. Checked before the
+    job takes any container down: refused afterwards, the required add-on would stay active
+    but stopped, and the dependents with it."""
+    deployment = load_deployment_yaml(settings.papaia_config_dir)
+    required_by = addon_requirements.dependents(
+        name, deployment_addons_by_name(deployment), settings.papaia_workspace_dir
+    )
+    if required_by:
+        raise HTTPException(status_code=409, detail=gettext(
+            "%(name)s is required by %(dependents)s; remove those first"
+        ) % {"name": name, "dependents": ", ".join(required_by)})
+
+
 def _parse_env_file(text: str) -> dict[str, str]:
     result: dict[str, str] = {}
     for line in text.splitlines():
@@ -204,7 +221,12 @@ def _addon_summary(
         "components": components_for(config_dir, workspace_dir, name, manifest, inst, deploy_entry),
         **(
             requirements
-            or {"requirements": [], "requirements_met": True, "requirements_enforced": True}
+            or {
+                "requirements": [],
+                "requirements_met": True,
+                "requirements_enforced": True,
+                "required_by": [],
+            }
         ),
     }
 
@@ -221,6 +243,9 @@ async def list_addons(
     running = await _running_projects(settings)
 
     deployment_addons = deployment_addons_by_name(deployment)
+    required_by = addon_requirements.dependents_by_name(
+        deployment_addons, settings.papaia_workspace_dir
+    )
 
     addons: dict[str, dict[str, Any]] = {}
     seen_names: set[str] = set()
@@ -242,7 +267,8 @@ async def list_addons(
             key=resolved.key, shadowed_by=resolved.shadowed_by, is_variant=resolved.is_variant,
             requirements=addon_requirements.view(
                 resolved.manifest, deployment_addons, installed_map, settings.papaia_workspace_dir,
-                deployment,
+                deployment, name=resolved.name,
+                required_by=required_by.get(resolved.name, []),
             ),
         )
 
@@ -254,6 +280,12 @@ async def list_addons(
             addon_name, {}, inst.catalog if inst else None, inst, deploy_entry,
             running, settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
+            requirements={
+                "requirements": [],
+                "requirements_met": True,
+                "requirements_enforced": True,
+                "required_by": required_by.get(addon_name, []),
+            },
         )
 
     return list(addons.values())
@@ -340,6 +372,7 @@ async def addon_detail(
             installed_map,
             settings.papaia_workspace_dir,
             deployment,
+            name=name,
         ),
     )
     return {**summary, "manifest": manifest}
@@ -673,13 +706,16 @@ async def remove(
     verify_csrf(request)
     refuse_while_locked(settings)
     _require_compose_file(name, settings)
+    _refuse_while_required(name, settings)
     queue = _queue()
     _username = _user_id(user)
 
     async def _callback(ctx: JobContext) -> None:
         # Checked again here: an install queued ahead of this job can fail and
-        # leave the add-on without its files after the request was accepted.
+        # leave the add-on without its files after the request was accepted,
+        # or make another add-on require this one.
         _require_compose_file(name, settings)
+        _refuse_while_required(name, settings)
 
         # `papaia-ctl addon remove` only deactivates the add-on; its containers
         # keep running, and once it is inactive the page offers neither Stop nor
@@ -730,6 +766,7 @@ async def uninstall(
 ) -> dict[str, str]:
     verify_csrf(request)
     refuse_while_locked(settings)
+    _refuse_while_required(name, settings)
     queue = _queue()
     _username = _user_id(user)
     _clean = body.clean_up
@@ -737,6 +774,7 @@ async def uninstall(
     _catalog = _recorded.catalog if _recorded is not None else None
 
     async def _callback(ctx: JobContext) -> None:
+        _refuse_while_required(name, settings)
         ctx.log(f"[ctl] papaia-ctl addon uninstall {name}")
         flags = ["--clean-up"] if _clean else []
         gen = await run_addon_verb(

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
+import yaml
 
 from app.core import requirements, semver
 from app.templating import templates
@@ -181,6 +183,66 @@ def test_view_says_whether_papaia_ctl_enforces(
     assert warned["requirements_met"] is False and warned["requirements_enforced"] is False
 
 
+def _manifest_at(path: Path, manifest: dict) -> str:
+    path.mkdir(parents=True)
+    (path / "papaia-app.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    return str(path)
+
+
+def test_dependents_are_the_active_addons_that_require_it(tmp_path: Path) -> None:
+    def entry(name: str, requires: object, active: bool = True) -> dict:
+        manifest = {"name": name, "requires": {"addons": requires}}
+        return {"name": name, "active": active, "path": _manifest_at(tmp_path / name, manifest)}
+
+    deployment = {
+        "wiki": {"name": "wiki", "active": True, "path": "/nowhere"},
+        "demo": entry("demo", ["wiki", {"name": "crm", "version": ">=1.0.0"}]),
+        "other": entry("other", [{"name": "wiki", "version": "^1.0.0"}]),
+        "paused": entry("paused", ["wiki"], active=False),
+        # papaia-ctl rejects the whole field, so it counts as requiring nothing.
+        "broken": entry("broken", ["wiki", 42]),
+    }
+
+    assert requirements.dependents("wiki", deployment, str(tmp_path)) == ["demo", "other"]
+    assert requirements.dependents("crm", deployment, str(tmp_path)) == ["demo"]
+    assert requirements.dependents("demo", deployment, str(tmp_path)) == []
+
+
+def test_the_reverse_map_reads_each_manifest_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    names = [f"a{i}" for i in range(7)]
+    deployment = {
+        name: {
+            "name": name,
+            "active": True,
+            "path": _manifest_at(
+                tmp_path / name,
+                {"name": name, "requires": {"addons": [n for n in names if n != name]}},
+            ),
+        }
+        for name in names
+    }
+    reads: list[object] = []
+    original = requirements._registered_manifest
+
+    def counted(entry: Any, workspace_dir: str) -> Any:
+        reads.append(entry["name"])
+        return original(entry, workspace_dir)
+
+    monkeypatch.setattr(requirements, "_registered_manifest", counted)
+
+    by_name = requirements.dependents_by_name(deployment, str(tmp_path))
+
+    assert sorted(reads) == names
+    assert by_name["a0"] == names[1:]
+
+
+def test_view_takes_the_dependents_it_is_given(tmp_path: Path) -> None:
+    model = requirements.view({"name": "wiki"}, {}, {}, str(tmp_path), required_by=["demo"])
+    assert model["required_by"] == ["demo"]
+
+
 def test_malformed_entries_are_left_to_papaia_ctl() -> None:
     manifest = {"requires": {"addons": ["", 42, {"version": ">=1"}, "wiki"]}}
     assert requirements.required_addons(manifest) == [("wiki", None)]
@@ -220,6 +282,35 @@ def test_warn_mode_shows_the_badges_and_keeps_the_install_button() -> None:
     assert "is not installed" in html
     assert "Install the required add-ons first" not in html
     assert "installModal" in html
+
+
+def _menu(**addon: object) -> str:
+    template = templates.env.from_string(
+        '{% from "partials/_addon_controls.html" import overflow_actions, required_by_list %}'
+        "{{ required_by_list(addon) }}{{ overflow_actions(addon, addon.status, 'addonAction') }}"
+    )
+    model = {"name": "wiki", "catalog": "cat", "status": "running", "installed_version": "1.0.0"}
+    return template.render(addon={**model, **addon})
+
+
+def test_a_required_addon_offers_no_remove_or_uninstall() -> None:
+    html = _menu(required_by=["demo"], requirements_enforced=True)
+    assert 'href="/addons/demo"' in html
+    assert "Required by demo; remove those first" in html
+    assert "removeModal.showModal" not in html
+    assert "uninstallModal.showModal" not in html
+
+
+def test_remove_stays_without_dependents() -> None:
+    html = _menu(required_by=[])
+    assert "removeModal.showModal" in html
+    assert "uninstallModal.showModal" in html
+
+
+def test_warn_mode_offers_no_remove_of_a_required_addon_either() -> None:
+    html = _menu(required_by=["demo"], requirements_enforced=False)
+    assert "removeModal.showModal" not in html
+    assert "uninstallModal.showModal" not in html
 
 
 def test_met_requirements_keep_the_install_button() -> None:
