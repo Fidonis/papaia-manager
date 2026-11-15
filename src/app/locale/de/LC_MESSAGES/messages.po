@@ -9752,9 +9752,35 @@ msgstr "%(name)s ist nicht installiert"
 msgid "Install the required add-ons first"
 msgstr "Zuerst die benötigten Add-ons installieren"
 
+msgid "Maintenance actions"
+msgstr "Wartungsaktionen"
+
+#, python-format
+msgid "Run \"%(action)s\" on %(name)s? This cannot be undone."
+msgstr "„%(action)s“ für %(name)s ausführen? Das lässt sich nicht rückgängig machen."
+
+#, python-format
+msgid "Add-on %(name)s declares no action %(action)s"
+msgstr "Das Add-on %(name)s deklariert keine Aktion %(action)s"
+
+#, python-format
+msgid "action name %(action)r is not valid"
+msgstr "Aktionsname %(action)r ist ungültig"
+
 #, python-format
 msgid "The relay is off, but the realm still names it: %(value)s"
 msgstr "Das Relay ist aus, aber der Realm nennt es noch: %(value)s"
+
+msgid "Required by"
+msgstr "Benötigt von"
+
+#, python-format
+msgid "Required by %(names)s; remove those first"
+msgstr "Benötigt von %(names)s; zuerst diese entfernen"
+
+#, python-format
+msgid "%(name)s is required by %(dependents)s; remove those first"
+msgstr "%(name)s wird von %(dependents)s benötigt; zuerst diese entfernen"
 
 msgid "On a distributed installation the data and the settings stay: deleting them is not supported across nodes yet."
 msgstr "Auf einer verteilten Installation bleiben die Daten und die Einstellungen: Sie über Nodes hinweg zu löschen, wird noch nicht unterstützt."
@@ -10804,3 +10830,14 @@ msgstr "hat einen Zugangsweg"
 
 msgid "the probe finds it for every example question"
 msgstr "der Probelauf findet ihn bei jeder Beispielfrage"
+
+msgid "Add-on actions are not supported in a distributed installation"
+msgstr "Add-on-Aktionen werden in einer verteilten Installation nicht unterstützt"
+
+#, python-brace-format
+msgid "The action \"{action}\" failed &mdash; <a class=\"underline\" href=\"{href}\">view log</a>"
+msgstr "Die Aktion „{action}“ ist fehlgeschlagen &mdash; <a class=\"underline\" href=\"{href}\">Log ansehen</a>"
+
+#, python-brace-format
+msgid "The action \"{action}\" finished &mdash; <a class=\"underline\" href=\"{href}\">view log</a>"
+msgstr "Die Aktion „{action}“ ist abgeschlossen &mdash; <a class=\"underline\" href=\"{href}\">Log ansehen</a>"

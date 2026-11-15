@@ -24,7 +24,7 @@
   {% endif %}
 
   <span class="text-sm opacity-60">
-    {{ job.action }} &rarr; {{ job.target }}
+    {{ job.action }} &rarr; {{ job.target }}{% if job.action == "addon_action" and job.params.action %} &middot; {{ job.params.action }}{% endif %}
   </span>
 
   {% if job.started_at %}
