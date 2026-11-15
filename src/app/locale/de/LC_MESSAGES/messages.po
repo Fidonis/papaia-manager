@@ -10578,3 +10578,229 @@ msgid "{n} agent"
 msgid_plural "{n} agents"
 msgstr[0] "{n} Agent"
 msgstr[1] "{n} Agenten"
+
+#, python-format
+msgid "The id %(id)s is taken; choose another one."
+msgstr "Die Kennung %(id)s ist vergeben; bitte eine andere wählen."
+
+msgid "Only entries of your own can be removed; this one is declared elsewhere."
+msgstr "Nur eigene Einträge lassen sich entfernen; dieser ist anderswo deklariert."
+
+msgid "from {origin}"
+msgstr "von {origin}"
+
+msgid "Saved. The map is rendered with the entry."
+msgstr "Gespeichert. Die Landkarte wird mit dem Eintrag neu erzeugt."
+
+msgid "Removed. The map is rendered without the entry."
+msgstr "Entfernt. Die Landkarte wird ohne den Eintrag neu erzeugt."
+
+msgid "lands here"
+msgstr "landet hier"
+
+msgid "lands at {name}"
+msgstr "landet bei {name}"
+
+msgid "close call"
+msgstr "knapp"
+
+msgid "the map abstains"
+msgstr "die Landkarte enthält sich"
+
+msgid "Agents are found by their delegation text, not by questions; the probe does not apply."
+msgstr "Agenten werden über ihren Übergabetext gefunden, nicht über Fragen; der Probelauf entfällt."
+
+msgid "The embedding model can't be reached; the probe used the word-based fallback."
+msgstr "Das Embedding-Modell ist nicht erreichbar; der Probelauf hat den wortbasierten Ersatz verwendet."
+
+msgid "Editor"
+msgstr "Editor"
+
+msgid "Describe the source behind it"
+msgstr "Quelle dahinter beschreiben"
+
+msgid "New entry"
+msgstr "Neuer Eintrag"
+
+msgid "Describe"
+msgstr "Beschreiben"
+
+msgid "reset"
+msgstr "zurücksetzen"
+
+msgid "back to the declaration on save"
+msgstr "beim Speichern zurück zur Deklaration"
+
+msgid "What do you want to add?"
+msgstr "Was möchten Sie hinzufügen?"
+
+msgid "A source behind a server"
+msgstr "Eine Quelle hinter einem Server"
+
+msgid "Knowledge an assistant reaches with a tool: a wiki, a CRM, a ticket system, a document index."
+msgstr "Wissen, das ein Assistent mit einem Werkzeug erreicht: ein Wiki, ein CRM, ein Ticketsystem, ein Dokumentenindex."
+
+msgid "A place without a tool"
+msgstr "Ein Ort ohne Werkzeug"
+
+msgid "Where people look themselves: a folder, a binder, a department. The assistant names the place instead of guessing."
+msgstr "Wo Menschen selbst nachsehen: ein Ordner, ein Aktenordner, eine Abteilung. Der Assistent nennt den Ort, statt zu raten."
+
+msgid "An external agent"
+msgstr "Ein externer Agent"
+
+msgid "An assistant elsewhere that takes over a task over Agent2Agent."
+msgstr "Ein Assistent an anderer Stelle, der eine Aufgabe über Agent2Agent übernimmt."
+
+msgid "Changes are saved as an adjustment in overrides.yaml; the add-on's declaration stays as it is."
+msgstr "Änderungen werden als Anpassung in overrides.yaml gespeichert; die Deklaration des Add-ons bleibt unverändert."
+
+msgid "What is it?"
+msgstr "Was ist das?"
+
+msgid "e.g. Team calendar"
+msgstr "z. B. Teamkalender"
+
+msgid "Id"
+msgstr "Kennung"
+
+msgid "Fixed once saved. Lower case, dots and dashes."
+msgstr "Nach dem Speichern fest. Kleinbuchstaben, Punkte und Bindestriche."
+
+msgid "What is in it, and what for"
+msgstr "Was steht drin, und wofür"
+
+msgid "e.g. Appointments of all technicians: customer visits, maintenance dates, on-call duty. Not: holidays."
+msgstr "z. B. Termine aller Techniker: Kundenbesuche, Wartungstermine, Bereitschaft. Nicht: Urlaub."
+
+msgid "Write it the way a colleague would explain it. This text decides which questions land here."
+msgstr "So formulieren, wie es eine Kollegin erklären würde. Dieser Text entscheidet, welche Fragen hier landen."
+
+msgid "Where is it?"
+msgstr "Wo ist das?"
+
+msgid "e.g. Nextcloud, folder 04_Anlagen"
+msgstr "z. B. Nextcloud, Ordner 04_Anlagen"
+
+msgid "Hand over when"
+msgstr "Übergeben, wenn"
+
+msgid "e.g. the user wants an offer drafted"
+msgstr "z. B. jemand ein Angebot entworfen haben möchte"
+
+msgid "This entry is the authoritative source for the topic"
+msgstr "Dieser Eintrag ist die maßgebliche Quelle für das Thema"
+
+msgid "authoritative"
+msgstr "maßgeblich"
+
+msgid "Add a topic, Enter"
+msgstr "Thema hinzufügen, Enter"
+
+msgid "\"Authoritative\": when two entries cover the topic, this one wins (e.g. prices in the ERP, not in an old offer)."
+msgstr "„Maßgeblich“: Decken zwei Einträge das Thema ab, gewinnt dieser (z. B. Preise im ERP, nicht in einem alten Angebot)."
+
+msgid "Example questions"
+msgstr "Beispielfragen"
+
+msgid "A question someone would really ask, Enter"
+msgstr "Eine Frage, die wirklich jemand stellen würde, Enter"
+
+msgid "Three to five real questions, in the words people use. No names of persons."
+msgstr "Drei bis fünf echte Fragen, in den Worten, die man tatsächlich benutzt. Keine Personennamen."
+
+msgid "Not here, but there"
+msgstr "Nicht hier, sondern dort"
+
+msgid "e.g. holidays"
+msgstr "z. B. Urlaub"
+
+msgid "nowhere on the map"
+msgstr "nirgends auf der Landkarte"
+
+msgid "How is it reached?"
+msgstr "Wie wird es erreicht?"
+
+msgid "MCP server"
+msgstr "MCP-Server"
+
+msgid "best for (optional)"
+msgstr "am besten für (optional)"
+
+msgid "collection"
+msgstr "Collection"
+
+msgid "Add an access path"
+msgstr "Zugangsweg hinzufügen"
+
+msgid "Who may know it exists?"
+msgstr "Wer darf wissen, dass es das gibt?"
+
+msgid "Add a role, Enter"
+msgstr "Rolle hinzufügen, Enter"
+
+msgid "Everyone else"
+msgstr "Alle anderen"
+
+msgid "does not see the entry at all"
+msgstr "sehen den Eintrag gar nicht"
+
+msgid "learns that it exists and whom to ask"
+msgstr "erfahren, dass es ihn gibt und wen man fragt"
+
+msgid "This only decides what the map tells. Access to the data itself is decided by the target system."
+msgstr "Das entscheidet nur, was die Landkarte verrät. Über den Zugriff auf die Daten selbst entscheidet das Zielsystem."
+
+msgid "YAML view"
+msgstr "YAML-Ansicht"
+
+msgid "Remove entry"
+msgstr "Eintrag entfernen"
+
+msgid "Remove it from the map?"
+msgstr "Von der Landkarte entfernen?"
+
+msgid "Yes, remove"
+msgstr "Ja, entfernen"
+
+msgid "Keep"
+msgstr "Behalten"
+
+msgid "Quality"
+msgstr "Qualität"
+
+msgid "Probe"
+msgstr "Probelauf"
+
+msgid "Asks the map server where each example question would land with this entry as it stands in the form. Each question is tested without itself among the examples, so it shows whether the description carries it. Nothing is saved or recorded."
+msgstr "Fragt den Landkarten-Server, wo jede Beispielfrage mit dem Eintrag so, wie er im Formular steht, landen würde. Jede Frage wird ohne sich selbst unter den Beispielen geprüft; so zeigt sich, ob die Beschreibung sie trägt. Es wird nichts gespeichert oder aufgezeichnet."
+
+msgid "Run the probe"
+msgstr "Probelauf starten"
+
+msgid "has a name"
+msgstr "hat einen Namen"
+
+msgid "the description says what is in it (eight words or more)"
+msgstr "die Beschreibung sagt, was drin steht (acht Wörter oder mehr)"
+
+msgid "says when to hand over"
+msgstr "sagt, wann übergeben wird"
+
+msgid "has an address"
+msgstr "hat eine Adresse"
+
+msgid "has at least one topic"
+msgstr "hat mindestens ein Thema"
+
+msgid "has three example questions or more"
+msgstr "hat drei Beispielfragen oder mehr"
+
+msgid "names the place"
+msgstr "nennt den Ort"
+
+msgid "has an access path"
+msgstr "hat einen Zugangsweg"
+
+msgid "the probe finds it for every example question"
+msgstr "der Probelauf findet ihn bei jeder Beispielfrage"

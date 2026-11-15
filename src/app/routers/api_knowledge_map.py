@@ -20,6 +20,7 @@ from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
 from app.core import knowledge_map as km
+from app.core import knowledge_map_entries as entries
 from app.core.audit import write_audit_entry
 from app.core.jobs import JobQueue
 from app.core.knowledge_map_client import MapServerClient, MapServerError
@@ -49,6 +50,25 @@ class DecisionBody(BaseModel):
     # A suggestion that carries text people asked (an example, a gold question, a "not here")
     # is accepted only when the administrator confirms it names no person.
     confirm_no_personal_data: bool = False
+
+
+class EntryBody(BaseModel):
+    # The form's fields; unknown keys are dropped, see `knowledge_map_entries.clean`.
+    fields: dict[str, Any]
+    # Fields of a declared entry to give back to its declaration.
+    reset: list[str] = Field(default_factory=list, max_length=len(entries.EDITABLE))
+    revision: str = ""
+
+
+class RemoveBody(BaseModel):
+    revision: str = ""
+
+
+class ProbeBody(BaseModel):
+    fields: dict[str, Any]
+    questions: list[str] = Field(min_length=1, max_length=10)
+    # Entries the draft stands in for while probing, e.g. the server it describes.
+    replaces: list[str] = Field(default_factory=list, max_length=10)
 
 
 def _queue() -> JobQueue:
@@ -316,3 +336,152 @@ async def write_file(
         ),
     )
     return {"job_id": job.id, "status": "queued"}
+
+
+# ── one entry as a form ─────────────────────────────────────────────────────────────────────
+
+
+async def _enqueue_entry(
+    settings: Settings,
+    user: OIDCClaims,
+    key: str,
+    content: bytes,
+    revision: str,
+    *,
+    entry_id: str,
+    change: str,
+) -> dict[str, Any]:
+    username = _user_id(user)
+    job = await _queue().enqueue(
+        action=ACTION,
+        target=f"knowledge-map:{key}",
+        user=username,
+        params={"file": key, "entry": entry_id, "change": change},
+        callback=write_callback(
+            key=key,
+            content=content,
+            expected_revision=revision,
+            user=username,
+            workspace_dir=settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
+            reason=f"entry {entry_id} {change}",
+        ),
+    )
+    return {"job_id": job.id, "status": "queued", "file": key}
+
+
+def _guard(
+    settings: Settings, key: str, content: bytes, revision: str, sent: str, problems: list[str]
+) -> None:
+    """The checks every entry change passes before a job is queued: the entry itself, the
+    whole file as the file editor would check it, and the revision the page loaded."""
+    problems = problems + km.check(key, content.decode("utf-8"), settings.papaia_config_dir)
+    if problems:
+        raise HTTPException(status_code=422, detail={"message": problems[0], "problems": problems})
+    if revision != sent:
+        raise HTTPException(
+            status_code=409,
+            detail=gettext("The file changed after the page loaded it. Reload and try again."),
+        )
+
+
+@router.get("/entries/{entry_id}")
+async def entry_form(
+    entry_id: str,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """One entry as the editor shows it: fields, origin, changed fields, file revision."""
+    try:
+        return entries.form(settings.papaia_config_dir, entry_id)
+    except km.KnowledgeMapError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/entries", status_code=status.HTTP_202_ACCEPTED)
+async def create_entry(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """Add an entry of the operator's own to sources.yaml and render the map with it."""
+    verify_csrf(request)
+    body = await _body(request, EntryBody)
+    try:
+        key, content, revision, problems = entries.create(settings.papaia_config_dir, body.fields)
+    except km.KnowledgeMapError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if problems and not content:
+        raise HTTPException(status_code=422, detail={"message": problems[0], "problems": problems})
+    _guard(settings, key, content, revision, body.revision, problems)
+    return await _enqueue_entry(
+        settings,
+        user,
+        key,
+        content,
+        revision,
+        entry_id=str(body.fields.get("id")),
+        change="created",
+    )
+
+
+@router.put("/entries/{entry_id}", status_code=status.HTTP_202_ACCEPTED)
+async def update_entry(
+    entry_id: str,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """Save an entry: an own entry in sources.yaml, a declared one as an override of the
+    fields that differ (resetting a field removes it from the override)."""
+    verify_csrf(request)
+    body = await _body(request, EntryBody)
+    try:
+        key, content, revision, problems = entries.update(
+            settings.papaia_config_dir, entry_id, body.fields, body.reset
+        )
+    except km.KnowledgeMapError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _guard(settings, key, content, revision, body.revision, problems)
+    return await _enqueue_entry(
+        settings, user, key, content, revision, entry_id=entry_id, change="updated"
+    )
+
+
+@router.delete("/entries/{entry_id}", status_code=status.HTTP_202_ACCEPTED)
+async def remove_entry(
+    entry_id: str,
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """Remove an entry of the operator's own."""
+    verify_csrf(request)
+    body = await _body(request, RemoveBody)
+    try:
+        key, content, revision = entries.remove(settings.papaia_config_dir, entry_id)
+    except km.KnowledgeMapError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _guard(settings, key, content, revision, body.revision, [])
+    return await _enqueue_entry(
+        settings, user, key, content, revision, entry_id=entry_id, change="removed"
+    )
+
+
+@router.post("/entries/probe")
+async def probe_entry(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+    transport: KnowledgeMapTransport,
+) -> dict[str, Any]:
+    """Where the example questions of an unsaved entry would land. Nothing is written or
+    recorded; the map server ranks each question without it among the examples."""
+    verify_csrf(request)
+    body = await _body(request, ProbeBody)
+    draft = {"id": str(body.fields.get("id") or "draft"), **entries.clean(body.fields)}
+    draft.setdefault("system", draft["id"])
+    try:
+        return await _client(settings, transport).probe(draft, body.questions, body.replaces)
+    except MapServerError as exc:
+        raise _unavailable(exc) from exc

@@ -63,6 +63,17 @@
             "third_country_contracted": _("third country, contracted"), "third_country": _("third country")},
   "personal_data": {"none": _("no personal data"), "ordinary": _("ordinary personal data"),
                     "special": _("special categories"), "criminal": _("criminal offence data"), "unknown": _("unknown")},
+  "ed_from_declaration": _("from {origin}"),
+  "ed_changed": _("changed"),
+  "ed_saved": _("Saved. The map is rendered with the entry."),
+  "ed_removed": _("Removed. The map is rendered without the entry."),
+  "ed_lands_here": _("lands here"),
+  "ed_lands_at": _("lands at {name}"),
+  "ed_close": _("close call"),
+  "ed_abstains": _("the map abstains"),
+  "ed_not_routable": _("Agents are found by their delegation text, not by questions; the probe does not apply."),
+  "ed_degraded": _("The embedding model can't be reached; the probe used the word-based fallback."),
+  "ed_unsaved": _("Unsaved changes"),
   "subjects": {"employees": _("employees"), "applicants": _("applicants"), "customers": _("customers"),
                "suppliers": _("suppliers"), "patients": _("patients"), "minors": _("minors"), "other": _("other")}
 } | tojson }}</script>
@@ -109,6 +120,8 @@
   <div role="tablist" class="tabs tabs-bordered overflow-x-auto">
     <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='map' && 'tab-active'" @click="tab='map'">{% trans %}Map{% endtrans %}</button>
     <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='entries' && 'tab-active'" @click="tab='entries'">{% trans %}Entries{% endtrans %}</button>
+    <button type="button" role="tab" class="tab whitespace-nowrap" x-show="ed" :class="tab==='edit' && 'tab-active'" @click="tab='edit'">
+      {% trans %}Editor{% endtrans %} <span x-show="ed && edDirty()" class="badge badge-warning badge-xs ml-1">●</span></button>
     <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='findings' && 'tab-active'" @click="tab='findings'">
       {% trans %}Gaps & conflicts{% endtrans %} <span class="badge badge-sm ml-1" :class="highFindings() && 'badge-warning'" x-text="findings.length"></span></button>
     <button type="button" role="tab" class="tab whitespace-nowrap" :class="tab==='simulate' && 'tab-active'" @click="tab='simulate'">{% trans %}Test routing{% endtrans %}</button>
@@ -170,6 +183,10 @@
             <p x-show="selected.required_roles" class="text-xs opacity-70"><span class="font-semibold">{% trans %}Roles{% endtrans %}:</span> <span x-text="rolesText(selected)"></span></p>
             <p x-show="selected.delegate_when" class="text-xs"><span class="font-semibold">{% trans %}Delegate when{% endtrans %}:</span> <span x-text="selected.delegate_when"></span></p>
             <p x-show="selected.declared_by" class="text-xs opacity-60"><span>{% trans %}Declared by{% endtrans %}:</span> <span x-text="selected.declared_by"></span></p>
+            <div class="flex flex-wrap gap-2 pt-1" x-show="selected.kind && selected.kind !== 'topic'">
+              <button type="button" x-show="!selected.undeclared && selected.kind !== 'access'" class="btn btn-sm" @click="editEntry(selected.id)">{% trans %}Edit{% endtrans %}</button>
+              <button type="button" x-show="selected.undeclared" class="btn btn-primary btn-sm" @click="describeServer(selected)">{% trans %}Describe the source behind it{% endtrans %}</button>
+            </div>
           </div>
         </template>
       </div>
@@ -179,10 +196,13 @@
   {# ── entries ─────────────────────────────────────────────────────────────── #}
   <section x-show="tab==='entries'" class="card border border-base-300 bg-base-100">
     <div class="card-body gap-3 p-4">
-      <input type="search" class="input input-bordered input-sm max-w-xs" x-model="filter" placeholder="{{ _('Filter') }}">
+      <div class="flex flex-wrap items-center gap-2">
+        <input type="search" class="input input-bordered input-sm max-w-xs" x-model="filter" placeholder="{{ _('Filter') }}">
+        <button type="button" class="btn btn-primary btn-sm ml-auto" @click="newEntry()">{% trans %}New entry{% endtrans %}</button>
+      </div>
       <div class="overflow-x-auto">
         <table class="table table-sm">
-          <thead><tr><th>{% trans %}Kind{% endtrans %}</th><th>{% trans %}System{% endtrans %}</th><th>{% trans %}Access paths{% endtrans %}</th><th>{% trans %}Roles{% endtrans %}</th><th>{% trans %}Declared by{% endtrans %}</th></tr></thead>
+          <thead><tr><th>{% trans %}Kind{% endtrans %}</th><th>{% trans %}System{% endtrans %}</th><th>{% trans %}Access paths{% endtrans %}</th><th>{% trans %}Roles{% endtrans %}</th><th>{% trans %}Declared by{% endtrans %}</th><th></th></tr></thead>
           <tbody>
             <template x-for="e in filtered()" :key="e.id">
               <tr class="hover cursor-pointer" @click="selected = e; tab = 'map'; draw()">
@@ -192,12 +212,219 @@
                 <td><template x-for="p in e.access"><span class="mr-1 badge badge-outline badge-sm" x-text="p.via + (p.target ? ' · ' + p.target : '')"></span></template></td>
                 <td class="text-xs" x-text="rolesText(e)"></td>
                 <td class="text-xs opacity-70" x-text="e.declared_by"></td>
+                <td class="whitespace-nowrap text-right">
+                  <button type="button" x-show="!e.undeclared && e.kind !== 'mcp'" class="btn btn-ghost btn-xs" @click.stop="editEntry(e.id)">{% trans %}Edit{% endtrans %}</button>
+                  <button type="button" x-show="e.undeclared" class="btn btn-ghost btn-xs" @click.stop="describeServer(e)">{% trans %}Describe{% endtrans %}</button>
+                </td>
               </tr>
             </template>
           </tbody>
         </table>
       </div>
     </div>
+  </section>
+
+  {# ── entry editor ────────────────────────────────────────────────────────── #}
+  {% macro mark(key) -%}
+  <span x-show="ed.origin !== 'own' && ed.mode === 'edit'" class="ml-1 inline-flex items-center gap-1 align-middle">
+    <span x-show="!isChanged('{{ key }}')" class="badge badge-ghost badge-xs" x-text="T.ed_from_declaration.replace('{origin}', ed.declared_by)"></span>
+    <span x-show="isChanged('{{ key }}')" class="badge badge-info badge-xs" x-text="T.ed_changed"></span>
+    <button type="button" x-show="ed.overridden.includes('{{ key }}') && !ed.reset.includes('{{ key }}')" class="link text-xs" @click="resetField('{{ key }}')">{% trans %}reset{% endtrans %}</button>
+    <span x-show="ed.reset.includes('{{ key }}')" class="text-xs opacity-70">{% trans %}back to the declaration on save{% endtrans %}</span>
+  </span>
+  {%- endmacro %}
+  <section x-show="tab==='edit'" class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+    <template x-if="ed && ed.step === 'kind'">
+      <div class="card border border-base-300 bg-base-100 xl:col-span-2">
+        <div class="card-body gap-3 p-4">
+          <h3 class="font-brand text-base font-bold">{% trans %}What do you want to add?{% endtrans %}</h3>
+          <div class="grid gap-3 md:grid-cols-3">
+            <button type="button" class="rounded-box border border-base-300 p-4 text-left hover:border-primary" @click="pickKind('server')">
+              <div class="font-semibold">{% trans %}A source behind a server{% endtrans %}</div>
+              <div class="text-sm opacity-70">{% trans %}Knowledge an assistant reaches with a tool: a wiki, a CRM, a ticket system, a document index.{% endtrans %}</div></button>
+            <button type="button" class="rounded-box border border-base-300 p-4 text-left hover:border-primary" @click="pickKind('place')">
+              <div class="font-semibold">{% trans %}A place without a tool{% endtrans %}</div>
+              <div class="text-sm opacity-70">{% trans %}Where people look themselves: a folder, a binder, a department. The assistant names the place instead of guessing.{% endtrans %}</div></button>
+            <button type="button" class="rounded-box border border-base-300 p-4 text-left hover:border-primary" @click="pickKind('agent')">
+              <div class="font-semibold">{% trans %}An external agent{% endtrans %}</div>
+              <div class="text-sm opacity-70">{% trans %}An assistant elsewhere that takes over a task over Agent2Agent.{% endtrans %}</div></button>
+          </div>
+          <div><button type="button" class="btn btn-ghost btn-sm" @click="closeEditor()">{% trans %}Cancel{% endtrans %}</button></div>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="ed && ed.step === 'form'">
+      <form class="card border border-base-300 bg-base-100" @submit.prevent="saveEditor()">
+        <div class="card-body gap-5 p-4">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="badge badge-sm" x-text="kindLabel(ed.f.kind)"></span>
+            <h3 class="font-brand text-base font-bold" x-text="ed.f.system || ed.id || '…'"></h3>
+            <span x-show="ed.mode === 'edit'" class="font-mono text-xs opacity-60" x-text="ed.id"></span>
+            <span x-show="ed.origin !== 'own' && ed.mode === 'edit'" class="ml-auto text-xs opacity-70">{% trans %}Changes are saved as an adjustment in overrides.yaml; the add-on's declaration stays as it is.{% endtrans %}</span>
+          </div>
+
+          {# what is it #}
+          <fieldset class="grid gap-3 md:grid-cols-2">
+            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}What is it?{% endtrans %}</legend>
+            <label class="form-control"><span class="label-text">{% trans %}Name{% endtrans %} {{ mark('system') }}</span>
+              <input class="input input-bordered input-sm" x-model="ed.f.system" @input="autoId()" maxlength="200" required
+                     placeholder="{{ _('e.g. Team calendar') }}"></label>
+            <label class="form-control" x-show="ed.mode === 'new'"><span class="label-text">{% trans %}Id{% endtrans %}</span>
+              <input class="input input-bordered input-sm font-mono" x-model="ed.id" @input="ed.idTouched = true" maxlength="120"
+                     pattern="[a-z0-9][a-z0-9_\-]*(\.[a-z0-9_\-]+)*">
+              <span class="label-text-alt opacity-60">{% trans %}Fixed once saved. Lower case, dots and dashes.{% endtrans %}</span></label>
+            <label class="form-control md:col-span-2"><span class="label-text">{% trans %}What is in it, and what for{% endtrans %} {{ mark('coverage') }}</span>
+              <textarea class="textarea textarea-bordered textarea-sm" rows="3" x-model="ed.f.coverage" maxlength="2000"
+                        placeholder="{{ _('e.g. Appointments of all technicians: customer visits, maintenance dates, on-call duty. Not: holidays.') }}"></textarea>
+              <span class="label-text-alt opacity-60">{% trans %}Write it the way a colleague would explain it. This text decides which questions land here.{% endtrans %}</span></label>
+            <label class="form-control md:col-span-2" x-show="ed.f.kind === 'reference'"><span class="label-text">{% trans %}Where is it?{% endtrans %} {{ mark('location') }}</span>
+              <input class="input input-bordered input-sm" x-model="ed.f.location" maxlength="500" :required="ed.f.kind === 'reference'"
+                     placeholder="{{ _('e.g. Nextcloud, folder 04_Anlagen') }}"></label>
+            <label class="form-control md:col-span-2" x-show="ed.f.kind === 'agent'"><span class="label-text">{% trans %}Hand over when{% endtrans %} {{ mark('delegate_when') }}</span>
+              <input class="input input-bordered input-sm" x-model="ed.f.delegate_when" maxlength="500"
+                     placeholder="{{ _('e.g. the user wants an offer drafted') }}"></label>
+          </fieldset>
+
+          {# topics #}
+          <fieldset x-show="ed.f.kind !== 'agent'">
+            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}Topics{% endtrans %} {{ mark('topics') }}</legend>
+            <div class="flex flex-wrap gap-2">
+              <template x-for="(t, i) in ed.f.topics" :key="t.id + i">
+                <span class="badge gap-1 py-3" :class="t.sot ? 'badge-secondary' : 'badge-outline'">
+                  <span x-text="t.label"></span>
+                  <label class="flex cursor-pointer items-center gap-1 text-xs" title="{{ _('This entry is the authoritative source for the topic') }}">
+                    <input type="checkbox" class="checkbox checkbox-xs" x-model="t.sot"> {% trans %}authoritative{% endtrans %}</label>
+                  <button type="button" class="ml-1" @click="ed.f.topics.splice(i, 1)" aria-label="{{ _('Remove') }}">✕</button>
+                </span>
+              </template>
+              <input class="input input-bordered input-xs w-56" x-model="ed.newTopic" @keydown.enter.prevent="addTopic()" list="km-topic-list"
+                     placeholder="{{ _('Add a topic, Enter') }}">
+              <datalist id="km-topic-list"><template x-for="t in knownTopics()" :key="t.id"><option :value="t.label"></option></template></datalist>
+            </div>
+            <p class="mt-1 text-xs opacity-60">{% trans %}"Authoritative": when two entries cover the topic, this one wins (e.g. prices in the ERP, not in an old offer).{% endtrans %} {{ mark('source_of_truth_for') }}</p>
+          </fieldset>
+
+          {# example questions #}
+          <fieldset x-show="ed.f.kind !== 'agent'">
+            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}Example questions{% endtrans %} {{ mark('example_queries') }}</legend>
+            <ul class="space-y-1">
+              <template x-for="(q, i) in ed.f.example_queries" :key="q + i">
+                <li class="flex items-center gap-2 text-sm">
+                  <span class="flex-1" x-text="q"></span>
+                  <template x-if="probeOf(q)"><span class="badge badge-sm" :class="probeClass(probeOf(q))" x-text="probeText(probeOf(q))"></span></template>
+                  <button type="button" class="btn btn-ghost btn-xs" @click="ed.f.example_queries.splice(i, 1)" aria-label="{{ _('Remove') }}">✕</button>
+                </li>
+              </template>
+            </ul>
+            <input class="input input-bordered input-sm mt-2 w-full" x-model="ed.newQuestion" @keydown.enter.prevent="addQuestion()" maxlength="500"
+                   placeholder="{{ _('A question someone would really ask, Enter') }}">
+            <p class="mt-1 text-xs opacity-60">{% trans %}Three to five real questions, in the words people use. No names of persons.{% endtrans %}</p>
+          </fieldset>
+
+          {# not here #}
+          <fieldset x-show="ed.f.kind !== 'agent'">
+            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}Not here, but there{% endtrans %} {{ mark('not_covered') }}</legend>
+            <template x-for="(n, i) in ed.f.not_covered" :key="i">
+              <div class="mb-2 flex flex-wrap items-center gap-2">
+                <input class="input input-bordered input-sm min-w-0 flex-1" x-model="n.what" maxlength="300" placeholder="{{ _('e.g. holidays') }}">
+                <span class="opacity-60">→</span>
+                <select class="select select-bordered select-sm" x-model="n.instead">
+                  <option value="">{% trans %}nowhere on the map{% endtrans %}</option>
+                  <template x-for="e in routableOthers()" :key="e.id"><option :value="e.id" x-text="e.system" :selected="e.id === n.instead"></option></template>
+                </select>
+                <button type="button" class="btn btn-ghost btn-xs" @click="ed.f.not_covered.splice(i, 1)" aria-label="{{ _('Remove') }}">✕</button>
+              </div>
+            </template>
+            <button type="button" class="btn btn-ghost btn-xs" @click="ed.f.not_covered.push({ what: '', instead: '' })">+ {% trans %}Add{% endtrans %}</button>
+          </fieldset>
+
+          {# access #}
+          <fieldset x-show="ed.f.kind !== 'reference'">
+            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}How is it reached?{% endtrans %} {{ mark('access') }}</legend>
+            <template x-for="(p, i) in ed.f.access" :key="i">
+              <div class="mb-2 grid gap-2 rounded-box border border-base-300 p-2 md:grid-cols-[110px_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <select class="select select-bordered select-sm" x-model="p.via">
+                  <option value="mcp">MCP</option><option value="rag">RAG</option><option value="a2a">A2A</option><option value="none">{% trans %}none{% endtrans %}</option>
+                </select>
+                <input class="input input-bordered input-sm" x-model="p.target" list="km-target-list" :required="p.via !== 'none'"
+                       :placeholder="p.via === 'a2a' ? 'https://…' : (p.via === 'rag' ? 'Qdrant' : {{ _('MCP server')|tojson|forceescape }})">
+                <input class="input input-bordered input-sm" x-model="p.best_for" maxlength="300" placeholder="{{ _('best for (optional)') }}">
+                <button type="button" class="btn btn-ghost btn-xs" @click="ed.f.access.splice(i, 1)" aria-label="{{ _('Remove') }}">✕</button>
+                <input x-show="p.via === 'rag'" class="input input-bordered input-sm md:col-span-2" x-model="p.collection" placeholder="{{ _('collection') }}">
+              </div>
+            </template>
+            <datalist id="km-target-list"><template x-for="t in knownTargets()" :key="t"><option :value="t"></option></template></datalist>
+            <button type="button" class="btn btn-ghost btn-xs" @click="ed.f.access.push({ via: 'mcp', target: '' })">+ {% trans %}Add an access path{% endtrans %}</button>
+          </fieldset>
+
+          {# roles #}
+          <fieldset>
+            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}Who may know it exists?{% endtrans %} {{ mark('required_roles') }}</legend>
+            <div class="flex flex-wrap items-center gap-2">
+              <span x-show="!ed.f.required_roles.length" class="badge badge-ghost" x-text="T.all_roles"></span>
+              <template x-for="(r, i) in ed.f.required_roles" :key="r">
+                <span class="badge badge-outline gap-1 py-3"><span x-text="r"></span>
+                  <button type="button" @click="ed.f.required_roles.splice(i, 1)" aria-label="{{ _('Remove') }}">✕</button></span>
+              </template>
+              <input class="input input-bordered input-xs w-40" x-model="ed.newRole" @keydown.enter.prevent="addRole()" list="km-role-list" placeholder="{{ _('Add a role, Enter') }}">
+              <datalist id="km-role-list"><template x-for="r in allRoles()" :key="r"><option :value="r"></option></template></datalist>
+            </div>
+            <label class="form-control mt-2 max-w-md" x-show="ed.f.required_roles.length"><span class="label-text">{% trans %}Everyone else{% endtrans %} {{ mark('on_denied') }}</span>
+              <select class="select select-bordered select-sm" x-model="ed.f.on_denied">
+                <option value="hidden">{% trans %}does not see the entry at all{% endtrans %}</option>
+                <option value="acknowledge">{% trans %}learns that it exists and whom to ask{% endtrans %}</option>
+              </select></label>
+            <p class="mt-1 text-xs opacity-60">{% trans %}This only decides what the map tells. Access to the data itself is decided by the target system.{% endtrans %}</p>
+          </fieldset>
+
+          <div x-show="ed.problems.length" class="alert alert-error text-sm"><ul class="list-disc pl-4"><template x-for="p in ed.problems"><li x-text="p"></li></template></ul></div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="btn btn-primary btn-sm" :disabled="ed.busy">{% trans %}Save and render{% endtrans %}</button>
+            <button type="button" class="btn btn-ghost btn-sm" @click="closeEditor()">{% trans %}Cancel{% endtrans %}</button>
+            <button type="button" class="btn btn-ghost btn-sm" @click="ed.showYaml = !ed.showYaml">{% trans %}YAML view{% endtrans %}</button>
+            <template x-if="ed.origin === 'own' && ed.mode === 'edit'">
+              <span class="ml-auto flex items-center gap-2">
+                <button type="button" x-show="!ed.confirmDelete" class="btn btn-ghost btn-sm text-error" @click="ed.confirmDelete = true">{% trans %}Remove entry{% endtrans %}</button>
+                <span x-show="ed.confirmDelete" class="text-sm">{% trans %}Remove it from the map?{% endtrans %}</span>
+                <button type="button" x-show="ed.confirmDelete" class="btn btn-error btn-sm" :disabled="ed.busy" @click="removeEditor()">{% trans %}Yes, remove{% endtrans %}</button>
+                <button type="button" x-show="ed.confirmDelete" class="btn btn-ghost btn-sm" @click="ed.confirmDelete = false">{% trans %}Keep{% endtrans %}</button>
+              </span>
+            </template>
+          </div>
+          <div x-show="ed.showYaml">
+            <p class="text-xs opacity-60" x-text="ed.origin === 'own' || ed.mode === 'new' ? 'overlay/knowledge-map/sources.yaml' : 'overlay/knowledge-map/overrides.yaml'"></p>
+            <pre class="max-h-80 overflow-auto rounded-box bg-base-200 p-3 text-xs" x-text="yamlPreview()"></pre>
+          </div>
+        </div>
+      </form>
+    </template>
+
+    <template x-if="ed && ed.step === 'form'">
+      <aside class="card h-fit border border-base-300 bg-base-100 xl:sticky xl:top-4">
+        <div class="card-body gap-3 p-4 text-sm">
+          <h3 class="font-brand font-bold">{% trans %}Quality{% endtrans %}</h3>
+          <ul class="space-y-1">
+            <template x-for="c in qualityChecks()" :key="c.label">
+              <li class="flex items-start gap-2"><span x-text="c.ok ? '✓' : '○'" :class="c.ok ? 'text-success' : 'opacity-50'"></span><span x-text="c.label"></span></li>
+            </template>
+          </ul>
+          <h3 class="font-brand font-bold">{% trans %}Probe{% endtrans %}</h3>
+          <p class="opacity-70">{% trans %}Asks the map server where each example question would land with this entry as it stands in the form. Each question is tested without itself among the examples, so it shows whether the description carries it. Nothing is saved or recorded.{% endtrans %}</p>
+          <button type="button" class="btn btn-sm" :disabled="ed.probeBusy || !ed.f.example_queries.length || ed.f.kind === 'agent'" @click="runProbe()">{% trans %}Run the probe{% endtrans %}</button>
+          <p x-show="ed.probe && ed.probe.degraded" class="text-xs text-warning" x-text="T.ed_degraded"></p>
+          <p x-show="ed.f.kind === 'agent'" class="text-xs opacity-60" x-text="T.ed_not_routable"></p>
+          <template x-if="ed.probe && ed.probe.results">
+            <ul class="space-y-2">
+              <template x-for="r in ed.probe.results" :key="r.question">
+                <li><div x-text="r.question"></div><span class="badge badge-sm" :class="probeClass(r)" x-text="probeText(r)"></span></li>
+              </template>
+            </ul>
+          </template>
+        </div>
+      </aside>
+    </template>
   </section>
 
   {# ── findings ────────────────────────────────────────────────────────────── #}
@@ -587,7 +814,9 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const d = data.detail;
-        throw new Error(typeof d === "string" ? d : (d && d.message) || res.statusText);
+        const err = new Error(typeof d === "string" ? d : (d && d.message) || res.statusText);
+        if (d && Array.isArray(d.problems)) err.problems = d.problems;
+        throw err;
       }
       return data;
     }
@@ -609,6 +838,7 @@
       suggestions: [], suggestionsLoaded: false, busy: false,
       file: null, draft: "", problems: [], message: "", messageClass: "", jobLink: "",
       gov: { data: null, sub: "findings", edit: null, form: {}, exc: null, busy: false },
+      ed: null,
 
       async start() {
         await this.load();
@@ -890,6 +1120,176 @@
       removeException(i) {
         const kept = this.keptExceptions(); kept.splice(i, 1);
         return this.govWrite("PUT", "/exceptions", { exceptions: kept });
+      },
+
+      // ── entry editor: one entry as a form, saved as sources.yaml or overrides.yaml
+      blankForm() {
+        return { kind: "source", system: "", coverage: "", location: "", delegate_when: "", topics: [], example_queries: [],
+          not_covered: [], access: [], required_roles: [], on_denied: "hidden", uses: [], counter_examples: [] };
+      },
+      toForm(fields) {
+        const f = { ...this.blankForm(), ...JSON.parse(JSON.stringify(fields || {})) };
+        const sot = f.source_of_truth_for || [];
+        f.topics = (f.topics || []).map(t => typeof t === "string" ? { id: t, label: t } : t)
+          .map(t => ({ ...t, label: t.label || t.id, sot: sot.includes(t.id) }));
+        f.not_covered = (f.not_covered || []).map(n => ({ what: n.what || "", instead: n.instead || "" }));
+        f.access = (f.access || []).map(p => ({ ...p }));
+        delete f.source_of_truth_for;
+        return f;
+      },
+      fieldsOut() {
+        const f = this.ed.f;
+        const out = { kind: f.kind, system: f.system, coverage: f.coverage, required_roles: f.required_roles,
+          on_denied: f.required_roles.length ? f.on_denied : "hidden" };
+        if (f.kind === "reference") { out.location = f.location; }
+        if (f.kind === "agent") { out.delegate_when = f.delegate_when; out.uses = f.uses; }
+        if (f.kind !== "reference") out.access = f.access.map(p => { const c = { ...p }; if (c.via !== "rag") delete c.collection; return c; });
+        if (f.kind !== "agent") {
+          out.topics = f.topics.map(t => { const c = { ...t }; delete c.sot; return c; });
+          out.source_of_truth_for = f.topics.filter(t => t.sot).map(t => t.id);
+          out.example_queries = f.example_queries;
+          out.not_covered = f.not_covered.filter(n => n.what.trim());
+          out.counter_examples = f.counter_examples;
+        }
+        if (this.ed.mode === "new") out.id = this.ed.id;
+        return out;
+      },
+      openEditor(state) {
+        this.ed = { step: "form", mode: "edit", id: "", origin: "own", declared_by: "", overridden: [], reset: [], revision: "",
+          f: this.blankForm(), initial: "", replaces: [], newTopic: "", newQuestion: "", newRole: "", probe: null,
+          probeBusy: false, busy: false, confirmDelete: false, showYaml: false, problems: [], idTouched: false, ...state };
+        this.ed.initial = JSON.stringify(this.fieldsOut());
+        this.tab = "edit";
+      },
+      async editEntry(id) {
+        if (this.ed && this.edDirty() && !this.edDiscardOk()) return;
+        try {
+          const d = await api("GET", "/entries/" + encodeURIComponent(id));
+          this.openEditor({ mode: "edit", id: d.id, origin: d.origin, declared_by: d.declared_by, overridden: d.overridden,
+            revision: d.revision, f: this.toForm(d.fields) });
+        } catch (e) { this.flash(T.error.replace("{detail}", e.message), "alert-error"); }
+      },
+      async newEntry(preset) {
+        if (this.ed && this.edDirty() && !this.edDiscardOk()) return;
+        let revision = "";
+        try { revision = (this.files.find(f => f.key === "sources") || {}).revision || ""; } catch (e) { /* no file yet */ }
+        this.openEditor({ mode: "new", step: preset ? "form" : "kind", revision, ...(preset || {}) });
+      },
+      describeServer(e) {
+        const target = ((e.access || [])[0] || {}).target || e.system;
+        this.newEntry({ f: this.toForm({ kind: "source", system: e.system, access: [{ via: "mcp", target }],
+          required_roles: e.required_roles || [] }), replaces: [e.id] });
+        this.$nextTick(() => this.autoId());
+      },
+      pickKind(k) {
+        const f = this.blankForm();
+        if (k === "server") f.access = [{ via: "mcp", target: "" }];
+        if (k === "place") f.kind = "reference";
+        if (k === "agent") { f.kind = "agent"; f.access = [{ via: "a2a", target: "" }]; }
+        this.ed.f = f; this.ed.step = "form"; this.ed.initial = JSON.stringify(this.fieldsOut());
+      },
+      // A discarded draft is asked about in the page, never with a browser dialog.
+      edDiscardOk() { if (this.ed.discardArmed) return true; this.ed.discardArmed = true; this.tab = "edit";
+        this.flash(T.ed_unsaved, "alert-warning"); return false; },
+      edDirty() { return !!this.ed && this.ed.step === "form" && (JSON.stringify(this.fieldsOut()) !== this.ed.initial || this.ed.reset.length > 0); },
+      closeEditor() { this.ed = null; this.tab = "entries"; },
+      autoId() {
+        if (!this.ed || this.ed.mode !== "new" || this.ed.idTouched) return;
+        const slug = (this.ed.f.system || "").toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+          .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+        const prefix = { reference: "place", agent: "agent" }[this.ed.f.kind] || "source";
+        this.ed.id = slug ? prefix + "." + slug : "";
+      },
+      isChanged(key) {
+        if (this.ed.reset.includes(key)) return false;
+        if (this.ed.overridden.includes(key)) return true;
+        const now = this.fieldsOut(), then = JSON.parse(this.ed.initial);
+        return JSON.stringify(now[key]) !== JSON.stringify(then[key]);
+      },
+      resetField(key) { this.ed.reset.push(key); },
+      addTopic() {
+        const label = this.ed.newTopic.trim(); if (!label) return;
+        const known = this.knownTopics().find(t => t.label.toLowerCase() === label.toLowerCase());
+        const id = known ? known.id : label.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        if (id && !this.ed.f.topics.some(t => t.id === id)) this.ed.f.topics.push({ id, label: known ? known.label : label, sot: false });
+        this.ed.newTopic = "";
+      },
+      addQuestion() { const q = this.ed.newQuestion.trim(); if (q && !this.ed.f.example_queries.includes(q)) this.ed.f.example_queries.push(q); this.ed.newQuestion = ""; },
+      addRole() { const r = this.ed.newRole.trim(); if (r && !this.ed.f.required_roles.includes(r)) this.ed.f.required_roles.push(r); this.ed.newRole = ""; },
+      knownTopics() { const m = new Map(); this.entries.forEach(e => (e.topics || []).forEach(t => m.set(t.id, t))); return [...m.values()]; },
+      knownTargets() { const s = new Set(); this.entries.forEach(e => (e.access || []).forEach(p => { if (p.target) s.add(p.target); })); return [...s].sort(); },
+      routableOthers() { return this.entries.filter(e => (e.kind === "source" || e.kind === "reference") && e.id !== this.ed.id); },
+      qualityChecks() {
+        const f = this.ed.f, words = (f.coverage || "").trim().split(/\s+/).filter(Boolean).length;
+        const checks = [
+          { ok: !!f.system.trim(), label: {{ _('has a name')|tojson }} },
+          { ok: words >= 8, label: {{ _('the description says what is in it (eight words or more)')|tojson }} },
+        ];
+        if (f.kind === "agent") {
+          checks.push({ ok: !!f.delegate_when.trim(), label: {{ _('says when to hand over')|tojson }} });
+          checks.push({ ok: f.access.some(p => p.target), label: {{ _('has an address')|tojson }} });
+          return checks;
+        }
+        checks.push({ ok: f.topics.length > 0, label: {{ _('has at least one topic')|tojson }} });
+        checks.push({ ok: f.example_queries.length >= 3, label: {{ _('has three example questions or more')|tojson }} });
+        checks.push(f.kind === "reference" ? { ok: !!f.location.trim(), label: {{ _('names the place')|tojson }} }
+          : { ok: f.access.some(p => p.target), label: {{ _('has an access path')|tojson }} });
+        checks.push({ ok: !!(this.ed.probe && this.ed.probe.results && this.ed.probe.results.every(r => r.draft_place === 0)),
+          label: {{ _('the probe finds it for every example question')|tojson }} });
+        return checks;
+      },
+      probeOf(q) { return this.ed.probe && this.ed.probe.results ? this.ed.probe.results.find(r => r.question === q) : null; },
+      probeClass(r) { if (r.draft_place === 0) return r.margin !== null && r.margin < 0.1 ? "badge-warning" : "badge-success"; return "badge-error"; },
+      probeText(r) {
+        if (r.abstention) return T.ed_abstains;
+        if (r.draft_place === 0) return r.margin !== null && r.margin < 0.1 ? T.ed_lands_here + " · " + T.ed_close : T.ed_lands_here;
+        const top = (r.ranked || [])[0];
+        return T.ed_lands_at.replace("{name}", top ? (top.system || this.nameOf(top.source_id)) : "—");
+      },
+      async runProbe() {
+        this.ed.probeBusy = true;
+        const fields = { ...this.fieldsOut(), id: this.ed.id || "draft" };
+        try { this.ed.probe = await api("POST", "/entries/probe", { fields, questions: this.ed.f.example_queries.slice(0, 10), replaces: this.ed.replaces }); }
+        catch (e) { this.flash(T.unreachable.replace("{detail}", e.message), "alert-error"); }
+        finally { this.ed.probeBusy = false; }
+      },
+      yamlPreview() {
+        const out = this.fieldsOut();
+        const clean = o => Array.isArray(o) ? o.map(clean).filter(v => v !== "" && !(Array.isArray(v) && !v.length))
+          : (o && typeof o === "object") ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, clean(v)])
+              .filter(([k, v]) => v !== "" && v !== undefined && !(Array.isArray(v) && !v.length) && !(k === "on_denied" && v === "hidden") && !(k === "kind" && v === "source")))
+          : o;
+        const y = (v, ind) => {
+          const pad = "  ".repeat(ind);
+          if (Array.isArray(v)) return v.map(x => (x && typeof x === "object") ? pad + "- " + y(x, ind + 1).trimStart() : pad + "- " + JSON.stringify(x)).join("\n");
+          if (v && typeof v === "object") return Object.entries(v).map(([k, x]) => (x && typeof x === "object") ? pad + k + ":\n" + y(x, ind + 1) : pad + k + ": " + JSON.stringify(x)).join("\n");
+          return pad + JSON.stringify(v);
+        };
+        if (this.ed.origin === "own" || this.ed.mode === "new") return "sources:\n" + y([{ id: this.ed.id, ...clean(out) }], 1);
+        const then = JSON.parse(this.ed.initial), patch = {};
+        Object.keys(out).forEach(k => { if (JSON.stringify(out[k]) !== JSON.stringify(then[k]) && !this.ed.reset.includes(k)) patch[k] = out[k]; });
+        return "sources:\n  " + this.ed.id + ":\n" + (Object.keys(patch).length ? y(patch, 2) : "    {}");
+      },
+      async saveEditor() {
+        this.ed.busy = true; this.ed.problems = [];
+        try {
+          const body = { fields: this.fieldsOut(), reset: this.ed.reset, revision: this.ed.revision };
+          const r = this.ed.mode === "new" ? await api("POST", "/entries", body)
+            : await api("PUT", "/entries/" + encodeURIComponent(this.ed.id), body);
+          const id = this.ed.id;
+          this.ed = null; this.tab = "entries";
+          await this.follow(r.job_id, T.ed_saved);
+          this.selected = this.entries.find(e => e.id === id) || null;
+        } catch (e) { if (this.ed) { this.ed.problems = e.problems || [e.message]; } }
+        finally { if (this.ed) this.ed.busy = false; }
+      },
+      async removeEditor() {
+        this.ed.busy = true;
+        try {
+          const r = await api("DELETE", "/entries/" + encodeURIComponent(this.ed.id), { revision: this.ed.revision });
+          this.ed = null; this.selected = null; this.tab = "entries";
+          await this.follow(r.job_id, T.ed_removed);
+        } catch (e) { this.ed.problems = [e.message]; this.ed.busy = false; }
       },
 
       async follow(jobId, done) {

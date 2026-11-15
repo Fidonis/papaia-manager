@@ -531,7 +531,15 @@ of roles, without recording the question. **Usage** shows what the map server re
 learning mode, how long it keeps records and how many distinct profiles a need must come from
 before it is listed) and the gold-set runs (the **Usage & quality** tab); **Suggestions** offers refinements the map server
 mined from use, to accept or reject: a suggestion that carries text people asked is only
-accepted with the confirmation that it names no person. **Files** edits the operator files under
+accepted with the confirmation that it names no person. **New entry** and **Edit** open an
+entry as a form (what it is, topics and which of them it is authoritative for, example
+questions, "not here, but there", access paths, who may know it exists) with a quality checklist
+and a probe that asks the map server where each example question would land with the entry as
+it stands in the form, each question tested without itself among the examples; nothing is
+saved or recorded by the probe. An entry of your own is saved in `sources.yaml` and can be
+removed; an entry an add-on, a module or the inventory declares is saved as an override of
+only the fields that differ, each changed field marked and resettable to the declaration. An
+undescribed MCP server opens as a new entry for the source behind it. **Files** edits the operator files under
 `overlay/knowledge-map/` (own entries, overrides, gold set). The **Governance** tab documents
 owner, classification, personal data, data subjects and the record-of-processing reference of
 each source and the tier of each model (`overlay/knowledge-map/governance.yaml`), confirms an
@@ -878,6 +886,11 @@ POST   /api/v1/knowledge-map/eval            # run the gold set
 GET    /api/v1/knowledge-map/suggestions     # ?days= refinements mined from use
 POST   /api/v1/knowledge-map/suggestions/{id}  # {decision: accepted|rejected, days?, confirm_no_personal_data?}
                                              #   accepted → 202 {job_id}; 422 when the merged file fails the check
+GET    /api/v1/knowledge-map/entries/{id}      # one entry as a form: fields, origin, changed fields, revision
+POST   /api/v1/knowledge-map/entries           # {fields, revision} a new own entry → 202 {job_id}
+PUT    /api/v1/knowledge-map/entries/{id}      # {fields, reset?, revision} own: sources.yaml, declared: override → 202
+DELETE /api/v1/knowledge-map/entries/{id}      # {revision} an own entry → 202 {job_id}
+POST   /api/v1/knowledge-map/entries/probe     # {fields, questions, replaces?} where the questions would land (not saved)
 POST   /api/v1/knowledge-map/files/{key}/check # {content} → {ok, problems}; key: sources|overrides|goldset|governance
 PUT    /api/v1/knowledge-map/files/{key}     # {content, revision} → 202 {job_id}
 GET    /api/v1/knowledge-map/governance      # sources, models, agents and findings of the Governance tab
@@ -975,6 +988,7 @@ papaia-manager/
 │       │                   # nodes (a distributed installation: the registry, the executors, the lock),
 │       │                   # litellm + model_usage + usage_view + charts (Models & Usage),
 │       │                   # knowledge_map + knowledge_map_client + knowledge_map_jobs +
+│       │                   # knowledge_map_entries (the entry editor) +
 │       │                   # knowledge_map_governance (the AI map page),
 │       │                   # rag (optional RAG system: dashboard tile, sidebar gate, settings
 │       │                   # read from the RAG module's .env) +

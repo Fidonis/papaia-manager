@@ -146,6 +146,11 @@ class FakeMapServer:
                 "totals": {"requests": 12, "abstention_rate": 0.25},
                 "top_sources": {"wiki.main": 9}, "unmatched": [],
                 "telemetry": TELEMETRY})
+        if path == "/admin/api/probe":
+            return httpx.Response(200, json={"routable": True, "degraded": False, "results": [
+                {"question": q, "draft_place": 0, "margin": 0.2, "abstention": False,
+                 "ranked": [{"source_id": body["entry"]["id"], "confidence": 0.7}]}
+                for q in body["questions"]]})
         if path == "/admin/api/eval":
             return httpx.Response(200, json={"all": {"hit_at_1": 1.0}})
         return httpx.Response(404, json={"error": "not_found"})

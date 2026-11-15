@@ -153,6 +153,8 @@ papaia-manager/
 │       │   │                   #   compare-and-swap write, history), applying a suggestion
 │       │   ├── knowledge_map_client.py # The map server's admin API (`KNOWLEDGE_MAP_URL`, bearer
 │       │   │                   #   `KM_ADMIN_TOKEN` read at request time); failures as messages
+│       │   ├── knowledge_map_entries.py # The entry editor: one entry as a form, saved into
+│       │   │                   #   sources.yaml (own) or as an override of the changed fields (declared)
 │       │   ├── knowledge_map_jobs.py # The job behind every change: write, render via `start`, roll back
 │       │   │                   #   when the render refuses, tell the server about an accepted suggestion
 │       │   ├── knowledge_map_governance.py # The Governance tab: governance.yaml (shape check, edits,
@@ -202,7 +204,7 @@ papaia-manager/
 │       │   ├── ui_models.py    # /models page and its /partials/models body
 │       │   ├── models_deps.py  # The transport every call to LiteLLM goes through (tests replace it)
 │       │   ├── api_knowledge_map.py # /api/v1/knowledge-map — the map, routing test, usage, gold set,
-│       │   │                   #   suggestions, operator files
+│       │   │                   #   suggestions, operator files, the entry editor and its probe
 │       │   ├── api_knowledge_map_governance.py # /api/v1/knowledge-map/governance — the Governance tab and
 │       │   │                   #   the fact export
 │       │   ├── ui_knowledge_map.py # /knowledge-map page

@@ -94,6 +94,16 @@ class MapServerClient:
     async def simulate(self, need: str, roles: list[str] | None) -> dict[str, Any]:
         return await self._call("POST", "/admin/api/simulate", json={"need": need, "roles": roles})
 
+    async def probe(
+        self, entry: dict[str, Any], questions: list[str], replaces: list[str]
+    ) -> dict[str, Any]:
+        """Where each question would land if `entry` (not saved) were part of the map."""
+        return await self._call(
+            "POST",
+            "/admin/api/probe",
+            json={"entry": entry, "questions": questions, "replaces": replaces},
+        )
+
     async def stats(self, days: int) -> dict[str, Any]:
         return await self._call("GET", "/admin/api/stats", params={"days": days})
 
