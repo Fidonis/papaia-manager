@@ -327,17 +327,29 @@ def test_an_inactive_dependent_does_not_hold_the_add_on(
     assert _remove(client).status_code == 202
 
 
-def test_warn_mode_lets_the_remove_through(
+@pytest.mark.parametrize("verb", [_remove, _uninstall])
+@pytest.mark.parametrize(("mode", "env"), [("dev", None), (None, "warn")])
+def test_warn_mode_refuses_as_well(
     client: TestClient,
     queue: _FakeQueue,
     addon_dir: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    verb: Any,
+    mode: str | None,
+    env: str | None,
 ) -> None:
-    monkeypatch.delenv("PAPAIA_COMPAT_MODE", raising=False)
-    _add_dependent(tmp_path, mode="dev")
+    """papaia-ctl's `addon-dependents` ignores the compat mode: only `--force` gets past it."""
+    if env is None:
+        monkeypatch.delenv("PAPAIA_COMPAT_MODE", raising=False)
+    else:
+        monkeypatch.setenv("PAPAIA_COMPAT_MODE", env)
+    _add_dependent(tmp_path, mode=mode)
 
-    assert _remove(client).status_code == 202
+    response = verb(client)
+
+    assert response.status_code == 409
+    assert queue.enqueued == []
 
 
 def test_the_job_stops_nothing_when_a_dependent_appeared_meanwhile(

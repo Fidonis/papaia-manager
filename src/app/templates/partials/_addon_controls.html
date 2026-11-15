@@ -19,21 +19,21 @@
 {% from "partials/_env_fields.html" import env_input %}
 {% from "partials/_actions.html" import overflow_menu %}
 
-{# The add-ons this one requires (`requires.addons`) and whether each is there. papaia-ctl
-   refuses the install while one is missing or too old; this shows it before the click. #}
 {# The active add-ons that require this one: papaia-ctl refuses Remove and Uninstall while
    one is there. #}
-{% macro required_by_list(addon, compact=False) %}
+{% macro required_by_list(addon) %}
   {% if addon.required_by %}
-  <div class="flex flex-wrap items-center gap-1{% if not compact %} text-sm{% endif %}">
-    <span class="opacity-60 {% if compact %}text-xs{% endif %}">{% trans %}Required by{% endtrans %}</span>
+  <div class="flex flex-wrap items-center gap-1 text-sm">
+    <span class="opacity-60">{% trans %}Required by{% endtrans %}</span>
     {% for other in addon.required_by %}
-      <a href="/addons/{{ other }}" class="badge badge-info badge-outline {% if compact %}badge-xs{% else %}badge-sm{% endif %}">{{ other }}</a>
+      <a href="/addons/{{ other }}" class="badge badge-info badge-outline badge-sm">{{ other }}</a>
     {% endfor %}
   </div>
   {% endif %}
 {% endmacro %}
 
+{# The add-ons this one requires (`requires.addons`) and whether each is there. papaia-ctl
+   refuses the install while one is missing or too old; this shows it before the click. #}
 {% macro requirements_list(addon, compact=False) %}
   {% if addon.requirements %}
   <div class="flex flex-wrap items-center gap-1{% if not compact %} text-sm{% endif %}">
@@ -115,8 +115,8 @@
   {% if wants_upgrade %}
   <li><a href="/addons/{{ addon.name }}/upgrade">{% trans %}Review upgrade{% endtrans %}</a></li>
   {% endif %}
-  {# papaia-ctl refuses both while an active add-on requires this one (warn mode excepted). #}
-  {% set held = addon.required_by and addon.requirements_enforced is not false %}
+  {# papaia-ctl refuses both while an active add-on requires this one, in warn mode too. #}
+  {% set held = addon.required_by %}
   {% set held_tip = _('Required by %(names)s; remove those first', names=(addon.required_by or [])|join(', ')) %}
   {% if s in ("installed", "inactive", "running") %}
   {% if held %}

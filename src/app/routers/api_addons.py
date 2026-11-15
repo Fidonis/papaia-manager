@@ -141,13 +141,12 @@ def _require_compose_file(name: str, settings: Settings) -> None:
 
 
 def _refuse_while_required(name: str, settings: Settings) -> None:
-    """409 while another active add-on requires `name` (`requires.addons`) and papaia-ctl
-    enforces, as `addon remove`/`uninstall` would refuse. Checked before the job takes any
-    container down: refused afterwards, the required add-on would stay active but stopped,
-    and the dependents with it. In warn mode papaia-ctl proceeds, so this does too."""
+    """409 while another active add-on requires `name` (`requires.addons`), as
+    `addon remove`/`uninstall` would refuse. papaia-ctl refuses in warn mode too (only
+    `--force` gets past it), so this does not look at the compat mode. Checked before the
+    job takes any container down: refused afterwards, the required add-on would stay active
+    but stopped, and the dependents with it."""
     deployment = load_deployment_yaml(settings.papaia_config_dir)
-    if addon_requirements.compat_mode(deployment) != addon_requirements.ENFORCE:
-        return
     required_by = addon_requirements.dependents(
         name, deployment_addons_by_name(deployment), settings.papaia_workspace_dir
     )
@@ -155,6 +154,7 @@ def _refuse_while_required(name: str, settings: Settings) -> None:
         raise HTTPException(status_code=409, detail=gettext(
             "%(name)s is required by %(dependents)s; remove those first"
         ) % {"name": name, "dependents": ", ".join(required_by)})
+
 
 def _parse_env_file(text: str) -> dict[str, str]:
     result: dict[str, str] = {}
@@ -241,6 +241,9 @@ async def list_addons(
     running = await _running_projects(settings)
 
     deployment_addons = deployment_addons_by_name(deployment)
+    required_by = addon_requirements.dependents_by_name(
+        deployment_addons, settings.papaia_workspace_dir
+    )
 
     addons: dict[str, dict[str, Any]] = {}
     seen_names: set[str] = set()
@@ -263,6 +266,7 @@ async def list_addons(
             requirements=addon_requirements.view(
                 resolved.manifest, deployment_addons, installed_map, settings.papaia_workspace_dir,
                 deployment, name=resolved.name,
+                required_by=required_by.get(resolved.name, []),
             ),
         )
 
@@ -274,6 +278,12 @@ async def list_addons(
             addon_name, {}, inst.catalog if inst else None, inst, deploy_entry,
             running, settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
+            requirements={
+                "requirements": [],
+                "requirements_met": True,
+                "requirements_enforced": True,
+                "required_by": required_by.get(addon_name, []),
+            },
         )
 
     return list(addons.values())

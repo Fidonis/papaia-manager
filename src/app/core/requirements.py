@@ -28,12 +28,11 @@ _MET = frozenset({ACTIVE, UNCHECKED})
 # papaia-ctl's compat modes and their synonyms (`compat.resolve_mode` in the core). In warn
 # mode papaia-ctl installs despite an unmet requirement and only warns.
 ENFORCE = "enforce"
-_ENFORCE = ENFORCE
 _WARN = "warn"
 _MODE_SYNONYMS = {
-    "enforce": _ENFORCE,
-    "production": _ENFORCE,
-    "prod": _ENFORCE,
+    "enforce": ENFORCE,
+    "production": ENFORCE,
+    "prod": ENFORCE,
     "warn": _WARN,
     "dev": _WARN,
     "development": _WARN,
@@ -46,7 +45,7 @@ def compat_mode(deployment: Mapping[str, Any] | None) -> str:
     for candidate in (os.environ.get("PAPAIA_COMPAT_MODE"), (deployment or {}).get("mode")):
         if isinstance(candidate, str) and candidate.lower() in _MODE_SYNONYMS:
             return _MODE_SYNONYMS[candidate.lower()]
-    return _ENFORCE
+    return ENFORCE
 
 
 def required_addons(manifest: Mapping[str, Any]) -> list[tuple[str, str | None]]:
@@ -92,25 +91,34 @@ def _deployed_version(entry: Mapping[str, Any], workspace_dir: str) -> str | Non
     return str(version) if version else fallback
 
 
-def dependents(
-    name: str, deployment_addons: Mapping[str, Mapping[str, Any]], workspace_dir: str
-) -> list[str]:
-    """The other active add-ons whose `requires.addons` names `name`, as papaia-ctl's
-    `dependent_addons` finds them: papaia-ctl refuses `remove` and `uninstall` of `name` while
-    one is active. A manifest that cannot be read, or whose field papaia-ctl would reject,
-    counts as requiring nothing."""
-    found: list[str] = []
+def dependents_by_name(
+    deployment_addons: Mapping[str, Mapping[str, Any]], workspace_dir: str
+) -> dict[str, list[str]]:
+    """For each add-on, the other active add-ons whose `requires.addons` names it, as
+    papaia-ctl's `dependent_addons` finds them: papaia-ctl refuses `remove` and `uninstall`
+    of an add-on while one is active. Reads each active manifest once, so a page that shows
+    every add-on builds this once. A manifest that cannot be read, or whose field papaia-ctl
+    would reject, counts as requiring nothing."""
+    found: dict[str, set[str]] = {}
     for other, entry in deployment_addons.items():
-        if other == name or not entry.get("active"):
+        if not entry.get("active"):
             continue
         manifest = _registered_manifest(entry, workspace_dir) or {}
         requires = manifest.get("requires")
         entries = requires.get("addons") if isinstance(requires, Mapping) else None
         if not isinstance(entries, list) or not all(_well_formed(e) for e in entries):
             continue
-        if any(required == name for required, _ in required_addons(manifest)):
-            found.append(other)
-    return sorted(found)
+        for required, _ in required_addons(manifest):
+            if required != other:
+                found.setdefault(required, set()).add(other)
+    return {name: sorted(others) for name, others in found.items()}
+
+
+def dependents(
+    name: str, deployment_addons: Mapping[str, Mapping[str, Any]], workspace_dir: str
+) -> list[str]:
+    """The other active add-ons that require `name` (see `dependents_by_name`)."""
+    return dependents_by_name(deployment_addons, workspace_dir).get(name, [])
 
 
 def _well_formed(entry: object) -> bool:
@@ -175,19 +183,24 @@ def view(
     workspace_dir: str,
     deployment: Mapping[str, Any] | None = None,
     name: str | None = None,
+    required_by: list[str] | None = None,
 ) -> dict[str, Any]:
     """The `requirements`, `requirements_met`, `requirements_enforced` and `required_by`
     keys of an add-on's view model. `requirements_enforced` is False in warn mode, where
-    papaia-ctl installs despite an unmet requirement and removes a required add-on anyway:
-    the badges still show, the buttons stay usable. `required_by` lists the active add-ons
-    that require this one (`name`, or the manifest's name)."""
+    papaia-ctl installs despite an unmet requirement: the badges still show, the install
+    button stays usable. `required_by` lists the active add-ons that require this one
+    (`name`, or the manifest's name); papaia-ctl refuses `remove` and `uninstall` while
+    there is one, in warn mode too. A caller that renders many add-ons passes it from
+    `dependents_by_name` instead of having each call read every manifest."""
     states = requirement_states(manifest, deployment_addons, installed, workspace_dir)
-    own = name or manifest.get("name")
+    if required_by is None:
+        own = name or manifest.get("name")
+        required_by = (
+            dependents(own, deployment_addons, workspace_dir) if isinstance(own, str) else []
+        )
     return {
         "requirements": states,
         "requirements_met": requirements_met(states),
-        "requirements_enforced": compat_mode(deployment) == _ENFORCE,
-        "required_by": (
-            dependents(own, deployment_addons, workspace_dir) if isinstance(own, str) else []
-        ),
+        "requirements_enforced": compat_mode(deployment) == ENFORCE,
+        "required_by": required_by,
     }
