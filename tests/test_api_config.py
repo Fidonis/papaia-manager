@@ -688,12 +688,21 @@ def test_a_body_that_cannot_be_read_is_refused_without_repeating_it(client: Test
 
 
 def test_the_overlay_list_has_the_three_targets_and_the_other_files(
-    client: TestClient, config_dir: Path
+    client: TestClient, config_dir: Path, workspace: Path
 ) -> None:
     _seed(config_dir)
     stray = config_dir / "overlay" / "ai" / "typo.yaml"
     stray.parent.mkdir(parents=True, exist_ok=True)
     stray.write_text("x: 1\n", encoding="utf-8")
+    # Below a directory target the core's checkout decides (#199): the route hands the
+    # workspace to the listing.
+    theme = "infra/keycloak/themes/papaia/login/resources/css"
+    shipped = workspace / "papaia" / "src" / theme / "papaia.css"
+    shipped.parent.mkdir(parents=True)
+    shipped.write_text("x\n", encoding="utf-8")
+    for name in ("papaia.css", "extra.css"):
+        (config_dir / "overlay" / theme).mkdir(parents=True, exist_ok=True)
+        (config_dir / "overlay" / theme / name).write_text("x\n", encoding="utf-8")
     body = _admin(client).get(f"{_BASE}/overlay").json()
     assert body["preview_available"] is True
     targets = {t["key"]: t for t in body["targets"]}
@@ -703,7 +712,16 @@ def test_the_overlay_list_has_the_three_targets_and_the_other_files(
     assert targets["librechat"]["group_active"] is True
     assert targets["searxng"]["group_active"] is False
     assert targets["librechat"]["services"] == 1
-    assert body["other"] == [{"path": "ai/typo.yaml", "note": "ignored by the render"}]
+    assert body["other"] == [
+        {"path": "ai/typo.yaml", "note": "ignored by the render"},
+        {
+            "path": f"{theme}/extra.css",
+            "note": "ignored by the render: the core ships no file of that name",
+        },
+        {"path": f"{theme}/papaia.css", "note": "used by the render, not editable here"},
+    ]
+    html = _admin(client).get("/settings/overlay").text
+    assert "the core ships no file of that name" in html
 
 
 def test_one_overlay_has_its_content_revision_and_versions(
