@@ -49,6 +49,8 @@ from app.core.inventory import active_profiles
 from app.core.jobs import JobCallback, JobContext
 from app.core.mail import service as mail_service
 from app.core.mail.settings import MailInput, MailSettings
+from app.core.nodes import HookNodesFailedError as HookNodesFailedError
+from app.core.nodes import hook_nodes_failed, with_retries
 from app.i18n import gettext as _
 
 # The profile of Keycloak, whose realm holds the mail server the relay provides.
@@ -91,10 +93,6 @@ class NotHealthyError(Exception):
 
 class PurgeFailedError(Exception):
     """The module is off, but the core could not delete what was asked for."""
-
-
-class HookNodesFailedError(Exception):
-    """The change is in place, but a node that only runs hooks for it did not take part."""
 
 
 # The core's refusals are whole sentences (the RAG one names the add-on and the commands that
@@ -188,15 +186,6 @@ async def _verb(
                 "papaia-ctl %(verb)s: %(value)s"
             ) % {"verb": verb, "value": problem}) from exc
 
-
-def _hook_nodes_failed(skipped: list[str]) -> HookNodesFailedError:
-    """The error that ends a job whose change is in place but missed a node's hooks."""
-    return HookNodesFailedError(
-        _(
-            "The change is in place, but a node that only runs its hooks did not take part. "
-            "Once it answers, run: %(value)s"
-        ) % {"value": "; ".join(skipped)}
-    )
 
 
 async def wait_healthy(
@@ -292,8 +281,8 @@ async def _start(
 ) -> str | None:
     """`start` of the module's profile. For the mail relay, the sentence that says Keycloak
     was not given its mail server (the last step of `start` only warns), else None. The
-    relay's run on Keycloak's node is the point of its start, so a failure there still ends
-    the step."""
+    relay's runs on its own node and on Keycloak's are the point of its start, so a failure
+    there still ends the step; one on the proxy's node is skipped like the other jobs'."""
     if module != "mail":
         await _verb(
             ctx,
@@ -304,9 +293,19 @@ async def _start(
             skipped=skipped,
         )
         return None
-    return await mail_service.run_verb(
-        ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir
-    )
+    try:
+        return await mail_service.run_verb(
+            ctx,
+            "start",
+            flag,
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            skipped=skipped,
+        )
+    except CtlError as exc:
+        raise StepFailedError(_(
+            "papaia-ctl %(verb)s: %(value)s"
+        ) % {"verb": "start", "value": exc}) from exc
 
 
 def enable_callback(
@@ -393,21 +392,23 @@ def enable_callback(
             result="partial" if problem or realm or skipped else "ok",
         )
         if realm:
-            raise mail_service.RealmNotUpdatedError(
+            raise mail_service.RealmNotUpdatedError(with_retries(
                 _(
                     "The relay is running, but Keycloak was not given its mail server "
                     "(%(realm)s). Switch it off and on again once that is fixed."
-                ) % {"realm": realm}
-            )
+                ) % {"realm": realm},
+                skipped,
+            ))
         if problem:
-            raise NotHealthyError(
+            raise NotHealthyError(with_retries(
                 _(
                     "%(title)s is switched on, but %(value)s%(value2)s Check the service log, or "
                     "switch it off again."
-                ) % {"title": definition.title, "value": problem[0].lower(), "value2": problem[1:]}
-            )
+                ) % {"title": definition.title, "value": problem[0].lower(), "value2": problem[1:]},
+                skipped,
+            ))
         if skipped:
-            raise _hook_nodes_failed(skipped)
+            raise hook_nodes_failed(skipped)
         ctx.log("[info] done")
 
     return _callback
@@ -470,7 +471,7 @@ def disable_callback(
             result="partial" if skipped else "ok",
         )
         if skipped:
-            raise _hook_nodes_failed(skipped)
+            raise hook_nodes_failed(skipped)
         ctx.log("[info] done")
 
     return _callback
@@ -685,14 +686,15 @@ def overlay_callback(
             result="partial" if problem or skipped else "ok",
         )
         if problem:
-            raise NotHealthyError(
+            raise NotHealthyError(with_retries(
                 _(
                     "The overlay is in place, but %(value)s%(value2)s The previous version is in "
                     "Versions if you want to go back."
-                ) % {"value": problem[0].lower(), "value2": problem[1:]}
-            )
+                ) % {"value": problem[0].lower(), "value2": problem[1:]},
+                skipped,
+            ))
         if skipped:
-            raise _hook_nodes_failed(skipped)
+            raise hook_nodes_failed(skipped)
         ctx.log("[info] done")
 
     return _callback
@@ -727,8 +729,18 @@ async def _restore(
     if not restored:
         ctx.log("[rollback] the file changed meanwhile; left as it is")
         return
+    skipped: list[str] = []
     try:
-        await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+        await _verb(
+            ctx,
+            "start",
+            flag,
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            skipped=skipped,
+        )
         ctx.log("[rollback] the group was started with the previous overlay")
+        for command in skipped:
+            ctx.log(f"[rollback] a node that only runs its hooks missed it; run: {command}")
     except StepFailedError as exc:
         ctx.log(f"[rollback] the group did not start again either: {exc}")

@@ -351,7 +351,9 @@ async def list_overlay(
     return {
         "preview_available": preview.available(settings.papaia_workspace_dir),
         "targets": [target_json(settings, t) for t in overlay.TARGETS],
-        "other": overlay.other_files(settings.papaia_config_dir),
+        "other": overlay.other_files(
+            settings.papaia_config_dir, settings.papaia_workspace_dir
+        ),
     }
 
 

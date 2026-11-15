@@ -218,6 +218,32 @@ def test_files_the_editor_does_not_offer_are_listed_with_the_reason(config: str)
     }
 
 
+def test_a_file_below_a_directory_target_is_used_only_if_the_core_ships_it(
+    config: str, tmp_path: Path
+) -> None:
+    # The core renders the files of its own copy of the directory, nothing else.
+    workspace = tmp_path / "workspace"
+    theme = workspace / "papaia" / "src" / "infra" / "keycloak" / "themes" / "papaia"
+    (theme / "login" / "resources" / "css").mkdir(parents=True)
+    (theme / "login" / "resources" / "css" / "papaia.css").write_text("x\n", encoding="utf-8")
+    base = Path(config) / "overlay" / "infra" / "keycloak" / "themes" / "papaia" / "login"
+    for rel in ("resources/css/papaia.css", "resources/img/customer-logo.svg"):
+        (base / rel).parent.mkdir(parents=True, exist_ok=True)
+        (base / rel).write_text("x\n", encoding="utf-8")
+    (Path(config) / "overlay" / "ai" / "localai" / "models").mkdir(parents=True)
+    (Path(config) / "overlay" / "ai" / "localai" / "models" / "extra.yaml").write_text(
+        "x: 1\n", encoding="utf-8"
+    )
+    found = {
+        item["path"]: item["note"] for item in overlay.other_files(config, str(workspace))
+    }
+    prefix = "infra/keycloak/themes/papaia/login/resources"
+    assert found[f"{prefix}/css/papaia.css"] == "used by the render, not editable here"
+    assert found[f"{prefix}/img/customer-logo.svg"].startswith("ignored by the render:")
+    # No copy of that directory in the checkout: the file keeps counting as used.
+    assert found["ai/localai/models/extra.yaml"] == "used by the render, not editable here"
+
+
 def test_no_overlay_directory_is_no_files(config: str) -> None:
     assert overlay.other_files(config) == []
 

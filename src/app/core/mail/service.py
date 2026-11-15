@@ -23,7 +23,7 @@ from typing import Any
 
 from app.core import nodes
 from app.core.audit import write_audit_entry
-from app.core.ctl import SmtpSetup, run_core_verb, run_smtp_setup
+from app.core.ctl import CtlError, SmtpSetup, run_core_verb, run_smtp_setup
 from app.core.jobs import JobCallback, JobContext
 from app.core.mail.settings import PROFILE, MailInput, MailSettings
 from app.i18n import gettext as _
@@ -106,23 +106,44 @@ def realm_problem(line: str) -> str | None:
 
 
 async def run_verb(
-    ctx: JobContext, verb: str, *flags: str, workspace_dir: str, config_dir: str
+    ctx: JobContext,
+    verb: str,
+    *flags: str,
+    workspace_dir: str,
+    config_dir: str,
+    skipped: list[str] | None = None,
 ) -> str | None:
     """Run a verb and stream its output into the log. Returns the first line that says the
     realm was not updated, for a verb that ends in the sync. In a distributed installation it
     runs once per node it concerns, the nodes of the proxy and of Keycloak after the owner's
-    (`nodes.profile_runs`)."""
+    (`nodes.profile_runs`).
+
+    A failure raises `CtlError`. With `skipped`, one on a node that only runs the proxy's
+    hooks does not: the realm sync on Keycloak's node is what the relay's start is for, but
+    the proxy has nothing of the relay's. The log says so, the command that catches the node
+    up goes into `skipped`, and the next node follows."""
     problem: str | None = None
-    for run in nodes.profile_runs(
-        verb, flags, config_dir=config_dir, workspace_dir=workspace_dir
+    keycloak = nodes.profile_node(config_dir, "keycloak")
+    for index, run in enumerate(
+        nodes.profile_runs(verb, flags, config_dir=config_dir, workspace_dir=workspace_dir)
     ):
-        ctx.log(f"[ctl] papaia-ctl {verb} {' '.join(run)}".rstrip())
-        gen = await run_core_verb(
-            verb=verb, workspace_dir=workspace_dir, config_dir=config_dir, extra_flags=list(run)
-        )
-        async for line in gen:
-            ctx.log(line)
-            problem = problem or realm_problem(line)
+        command = f"papaia-ctl {verb} {' '.join(run)}".rstrip()
+        ctx.log(f"[ctl] {command}")
+        try:
+            gen = await run_core_verb(
+                verb=verb,
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+                extra_flags=list(run),
+            )
+            async for line in gen:
+                ctx.log(line)
+                problem = problem or realm_problem(line)
+        except CtlError as exc:
+            if skipped is None or index == 0 or nodes.run_node(run) == keycloak:
+                raise
+            ctx.log(f"[warn] {command} failed ({exc}); the change stays")
+            skipped.append(command)
     return problem
 
 
@@ -162,8 +183,14 @@ def apply_callback(
             )
             ctx.log("[info] done")
             return
+        skipped: list[str] = []
         problem = await run_verb(
-            ctx, "start", _PROFILES_FLAG, workspace_dir=workspace_dir, config_dir=config_dir
+            ctx,
+            "start",
+            _PROFILES_FLAG,
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            skipped=skipped,
         )
         if problem is not None:
             # Stored and started, but not what the operator asked for: Users cannot mail
@@ -178,12 +205,13 @@ def apply_callback(
                 job_id=ctx.job.id,
                 result="partial",
             )
-            raise RealmNotUpdatedError(
+            raise RealmNotUpdatedError(nodes.with_retries(
                 _(
                     "The relay is running, but Keycloak was not given its mail server "
                     "(%(problem)s). Apply again once that is fixed."
-                ) % {"problem": problem}
-            )
+                ) % {"problem": problem},
+                skipped,
+            ))
         write_audit_entry(
             config_dir,
             user=user,
@@ -191,7 +219,10 @@ def apply_callback(
             target=TARGET,
             params=params,
             job_id=ctx.job.id,
+            result="partial" if skipped else "ok",
         )
+        if skipped:
+            raise nodes.hook_nodes_failed(skipped)
         ctx.log("[info] done")
 
     return _callback

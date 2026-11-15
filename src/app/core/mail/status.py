@@ -180,7 +180,9 @@ async def _run_on_node(
         if health.reason:
             return unavailable(health.reason), None, None
         return unavailable(_(_NO_NODE_REPORT)), None, (_NO_NODE_REPORT, {})
-    return parse_status(report), report, None
+    # The time the node measured it, not the time it was read: the reading can be one
+    # host-monitoring interval old.
+    return parse_status(report, checked_at=health.checked_at), report, None
 
 
 @dataclass(frozen=True)

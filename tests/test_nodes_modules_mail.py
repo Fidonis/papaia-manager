@@ -22,6 +22,7 @@ from app.core.config import service as svc
 from app.core.jobs import Job, JobContext
 from app.core.mail import service as mail_service
 from app.core.mail import status as mail_status
+from app.core.mail.settings import MailInput, MailSettings
 
 TOPOLOGY = {
     "topology": {
@@ -586,3 +587,244 @@ def test_switching_a_module_on_ends_with_the_node_it_missed(
     with pytest.raises(svc.HookNodesFailedError, match="--node=edge"):
         asyncio.run(callback(_context(tmp_path)))
     assert ("start", ["--profiles=localai", "--node=internal"]) in recorder.calls
+
+
+# ---------------------------------------------------------------------------
+# The relay and the nodes that only run hooks (review of #190)
+# ---------------------------------------------------------------------------
+
+
+async def _healthy(*args: Any, **kwargs: Any) -> None:
+    return None
+
+
+def _relay_on(dirs: tuple[str, str], tmp_path: Path) -> JobContext:
+    config, workspace = dirs
+    ctx = _context(tmp_path)
+    callback = svc.enable_callback(
+        module="mail", variant=None, user="admin", workspace_dir=workspace, config_dir=config
+    )
+    asyncio.run(callback(ctx))
+    return ctx
+
+
+def _audit(config: str) -> list[dict[str, Any]]:
+    path = Path(config, "manager", "audit.log")
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_the_relay_skips_a_node_that_only_runs_the_proxys_hooks(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # dmz-edge: the relay and Keycloak on the controller, the proxy on edge, which does
+    # not answer. The relay is up and the realm has its mail server.
+    config, _ = distributed
+    monkeypatch.setitem(TOPOLOGY["topology"]["placement"], "smtp", "internal")
+    monkeypatch.setattr(svc, "wait_healthy", _healthy)
+    recorder.fail_on = "--node=edge"
+    with pytest.raises(svc.HookNodesFailedError, match="--profiles=smtp --node=edge"):
+        _relay_on(distributed, tmp_path)
+    assert [flags[-1] for _, flags in recorder.calls] == ["--node=internal", "--node=edge"]
+    assert _audit(config)[-1]["result"] == "partial"
+
+
+def test_the_relay_failing_on_keycloaks_node_ends_with_the_jobs_sentence(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The run on Keycloak's node is the point of the relay's start: its failure is not
+    # skipped, and it ends as a failed start, with the partial audit entry.
+    config, _ = distributed
+    monkeypatch.setitem(TOPOLOGY["topology"]["placement"], "smtp", "internal")
+    monkeypatch.setitem(TOPOLOGY["topology"]["placement"], "keycloak", "edge")
+    recorder.fail_on = "--node=edge"
+    with pytest.raises(svc.StepFailedError, match="switched on in the configuration"):
+        _relay_on(distributed, tmp_path)
+    assert _audit(config)[-1]["result"] == "partial"
+
+
+def test_the_relay_on_its_own_node_is_never_skipped(
+    distributed: tuple[str, str], recorder: _Recorder, tmp_path: Path
+) -> None:
+    config, workspace = distributed
+    recorder.fail_on = "--node=edge"
+    with pytest.raises(svc.CtlError):
+        asyncio.run(
+            mail_service.run_verb(
+                _context(tmp_path),
+                "start",
+                "--profiles=smtp",
+                workspace_dir=workspace,
+                config_dir=config,
+                skipped=[],
+            )
+        )
+
+
+def test_a_job_that_ends_unhealthy_still_names_the_missed_node(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace = distributed
+    recorder.fail_on = "--node=edge"
+
+    async def unhealthy(*args: Any, **kwargs: Any) -> str:
+        return "The localai containers are unhealthy."
+
+    monkeypatch.setattr(svc, "wait_healthy", unhealthy)
+    callback = svc.enable_callback(
+        module="localai", variant="cpu", user="admin", workspace_dir=workspace, config_dir=config
+    )
+    with pytest.raises(svc.NotHealthyError) as raised:
+        asyncio.run(callback(_context(tmp_path)))
+    assert "unhealthy" in str(raised.value)
+    assert "papaia-ctl start --profiles=localai --node=edge" in str(raised.value)
+
+
+def test_the_roll_back_names_a_missed_hook_node_instead_of_a_failed_start(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The new overlay breaks LibreChat on its own node; the roll back starts it there with
+    # the previous file, and edge (the proxy) does not answer.
+    config, workspace = distributed
+    owner_failed: list[bool] = []
+
+    async def verb(**kwargs: Any) -> AsyncGenerator[str, None]:
+        flags = list(kwargs["extra_flags"])
+        recorder.calls.append((kwargs["verb"], flags))
+        node = next((f for f in flags if f.startswith("--node=")), "")
+        fail = node == "--node=edge" or (
+            kwargs["verb"] == "start" and node == "--node=internal" and not owner_failed
+        )
+        if fail and node == "--node=internal":
+            owner_failed.append(True)
+
+        async def lines() -> AsyncGenerator[str, None]:
+            if fail:
+                raise svc.CtlError("did not start", exit_code=3)
+            yield "ok"
+
+        return lines()
+
+    monkeypatch.setattr(svc, "run_core_verb", verb)
+    assert svc.overlay.write(config, "librechat", b"old: 1\n", expected_revision="") is not None
+    callback = svc.overlay_callback(
+        key="librechat",
+        content=b"new: 1\n",
+        expected_revision=svc.overlay.read(config, "librechat").revision,
+        event="apply",
+        user="admin",
+        workspace_dir=workspace,
+        config_dir=config,
+    )
+    ctx = _context(tmp_path)
+    with pytest.raises(svc.RolledBackError):
+        asyncio.run(callback(ctx))
+    log = ctx.log_path.read_text(encoding="utf-8")
+    assert "[rollback] the group was started with the previous overlay" in log
+    assert (
+        "[rollback] a node that only runs its hooks missed it; "
+        "run: papaia-ctl start --profiles=librechat --node=edge"
+    ) in log
+    assert "did not start again either" not in log
+
+
+def test_the_node_report_stays_while_a_new_run_is_under_way(
+    distributed: tuple[str, str],
+    node_health: list[dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace = distributed
+    release = asyncio.Event()
+    envelope = json.dumps({"node": "edge", "doctor": _DOCTOR, "links": []})
+
+    async def fake(**kwargs: Any) -> tuple[int, str, str]:
+        node_health.append(kwargs)
+        if len(node_health) > 1:
+            await release.wait()
+        return 0, envelope, ""
+
+    monkeypatch.setattr(host_health, "run_py_cli", fake)
+    monkeypatch.setattr(host_health, "RECHECK_MIN_INTERVAL_SECONDS", 0.0)
+
+    async def run() -> tuple[str | None, str | None]:
+        await host_health.load_node_health("edge", config_dir=config, workspace_dir=workspace)
+        held = asyncio.create_task(
+            host_health.load_node_health(
+                "edge", config_dir=config, workspace_dir=workspace, force=True
+            )
+        )
+        await asyncio.sleep(0)
+        during = host_health.cached_node_report("edge")
+        release.set()
+        await held
+        return during, host_health.cached_node_report("edge")
+
+    during, after = asyncio.run(run())
+    assert len(node_health) == 2
+    assert during is not None and json.loads(during) == _DOCTOR
+    assert after is not None
+
+
+def test_a_relay_reading_from_a_node_carries_the_time_the_node_measured_it(
+    distributed: tuple[str, str],
+    node_health: list[dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace = distributed
+
+    async def fake(**kwargs: Any) -> tuple[int, str, str]:
+        return 0, json.dumps({"node": "edge", "doctor": _DOCTOR, "links": []}), ""
+
+    monkeypatch.setattr(mail_status, "core_checks", lambda workspace_dir: ["smtp"])
+    monkeypatch.setattr(host_health, "run_py_cli", fake)
+
+    async def run() -> tuple[Any, Any]:
+        health = await host_health.load_node_health(
+            "edge", config_dir=config, workspace_dir=workspace
+        )
+        await asyncio.sleep(0.01)
+        status, _, _ = await mail_status._run(config, workspace)
+        return health, status
+
+    health, status = asyncio.run(run())
+    assert status.checked_at == health.checked_at
+
+
+def test_applying_mail_settings_skips_the_proxys_node_too(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, workspace = distributed
+    monkeypatch.setitem(TOPOLOGY["topology"]["placement"], "smtp", "internal")
+    monkeypatch.setattr(mail_service, "run_smtp_setup", recorder.setup)
+    recorder.fail_on = "--node=edge"
+    callback = mail_service.apply_callback(
+        data=MailInput(
+            host="mail.example.org",
+            port=587,
+            security="starttls",
+            user="",
+            from_address="papaia@example.org",
+            from_name="papAIa",
+        ),
+        current=MailSettings(profile_on=True),
+        user="admin",
+        workspace_dir=workspace,
+        config_dir=config,
+    )
+    with pytest.raises(nodes.HookNodesFailedError, match="--node=edge"):
+        asyncio.run(callback(_context(tmp_path)))
+    assert _audit(config)[-1]["result"] == "partial"

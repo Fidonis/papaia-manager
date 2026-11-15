@@ -149,6 +149,36 @@ def profile_node(config_dir: str, profile: str) -> str:
     return str(topo.node_of(service)) if service else ""
 
 
+class HookNodesFailedError(Exception):
+    """The change is in place, but a node that only runs hooks for it did not take part."""
+
+
+def hook_nodes_failed(skipped: list[str]) -> HookNodesFailedError:
+    """The error that ends a job whose change is in place but missed a node's hooks."""
+    return HookNodesFailedError(
+        _(
+            "The change is in place, but a node that only runs its hooks did not take part. "
+            "Once it answers, run: %(value)s"
+        ) % {"value": "; ".join(skipped)}
+    )
+
+
+def with_retries(message: str, skipped: list[str]) -> str:
+    """`message`, followed by the commands that catch up the hook nodes a job missed, so a
+    job that ends for another reason still names them."""
+    if not skipped:
+        return message
+    return _(
+        "%(message)s A node that only runs its hooks did not take part either; once it "
+        "answers, run: %(value)s"
+    ) % {"message": message, "value": "; ".join(skipped)}
+
+
+def run_node(run: tuple[str, ...]) -> str:
+    """The node a run from `profile_runs` names, or "" for a run without one."""
+    return next((f.removeprefix("--node=") for f in run if f.startswith("--node=")), "")
+
+
 def profile_runs(
     verb: str, flags: tuple[str, ...], *, config_dir: str, workspace_dir: str
 ) -> list[tuple[str, ...]]:
