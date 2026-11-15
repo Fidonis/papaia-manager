@@ -123,7 +123,7 @@ async def run_verb(
     the proxy has nothing of the relay's. The log says so, the command that catches the node
     up goes into `skipped`, and the next node follows."""
     problem: str | None = None
-    keycloak = nodes.profile_node(config_dir, "keycloak")
+    keycloak = nodes.profile_node(config_dir, nodes.KEYCLOAK_PROFILE)
     for index, run in enumerate(
         nodes.profile_runs(verb, flags, config_dir=config_dir, workspace_dir=workspace_dir)
     ):

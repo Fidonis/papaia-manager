@@ -53,9 +53,6 @@ from app.core.nodes import HookNodesFailedError as HookNodesFailedError
 from app.core.nodes import hook_nodes_failed, with_retries
 from app.i18n import gettext as _
 
-# The profile of Keycloak, whose realm holds the mail server the relay provides.
-_KEYCLOAK_PROFILE = "keycloak"
-
 ENABLE_ACTION = "config-module-enable"
 DISABLE_ACTION = "config-module-disable"
 APPLY_ACTION = "config-overlay-apply"
@@ -185,7 +182,6 @@ async def _verb(
             raise StepFailedError(_(
                 "papaia-ctl %(verb)s: %(value)s"
             ) % {"verb": verb, "value": problem}) from exc
-
 
 
 async def wait_healthy(
@@ -373,12 +369,13 @@ def enable_callback(
                 job_id=ctx.job.id,
                 result="partial",
             )
-            raise StepFailedError(
+            raise StepFailedError(with_retries(
                 _(
                     "%(exc)s %(title)s is switched on in the configuration but did not start. "
                     "Fix the cause and start it from the Services page, or switch it off here."
-                ) % {"exc": exc, "title": definition.title}
-            ) from exc
+                ) % {"exc": exc, "title": definition.title},
+                skipped,
+            )) from exc
         problem = await wait_healthy(
             ctx, definition.profile, config_dir=config_dir, workspace_dir=workspace_dir
         )
@@ -485,8 +482,8 @@ async def _sync_realm(ctx: JobContext, *, workspace_dir: str, config_dir: str) -
     of Keycloak's profile on its node hands the node its new bundle first and runs the sync
     after it; Keycloak itself keeps running. The start only warns when the sync fails, so its
     output is read for that, and the job fails rather than report the relay as gone."""
-    node = nodes.profile_node(config_dir, _KEYCLOAK_PROFILE)
-    if not node or _KEYCLOAK_PROFILE not in active_profiles(config_dir):
+    node = nodes.profile_node(config_dir, nodes.KEYCLOAK_PROFILE)
+    if not node or nodes.KEYCLOAK_PROFILE not in active_profiles(config_dir):
         await _verb(
             ctx, "keycloak-role-sync", workspace_dir=workspace_dir, config_dir=config_dir
         )
@@ -495,7 +492,7 @@ async def _sync_realm(ctx: JobContext, *, workspace_dir: str, config_dir: str) -
         problem = await mail_service.run_verb(
             ctx,
             "start",
-            f"--profiles={_KEYCLOAK_PROFILE}",
+            f"--profiles={nodes.KEYCLOAK_PROFILE}",
             f"--node={node}",
             workspace_dir=workspace_dir,
             config_dir=config_dir,
