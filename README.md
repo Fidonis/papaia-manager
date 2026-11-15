@@ -779,6 +779,7 @@ POST /api/v1/addons/{name}/stop            # {clean_up?} → 202
 POST /api/v1/addons/{name}/restart         # {clean_up?} stop then start → 202
 POST /api/v1/addons/{name}/remove          # stop and remove the containers, then deactivate → 202; 409 without its docker-compose.yml
 POST /api/v1/addons/{name}/uninstall       # → 202
+POST /api/v1/addons/{name}/actions/{action} # run an action the manifest declares → 202; 404 if undeclared or the add-on is not active, 409 in a distributed installation
 GET  /api/v1/addons/upgrades                # {supported, upgrades: [{name, installed, available, catalog}]}
 POST /api/v1/addons/{name}/upgrade-plan     # {revision?} stage the catalog's version, ask papaia-ctl what upgrading would do → {revision, plan, form}
 POST /api/v1/addons/{name}/upgrade          # {env?, revision?, backup?} → 202; 409 if the gate refuses, 422 for a missing value

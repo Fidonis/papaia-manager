@@ -26,6 +26,7 @@ from app.core.ctl import (
     SmtpSetup,
     module_setup_flags,
     profiles_flag,
+    run_addon_action,
     run_addon_verb,
     run_core_verb,
     run_module_info,
@@ -138,6 +139,32 @@ async def test_the_add_on_upgrade_is_only_ever_dispatched_below_addon(
     await run_addon_verb(verb="upgrade", name="paperless", workspace_dir="/w", config_dir="/c")
 
     assert seen["cmd"][2:5] == ["addon", "upgrade", "paperless"]
+
+
+async def test_an_add_on_action_passes_only_the_action_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    def spawn(cmd: list[str], env: dict[str, str]) -> None:
+        seen["cmd"] = cmd
+
+    monkeypatch.setattr("app.core.ctl._stream_subprocess", spawn)
+
+    await run_addon_action(name="wiki", action="reset", workspace_dir="/w", config_dir="/c")
+
+    assert seen["cmd"][2:] == ["addon", "run", "wiki", "reset", "--config-dir=/c"]
+
+
+@pytest.mark.parametrize("action", ["", "Reset", "reset now", "--force", "a;b", "../x"])
+async def test_an_add_on_action_name_that_could_be_more_is_refused(action: str) -> None:
+    with pytest.raises(ValueError):
+        await run_addon_action(name="wiki", action=action, workspace_dir="/w", config_dir="/c")
+
+
+def test_run_is_not_a_general_add_on_verb() -> None:
+    # `addon run` takes one action name; the generic verb path accepts extra flags.
+    assert "run" not in ALLOWED_VERBS
 
 
 # ---------------------------------------------------------------------------
