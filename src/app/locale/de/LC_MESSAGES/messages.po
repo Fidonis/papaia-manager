@@ -9790,3 +9790,14 @@ msgstr "%(message)s Ein Node, der nur ihre Hooks ausführt, war ebenfalls nicht 
 
 msgid "ignored by the render: the core has no file of that name to merge it into"
 msgstr "vom Rendering ignoriert: Der Core hat keine Datei dieses Namens, in die sie eingeht"
+
+msgid "Add-on actions are not supported in a distributed installation"
+msgstr "Add-on-Aktionen werden in einer verteilten Installation nicht unterstützt"
+
+#, python-brace-format
+msgid "The action \"{action}\" failed &mdash; <a class=\"underline\" href=\"{href}\">view log</a>"
+msgstr "Die Aktion „{action}“ ist fehlgeschlagen &mdash; <a class=\"underline\" href=\"{href}\">Log ansehen</a>"
+
+#, python-brace-format
+msgid "The action \"{action}\" finished &mdash; <a class=\"underline\" href=\"{href}\">view log</a>"
+msgstr "Die Aktion „{action}“ ist abgeschlossen &mdash; <a class=\"underline\" href=\"{href}\">Log ansehen</a>"

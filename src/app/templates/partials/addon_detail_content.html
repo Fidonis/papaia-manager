@@ -69,7 +69,7 @@
             title="{{ a.description }}"
             @click="if ({{ 'true' if a.destructive else 'false' }} && !confirm({{ confirm_text | tojson | forceescape }})) return;
                     busy = true; activeVerb = {{ a.name | tojson | forceescape }};
-                    addonAction('{{ addon.name }}', 'actions/{{ a.name }}', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
+                    addonMaintenanceAction('{{ addon.name }}', '{{ a.name }}').then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
       <span style="display:none" x-show="activeVerb === {{ a.name | tojson | forceescape }}" class="loading loading-dots loading-xs"></span>
       <span>{{ a.name }}</span>
     </button>

@@ -1984,9 +1984,12 @@ async def _get_addon(
             deploy_entry,
         ),
         "env_fields": env_fields,
-        # Declared maintenance actions, offered while the add-on is installed and active.
+        # Declared maintenance actions, offered while the add-on is installed and active, and
+        # not in a distributed installation, where `papaia-ctl addon run` refuses them.
         "actions": actions_at(addon_path)
-        if variant_inst and st in (AddonStatus.INSTALLED, AddonStatus.RUNNING)
+        if variant_inst
+        and st in (AddonStatus.INSTALLED, AddonStatus.RUNNING)
+        and not nodes.is_distributed(settings.papaia_config_dir)
         else [],
         **addon_requirements.view(
             manifest,

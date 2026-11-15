@@ -13,6 +13,7 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
+from app.core import nodes
 from app.core import requirements as addon_requirements
 from app.core.actions import actions_at
 from app.core.addon_upgrades import (
@@ -1165,9 +1166,15 @@ async def run_action(
     """Run a maintenance action the add-on's manifest declares (`actions`).
 
     Only a declared action of an active add-on is accepted; the request carries a name, never
-    a command or arguments. papaia-ctl looks the action up again and runs it."""
+    a command or arguments. papaia-ctl looks the action up again and runs it. A distributed
+    installation gets 409: `papaia-ctl addon run` does not support it (Fidonis/papaia#319)."""
     verify_csrf(request)
     refuse_while_locked(settings)
+    if nodes.is_distributed(settings.papaia_config_dir):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=gettext("Add-on actions are not supported in a distributed installation"),
+        )
     declared = {a["name"] for a in actions_at(_active_addon_dir(name, settings))}
     if action not in declared:
         raise HTTPException(

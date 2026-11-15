@@ -42,6 +42,8 @@ from itsdangerous import TimestampSigner  # noqa: E402
 
 from app import main as app_main  # noqa: E402
 from app.config import get_settings  # noqa: E402
+from app.core import nodes  # noqa: E402
+from app.core.actions import addon_actions  # noqa: E402
 from app.core.ctl import CtlError  # noqa: E402
 from app.core.jobs import Job, JobCallback, JobContext  # noqa: E402
 from app.core.snapshots import record_installed  # noqa: E402
@@ -290,6 +292,56 @@ def test_the_page_lists_the_actions_and_marks_destructive_ones() -> None:
         request=None,
     )
     assert "Maintenance actions" in html
-    assert "actions/reset" in html
+    assert "addonMaintenanceAction('n8n', 'reset')" in html
     assert "btn-error" in html
     assert "confirm(" in html
+
+
+@pytest.mark.usefixtures("addon_dir")
+def test_a_distributed_installation_refuses_actions(
+    client: TestClient, queue: _FakeQueue, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `papaia-ctl addon run` exits 2 there (Fidonis/papaia#319); a button that always fails
+    # would only hide that.
+    monkeypatch.setattr(nodes, "is_distributed", lambda config_dir: True)
+
+    response = _run(client, "check")
+    assert response.status_code == 409
+    assert "distributed" in response.json()["detail"]
+    assert queue.enqueued == []
+
+
+def test_the_page_runs_an_action_through_the_helper_that_reports_its_outcome() -> None:
+    html = templates.env.get_template("partials/addon_detail_content.html").render(
+        addon={
+            "name": "n8n",
+            "status": "running",
+            "actions": [{"name": "check", "description": "", "destructive": False}],
+        },
+        request=None,
+    )
+    assert "addonMaintenanceAction('n8n', 'check')" in html
+    assert templates.env.loader is not None
+    source = templates.env.loader.get_source(templates.env, "base.html")[0]
+    assert "function addonMaintenanceAction(" in source
+    assert "I18N.maintenanceActionFailed" in source
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        {"ok": {"service": "job"}, "bad": {"service": "job", "args": "--reset"}},
+        {"ok": {"service": "job"}, "bad": {"service": "job", "description": 3}},
+        {"ok": {"service": "job"}, "bad": {"service": "job", "destructive": "yes"}},
+        {"ok": {"service": "job"}, "bad": {"description": "no service"}},
+        {"ok": {"service": "job"}, "Bad": {"service": "job"}},
+    ],
+)
+def test_one_malformed_entry_offers_no_action_at_all(block: dict[str, Any]) -> None:
+    # As in the core: the block is malformed, and papaia-ctl refuses the add-on.
+    assert addon_actions({"actions": block}) == []
+
+
+def test_a_long_name_the_core_accepts_is_offered() -> None:
+    name = "a" + "-x" * 40
+    assert [a["name"] for a in addon_actions({"actions": {name: {"service": "job"}}})] == [name]
