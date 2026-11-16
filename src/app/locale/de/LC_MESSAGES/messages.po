@@ -10242,11 +10242,11 @@ msgstr "Handlungsbedarf mittel"
 msgid "Action needed: low"
 msgstr "Handlungsbedarf niedrig"
 
-msgid "render"
-msgstr "Erzeugung"
+msgid "last render"
+msgstr "letzte Erzeugung"
 
-msgid "manager"
-msgstr "Manager"
+msgid "live check"
+msgstr "Live-Prüfung"
 
 msgid "not set"
 msgstr "nicht gesetzt"
@@ -10625,6 +10625,9 @@ msgstr "Gespeichert. Die Landkarte wird mit dem Eintrag neu erzeugt."
 
 msgid "Removed. The map is rendered without the entry."
 msgstr "Entfernt. Die Landkarte wird ohne den Eintrag neu erzeugt."
+
+msgid "The map was not rendered with this change, so the previous file is back. Your input is still here; the job log says why."
+msgstr "Die Landkarte wurde mit dieser Änderung nicht erzeugt, daher ist die vorherige Datei wieder da. Ihre Eingaben stehen noch hier; den Grund nennt das Auftragsprotokoll."
 
 msgid "lands here"
 msgstr "landet hier"

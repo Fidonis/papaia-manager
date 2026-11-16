@@ -52,6 +52,9 @@ _LISTS_OF_TEXT = (
     "required_roles",
     "uses",
 )
+# Every key of an access path the map server reads, whether the form shows it or not: a key
+# missing here is dropped from the path on save (an own entry is rewritten as a whole, and an
+# override replaces the declared list).
 _ACCESS_KEYS = (
     "via",
     "target",
@@ -59,9 +62,12 @@ _ACCESS_KEYS = (
     "location",
     "best_for",
     "freshness",
+    "note",
     "key_tools",
+    "skills",
     "required_roles",
 )
+_ACCESS_LISTS = ("key_tools", "skills", "required_roles")
 # What the core assumes for a field that is not declared; a form value equal to it is no change.
 _DEFAULTS = {"kind": "source", "on_denied": "hidden"}
 ON_DENIED = ("hidden", "acknowledge")
@@ -129,7 +135,7 @@ def _access(value: Any) -> list[dict[str, Any]]:
             continue
         path: dict[str, Any] = {}
         for key in _ACCESS_KEYS:
-            if key in ("key_tools", "required_roles"):
+            if key in _ACCESS_LISTS:
                 texts = _texts(item.get(key))
                 if texts:
                     path[key] = texts

@@ -43,8 +43,8 @@
   "sev_high": _("Action needed: high"),
   "sev_medium": _("Action needed: medium"),
   "sev_low": _("Action needed: low"),
-  "origin_render": _("render"),
-  "origin_manager": _("manager"),
+  "origin_render": _("last render"),
+  "origin_manager": _("live check"),
   "action_needed": _("action needed"),
   "no_action": _("no action needed"),
   "not_assessable": _("not assessable"),
@@ -67,6 +67,7 @@
   "ed_changed": _("changed"),
   "ed_saved": _("Saved. The map is rendered with the entry."),
   "ed_removed": _("Removed. The map is rendered without the entry."),
+  "ed_not_rendered": _("The map was not rendered with this change, so the previous file is back. Your input is still here; the job log says why."),
   "ed_lands_here": _("lands here"),
   "ed_lands_at": _("lands at {name}"),
   "ed_close": _("close call"),
@@ -1270,37 +1271,46 @@
         Object.keys(out).forEach(k => { if (JSON.stringify(out[k]) !== JSON.stringify(then[k]) && !this.ed.reset.includes(k)) patch[k] = out[k]; });
         return "sources:\n  " + this.ed.id + ":\n" + (Object.keys(patch).length ? y(patch, 2) : "    {}");
       },
+      // The form stays open until the render has taken the change: when the render refuses
+      // it (the previous file is back), the input is still there to correct.
       async saveEditor() {
-        this.ed.busy = true; this.ed.problems = [];
+        const ed = this.ed;
+        ed.busy = true; ed.problems = [];
         try {
-          const body = { fields: this.fieldsOut(), reset: this.ed.reset, revision: this.ed.revision };
-          const r = this.ed.mode === "new" ? await api("POST", "/entries", body)
-            : await api("PUT", "/entries/" + encodeURIComponent(this.ed.id), body);
-          const id = this.ed.id;
-          this.ed = null; this.tab = "entries";
-          await this.follow(r.job_id, T.ed_saved);
-          this.selected = this.entries.find(e => e.id === id) || null;
-        } catch (e) { if (this.ed) { this.ed.problems = e.problems || [e.message]; } }
-        finally { if (this.ed) this.ed.busy = false; }
+          const body = { fields: this.fieldsOut(), reset: ed.reset, revision: ed.revision };
+          const r = ed.mode === "new" ? await api("POST", "/entries", body)
+            : await api("PUT", "/entries/" + encodeURIComponent(ed.id), body);
+          const ok = await this.follow(r.job_id, T.ed_saved);
+          if (this.ed !== ed) return;
+          if (ok) { this.ed = null; this.tab = "entries"; this.selected = this.entries.find(e => e.id === ed.id) || null; }
+          else if (ok === false) { ed.problems = [T.ed_not_rendered]; }
+        } catch (e) { ed.problems = e.problems || [e.message]; }
+        finally { ed.busy = false; }
       },
       async removeEditor() {
-        this.ed.busy = true;
+        const ed = this.ed;
+        ed.busy = true; ed.problems = [];
         try {
-          const r = await api("DELETE", "/entries/" + encodeURIComponent(this.ed.id), { revision: this.ed.revision });
-          this.ed = null; this.selected = null; this.tab = "entries";
-          await this.follow(r.job_id, T.ed_removed);
-        } catch (e) { this.ed.problems = [e.message]; this.ed.busy = false; }
+          const r = await api("DELETE", "/entries/" + encodeURIComponent(ed.id), { revision: ed.revision });
+          const ok = await this.follow(r.job_id, T.ed_removed);
+          if (this.ed !== ed) return;
+          if (ok) { this.ed = null; this.selected = null; this.tab = "entries"; }
+          else if (ok === false) { ed.confirmDelete = false; ed.problems = [T.ed_not_rendered]; }
+        } catch (e) { ed.problems = [e.message]; }
+        finally { ed.busy = false; }
       },
 
+      // Waits for a job: true when it succeeded, false when it failed, null while it still runs.
       async follow(jobId, done) {
         this.flash(T.job_running, "alert-info");
         for (let i = 0; i < 300; i++) {
           await new Promise(r => setTimeout(r, 1500));
           const res = await fetch("/api/v1/jobs/" + jobId);
           const job = await res.json().catch(() => ({}));
-          if (job.status === "succeeded") { this.flash(done, "alert-success", jobId); await this.load(); if (this.gov.data) await this.loadGovernance(); return; }
-          if (job.status === "failed") { this.flash(T.job_failed, "alert-error", jobId); await this.load(); if (this.gov.data) await this.loadGovernance(); return; }
+          if (job.status === "succeeded") { this.flash(done, "alert-success", jobId); await this.load(); if (this.gov.data) await this.loadGovernance(); return true; }
+          if (job.status === "failed") { this.flash(T.job_failed, "alert-error", jobId); await this.load(); if (this.gov.data) await this.loadGovernance(); return false; }
         }
+        return null;
       },
     };
   }

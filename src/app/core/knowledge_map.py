@@ -110,7 +110,9 @@ OPERATOR_FILES: tuple[OperatorFile, ...] = (
 _BY_KEY = {f.key: f for f in OPERATOR_FILES}
 
 _LOCK = threading.Lock()
-_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*(\.[a-z0-9_-]+)*$")
+# The core's id rule (the id names the manifest file): dot-separated segments, each starting
+# with a letter or digit. A looser rule here would let an id through that the render refuses.
+_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*\Z")
 
 
 class KnowledgeMapError(Exception):

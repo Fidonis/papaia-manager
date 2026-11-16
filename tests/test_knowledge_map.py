@@ -322,6 +322,20 @@ def test_drafts_are_checked_before_they_are_written(key: str, content: str, frag
     assert problems and fragment in problems[0]
 
 
+@pytest.mark.parametrize("entry_id", ["source.a._b", "source.-b", "a..b", "a.b.", "wiki.main\n"])
+def test_an_id_the_core_refuses_is_refused_before_the_render(entry_id: str) -> None:
+    # The core's rule: every dot-separated segment starts with a letter or a digit.
+    content = yaml.safe_dump({"sources": [{"id": entry_id, "system": "x", "coverage": "y"}]})
+    problems = km.check("sources", content)
+    assert problems and "valid id" in problems[0]
+
+
+@pytest.mark.parametrize("entry_id", ["wiki", "source.a_b-c", "agent.helpdesk.v2", "a.0"])
+def test_an_id_the_core_accepts_passes(entry_id: str) -> None:
+    content = yaml.safe_dump({"sources": [{"id": entry_id, "system": "x", "coverage": "y"}]})
+    assert km.check("sources", content) == []
+
+
 def test_a_valid_draft_has_no_problems() -> None:
     assert km.check("sources", yaml.safe_dump({"sources": [{
         "id": "files.protocols", "kind": "reference", "system": "Share",

@@ -14,6 +14,7 @@ from app.core import knowledge_map_entries as entries
 from tests.test_knowledge_map import (
     _BASE,
     _HEADERS,
+    WIKI,
     FakeMapServer,
     _as,
     client,  # noqa: F401 - fixture
@@ -152,6 +153,49 @@ def test_saving_an_own_entry_keeps_its_other_keys(cfg: Path) -> None:
     assert key == "sources" and not problems
     (saved,) = yaml.safe_load(content)["sources"]
     assert saved["coverage"] == "Protocols and logbooks" and saved["owner"] == OWN["owner"]
+
+
+# Access path keys the map server reads but the form shows no field for.
+_A2A_PATH = {
+    "via": "a2a",
+    "target": "https://helpdesk.example/agent-card.json",
+    "skills": ["ticket-lookup", "password-reset"],
+    "note": "only during office hours",
+}
+
+
+def test_saving_an_own_entry_keeps_skills_and_note_of_its_access_paths(cfg: Path) -> None:
+    agent = {
+        "id": "agent.helpdesk",
+        "kind": "agent",
+        "system": "Helpdesk agent",
+        "coverage": "Tickets and accounts",
+        "access": [_A2A_PATH],
+    }
+    km.write_file(str(cfg), "sources", km._dump({"sources": [agent]}), expected_revision="")
+    current = entries.form(str(cfg), "agent.helpdesk")["fields"]
+    _k, content, _r, problems = entries.update(
+        str(cfg), "agent.helpdesk", {**current, "coverage": "Tickets, accounts and printers"}, []
+    )
+    assert not problems
+    (saved,) = yaml.safe_load(content)["sources"]
+    assert saved["access"] == [_A2A_PATH]
+
+
+def test_an_override_of_the_access_paths_keeps_skills_and_note(cfg: Path) -> None:
+    snapshot = {**WIKI["access"][1], "note": "nightly snapshot", "skills": ["search"]}
+    declared = {**WIKI, "access": [WIKI["access"][0], snapshot]}
+    (cfg / "knowledge-map" / "manifests" / "wiki.main.yaml").write_text(
+        yaml.safe_dump(declared), encoding="utf-8"
+    )
+    current = entries.form(str(cfg), "wiki.main")["fields"]
+    access = [{**current["access"][0], "best_for": "live pages"}, current["access"][1]]
+    _k, content, _r, problems = entries.update(
+        str(cfg), "wiki.main", {**current, "access": access}, []
+    )
+    assert not problems
+    override = yaml.safe_load(content)["sources"]["wiki.main"]
+    assert override == {"access": [{**WIKI["access"][0], "best_for": "live pages"}, snapshot]}
 
 
 def test_a_new_entry_needs_a_free_id_and_its_required_fields(cfg: Path) -> None:
