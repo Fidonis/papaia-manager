@@ -157,7 +157,8 @@ papaia-manager/
 │       │   ├── semver.py       # SemVer precedence for add-on versions and the manifest range
 │       │   │                   #   syntax (`satisfies`, papaia-ctl's pre-release rule)
 │       │   ├── requirements.py # `requires.addons`: a state per required add-on, whether
-│       │   │                   #   papaia-ctl would refuse the install and enforces that
+│       │   │                   #   papaia-ctl would refuse the install and enforces that,
+│       │   │                   #   and the active add-ons that require one (`dependents`)
 │       │   ├── state.py        # Merged addon status (catalog × deployment × Docker)
 │       │   ├── envforms.py     # Env-form spec from .env.example + manifest prompts
 │       │   ├── envvalidate.py  # Server-side validation/coercion of add-on env values
@@ -348,7 +349,19 @@ An add-on may require other add-ons (`requires.addons` in its manifest, contract
 - **The registration is the truth.** The version of a required add-on is read as papaia-ctl reads it: the manifest at the registered `path`, then `version` in deployment.yaml, and only then `manifest_version` in installed.yaml, which an `addon upgrade` or `rollback` on the host leaves behind.
 - **Warn mode installs anyway.** `requirements.compat_mode` follows the core's `compat.resolve_mode` (`PAPAIA_COMPAT_MODE`, then `mode:` in deployment.yaml, then enforce). In warn mode `requirements_enforced` is false: the badges stay, the button stays usable.
 - **Pre-releases need an opt-in.** As in the core, `1.3.0-rc.1` does not satisfy `>=1.2.0`; only a range with a pre-release bound on the same `MAJOR.MINOR.PATCH` (`>=1.3.0-rc.1`) admits it.
-- `tests/test_requirements_contract.py` compares range checks, the parsed field and the version source with the core's `semver`, `compat` and `cli_addon` and needs `PAPAIA_SRC`.
+- **The other direction: required by.** `requirements.dependents` lists the active add-ons whose `requires.addons` names an add-on, as the core's `dependent_addons` does (a manifest whose field papaia-ctl would reject counts as requiring nothing). The detail page shows them as "Required by", and while one is active and papaia-ctl enforces, *Remove* and *Uninstall* are disabled in the menu and `POST …/remove` and `…/uninstall` answer 409. The remove job checks again before `addon stop --clean-up`: refused after the teardown, the required add-on would stay active but stopped. Warn mode does not change this: papaia-ctl's `addon-dependents` ignores the compat mode and only `--force` gets past it, which the manager does not pass. The gallery and `GET /api/v1/addons` build the reverse map once per request (`dependents_by_name`), not once per add-on.
+- `tests/test_requirements_contract.py` compares range checks, the parsed field, the version source and the dependents with the core's `semver`, `compat` and `cli_addon` and needs `PAPAIA_SRC`.
+
+### Add-on actions
+
+An add-on may declare maintenance actions (`actions` in its manifest, contract generation 4): a name, a service of its own compose file, fixed `args`, a `description` and `destructive`. `papaia-ctl addon run <add-on> <action>` (papAIa core 1.9.0, Fidonis/papaia#319) runs one; the detail page offers them as buttons while the add-on is installed and active.
+
+- **The request carries a name, never a command.** `POST /api/v1/addons/{name}/actions/{action}` accepts only an action the manifest of the active add-on declares (404 otherwise), and `ctl.run_addon_action` passes that name and nothing else; papaia-ctl looks it up again. `run` is deliberately not in `ALLOWED_VERBS`.
+- **Read as the core reads it.** `core/actions.py` follows `compat.addon_actions`: one malformed entry makes the block malformed and offers nothing (papaia-ctl refuses to install or start such an add-on), and the name rule is the core's. `tests/test_actions_contract.py` compares both and needs `PAPAIA_SRC`.
+- **Destructive ones ask first.** A `destructive: true` action is outlined in red and needs a confirmation.
+- **The outcome is shown.** `addonMaintenanceAction` in `base.html` polls the job, refreshes the panel and toasts success or failure with a link to the job log, since the output is often the point of an action. The job list shows the action next to the add-on.
+- **Audited with the action.** Success writes `addon_action` with `{"action": …}`; a failure keeps the job's params in the queue's error entry, so it names the action too. The job's `exit_code` is 1 for any failure; papaia-ctl's own exit code is in the log.
+- **Not in a distributed installation.** The core's `_addon_compose_distributed` refuses `run`, so the section is hidden and the route answers 409 when `nodes.is_distributed()`.
 
 ### Upgrading and rolling back an add-on
 
