@@ -198,7 +198,11 @@ def test_a_failing_callback_leaves_an_error_audit_entry() -> None:
         queue = JobQueue(config_dir=config_dir)
         queue.start()
         job = await queue.enqueue(
-            action="addon-install", target="n8n", user="tester", callback=_boom
+            action="addon_action",
+            target="n8n",
+            user="tester",
+            params={"action": "reset"},
+            callback=_boom,
         )
         for _ in range(200):
             current = queue.get_job(job.id)
@@ -214,8 +218,9 @@ def test_a_failing_callback_leaves_an_error_audit_entry() -> None:
     audit_path = Path(config_dir, "manager", "audit.log")
     entries = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
     assert entries[-1]["user"] == "tester"
-    assert entries[-1]["action"] == "addon-install"
+    assert entries[-1]["action"] == "addon_action"
     assert entries[-1]["target"] == "n8n"
     assert entries[-1]["result"] == "error"
     assert entries[-1]["job_id"] == job.id
-    assert entries[-1]["params"] == {"error": "RuntimeError"}
+    # The job's own params stay, so a failed action names the action.
+    assert entries[-1]["params"] == {"action": "reset", "error": "RuntimeError"}

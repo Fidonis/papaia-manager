@@ -16,7 +16,7 @@ import pytest
 
 from app.core import ctl
 from app.core.config import modules
-from app.core.ctl import LOCALAI_VARIANTS, ModuleSetup, module_setup_flags
+from app.core.ctl import LOCALAI_VARIANTS, VOICE_VARIANTS, ModuleSetup, module_setup_flags
 
 
 def _env(config_dir: Path, text: str) -> None:
@@ -50,15 +50,37 @@ def test_localai_on_refuses_a_variant_it_does_not_offer(variant: str | None) -> 
 def test_web_search_is_a_plain_switch() -> None:
     assert module_setup_flags(ModuleSetup("web-search", True)) == ["--enable-web-search=true"]
     assert module_setup_flags(ModuleSetup("web-search", False)) == ["--enable-web-search=false"]
-    with pytest.raises(ValueError, match="only LocalAI"):
+    with pytest.raises(ValueError, match="no image variant"):
         module_setup_flags(ModuleSetup("web-search", True, "cpu"))
 
 
 def test_the_rag_system_is_a_plain_switch() -> None:
     assert module_setup_flags(ModuleSetup("rag", True)) == ["--enable-rag=true"]
     assert module_setup_flags(ModuleSetup("rag", False)) == ["--enable-rag=false"]
-    with pytest.raises(ValueError, match="only LocalAI"):
+    with pytest.raises(ValueError, match="no image variant"):
         module_setup_flags(ModuleSetup("rag", True, "cpu"))
+
+
+@pytest.mark.parametrize("variant", VOICE_VARIANTS)
+def test_voice_on_names_the_variant(variant: str) -> None:
+    assert module_setup_flags(ModuleSetup("voice", True, variant)) == [
+        "--enable-voice=true",
+        f"--voice-variant={variant}",
+    ]
+
+
+def test_voice_off_takes_no_variant() -> None:
+    assert module_setup_flags(ModuleSetup("voice", False)) == ["--enable-voice=false"]
+    with pytest.raises(ValueError, match="no variant"):
+        module_setup_flags(ModuleSetup("voice", False, "cpu"))
+
+
+@pytest.mark.parametrize("variant", [None, "", "auto", "vulkan", "nvidia-cuda-12", "--force"])
+def test_voice_on_refuses_a_variant_it_does_not_offer(variant: str | None) -> None:
+    # `auto` probes the host, which the manager's container cannot see, and the LocalAI
+    # catalogue's names are not the voice engine's.
+    with pytest.raises(ValueError, match="variant"):
+        module_setup_flags(ModuleSetup("voice", True, variant))
 
 
 @pytest.mark.parametrize("name", ["manager", "mail", "keycloak", "../x", ""])
@@ -103,13 +125,14 @@ def test_the_state_comes_from_compose_profiles(tmp_path: Path) -> None:
         "localai": False,
         "web-search": True,
         "rag": False,
+        "voice": False,
         "mail": True,
         "manager": False,
     }
 
 
-def test_the_four_optional_modules_are_switchable_and_the_manager_is_not() -> None:
-    assert set(modules.SWITCHABLE) == {"localai", "web-search", "rag", "mail"}
+def test_the_five_optional_modules_are_switchable_and_the_manager_is_not() -> None:
+    assert set(modules.SWITCHABLE) == {"localai", "web-search", "rag", "voice", "mail"}
     assert set(modules.SWITCHABLE) == set(ctl.PURGE_MODULES)
     rows = modules.state("/nonexistent", "/nonexistent")
     by_name = {r["name"]: r for r in rows}
@@ -124,6 +147,13 @@ def test_the_variant_defaults_to_cpu_and_is_read_back(tmp_path: Path) -> None:
     assert modules.stored_variant(str(tmp_path)) == "nvidia-cuda-12"
 
 
+def test_the_voice_variant_defaults_to_cpu_and_is_read_back(tmp_path: Path) -> None:
+    _env(tmp_path, "COMPOSE_PROFILES=voice\n")
+    assert modules.stored_variant(str(tmp_path), "voice") == "cpu"
+    _env(tmp_path, "COMPOSE_PROFILES=voice\nVOICE_TTS_IMAGE_VARIANT=hipblas\n")
+    assert modules.stored_variant(str(tmp_path), "voice") == "hipblas"
+
+
 def test_the_revision_changes_with_the_profiles_and_the_variant(tmp_path: Path) -> None:
     _env(tmp_path, "COMPOSE_PROFILES=nginx\n")
     first = modules.revision(str(tmp_path))
@@ -131,7 +161,10 @@ def test_the_revision_changes_with_the_profiles_and_the_variant(tmp_path: Path) 
     second = modules.revision(str(tmp_path))
     _env(tmp_path, "COMPOSE_PROFILES=nginx,localai\nLOCALAI_IMAGE_VARIANT=intel\n")
     third = modules.revision(str(tmp_path))
-    assert len({first, second, third}) == 3
+    fourth_env = "COMPOSE_PROFILES=nginx,localai\nLOCALAI_IMAGE_VARIANT=intel\n"
+    _env(tmp_path, fourth_env + "VOICE_TTS_IMAGE_VARIANT=nvidia\n")
+    fourth = modules.revision(str(tmp_path))
+    assert len({first, second, third, fourth}) == 4
 
 
 def test_the_revision_ignores_the_order_of_the_profiles(tmp_path: Path) -> None:
@@ -171,10 +204,21 @@ def test_enabling_localai_needs_a_variant_the_page_offers() -> None:
         modules.validate_enable("localai", "quantum")
 
 
+def test_enabling_voice_needs_a_variant_the_page_offers() -> None:
+    assert modules.validate_enable("voice", "hipblas") == "hipblas"
+    with pytest.raises(modules.ModuleError, match="Choose"):
+        modules.validate_enable("voice", None)
+    # `auto` is host-only (the probe looks at the host), and LocalAI's names are not the
+    # voice engine's.
+    for variant in ("auto", "nvidia-cuda-12", "vulkan"):
+        with pytest.raises(modules.ModuleError, match="Unknown"):
+            modules.validate_enable("voice", variant)
+
+
 def test_enabling_anything_else_takes_no_variant() -> None:
     for name in ("web-search", "rag", "mail"):
         assert modules.validate_enable(name, None) is None
-        with pytest.raises(modules.ModuleError, match="Only LocalAI"):
+        with pytest.raises(modules.ModuleError, match="no accelerator variant"):
             modules.validate_enable(name, "cpu")
     for name in ("manager", "nope"):
         with pytest.raises(modules.ModuleError, match="can't be switched"):
@@ -211,13 +255,13 @@ def test_the_core_manages_modules_when_it_ships_the_module_operations(tmp_path: 
     assert modules.core_manages_modules(str(tmp_path / "old")) is False
 
 
-def test_rag_and_mail_need_a_core_with_the_module_operations(tmp_path: Path) -> None:
+def test_rag_voice_and_mail_need_a_core_with_the_module_operations(tmp_path: Path) -> None:
     config = tmp_path / "config"
     _env(config, "COMPOSE_PROFILES=nginx\n")
-    _core(tmp_path / "w", operations=False, profiles=("rag", "smtp", "localai"))
+    _core(tmp_path / "w", operations=False, profiles=("rag", "voice", "smtp", "localai"))
     rows = {r["name"]: r for r in modules.state(str(config), str(tmp_path / "w"))}
     assert rows["localai"]["switchable"] is True
-    for name in ("rag", "mail"):
+    for name in ("rag", "voice", "mail"):
         assert rows[name]["switchable"] is False
         assert "too old" in str(rows[name]["problem"])
         assert rows[name]["can_delete"] is False
