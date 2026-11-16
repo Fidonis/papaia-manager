@@ -61,6 +61,9 @@ class OverlayTarget:
     # recreates them (a replaced file is only seen by a new container).
     profile: str
     description: str
+    # The recreated containers load for longer than the job waits for them (see
+    # `ModuleDef.slow_start`): still starting when the wait ends is not a failure.
+    slow_start: bool = False
 
 
 TARGETS: tuple[OverlayTarget, ...] = (
@@ -77,6 +80,15 @@ TARGETS: tuple[OverlayTarget, ...] = (
         path="ai/litellm/config.yaml",
         profile="litellm",
         description=N_("Models and routing of the LLM gateway."),
+    ),
+    OverlayTarget(
+        key="chatterbox",
+        label="Chatterbox",
+        path="ai/voice/chatterbox.yaml",
+        profile="voice",
+        description=N_("Default voice and generation settings of the speech synthesis."),
+        # Applying recreates the whole voice profile, which loads its models again.
+        slow_start=True,
     ),
     OverlayTarget(
         key="searxng",
@@ -286,7 +298,7 @@ def other_files(config_dir: str, workspace_dir: str | None = None) -> list[dict[
                 found.append({"path": rel, "note": _("used by the render, not editable here")})
             else:
                 found.append({"path": rel, "note": _(
-                    "ignored by the render: the core has no file of that name to merge it into"
+                    "ignored by the render: the core ships no file of that name"
                 )})
             continue
         if rel in rendered or directory is not None:

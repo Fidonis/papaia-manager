@@ -169,6 +169,7 @@ async def get_modules(
         "revision": modules.revision(settings.papaia_config_dir),
         "modules": modules.state(settings.papaia_config_dir, settings.papaia_workspace_dir),
         "variants": modules.variant_options(),
+        "voice_variants": modules.variant_options("voice"),
         "host_only_variants": list(modules.HOST_ONLY_VARIANTS),
     }
 

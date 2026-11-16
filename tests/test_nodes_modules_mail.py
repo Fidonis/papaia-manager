@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from app.core import host_health, nodes
+from app.core.config import modules
 from app.core.config import service as svc
 from app.core.jobs import Job, JobContext
 from app.core.mail import service as mail_service
@@ -42,9 +43,11 @@ _CATALOGUE = {
     "nginx": ("nginx", "oauth2-proxy"),
     "keycloak": ("keycloak",),
     "librechat": ("librechat",),
+    "litellm": ("litellm",),
     "localai": ("localai",),
     "rag": ("rag",),
     "smtp": ("smtp",),
+    "voice": ("voice",),
 }
 
 
@@ -183,6 +186,8 @@ class _Recorder:
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[str]]] = []
         self.fail_on: str | None = None
+        # Fails a run in addition to `fail_on`, chosen by its verb and flags.
+        self.fail_if: Callable[[str, list[str]], bool] | None = None
         self.lines: dict[str, list[str]] = {}
 
     async def setup(self, spec: Any, **kwargs: Any) -> tuple[int, str, str]:
@@ -192,7 +197,9 @@ class _Recorder:
         flags = list(kwargs["extra_flags"])
         self.calls.append((kwargs["verb"], flags))
         node = next((f for f in flags if f.startswith("--node=")), "")
-        fail = self.fail_on is not None and node == self.fail_on
+        fail = (self.fail_on is not None and node == self.fail_on) or (
+            self.fail_if is not None and self.fail_if(kwargs["verb"], flags)
+        )
 
         async def lines() -> AsyncGenerator[str, None]:
             for line in self.lines.get(node, []):
@@ -648,6 +655,44 @@ def test_the_relay_failing_on_keycloaks_node_ends_with_the_jobs_sentence(
     assert _audit(config)[-1]["result"] == "partial"
 
 
+def test_a_failed_start_still_names_the_hook_node_it_skipped(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The relay on gpu, the proxy on edge and Keycloak on the controller, and neither edge
+    # nor the controller answers: edge is skipped, the controller ends the step, and the
+    # job's sentence names the command for edge too.
+    monkeypatch.setitem(TOPOLOGY["topology"]["placement"], "smtp", "gpu")
+    recorder.fail_if = lambda verb, flags: flags[-1] in ("--node=edge", "--node=internal")
+    with pytest.raises(svc.StepFailedError) as raised:
+        _relay_on(distributed, tmp_path)
+    assert "switched on in the configuration" in str(raised.value)
+    assert "papaia-ctl start --profiles=smtp --node=edge" in str(raised.value)
+
+
+def test_a_failed_recreate_still_names_the_hook_node_it_skipped(
+    distributed: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The RAG system starts with edge skipped; LibreChat, recreated after it, does not.
+    config, workspace = distributed
+    recorder.fail_on = "--node=edge"
+    recorder.fail_if = lambda verb, flags: verb == "stop" and "--profiles=librechat" in flags
+    monkeypatch.setattr(svc, "wait_healthy", _healthy)
+    callback = svc.enable_callback(
+        module="rag", variant=None, user="admin", workspace_dir=workspace, config_dir=config
+    )
+    with pytest.raises(svc.StepFailedError) as raised:
+        asyncio.run(callback(_context(tmp_path)))
+    assert "papaia-ctl stop" in str(raised.value)
+    assert "papaia-ctl start --profiles=rag --node=edge" in str(raised.value)
+    assert _audit(config)[-1]["result"] == "partial"
+
+
 def test_the_relay_on_its_own_node_is_never_skipped(
     distributed: tuple[str, str], recorder: _Recorder, tmp_path: Path
 ) -> None:
@@ -686,6 +731,26 @@ def test_a_job_that_ends_unhealthy_still_names_the_missed_node(
         asyncio.run(callback(_context(tmp_path)))
     assert "unhealthy" in str(raised.value)
     assert "papaia-ctl start --profiles=localai --node=edge" in str(raised.value)
+
+
+def test_switching_off_still_names_the_hook_node_an_earlier_recreate_missed(
+    distributed: tuple[str, str], recorder: _Recorder, tmp_path: Path
+) -> None:
+    # Voice recreates LiteLLM, which skips edge, and then LibreChat, whose stop fails.
+    config, workspace = distributed
+    recorder.fail_on = "--node=edge"
+    recorder.fail_if = lambda verb, flags: verb == "stop" and "--profiles=librechat" in flags
+    callback = svc.disable_callback(
+        module="voice",
+        scope=modules.SCOPE_KEEP,
+        user="admin",
+        workspace_dir=workspace,
+        config_dir=config,
+    )
+    with pytest.raises(svc.StepFailedError) as raised:
+        asyncio.run(callback(_context(tmp_path)))
+    assert str(raised.value).startswith("papaia-ctl stop:")
+    assert "papaia-ctl start --profiles=litellm --node=edge" in str(raised.value)
 
 
 def test_the_roll_back_names_a_missed_hook_node_instead_of_a_failed_start(
@@ -746,11 +811,13 @@ def test_the_node_report_stays_while_a_new_run_is_under_way(
 ) -> None:
     config, workspace = distributed
     release = asyncio.Event()
+    reached = asyncio.Event()
     envelope = json.dumps({"node": "edge", "doctor": _DOCTOR, "links": []})
 
     async def fake(**kwargs: Any) -> tuple[int, str, str]:
         node_health.append(kwargs)
         if len(node_health) > 1:
+            reached.set()
             await release.wait()
         return 0, envelope, ""
 
@@ -764,7 +831,9 @@ def test_the_node_report_stays_while_a_new_run_is_under_way(
                 "edge", config_dir=config, workspace_dir=workspace, force=True
             )
         )
-        await asyncio.sleep(0)
+        # Until the forced run has reached the node: one turn of the loop only starts the
+        # task, so the report would still be there without the fix.
+        await reached.wait()
         during = host_health.cached_node_report("edge")
         release.set()
         await held

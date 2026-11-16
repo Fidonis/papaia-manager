@@ -115,6 +115,9 @@ def registry(config_dir: str) -> dict[str, NodeRef]:
     }
 
 
+# The profile of Keycloak, whose realm holds the mail server the relay provides.
+KEYCLOAK_PROFILE = "keycloak"
+
 # The catalogue services whose node runs the provisioning hooks at the end of `start`:
 # `npm-provision` where the proxy runs, `keycloak-role-sync` (roles, mappers and the realm's
 # mail server) where Keycloak runs. The core runs a hook only when that node is started.

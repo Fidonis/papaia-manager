@@ -65,12 +65,18 @@ default 60 seconds); it applies to every administrator.
 
 **Modules and overlay.** Settings has three tabs: **Manager** (the cards above),
 **Modules** and **Overlay**. **Modules** is the one place that switches the
-optional parts of the stack on and off: LocalAI, web search, the RAG system and the
-mail relay. Switching a module on stores the choice with the core's own `setup`
-(`--enable-local-ai`, `--enable-web-search`, `--enable-rag`, `--enable-smtp`, and for
-LocalAI the accelerator variant, which is chosen on the page because GPU detection
-cannot see the host from inside the container) and starts the module's profile; the
-RAG system also recreates LibreChat, whose configuration lists the RAG tools. The
+optional parts of the stack on and off: LocalAI, web search, the RAG system, voice
+(local speech-to-text and text-to-speech, papAIa 1.9.0 and newer) and the mail relay.
+Switching a module on stores the choice with the core's own `setup`
+(`--enable-local-ai`, `--enable-web-search`, `--enable-rag`, `--enable-voice`,
+`--enable-smtp`, and for LocalAI and voice the accelerator variant, which is chosen on
+the page because GPU detection cannot see the host from inside the container; voice
+offers CPU, NVIDIA with a driver for CUDA 12.8 or newer, and AMD ROCm) and starts the
+module's profile; the RAG system also recreates LibreChat, whose configuration lists
+the RAG tools, and voice recreates LiteLLM and LibreChat, which route speech to its
+engines and offer it in the speech panel. Voice downloads several GB of models on its
+first start, which takes longer than a switch waits: the switch finishes while they
+load, and the Services page shows when voice is ready. The
 RAG pages and the Mail page hold those modules' settings and no longer switch
 anything. Switching a module on asks the questions `papaia-ctl setup` asks, inline under
 its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings
@@ -92,7 +98,7 @@ but with its data would be of no use to anyone. The RAG documents folder is neve
 deleted. Deleting needs a core with the module operations (papAIa 1.6.0); an older
 core still switches modules off and keeps everything. **Overlay** edits the customer overlay, the files under
 `$PAPAIA_CONFIG_DIR/overlay/` that the core merges last into the LibreChat,
-LiteLLM and SearXNG configuration. The editor checks the YAML while you type,
+LiteLLM, Chatterbox (the speech synthesis of voice) and SearXNG configuration. The editor checks the YAML while you type,
 shows the effective result (the core merges the draft in memory and the page
 shows the difference to what the file renders to now; this needs a core with the
 `render-preview` command, otherwise only the syntax check is available), and
@@ -933,14 +939,14 @@ PUT    /api/v1/mail                          # {revision, host, port?, security,
 POST   /api/v1/mail/probe                    # {host?, port?, security?, user?, password?} try the mail server, send nothing
 POST   /api/v1/mail/test-message             # {to} hand one message to the relay
 
-GET    /api/v1/config/modules                # the optional modules, their state, the LocalAI variants, the revision
-GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | mail: the volumes and settings a switch-off could delete,
+GET    /api/v1/config/modules                # the optional modules, their state, the LocalAI and voice variants (variants, voice_variants), the revision
+GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | voice | mail: the volumes and settings a switch-off could delete,
                                              #   and the open setup questions (public URL) a switch-on asks
-POST   /api/v1/config/modules/{name}/enable  # {revision, variant?, public_url?, mail?} 202 with a job. public_url: rag | localai; mail: the mail
+POST   /api/v1/config/modules/{name}/enable  # {revision, variant?, public_url?, mail?} 202 with a job. variant: localai | voice; public_url: rag | localai; mail: the mail
                                              #   server when none is stored. The RAG system needs no clashing add-on
 POST   /api/v1/config/modules/{name}/disable # {revision, scope?: keep|data|all, confirm?}; 202 with a job. A deletion needs the module name in confirm, and a single host
-GET    /api/v1/config/overlay                # the three editable overlay files and the other files under overlay/
-GET    /api/v1/config/overlay/{key}          # librechat | litellm | searxng: content, revision, versions
+GET    /api/v1/config/overlay                # the four editable overlay files and the other files under overlay/
+GET    /api/v1/config/overlay/{key}          # librechat | litellm | chatterbox | searxng: content, revision, versions
 POST   /api/v1/config/overlay/{key}/check    # {content} syntax check, nothing is written
 POST   /api/v1/config/overlay/{key}/preview  # {content} the effective result as a diff (needs the core's render-preview)
 PUT    /api/v1/config/overlay/{key}          # {content, revision} save, back up and recreate; 202 with a job, 409 if stale
