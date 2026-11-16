@@ -457,13 +457,19 @@ def disable_callback(
         )
         if module == "mail":
             await _sync_realm(ctx, workspace_dir=workspace_dir, config_dir=config_dir)
-        await _recreate(
-            ctx,
-            definition.recreate,
-            workspace_dir=workspace_dir,
-            config_dir=config_dir,
-            skipped=skipped,
-        )
+        try:
+            await _recreate(
+                ctx,
+                definition.recreate,
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+                skipped=skipped,
+            )
+        except StepFailedError as exc:
+            # A later profile's failure ends the recreate after an earlier one skipped a node
+            # (voice: LiteLLM, then LibreChat). The purge never follows a skipped node: data is
+            # only deleted on a single host (`modules.validate_scope`).
+            raise StepFailedError(with_retries(str(exc), skipped)) from exc
         if delete_data:
             await _purge(
                 ctx,
