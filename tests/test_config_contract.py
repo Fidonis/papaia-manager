@@ -21,6 +21,7 @@ import asyncio
 import importlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+import yaml
 
 _SRC = os.environ.get("PAPAIA_SRC", "")
 
@@ -64,7 +66,7 @@ for _key, _value in {
     os.environ.setdefault(_key, _value)
 
 from app.core import ctl  # noqa: E402
-from app.core.config import modules, overlay, preview  # noqa: E402
+from app.core.config import modules, overlay, preview, service  # noqa: E402
 from app.core.ctl import (  # noqa: E402
     ModuleSetup,
     SmtpSetup,
@@ -84,6 +86,7 @@ def core() -> Iterator[dict[str, ModuleType]]:
     try:
         yield {
             "gpu_detect": importlib.import_module("lib.gpu_detect"),
+            "gen_override": importlib.import_module("lib.gen_override"),
             "render_core": importlib.import_module("lib.render_core"),
             "modules": importlib.import_module("lib.modules"),
             "resolve": importlib.import_module("lib.resolve"),
@@ -103,7 +106,10 @@ def test_the_variants_the_page_offers_are_variants_the_core_has(
     catalogue = set(core["gpu_detect"].VARIANTS)
     assert set(ctl.LOCALAI_VARIANTS) | set(modules.HOST_ONLY_VARIANTS) == catalogue
     assert set(ctl.LOCALAI_VARIANTS).isdisjoint(modules.HOST_ONLY_VARIANTS)
-    assert set(modules.VARIANT_LABELS) == set(ctl.LOCALAI_VARIANTS)
+    # The voice catalogue is the core's accelerator mapping plus the pinned CPU image.
+    voice_catalogue = set(core["gen_override"]._VOICE_VARIANT_FRAGMENT) | {"cpu"}
+    assert set(ctl.VOICE_VARIANTS) == voice_catalogue
+    assert set(modules.VARIANT_LABELS) == set(ctl.LOCALAI_VARIANTS) | set(ctl.VOICE_VARIANTS)
 
 
 def test_the_core_only_looks_at_the_devices_of_the_host_for_the_variant_left_out(
@@ -144,8 +150,10 @@ def test_the_flags_the_manager_passes_are_options_the_core_knows() -> None:
         "--enable-local-ai",
         "--enable-web-search",
         "--enable-rag",
+        "--enable-voice",
         "--enable-smtp",
         "--localai-variant",
+        "--voice-variant",
         "--module",
         "--data",
         "--config",
@@ -155,6 +163,7 @@ def test_the_flags_the_manager_passes_are_options_the_core_knows() -> None:
         ModuleSetup("localai", True, "cpu"),
         ModuleSetup("web-search", False),
         ModuleSetup("rag", True),
+        ModuleSetup("voice", True, "nvidia"),
     )
     for spec in specs:
         for item in ctl.module_setup_flags(spec):
@@ -178,6 +187,41 @@ def test_the_addons_that_block_the_rag_system_are_the_ones_the_core_names(
     core: dict[str, ModuleType],
 ) -> None:
     assert set(modules.RAG_CONFLICTING_ADDONS) == set(core["resolve"]._RAG_CONFLICTING_ADDONS)  # noqa: SLF001
+
+
+def _seconds(value: object) -> float:
+    """A Compose duration (`300s`, `1m30s`) in seconds, or the default of `${VAR:-300s}`."""
+    text = str(value)
+    default = re.fullmatch(r"\$\{\w+:?-([^}]*)\}", text)
+    if default:
+        text = default.group(1)
+    units = {"h": 3600.0, "m": 60.0, "s": 1.0, "ms": 0.001, "us": 0.000001}
+    return sum(float(n) * units[u] for n, u in re.findall(r"([\d.]+)(ms|us|h|m|s)", text))
+
+
+def _start_periods() -> dict[str, float]:
+    """The longest healthcheck start period among each profile's services in the core."""
+    longest: dict[str, float] = {}
+    for path in (Path(_SRC) / "src").rglob("docker-compose*.yml"):
+        document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        for definition in (document.get("services") or {}).values():
+            period = _seconds((definition.get("healthcheck") or {}).get("start_period", "0s"))
+            for profile in definition.get("profiles") or ():
+                longest[profile] = max(longest.get(profile, 0.0), period)
+    return longest
+
+
+def test_what_may_still_be_loading_is_what_the_core_starts_for_longer_than_a_job_waits() -> None:
+    """A group the core gives a start period beyond the job's wait is still starting when the
+    wait ends; the job only finishes for it if the module or target says `slow_start`."""
+    periods = _start_periods()
+    assert periods["voice"] > service.HEALTH_TIMEOUT_SECONDS
+    for module in modules.MODULES:
+        expected = periods.get(module.profile, 0.0) > service.HEALTH_TIMEOUT_SECONDS
+        assert module.slow_start is expected, module.name
+    for target in overlay.TARGETS:
+        expected = periods.get(target.profile, 0.0) > service.HEALTH_TIMEOUT_SECONDS
+        assert target.slow_start is expected, target.key
 
 
 # -- a real deployment -------------------------------------------------------------------------
@@ -440,6 +484,64 @@ async def test_an_addon_with_the_same_services_is_refused_by_the_core_as_the_pag
     assert code != 0
     assert "qdrant-ingest" in err
     assert "rag" not in deployment.profiles()
+
+
+# -- voice ---------------------------------------------------------------------------------------
+
+_VOICE_OVERRIDE = Path("overrides") / "docker-compose.voice-gpu.override.yml"
+
+
+async def test_switching_voice_on_stores_the_profile_and_the_variant(
+    deployment: _Deployment,
+) -> None:
+    assert "voice" not in deployment.profiles()
+    code, _, err = await _apply(deployment, ModuleSetup("voice", True, "nvidia"))
+    assert code == 0, err
+    assert "voice" in deployment.profiles()
+    assert deployment.env(".env")["VOICE_TTS_IMAGE_VARIANT"] == "nvidia"
+    # What the manager reads back is what the core stored, and the variant became an image.
+    assert "voice" in modules.active(str(deployment.config))
+    assert modules.stored_variant(str(deployment.config), "voice") == "nvidia"
+    rows = {r["name"]: r for r in modules.state(str(deployment.config), str(deployment.workspace))}
+    assert (rows["voice"]["enabled"], rows["voice"]["variant"]) == (True, "nvidia")
+    assert "-cu128" in (deployment.config / _VOICE_OVERRIDE).read_text(encoding="utf-8")
+
+
+async def test_voice_on_the_cpu_needs_no_override_and_the_revision_follows_the_variant(
+    deployment: _Deployment,
+) -> None:
+    code, _, err = await _apply(deployment, ModuleSetup("voice", True, "hipblas"))
+    assert code == 0, err
+    assert "-rocm" in (deployment.config / _VOICE_OVERRIDE).read_text(encoding="utf-8")
+    first = modules.revision(str(deployment.config))
+    code, _, err = await _apply(deployment, ModuleSetup("voice", True, "cpu"))
+    assert code == 0, err
+    assert not (deployment.config / _VOICE_OVERRIDE).exists()
+    assert modules.revision(str(deployment.config)) != first
+
+
+async def test_switching_voice_off_removes_the_profile_and_keeps_the_variant(
+    deployment: _Deployment,
+) -> None:
+    await _apply(deployment, ModuleSetup("voice", True, "hipblas"))
+    before = deployment.profiles() - {"voice"}
+    code, _, err = await _apply(deployment, ModuleSetup("voice", False))
+    assert code == 0, err
+    assert deployment.profiles() == before
+    assert deployment.env(".env")["VOICE_TTS_IMAGE_VARIANT"] == "hipblas"
+    assert modules.stored_variant(str(deployment.config), "voice") == "hipblas"
+
+
+async def test_the_voice_info_names_the_model_caches_and_asks_nothing(
+    deployment: _Deployment,
+) -> None:
+    info = await modules.module_info(
+        "voice", workspace_dir=str(deployment.workspace), config_dir=str(deployment.config)
+    )
+    assert info["available"] is True
+    assert info["module"] == "voice" and info["profile"] == "voice"
+    assert {"speaches-hf-cache", "chatterbox-hf-cache"} <= {v["key"] for v in info["volumes"]}
+    assert not any(question["ask"] for question in info.get("questions", []))
 
 
 # -- the mail relay ----------------------------------------------------------------------------
