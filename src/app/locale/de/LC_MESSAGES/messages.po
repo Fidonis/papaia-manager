@@ -1350,8 +1350,8 @@ msgstr "Intel-GPU"
 msgid "AMD ROCm"
 msgstr "AMD ROCm"
 
-msgid "NVIDIA GPU (CUDA)"
-msgstr "NVIDIA-GPU (CUDA)"
+msgid "NVIDIA GPU (driver with CUDA 12.8 or newer)"
+msgstr "NVIDIA-GPU (Treiber mit CUDA 12.8 oder neuer)"
 
 msgid "Runs language models on this host behind an OpenAI-compatible API. Sign-in goes through Keycloak."
 msgstr "Führt Sprachmodelle auf diesem Host hinter einer OpenAI-kompatiblen API aus. Die Anmeldung läuft über Keycloak."
@@ -9819,7 +9819,7 @@ msgid "The action \"{action}\" finished &mdash; <a class=\"underline\" href=\"{h
 msgstr "Die Aktion „{action}“ ist abgeschlossen &mdash; <a class=\"underline\" href=\"{href}\">Log ansehen</a>"
 
 msgid "Voice"
-msgstr "Sprache"
+msgstr "Sprachein- und -ausgabe"
 
 msgid "Local speech-to-text and text-to-speech behind LiteLLM, wired into LibreChat's speech panel."
 msgstr "Lokale Spracherkennung und Sprachausgabe hinter LiteLLM, eingebunden in LibreChats Sprachfunktionen."
@@ -9830,8 +9830,8 @@ msgstr "Beschleuniger für die Sprachausgabe"
 msgid "On the CPU, speech-to-text works out of the box and spoken replies use the browser's voice; a GPU makes the local voice fast enough for live playback."
 msgstr "Auf der CPU funktioniert die Spracherkennung sofort und gesprochene Antworten nutzen die Stimme des Browsers; mit einer GPU ist die lokale Stimme schnell genug für die direkte Wiedergabe."
 
-msgid "The first start downloads several GB of models."
-msgstr "Der erste Start lädt mehrere GB an Modellen herunter."
+msgid "The first start downloads several GB of models. Switching on finishes while they load; the Services page shows when voice is ready."
+msgstr "Der erste Start lädt mehrere GB an Modellen herunter. Das Einschalten ist fertig, während sie noch laden; die Seite „Dienste“ zeigt, wann die Sprachein- und -ausgabe bereit ist."
 
 msgid "Default voice and generation settings of the speech synthesis."
 msgstr "Standardstimme und Generierungseinstellungen der Sprachausgabe."

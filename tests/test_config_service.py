@@ -17,7 +17,7 @@ import pytest
 
 from app.core import services
 from app.core.audit import audit_path
-from app.core.config import history, overlay
+from app.core.config import history, modules, overlay
 from app.core.config import service as svc
 from app.core.ctl import CtlError, ModuleSetup, SmtpSetup
 from app.core.jobs import Job, JobContext
@@ -393,6 +393,60 @@ def test_switching_voice_off_recreates_litellm_and_librechat_without_it(
     ]
 
 
+def _voice_on(config: str) -> Any:
+    return svc.enable_callback(
+        module="voice", variant="cpu", user="admin", workspace_dir="/w", config_dir=config
+    )
+
+
+def test_voice_that_is_still_loading_its_models_is_switched_on(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    # The first start downloads the models inside the containers, for far longer than the
+    # job waits (the core allows about 25 minutes). Still starting is loading, not failing.
+    health["health"] = ServiceHealth.STARTING
+    config = _config(tmp_path)
+    ctx = _context(tmp_path)
+    _go(_voice_on(config), ctx)
+    assert "voice: still starting" in _log(ctx)
+    assert "Services page" in _log(ctx)
+    assert run.names()[-2:] == ["stop", "start"]
+    assert [e["result"] for e in _audit(config)] == ["ok"]
+
+
+@pytest.mark.parametrize(
+    "state", [ServiceHealth.UNHEALTHY, ServiceHealth.STOPPED, ServiceHealth.MISSING]
+)
+def test_voice_that_fails_while_it_loads_is_still_said_so(
+    tmp_path: Path, run: _Run, health: dict[str, Any], state: ServiceHealth
+) -> None:
+    health["health"] = state
+    config = _config(tmp_path)
+    with pytest.raises(svc.NotHealthyError, match=f"the voice containers are {state.value}"):
+        _go(_voice_on(config), _context(tmp_path))
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_a_module_that_starts_quickly_and_is_still_starting_is_said_so(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    health["health"] = ServiceHealth.STARTING
+    config = _config(tmp_path)
+    with pytest.raises(svc.NotHealthyError, match="the localai containers are starting"):
+        _go(
+            svc.enable_callback(
+                module="localai", variant="cpu", user="admin", workspace_dir="/w", config_dir=config
+            ),
+            _context(tmp_path),
+        )
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_only_voice_and_its_overlay_load_for_longer_than_the_job_waits() -> None:
+    assert {m.name for m in modules.MODULES if m.slow_start} == {"voice"}
+    assert {t.key for t in overlay.TARGETS if t.slow_start} == {"chatterbox"}
+
+
 def test_a_core_that_refuses_the_rag_system_stops_before_anything_starts(
     tmp_path: Path, run: _Run
 ) -> None:
@@ -753,6 +807,34 @@ def test_a_group_that_starts_but_is_not_healthy_keeps_the_file_and_says_so(
     with pytest.raises(svc.NotHealthyError, match="Versions"):
         _go(_overlay_job(config), _context(tmp_path))
     assert overlay.read(config, "librechat").raw == NEW
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_a_chatterbox_overlay_is_applied_while_the_voice_engines_load_again(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    # Applying recreates the voice profile, whose engines load their models for longer than
+    # the job waits.
+    health["health"] = ServiceHealth.STARTING
+    config = _config(tmp_path, "nginx,litellm,voice")
+    ctx = _context(tmp_path)
+    _go(_overlay_job(config, key="chatterbox"), ctx)
+    assert run.steps == [
+        ("stop", ["--clean-up", "--profiles=voice"]),
+        ("start", ["--profiles=voice"]),
+    ]
+    assert overlay.read(config, "chatterbox").raw == NEW
+    assert "voice: still starting" in _log(ctx)
+    assert [e["result"] for e in _audit(config)] == ["ok"]
+
+
+def test_a_chatterbox_overlay_that_breaks_the_engine_is_still_said_so(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    health["health"] = ServiceHealth.UNHEALTHY
+    config = _config(tmp_path, "nginx,litellm,voice")
+    with pytest.raises(svc.NotHealthyError, match="Versions"):
+        _go(_overlay_job(config, key="chatterbox"), _context(tmp_path))
     assert [e["result"] for e in _audit(config)] == ["partial"]
 
 

@@ -46,14 +46,15 @@ VARIANT_KEYS: dict[str, str] = {
     "localai": "LOCALAI_IMAGE_VARIANT",
     "voice": "VOICE_TTS_IMAGE_VARIANT",
 }
-KEY_VARIANT = VARIANT_KEYS["localai"]
 DEFAULT_VARIANT = "cpu"
 
 VARIANT_LABELS: dict[str, str] = {
     "cpu": N_("CPU (works everywhere)"),
     "nvidia-cuda-12": N_("NVIDIA CUDA 12"),
     "nvidia-cuda-13": N_("NVIDIA CUDA 13"),
-    "nvidia": N_("NVIDIA GPU (CUDA)"),
+    # The core's NVIDIA image of the speech synthesis requires CUDA 12.8, and the NVIDIA
+    # runtime refuses it on an older driver; this container cannot look at the driver.
+    "nvidia": N_("NVIDIA GPU (driver with CUDA 12.8 or newer)"),
     "intel": N_("Intel GPU"),
     "hipblas": N_("AMD ROCm"),
 }
@@ -104,6 +105,12 @@ class ModuleDef:
     recreate: tuple[str, ...] = ()
     # The module needs the core to ship the module operations, not only its own profile.
     needs_core_modules: bool = False
+    # The containers take longer to come up than a job waits for them: the core's healthcheck
+    # gives them a start period beyond `service.HEALTH_TIMEOUT_SECONDS`. A group that is
+    # still starting when the wait ends is then loading, not failing, and the job finishes;
+    # anything worse still fails it. The queue runs one job at a time, so waiting out the
+    # core's budget would hold every other job back for as long.
+    slow_start: bool = False
 
 
 MODULES: tuple[ModuleDef, ...] = (
@@ -156,6 +163,10 @@ MODULES: tuple[ModuleDef, ...] = (
         # three files change with the switch, and the containers read them once at start.
         recreate=("litellm", "librechat"),
         needs_core_modules=True,
+        # The first start downloads several GB of models inside the containers; the core's
+        # healthcheck gives the speech synthesis a start period of 5 minutes and a budget of
+        # about 25.
+        slow_start=True,
     ),
     ModuleDef(
         name="mail",

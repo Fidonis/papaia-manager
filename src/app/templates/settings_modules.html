@@ -100,7 +100,7 @@
             <p class="text-xs opacity-60">
               {% trans %}The manager can't detect GPUs from inside its container. Pick the variant that matches this host, or start with CPU.{% endtrans %}
               {% trans %}On the CPU, speech-to-text works out of the box and spoken replies use the browser's voice; a GPU makes the local voice fast enough for live playback.{% endtrans %}
-              {% trans %}The first start downloads several GB of models.{% endtrans %}
+              {% trans %}The first start downloads several GB of models. Switching on finishes while they load; the Services page shows when voice is ready.{% endtrans %}
             </p>
             {% elif row.name == "mail" %}
             <form id="om-form" class="space-y-3" onsubmit="event.preventDefault(); enableModule('mail')" novalidate>

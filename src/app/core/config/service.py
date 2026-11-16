@@ -5,8 +5,11 @@ the stack, streams a log and leaves an audit entry.
 
 * **Module on:** the core's `setup` stores the choice, then `start --profiles=<profile>`
   brings the module up. The RAG system also recreates LibreChat (its configuration lists the
-  RAG system's MCP server and is read once, at start); the mail relay ends with the sync that
-  puts its mail server into Keycloak's realm.
+  RAG system's MCP server and is read once, at start), voice recreates LiteLLM and LibreChat
+  (their rendered files carry its routes, its key and the speech panel); the mail relay ends
+  with the sync that puts its mail server into Keycloak's realm. Then the job waits for the
+  group to be healthy. Voice loads its models for longer than that wait (`slow_start`): still
+  starting at the end of it is reported as loading, not as a failure.
 * **Module off:** the module is stopped and its containers removed while its profile is still
   active (with `--volumes` when its data is to go), then `setup` takes the profile out, then
   the core deletes what was asked for (`module-purge`): nothing, the data, or the data and
@@ -196,11 +199,14 @@ async def wait_healthy(
     workspace_dir: str,
     limit: float | None = None,
     interval: float | None = None,
+    slow_start: bool = False,
 ) -> str | None:
     """None once the profile's containers are healthy, else the sentence that says what isn't.
 
     An unreadable Docker (no groups reported at all) is not a verdict: the check is skipped
-    and the log says so."""
+    and the log says so. With `slow_start` (see `ModuleDef.slow_start`), a group that is still
+    starting when the time is up is not one either: the log says it is loading, and only a
+    worse state (unhealthy, stopped, missing) is reported."""
     deadline = asyncio.get_running_loop().time() + (
         HEALTH_TIMEOUT_SECONDS if limit is None else limit
     )
@@ -219,6 +225,13 @@ async def wait_healthy(
             return None
         state = group.health.value if group is not None else "not reported"
         if asyncio.get_running_loop().time() >= deadline:
+            if slow_start and group is not None and group.health == services.ServiceHealth.STARTING:
+                ctx.log(
+                    f"[info] {profile}: still starting. Its containers load their models before "
+                    "they report healthy, and the first start downloads them; the Services page "
+                    "shows when they are ready."
+                )
+                return None
             return f"The {profile} containers are {state}."
         ctx.log(f"[info] {profile}: {state}, waiting")
         await asyncio.sleep(pause)
@@ -380,7 +393,11 @@ def enable_callback(
                 ) % {"exc": exc, "title": definition.title}
             ) from exc
         problem = await wait_healthy(
-            ctx, definition.profile, config_dir=config_dir, workspace_dir=workspace_dir
+            ctx,
+            definition.profile,
+            config_dir=config_dir,
+            workspace_dir=workspace_dir,
+            slow_start=definition.slow_start,
         )
         write_audit_entry(
             config_dir,
@@ -674,7 +691,11 @@ def overlay_callback(
             ) from exc
 
         problem = await wait_healthy(
-            ctx, target.profile, config_dir=config_dir, workspace_dir=workspace_dir
+            ctx,
+            target.profile,
+            config_dir=config_dir,
+            workspace_dir=workspace_dir,
+            slow_start=target.slow_start,
         )
         write_audit_entry(
             config_dir,
