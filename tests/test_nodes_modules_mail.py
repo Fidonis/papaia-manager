@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from app.core import host_health, nodes
+from app.core.config import modules
 from app.core.config import service as svc
 from app.core.jobs import Job, JobContext
 from app.core.mail import service as mail_service
@@ -42,9 +43,11 @@ _CATALOGUE = {
     "nginx": ("nginx", "oauth2-proxy"),
     "keycloak": ("keycloak",),
     "librechat": ("librechat",),
+    "litellm": ("litellm",),
     "localai": ("localai",),
     "rag": ("rag",),
     "smtp": ("smtp",),
+    "voice": ("voice",),
 }
 
 
@@ -728,6 +731,26 @@ def test_a_job_that_ends_unhealthy_still_names_the_missed_node(
         asyncio.run(callback(_context(tmp_path)))
     assert "unhealthy" in str(raised.value)
     assert "papaia-ctl start --profiles=localai --node=edge" in str(raised.value)
+
+
+def test_switching_off_still_names_the_hook_node_an_earlier_recreate_missed(
+    distributed: tuple[str, str], recorder: _Recorder, tmp_path: Path
+) -> None:
+    # Voice recreates LiteLLM, which skips edge, and then LibreChat, whose stop fails.
+    config, workspace = distributed
+    recorder.fail_on = "--node=edge"
+    recorder.fail_if = lambda verb, flags: verb == "stop" and "--profiles=librechat" in flags
+    callback = svc.disable_callback(
+        module="voice",
+        scope=modules.SCOPE_KEEP,
+        user="admin",
+        workspace_dir=workspace,
+        config_dir=config,
+    )
+    with pytest.raises(svc.StepFailedError) as raised:
+        asyncio.run(callback(_context(tmp_path)))
+    assert str(raised.value).startswith("papaia-ctl stop:")
+    assert "papaia-ctl start --profiles=litellm --node=edge" in str(raised.value)
 
 
 def test_the_roll_back_names_a_missed_hook_node_instead_of_a_failed_start(
