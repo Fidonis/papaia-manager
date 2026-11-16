@@ -41,10 +41,12 @@
       </template>
       <template x-for="o in other" :key="o.path">
         <div class="flex flex-wrap items-start gap-x-3 gap-y-1 border-t border-base-300 px-6 py-3">
-          <div class="min-w-0 flex-1 basis-40">
+          {# The reason as a line under the path: a badge keeps its height and the longer
+             notes run out of it on a phone. #}
+          <div class="min-w-0 flex-1">
             <p class="break-all font-mono text-xs" x-text="o.path"></p>
+            <p class="text-xs opacity-60" x-text="o.note"></p>
           </div>
-          <span class="badge badge-sm badge-outline shrink-0" x-text="o.note"></span>
         </div>
       </template>
     </div>

@@ -298,7 +298,7 @@ def other_files(config_dir: str, workspace_dir: str | None = None) -> list[dict[
                 found.append({"path": rel, "note": _("used by the render, not editable here")})
             else:
                 found.append({"path": rel, "note": _(
-                    "ignored by the render: the core has no file of that name to merge it into"
+                    "ignored by the render: the core ships no file of that name"
                 )})
             continue
         if rel in rendered or directory is not None:
