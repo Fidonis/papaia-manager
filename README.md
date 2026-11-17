@@ -66,14 +66,17 @@ default 60 seconds); it applies to every administrator.
 **Modules and overlay.** Settings has three tabs: **Manager** (the cards above),
 **Modules** and **Overlay**. **Modules** is the one place that switches the
 optional parts of the stack on and off: LocalAI, web search, the RAG system, voice
-(local speech-to-text and text-to-speech, papAIa 1.9.0 and newer) and the mail relay.
+(local speech-to-text and text-to-speech, papAIa 1.9.0 and newer), the mail relay and
+the AI map (the core's knowledge map, papAIa 1.9.0 and newer; switching it on also
+generates its secrets on an installation set up before the module existed, and shows
+the AI map page).
 Switching a module on stores the choice with the core's own `setup`
 (`--enable-local-ai`, `--enable-web-search`, `--enable-rag`, `--enable-voice`,
-`--enable-smtp`, and for LocalAI and voice the accelerator variant, which is chosen on
+`--enable-knowledge-map`, `--enable-smtp`, and for LocalAI and voice the accelerator variant, which is chosen on
 the page because GPU detection cannot see the host from inside the container; voice
 offers CPU, NVIDIA with a driver for CUDA 12.8 or newer, and AMD ROCm) and starts the
-module's profile; the RAG system also recreates LibreChat, whose configuration lists
-the RAG tools, and voice recreates LiteLLM and LibreChat, which route speech to its
+module's profile; the RAG system and the AI map also recreate LibreChat, whose
+configuration lists their tools, and voice recreates LiteLLM and LibreChat, which route speech to its
 engines and offer it in the speech panel. Voice downloads several GB of models on its
 first start, which takes longer than a switch waits: the switch finishes while they
 load, and the Services page shows when voice is ready. The
@@ -95,7 +98,11 @@ Deleting asks you to type the module's name, and the dialog lists the volumes th
 core reports. Settings alone are not offered: the RAG system's stored credentials are
 encrypted with a secret that belongs to its data, and a module without its settings
 but with its data would be of no use to anyone. The RAG documents folder is never
-deleted. Deleting needs a core with the module operations (papAIa 1.6.0); an older
+deleted. The AI map's own files (entries, overrides, gold set and governance records,
+edited on the AI map page) are neither data nor settings: no choice above deletes them.
+The dialog lists the ones that exist under **Your own files** with a separate,
+unticked **Also delete these files**, which also removes their edit history and the map
+built from them (papAIa 1.9.0 and newer). Deleting needs a core with the module operations (papAIa 1.6.0); an older
 core still switches modules off and keeps everything. **Overlay** edits the customer overlay, the files under
 `$PAPAIA_CONFIG_DIR/overlay/` that the core merges last into the LibreChat,
 LiteLLM, Chatterbox (the speech synthesis of voice) and SearXNG configuration. The editor checks the YAML while you type,
@@ -528,7 +535,7 @@ page and not an error. A reading is kept for a minute and shared between everyon
 page open.
 
 **AI map.** An admin-only page at `/knowledge-map` with its own sidebar entry, shown while the
-core runs its `knowledge-map` profile (without it, the page says how to switch it on). It shows which data the AI reaches, for whom, over which access path
+core runs its `knowledge-map` profile (without it, the page links to **Settings > Modules**, where the AI map is switched on). It shows which data the AI reaches, for whom, over which access path
 and with which model. The **Map** tab draws the rendered map as a layered graph (topics,
 sources, access paths, agents) and can show it as a chosen role; the **Entries** tab lists every
 entry with all its access paths and their roles; **Findings** lists what the core's render

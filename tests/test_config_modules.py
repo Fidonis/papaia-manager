@@ -127,12 +127,26 @@ def test_the_state_comes_from_compose_profiles(tmp_path: Path) -> None:
         "rag": False,
         "voice": False,
         "mail": True,
+        "knowledge-map": False,
         "manager": False,
     }
 
 
-def test_the_five_optional_modules_are_switchable_and_the_manager_is_not() -> None:
-    assert set(modules.SWITCHABLE) == {"localai", "web-search", "rag", "voice", "mail"}
+def test_the_knowledge_map_is_a_plain_switch() -> None:
+    assert module_setup_flags(ModuleSetup("knowledge-map", True)) == [
+        "--enable-knowledge-map=true"
+    ]
+    assert module_setup_flags(ModuleSetup("knowledge-map", False)) == [
+        "--enable-knowledge-map=false"
+    ]
+    with pytest.raises(ValueError, match="no image variant"):
+        module_setup_flags(ModuleSetup("knowledge-map", True, "cpu"))
+
+
+def test_the_six_optional_modules_are_switchable_and_the_manager_is_not() -> None:
+    assert set(modules.SWITCHABLE) == {
+        "localai", "web-search", "rag", "voice", "mail", "knowledge-map"
+    }
     assert set(modules.SWITCHABLE) == set(ctl.PURGE_MODULES)
     rows = modules.state("/nonexistent", "/nonexistent")
     by_name = {r["name"]: r for r in rows}
@@ -255,13 +269,19 @@ def test_the_core_manages_modules_when_it_ships_the_module_operations(tmp_path: 
     assert modules.core_manages_modules(str(tmp_path / "old")) is False
 
 
-def test_rag_voice_and_mail_need_a_core_with_the_module_operations(tmp_path: Path) -> None:
+def test_rag_voice_mail_and_the_map_need_a_core_with_the_module_operations(
+    tmp_path: Path,
+) -> None:
     config = tmp_path / "config"
     _env(config, "COMPOSE_PROFILES=nginx\n")
-    _core(tmp_path / "w", operations=False, profiles=("rag", "voice", "smtp", "localai"))
+    _core(
+        tmp_path / "w",
+        operations=False,
+        profiles=("rag", "voice", "smtp", "localai", "knowledge-map"),
+    )
     rows = {r["name"]: r for r in modules.state(str(config), str(tmp_path / "w"))}
     assert rows["localai"]["switchable"] is True
-    for name in ("rag", "voice", "mail"):
+    for name in ("rag", "voice", "mail", "knowledge-map"):
         assert rows[name]["switchable"] is False
         assert "too old" in str(rows[name]["problem"])
         assert rows[name]["can_delete"] is False
@@ -312,6 +332,35 @@ def test_the_rag_link_is_offered_only_while_the_rag_system_is_on(tmp_path: Path)
     _env(config, "COMPOSE_PROFILES=nginx,rag\n")
     rows = {r["name"]: r for r in modules.state(str(config), str(tmp_path / "w"))}
     assert rows["rag"]["link"] == "/connections"
+
+
+def test_the_ai_map_link_is_offered_only_while_the_map_is_on(tmp_path: Path) -> None:
+    config = tmp_path / "config"
+    _core(tmp_path / "w", profiles=("knowledge-map",))
+    _env(config, "COMPOSE_PROFILES=nginx\n")
+    rows = {r["name"]: r for r in modules.state(str(config), str(tmp_path / "w"))}
+    assert rows["knowledge-map"]["link"] == ""
+    assert rows["knowledge-map"]["switchable"] is True
+    _env(config, "COMPOSE_PROFILES=nginx,knowledge-map\n")
+    rows = {r["name"]: r for r in modules.state(str(config), str(tmp_path / "w"))}
+    assert rows["knowledge-map"]["link"] == "/knowledge-map"
+
+
+def test_only_the_map_names_its_operator_files_as_the_ai_map_page_does(tmp_path: Path) -> None:
+    rows = {r["name"]: r for r in modules.state(str(tmp_path), str(tmp_path / "w"))}
+    labels = rows["knowledge-map"]["operator_files"]
+    assert isinstance(labels, dict)
+    # The paths the core's `module-info` names them by.
+    assert set(labels) == {
+        "overlay/knowledge-map/sources.yaml",
+        "overlay/knowledge-map/overrides.yaml",
+        "overlay/knowledge-map/goldset.yaml",
+        "overlay/knowledge-map/governance.yaml",
+    }
+    assert labels["overlay/knowledge-map/goldset.yaml"]["label"] == "Gold set"
+    for name, row in rows.items():
+        if name != "knowledge-map":
+            assert row["operator_files"] is None, name
 
 
 # -- what the core would refuse, asked first ----------------------------------------------
@@ -430,6 +479,51 @@ def test_a_distributed_installation_refuses_a_deletion(
     assert modules.validate_scope(
         "rag", "keep", None, str(tmp_path / "w"), config_dir=str(tmp_path)
     ) == "keep"
+
+
+def test_operator_files_stay_unless_asked_for(tmp_path: Path) -> None:
+    # Not asked for: nothing to check, whatever the module or the confirmation.
+    for name in ("knowledge-map", "rag"):
+        assert modules.validate_operator_files(
+            name, False, None, str(tmp_path), config_dir=str(tmp_path)
+        ) is False
+
+
+def test_operator_files_need_the_name_typed_back(tmp_path: Path) -> None:
+    _core(tmp_path / "w")
+    assert modules.validate_operator_files(
+        "knowledge-map", True, " knowledge-map ", str(tmp_path / "w"), config_dir=str(tmp_path)
+    ) is True
+    for wrong in (None, "", "knowledge map", "rag"):
+        with pytest.raises(modules.ModuleError, match="Type the module name"):
+            modules.validate_operator_files(
+                "knowledge-map", True, wrong, str(tmp_path / "w"), config_dir=str(tmp_path)
+            )
+
+
+@pytest.mark.parametrize("name", ["rag", "voice", "mail", "localai", "web-search", "manager"])
+def test_only_the_map_has_operator_files_to_delete(tmp_path: Path, name: str) -> None:
+    _core(tmp_path / "w")
+    with pytest.raises(modules.ModuleError, match="no files of its own"):
+        modules.validate_operator_files(
+            name, True, name, str(tmp_path / "w"), config_dir=str(tmp_path)
+        )
+
+
+def test_operator_files_need_a_core_that_can_delete_and_a_single_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _core(tmp_path / "old", operations=False)
+    with pytest.raises(modules.ModuleError, match="can't delete"):
+        modules.validate_operator_files(
+            "knowledge-map", True, "knowledge-map", str(tmp_path / "old"), config_dir=str(tmp_path)
+        )
+    _core(tmp_path / "w")
+    monkeypatch.setattr(modules.nodes, "is_distributed", lambda config_dir: True)
+    with pytest.raises(modules.ModuleError, match="distributed installation"):
+        modules.validate_operator_files(
+            "knowledge-map", True, "knowledge-map", str(tmp_path / "w"), config_dir=str(tmp_path)
+        )
 
 
 # -- what the core reports about a module -------------------------------------------------

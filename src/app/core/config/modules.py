@@ -5,10 +5,10 @@ acts on and what `papaia-ctl setup --enable-...` edits (`deployment.yaml` only m
 so the state is read from there and a change is asked of `setup`
 (`app.core.ctl.run_module_setup`, `run_smtp_setup`). The manager does not write the file.
 
-Five modules are switched here, and this tab is the only place that switches them: LocalAI,
-web search, the RAG system, voice and the mail relay. The RAG and Mail pages hold their
-settings and work with the module off as well. The manager runs this page and can't switch
-itself off.
+Six modules are switched here, and this tab is the only place that switches them: LocalAI,
+web search, the RAG system, voice, the mail relay and the knowledge map (the AI map page). The
+RAG and Mail pages hold their settings and work with the module off as well. The manager runs
+this page and can't switch itself off.
 
 Switching a module off can also delete what it leaves behind. The core knows what that is
 (`module-info`): the named volumes the module owns and the settings it keeps. Three results
@@ -17,6 +17,11 @@ RAG system (its stored credentials are encrypted with a secret that belongs to t
 a module whose settings were deleted but whose data stayed would not be one anybody can use.
 On a distributed installation only `keep` is offered: the core refuses `stop --volumes` there,
 and `module-purge` would only see the controller's volumes.
+
+The knowledge map also has operator files: the declarations, overrides, governance records and
+gold set an administrator wrote for it (the AI map page edits them). They are neither data nor
+settings, so no scope deletes them. A separate choice does, off by default and only on a single
+host (`validate_operator_files`); the edit history this manager keeps of them goes with them.
 """
 
 from __future__ import annotations
@@ -28,9 +33,11 @@ from pathlib import Path
 from typing import Any
 
 from app.core import ctl, nodes
+from app.core import knowledge_map as km
 from app.core.ctl import (
     MODULE_URL_FLAGS,
     MODULE_VARIANTS,
+    OPERATOR_FILE_MODULES,
     PURGE_MODULES,
     CtlError,
     run_module_info,
@@ -111,6 +118,9 @@ class ModuleDef:
     # anything worse still fails it. The queue runs one job at a time, so waiting out the
     # core's budget would hold every other job back for as long.
     slow_start: bool = False
+    # The switch-off dialog offers to delete the files an administrator wrote for the module
+    # (`OPERATOR_FILE_MODULES`), as a separate choice next to the scope.
+    operator_files: bool = False
 
 
 MODULES: tuple[ModuleDef, ...] = (
@@ -184,6 +194,26 @@ MODULES: tuple[ModuleDef, ...] = (
         needs_core_modules=True,
     ),
     ModuleDef(
+        name="knowledge-map",
+        profile="knowledge-map",
+        title=N_("AI Map"),
+        description=(
+            N_(
+                "A directory of the installation's knowledge sources for the chat: where "
+                "knowledge lives, trimmed to the roles of each user, with governance checks."
+            )
+        ),
+        switchable=True,
+        link="/knowledge-map",
+        link_label=N_("Open the AI map"),
+        link_needs_module=True,
+        # LibreChat's configuration lists the map's MCP server only while the module is on,
+        # and LibreChat reads the rendered file once.
+        recreate=("librechat",),
+        needs_core_modules=True,
+        operator_files=True,
+    ),
+    ModuleDef(
         name="manager",
         profile="manager",
         title="papaia-manager",
@@ -196,6 +226,10 @@ SWITCHABLE: dict[str, ModuleDef] = {m.name: m for m in MODULES if m.switchable}
 
 # Every module the core can purge is switchable here, and the other way round.
 assert set(SWITCHABLE) == set(PURGE_MODULES)  # noqa: S101 - a constant, checked at import
+# The same for the modules with operator files.
+assert {  # noqa: S101 - a constant, checked at import
+    m.name for m in SWITCHABLE.values() if m.operator_files
+} == set(OPERATOR_FILE_MODULES)
 
 
 class ModuleError(Exception):
@@ -315,9 +349,49 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
                     if distributed and module.name in PURGE_MODULES
                     else ""
                 ),
+                # What each operator file is, by the path the core's `module-info` names it.
+                "operator_files": operator_file_labels() if module.operator_files else None,
             }
         )
     return rows
+
+
+def operator_file_labels() -> dict[str, dict[str, str]]:
+    """The knowledge map's operator files by their path in the configuration directory, with
+    the label and description the AI map page gives them, in the language of the request."""
+    return {
+        f"{km.OPERATOR_DIR}/{f.filename}": {
+            "label": gettext(f.label),
+            "description": gettext(f.description),
+        }
+        for f in km.OPERATOR_FILES
+    }
+
+
+def validate_operator_files(
+    name: str, wanted: bool, confirm: str | None, workspace_dir: str, *, config_dir: str
+) -> bool:
+    """Whether a switch-off request also deletes the module's operator files, or raises
+    ModuleError.
+
+    Like any deletion it needs the module's name typed back, a core that can do it and a single
+    host; only a module with operator files has the choice."""
+    if not wanted:
+        return False
+    module = SWITCHABLE.get(name)
+    if module is None or not module.operator_files:
+        raise ModuleError(gettext("This module keeps no files of its own to delete."))
+    if nodes.is_distributed(config_dir):
+        raise ModuleError(gettext(DISTRIBUTED_KEEP_ONLY))
+    if not core_manages_modules(workspace_dir):
+        raise ModuleError(
+            gettext("This papAIa core can't delete a module's data (it needs 1.6.0).")
+        )
+    if (confirm or "").strip() != name:
+        raise ModuleError(gettext(
+            "Type the module name (%(name)s) to confirm the deletion."
+        ) % {"name": name})
+    return True
 
 
 def validate_enable(name: str, variant: str | None) -> str | None:
