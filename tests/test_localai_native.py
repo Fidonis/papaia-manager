@@ -464,7 +464,8 @@ def test_the_revision_of_the_container_runtime_is_what_it_was(container: Path) -
     # A page loaded before this change is not called stale by it.
     import hashlib
 
-    material = "librechat,localai\n"
+    # The profile set and one line per stored variant (LocalAI, voice), both empty here.
+    material = "librechat,localai\n\n"
     assert modules.revision(str(container)) == hashlib.sha256(material.encode()).hexdigest()[:16]
     (container / ".env").write_text(
         "COMPOSE_PROFILES=librechat,localai\nLOCALAI_RUNTIME=container\n", encoding="utf-8"

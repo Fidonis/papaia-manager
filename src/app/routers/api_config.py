@@ -169,6 +169,7 @@ async def get_modules(
         "revision": modules.revision(settings.papaia_config_dir),
         "modules": modules.state(settings.papaia_config_dir, settings.papaia_workspace_dir),
         "variants": modules.variant_options(),
+        "voice_variants": modules.variant_options("voice"),
         "host_only_variants": list(modules.HOST_ONLY_VARIANTS),
     }
 
@@ -353,7 +354,9 @@ async def list_overlay(
     return {
         "preview_available": preview.available(settings.papaia_workspace_dir),
         "targets": [target_json(settings, t) for t in overlay.TARGETS],
-        "other": overlay.other_files(settings.papaia_config_dir),
+        "other": overlay.other_files(
+            settings.papaia_config_dir, settings.papaia_workspace_dir
+        ),
     }
 
 

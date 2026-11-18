@@ -61,6 +61,9 @@ class OverlayTarget:
     # recreates them (a replaced file is only seen by a new container).
     profile: str
     description: str
+    # The recreated containers load for longer than the job waits for them (see
+    # `ModuleDef.slow_start`): still starting when the wait ends is not a failure.
+    slow_start: bool = False
 
 
 TARGETS: tuple[OverlayTarget, ...] = (
@@ -77,6 +80,15 @@ TARGETS: tuple[OverlayTarget, ...] = (
         path="ai/litellm/config.yaml",
         profile="litellm",
         description=N_("Models and routing of the LLM gateway."),
+    ),
+    OverlayTarget(
+        key="chatterbox",
+        label="Chatterbox",
+        path="ai/voice/chatterbox.yaml",
+        profile="voice",
+        description=N_("Default voice and generation settings of the speech synthesis."),
+        # Applying recreates the whole voice profile, which loads its models again.
+        slow_start=True,
     ),
     OverlayTarget(
         key="searxng",
@@ -255,17 +267,24 @@ def delete(config_dir: str, key: str, *, expected_revision: str) -> bool:
     return True
 
 
-def other_files(config_dir: str) -> list[dict[str, str]]:
+def other_files(config_dir: str, workspace_dir: str | None = None) -> list[dict[str, str]]:
     """Files under `overlay/` that this editor does not edit, with the reason.
 
     A file the core would merge but the editor does not offer is listed as such; one the
     render never looks at (a typo in a path, a leftover) is listed as ignored, which is the
-    useful thing to tell an operator who wonders why an edit did nothing."""
+    useful thing to tell an operator who wonders why an edit did nothing.
+
+    Below a directory target (`ai/localai/models`, the Keycloak theme) the core renders the
+    files of its own copy of the directory and nothing else (`render_core._render_dir`), so a
+    file there is only used when the core ships one of that name. With `workspace_dir` that
+    is looked up in the core's checkout; without it, or without the directory there, every
+    file below the target counts as used."""
     base = overlay_dir(config_dir)
     if not base.is_dir():
         return []
     offered = {t.path for t in TARGETS}
     rendered = set(OTHER_RENDER_TARGETS)
+    core_src = Path(workspace_dir) / "papaia" / "src" if workspace_dir else None
     found: list[dict[str, str]] = []
     for path in sorted(base.rglob("*")):
         if not path.is_file() or path.name.startswith("."):
@@ -273,8 +292,16 @@ def other_files(config_dir: str) -> list[dict[str, str]]:
         rel = path.relative_to(base).as_posix()
         if rel in offered:
             continue
-        in_directory = any(rel.startswith(f"{t}/") for t in rendered)
-        if rel in rendered or in_directory:
+        directory = next((t for t in rendered if rel.startswith(f"{t}/")), None)
+        if directory is not None and core_src is not None and (core_src / directory).is_dir():
+            if (core_src / rel).is_file():
+                found.append({"path": rel, "note": _("used by the render, not editable here")})
+            else:
+                found.append({"path": rel, "note": _(
+                    "ignored by the render: the core ships no file of that name"
+                )})
+            continue
+        if rel in rendered or directory is not None:
             found.append({"path": rel, "note": _("used by the render, not editable here")})
         else:
             found.append({"path": rel, "note": _("ignored by the render")})

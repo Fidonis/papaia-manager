@@ -75,6 +75,14 @@ services:
     profiles: [smtp]
     labels:
       de.fidonis.module: papaia-smtp-relay
+  speaches:
+    profiles: [voice]
+    labels:
+      de.fidonis.module: papaia-voice
+  chatterbox:
+    profiles: [voice]
+    labels:
+      de.fidonis.module: papaia-voice
 """
 
 
@@ -275,6 +283,7 @@ def test_the_modules_document_has_the_state_and_the_variants(client: TestClient)
     assert {m["name"]: m["enabled"] for m in body["modules"]}["localai"] is False
     assert [v["id"] for v in body["variants"]][0] == "cpu"
     assert "vulkan" not in [v["id"] for v in body["variants"]]
+    assert [v["id"] for v in body["voice_variants"]] == ["cpu", "nvidia", "hipblas"]
     assert body["host_only_variants"] == ["vulkan"]
     localai = next(m for m in body["modules"] if m["name"] == "localai")
     assert (localai["services"], localai["modules"]) == (2, 1)
@@ -290,6 +299,18 @@ def test_switching_localai_on_queues_a_job(client: TestClient, queue: JobQueue) 
     [job] = queue.list_jobs()
     assert (job.action, job.target) == (service.ENABLE_ACTION, "module:localai")
     assert job.params == {"module": "localai", "variant": "nvidia-cuda-12", "public_url": None}
+
+
+def test_switching_voice_on_queues_a_job(client: TestClient, queue: JobQueue) -> None:
+    response = _admin(client).post(
+        f"{_BASE}/modules/voice/enable",
+        json={"revision": _modules_revision(client), "variant": "nvidia"},
+        headers=_CSRF_HEADER,
+    )
+    assert response.status_code == 202
+    [job] = queue.list_jobs()
+    assert (job.action, job.target) == (service.ENABLE_ACTION, "module:voice")
+    assert job.params == {"module": "voice", "variant": "nvidia", "public_url": None}
 
 
 def test_switching_web_search_off_queues_a_job(
@@ -313,7 +334,9 @@ def test_switching_web_search_off_queues_a_job(
         ("localai", {"variant": None}, 422, "Choose"),
         ("localai", {"variant": "vulkan"}, 422, "set on the host"),
         ("localai", {"variant": "bogus"}, 422, "Unknown"),
-        ("web-search", {"variant": "cpu"}, 422, "Only LocalAI"),
+        ("web-search", {"variant": "cpu"}, 422, "no accelerator variant"),
+        ("voice", {"variant": None}, 422, "Choose"),
+        ("voice", {"variant": "auto"}, 422, "Unknown"),
         ("manager", {}, 404, "can't be switched"),
         ("nope", {}, 404, "can't be switched"),
     ],
@@ -370,7 +393,7 @@ def _mail_server(config_dir: Path) -> None:
 
 def test_the_modules_document_marks_what_can_be_deleted(client: TestClient) -> None:
     rows = {m["name"]: m for m in _admin(client).get(f"{_BASE}/modules").json()["modules"]}
-    for name in ("localai", "web-search", "rag", "mail"):
+    for name in ("localai", "web-search", "rag", "voice", "mail"):
         assert rows[name]["switchable"] is True
         assert rows[name]["can_delete"] is True
     assert rows["manager"]["switchable"] is False
@@ -688,22 +711,40 @@ def test_a_body_that_cannot_be_read_is_refused_without_repeating_it(client: Test
 
 
 def test_the_overlay_list_has_the_three_targets_and_the_other_files(
-    client: TestClient, config_dir: Path
+    client: TestClient, config_dir: Path, workspace: Path
 ) -> None:
     _seed(config_dir)
     stray = config_dir / "overlay" / "ai" / "typo.yaml"
     stray.parent.mkdir(parents=True, exist_ok=True)
     stray.write_text("x: 1\n", encoding="utf-8")
+    # Below a directory target the core's checkout decides (#199): the route hands the
+    # workspace to the listing.
+    theme = "infra/keycloak/themes/papaia/login/resources/css"
+    shipped = workspace / "papaia" / "src" / theme / "papaia.css"
+    shipped.parent.mkdir(parents=True)
+    shipped.write_text("x\n", encoding="utf-8")
+    for name in ("papaia.css", "extra.css"):
+        (config_dir / "overlay" / theme).mkdir(parents=True, exist_ok=True)
+        (config_dir / "overlay" / theme / name).write_text("x\n", encoding="utf-8")
     body = _admin(client).get(f"{_BASE}/overlay").json()
     assert body["preview_available"] is True
     targets = {t["key"]: t for t in body["targets"]}
-    assert set(targets) == {"librechat", "litellm", "searxng"}
+    assert set(targets) == {"librechat", "litellm", "chatterbox", "searxng"}
     assert targets["librechat"]["exists"] is True and targets["librechat"]["lines"] == 1
     assert targets["litellm"]["exists"] is False
     assert targets["librechat"]["group_active"] is True
     assert targets["searxng"]["group_active"] is False
     assert targets["librechat"]["services"] == 1
-    assert body["other"] == [{"path": "ai/typo.yaml", "note": "ignored by the render"}]
+    assert body["other"] == [
+        {"path": "ai/typo.yaml", "note": "ignored by the render"},
+        {
+            "path": f"{theme}/extra.css",
+            "note": "ignored by the render: the core ships no file of that name",
+        },
+        {"path": f"{theme}/papaia.css", "note": "used by the render, not editable here"},
+    ]
+    html = _admin(client).get("/settings/overlay").text
+    assert "the core ships no file of that name" in html
 
 
 def test_one_overlay_has_its_content_revision_and_versions(
@@ -1068,11 +1109,12 @@ def test_settings_has_three_tabs_and_the_menu_has_no_new_entry(client: TestClien
     assert 'aria-label="Configuration"' not in sidebar
 
 
-def test_the_modules_page_has_a_switch_for_the_four_optional_modules(client: TestClient) -> None:
+def test_the_modules_page_has_a_switch_for_the_five_optional_modules(client: TestClient) -> None:
     html = _admin(client).get("/settings/modules").text
-    assert html.count('onchange="moduleToggled(this)"') == 4
+    assert html.count('onchange="moduleToggled(this)"') == 5
     assert "Optional Modules" in html
     assert 'data-module="manager"' in html and 'data-module="rag"' in html
+    assert 'data-module="voice"' in html and 'id="voice-variant"' in html
     # The manager is shown and locked.
     assert "disabled>" in html.split('data-module="manager"')[1][:200]
 
@@ -1186,5 +1228,7 @@ def test_the_native_localai_row_is_read_only_and_asks_nothing(
     assert 'id="panel-localai"' not in html
     assert "native on the Mac" in row
     assert "papaia-ctl setup" in row
-    # The other three still switch.
-    assert html.count('onchange="moduleToggled(this)"') == 3
+    # The other four still switch, the voice module with its own variant picker.
+    assert html.count('onchange="moduleToggled(this)"') == 4
+    assert 'id="panel-voice"' in html
+    assert 'id="voice-variant"' in html

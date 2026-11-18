@@ -5,8 +5,11 @@ the stack, streams a log and leaves an audit entry.
 
 * **Module on:** the core's `setup` stores the choice, then `start --profiles=<profile>`
   brings the module up. The RAG system also recreates LibreChat (its configuration lists the
-  RAG system's MCP server and is read once, at start); the mail relay ends with the sync that
-  puts its mail server into Keycloak's realm.
+  RAG system's MCP server and is read once, at start), voice recreates LiteLLM and LibreChat
+  (their rendered files carry its routes, its key and the speech panel); the mail relay ends
+  with the sync that puts its mail server into Keycloak's realm. Then the job waits for the
+  group to be healthy. Voice loads its models for longer than that wait (`slow_start`): still
+  starting at the end of it is reported as loading, not as a failure.
 * **Module off:** the module is stopped and its containers removed while its profile is still
   active (with `--volumes` when its data is to go), then `setup` takes the profile out, then
   the core deletes what was asked for (`module-purge`): nothing, the data, or the data and
@@ -49,10 +52,9 @@ from app.core.inventory import active_profiles
 from app.core.jobs import JobCallback, JobContext
 from app.core.mail import service as mail_service
 from app.core.mail.settings import MailInput, MailSettings
+from app.core.nodes import HookNodesFailedError as HookNodesFailedError
+from app.core.nodes import hook_nodes_failed, with_retries
 from app.i18n import gettext as _
-
-# The profile of Keycloak, whose realm holds the mail server the relay provides.
-_KEYCLOAK_PROFILE = "keycloak"
 
 ENABLE_ACTION = "config-module-enable"
 DISABLE_ACTION = "config-module-disable"
@@ -91,10 +93,6 @@ class NotHealthyError(Exception):
 
 class PurgeFailedError(Exception):
     """The module is off, but the core could not delete what was asked for."""
-
-
-class HookNodesFailedError(Exception):
-    """The change is in place, but a node that only runs hooks for it did not take part."""
 
 
 # The core's refusals are whole sentences (the RAG one names the add-on and the commands that
@@ -189,16 +187,6 @@ async def _verb(
             ) % {"verb": verb, "value": problem}) from exc
 
 
-def _hook_nodes_failed(skipped: list[str]) -> HookNodesFailedError:
-    """The error that ends a job whose change is in place but missed a node's hooks."""
-    return HookNodesFailedError(
-        _(
-            "The change is in place, but a node that only runs its hooks did not take part. "
-            "Once it answers, run: %(value)s"
-        ) % {"value": "; ".join(skipped)}
-    )
-
-
 async def wait_healthy(
     ctx: JobContext,
     profile: str,
@@ -207,13 +195,17 @@ async def wait_healthy(
     workspace_dir: str,
     limit: float | None = None,
     interval: float | None = None,
+    slow_start: bool = False,
 ) -> str | None:
     """None once the profile's containers are healthy, else the sentence that says what isn't.
 
     An unreadable Docker (no groups reported at all) is not a verdict: the check is skipped
-    and the log says so. With the native LocalAI runtime the `localai` group is the model
-    download job alone: no container is expected for the process, and the process's own state
-    is not waited for (`services.build_groups`), since nothing here starts it."""
+    and the log says so. With `slow_start` (see `ModuleDef.slow_start`), a group that is still
+    starting when the time is up is not one either: the log says it is loading, and only a
+    worse state (unhealthy, stopped, missing) is reported. With the native LocalAI runtime the
+    `localai` group is the model download job alone: no container is expected for the
+    process, and the process's own state is not waited for (`services.build_groups`), since
+    nothing here starts it."""
     deadline = asyncio.get_running_loop().time() + (
         HEALTH_TIMEOUT_SECONDS if limit is None else limit
     )
@@ -232,6 +224,13 @@ async def wait_healthy(
             return None
         state = group.health.value if group is not None else "not reported"
         if asyncio.get_running_loop().time() >= deadline:
+            if slow_start and group is not None and group.health == services.ServiceHealth.STARTING:
+                ctx.log(
+                    f"[info] {profile}: still starting. Its containers load their models before "
+                    "they report healthy, and the first start downloads them; the Services page "
+                    "shows when they are ready."
+                )
+                return None
             return f"The {profile} containers are {state}."
         ctx.log(f"[info] {profile}: {state}, waiting")
         await asyncio.sleep(pause)
@@ -294,8 +293,8 @@ async def _start(
 ) -> str | None:
     """`start` of the module's profile. For the mail relay, the sentence that says Keycloak
     was not given its mail server (the last step of `start` only warns), else None. The
-    relay's run on Keycloak's node is the point of its start, so a failure there still ends
-    the step."""
+    relay's runs on its own node and on Keycloak's are the point of its start, so a failure
+    there still ends the step; one on the proxy's node is skipped like the other jobs'."""
     if module != "mail":
         await _verb(
             ctx,
@@ -306,9 +305,19 @@ async def _start(
             skipped=skipped,
         )
         return None
-    return await mail_service.run_verb(
-        ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir
-    )
+    try:
+        return await mail_service.run_verb(
+            ctx,
+            "start",
+            flag,
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            skipped=skipped,
+        )
+    except CtlError as exc:
+        raise StepFailedError(_(
+            "papaia-ctl %(verb)s: %(value)s"
+        ) % {"verb": "start", "value": exc}) from exc
 
 
 def enable_callback(
@@ -376,14 +385,19 @@ def enable_callback(
                 job_id=ctx.job.id,
                 result="partial",
             )
-            raise StepFailedError(
+            raise StepFailedError(with_retries(
                 _(
                     "%(exc)s %(title)s is switched on in the configuration but did not start. "
                     "Fix the cause and start it from the Services page, or switch it off here."
-                ) % {"exc": exc, "title": definition.title}
-            ) from exc
+                ) % {"exc": exc, "title": definition.title},
+                skipped,
+            )) from exc
         problem = await wait_healthy(
-            ctx, definition.profile, config_dir=config_dir, workspace_dir=workspace_dir
+            ctx,
+            definition.profile,
+            config_dir=config_dir,
+            workspace_dir=workspace_dir,
+            slow_start=definition.slow_start,
         )
         write_audit_entry(
             config_dir,
@@ -395,21 +409,23 @@ def enable_callback(
             result="partial" if problem or realm or skipped else "ok",
         )
         if realm:
-            raise mail_service.RealmNotUpdatedError(
+            raise mail_service.RealmNotUpdatedError(with_retries(
                 _(
                     "The relay is running, but Keycloak was not given its mail server "
                     "(%(realm)s). Switch it off and on again once that is fixed."
-                ) % {"realm": realm}
-            )
+                ) % {"realm": realm},
+                skipped,
+            ))
         if problem:
-            raise NotHealthyError(
+            raise NotHealthyError(with_retries(
                 _(
                     "%(title)s is switched on, but %(value)s%(value2)s Check the service log, or "
                     "switch it off again."
-                ) % {"title": definition.title, "value": problem[0].lower(), "value2": problem[1:]}
-            )
+                ) % {"title": definition.title, "value": problem[0].lower(), "value2": problem[1:]},
+                skipped,
+            ))
         if skipped:
-            raise _hook_nodes_failed(skipped)
+            raise hook_nodes_failed(skipped)
         ctx.log("[info] done")
 
     return _callback
@@ -444,13 +460,19 @@ def disable_callback(
         )
         if module == "mail":
             await _sync_realm(ctx, workspace_dir=workspace_dir, config_dir=config_dir)
-        await _recreate(
-            ctx,
-            definition.recreate,
-            workspace_dir=workspace_dir,
-            config_dir=config_dir,
-            skipped=skipped,
-        )
+        try:
+            await _recreate(
+                ctx,
+                definition.recreate,
+                workspace_dir=workspace_dir,
+                config_dir=config_dir,
+                skipped=skipped,
+            )
+        except StepFailedError as exc:
+            # A later profile's failure ends the recreate after an earlier one skipped a node
+            # (voice: LiteLLM, then LibreChat). The purge never follows a skipped node: data is
+            # only deleted on a single host (`modules.validate_scope`).
+            raise StepFailedError(with_retries(str(exc), skipped)) from exc
         if delete_data:
             await _purge(
                 ctx,
@@ -472,7 +494,7 @@ def disable_callback(
             result="partial" if skipped else "ok",
         )
         if skipped:
-            raise _hook_nodes_failed(skipped)
+            raise hook_nodes_failed(skipped)
         ctx.log("[info] done")
 
     return _callback
@@ -486,8 +508,8 @@ async def _sync_realm(ctx: JobContext, *, workspace_dir: str, config_dir: str) -
     of Keycloak's profile on its node hands the node its new bundle first and runs the sync
     after it; Keycloak itself keeps running. The start only warns when the sync fails, so its
     output is read for that, and the job fails rather than report the relay as gone."""
-    node = nodes.profile_node(config_dir, _KEYCLOAK_PROFILE)
-    if not node or _KEYCLOAK_PROFILE not in active_profiles(config_dir):
+    node = nodes.profile_node(config_dir, nodes.KEYCLOAK_PROFILE)
+    if not node or nodes.KEYCLOAK_PROFILE not in active_profiles(config_dir):
         await _verb(
             ctx, "keycloak-role-sync", workspace_dir=workspace_dir, config_dir=config_dir
         )
@@ -496,7 +518,7 @@ async def _sync_realm(ctx: JobContext, *, workspace_dir: str, config_dir: str) -
         problem = await mail_service.run_verb(
             ctx,
             "start",
-            f"--profiles={_KEYCLOAK_PROFILE}",
+            f"--profiles={nodes.KEYCLOAK_PROFILE}",
             f"--node={node}",
             workspace_dir=workspace_dir,
             config_dir=config_dir,
@@ -675,7 +697,11 @@ def overlay_callback(
             ) from exc
 
         problem = await wait_healthy(
-            ctx, target.profile, config_dir=config_dir, workspace_dir=workspace_dir
+            ctx,
+            target.profile,
+            config_dir=config_dir,
+            workspace_dir=workspace_dir,
+            slow_start=target.slow_start,
         )
         write_audit_entry(
             config_dir,
@@ -687,14 +713,15 @@ def overlay_callback(
             result="partial" if problem or skipped else "ok",
         )
         if problem:
-            raise NotHealthyError(
+            raise NotHealthyError(with_retries(
                 _(
                     "The overlay is in place, but %(value)s%(value2)s The previous version is in "
                     "Versions if you want to go back."
-                ) % {"value": problem[0].lower(), "value2": problem[1:]}
-            )
+                ) % {"value": problem[0].lower(), "value2": problem[1:]},
+                skipped,
+            ))
         if skipped:
-            raise _hook_nodes_failed(skipped)
+            raise hook_nodes_failed(skipped)
         ctx.log("[info] done")
 
     return _callback
@@ -729,8 +756,18 @@ async def _restore(
     if not restored:
         ctx.log("[rollback] the file changed meanwhile; left as it is")
         return
+    skipped: list[str] = []
     try:
-        await _verb(ctx, "start", flag, workspace_dir=workspace_dir, config_dir=config_dir)
+        await _verb(
+            ctx,
+            "start",
+            flag,
+            workspace_dir=workspace_dir,
+            config_dir=config_dir,
+            skipped=skipped,
+        )
         ctx.log("[rollback] the group was started with the previous overlay")
+        for command in skipped:
+            ctx.log(f"[rollback] a node that only runs its hooks missed it; run: {command}")
     except StepFailedError as exc:
         ctx.log(f"[rollback] the group did not start again either: {exc}")
