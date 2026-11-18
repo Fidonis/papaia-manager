@@ -10867,3 +10867,98 @@ msgstr "Der erste Start lädt mehrere GB an Modellen herunter. Das Einschalten i
 
 msgid "Default voice and generation settings of the speech synthesis."
 msgstr "Standardstimme und Generierungseinstellungen der Sprachausgabe."
+
+#, python-format
+msgid "Clearing chats needs papAIa core %(version)s or newer."
+msgstr "Das Löschen von Chats braucht papAIa Core %(version)s oder neuer."
+
+#, python-format
+msgid "The chat history could not be read: %(reason)s"
+msgstr "Der Chatverlauf konnte nicht gelesen werden: %(reason)s"
+
+#, python-format
+msgid "exit status %(code)s"
+msgstr "Exit-Status %(code)s"
+
+#, python-format
+msgid "%(email)r is not an e-mail address"
+msgstr "%(email)r ist keine E-Mail-Adresse"
+
+msgid "This account has no email address, so LibreChat cannot find its chats."
+msgstr "Dieses Konto hat keine E-Mail-Adresse, daher kann LibreChat seine Chats nicht finden."
+
+msgid "Clearing the chats cannot be undone and has to be confirmed."
+msgstr "Das Löschen der Chats kann nicht rückgängig gemacht werden und muss bestätigt werden."
+
+msgid "that job was not found"
+msgstr "dieser Job wurde nicht gefunden"
+
+msgid "The chats could not be cleared. The job log has the details."
+msgstr "Die Chats konnten nicht gelöscht werden. Details stehen im Job-Log."
+
+#, python-brace-format
+msgid "Clear the chats of <span class=\"font-mono\">{username}</span>"
+msgstr "Chats von <span class=\"font-mono\">{username}</span> löschen"
+
+msgid "Removes the account's LibreChat conversations with their messages, files and shared links. The account, its sign-in, its agents and its prompts stay. Memories are not removed."
+msgstr "Entfernt die LibreChat-Unterhaltungen des Kontos mit ihren Nachrichten, Dateien und geteilten Links. Das Konto, seine Anmeldung, seine Agenten und seine Prompts bleiben. Erinnerungen werden nicht entfernt."
+
+msgid "Counting what would be removed…"
+msgstr "Zähle, was entfernt würde …"
+
+msgid "Clearing the chats. A long history can take a while."
+msgstr "Die Chats werden gelöscht. Bei einem langen Verlauf kann das eine Weile dauern."
+
+msgid "This would be removed:"
+msgstr "Das würde entfernt:"
+
+msgid "Removed:"
+msgstr "Entfernt:"
+
+#, python-brace-format
+msgid "including {count} sub-thread"
+msgstr "davon {count} Unter-Thread"
+
+#, python-brace-format
+msgid "including {count} sub-threads"
+msgstr "davon {count} Unter-Threads"
+
+msgid "Messages"
+msgstr "Nachrichten"
+
+msgid "Shared links"
+msgstr "Geteilte Links"
+
+msgid "Tool call records"
+msgstr "Tool-Aufrufe"
+
+msgid "There are no chats to clear."
+msgstr "Es gibt keine Chats zu löschen."
+
+msgid "This cannot be undone. Only restoring a backup brings the chats back, and that restores the chats of every user. Ask the user to stop chatting first: a reply that is still being written can be left behind."
+msgstr "Das kann nicht rückgängig gemacht werden. Nur das Wiederherstellen eines Backups bringt die Chats zurück, und das stellt die Chats aller Benutzer wieder her. Bitten Sie den Benutzer, vorher nicht mehr zu chatten: Eine Antwort, die gerade noch geschrieben wird, kann übrig bleiben."
+
+#, python-brace-format
+msgid "{count} file could not be removed from storage and was kept. The job log names it."
+msgstr "{count} Datei konnte nicht aus dem Speicher entfernt werden und wurde behalten. Das Job-Log nennt sie."
+
+#, python-brace-format
+msgid "{count} files could not be removed from storage and were kept. The job log names them."
+msgstr "{count} Dateien konnten nicht aus dem Speicher entfernt werden und wurden behalten. Das Job-Log nennt sie."
+
+msgid "View the job log"
+msgstr "Job-Log ansehen"
+
+msgid "Delete chats"
+msgstr "Chats löschen"
+
+#, python-brace-format
+msgid "The chats of <b>{username}</b> could not be cleared. <a class=\"underline\" href=\"{href}\">View log</a>"
+msgstr "Die Chats von <b>{username}</b> konnten nicht gelöscht werden. <a class=\"underline\" href=\"{href}\">Log ansehen</a>"
+
+#, python-brace-format
+msgid "The chats of <b>{username}</b> were cleared."
+msgstr "Die Chats von <b>{username}</b> wurden gelöscht."
+
+msgid "Clear chats…"
+msgstr "Chats löschen…"
