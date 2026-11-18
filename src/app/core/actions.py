@@ -10,9 +10,24 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from app.core.jobs import JobQueue
+
+# The job action an add-on action runs under (`POST /api/v1/addons/{name}/actions/{action}`).
+JOB_ACTION = "addon_action"
+
+# How much of a run's output the add-on page shows inline. The whole log is one link away, on
+# the job's own page; this is the end of it, where an error usually is.
+OUTPUT_TAIL_LINES = 200
+OUTPUT_TAIL_CHARS = 20_000
+
+# How many of the queue's jobs are searched for the add-on's last run. The queue keeps the jobs
+# of the running process only, so this is a bound, not a window anyone reaches in practice.
+_JOBS_SEARCHED = 1_000
 
 # The core's rule (`compat._ACTION_NAME_RE`): no length limit, so no declared action is hidden.
 ACTION_NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -60,3 +75,38 @@ def actions_at(addon_dir: Path | None) -> list[dict[str, Any]]:
     except (OSError, yaml.YAMLError):
         return []
     return addon_actions(manifest) if isinstance(manifest, Mapping) else []
+
+
+def last_run(queue: JobQueue | None, addon: str) -> dict[str, Any] | None:
+    """The newest maintenance action run of `addon` in the queue, as the add-on page shows it.
+
+    `{job_id, action, status, exit_code, finished_at, output, truncated}`; None when the add-on
+    has not run one since the manager started. `exit_code` is the action's own (papaia-ctl's),
+    kept by the job in `params`; the job's `exit_code` is 1 for any failure and only stands in
+    when the action never got to run. `output` is the end of the job log.
+    """
+    if queue is None:
+        return None
+    job = next(
+        (
+            j
+            for j in queue.list_jobs(limit=_JOBS_SEARCHED)
+            if j.action == JOB_ACTION and j.target == addon
+        ),
+        None,
+    )
+    if job is None:
+        return None
+    exit_code = job.params.get("exit_code", job.exit_code)
+    lines = queue.read_log(job.id).splitlines()
+    tail = "\n".join(lines[-OUTPUT_TAIL_LINES:])
+    truncated = len(lines) > OUTPUT_TAIL_LINES or len(tail) > OUTPUT_TAIL_CHARS
+    return {
+        "job_id": job.id,
+        "action": str(job.params.get("action", "")),
+        "status": job.status.value,
+        "exit_code": exit_code if isinstance(exit_code, int) else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "output": tail[-OUTPUT_TAIL_CHARS:],
+        "truncated": truncated,
+    }
