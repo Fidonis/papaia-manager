@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-13T09:00:00Z",
+  "generated_at": "2026-11-18T09:00:00Z",
   "platform_version": "1.8.0",
   "checks": [
     {
@@ -12,13 +12,14 @@
     {
       "name": "localai_native",
       "status": "warn",
-      "summary": "LocalAI v4.7.1 does not answer on http://host.docker.internal:8080/readyz: start it with /Users/operator/workspace/localai/papaia/run-localai",
+      "summary": "LocalAI v4.12.1 does not answer on http://host.docker.internal:8080/readyz: run 'papaia-ctl start' on the Mac (log: /Users/operator/workspace/localai/papaia/logs/localai.log)",
       "details": {
         "url": "http://host.docker.internal:8080/readyz",
         "home": "/Users/operator/workspace/localai/papaia",
-        "pinned": "v4.7.1",
-        "installed": "v4.7.1",
-        "ready": false
+        "pinned": "v4.12.1",
+        "installed": "v4.12.1",
+        "ready": false,
+        "log": "/Users/operator/workspace/localai/papaia/logs/localai.log"
       }
     }
   ],

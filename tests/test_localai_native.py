@@ -140,8 +140,8 @@ def test_a_native_localai_that_answers_is_running() -> None:
     assert check.running
     assert check.ready is True
     assert check.url == "http://host.docker.internal:8080/readyz"
-    assert check.installed == check.pinned == "v4.7.1"
-    assert check.summary.startswith("LocalAI v4.7.1 answers on")
+    assert check.installed == check.pinned == "v4.12.1"
+    assert check.summary.startswith("LocalAI v4.12.1 answers on")
 
 
 def test_a_native_localai_that_does_not_answer_is_not_running_and_says_how_to_start_it() -> None:
@@ -149,7 +149,8 @@ def test_a_native_localai_that_does_not_answer_is_not_running_and_says_how_to_st
     assert check.status == "warn"
     assert not check.running
     assert check.summary.endswith(
-        "start it with /Users/operator/workspace/localai/papaia/run-localai"
+        "run 'papaia-ctl start' on the Mac (log: /Users/operator/workspace/localai/papaia/logs/"
+        "localai.log)"
     )
 
 
@@ -169,6 +170,35 @@ def test_the_skip_of_the_container_runtime_is_nothing_to_show() -> None:
     entry = {"name": "localai_native", "status": "skip", "summary": "LocalAI runs in its container"}
     assert parse_check(entry) is None
     assert find_check([entry]) is None
+
+
+def test_a_native_localai_that_is_switched_off_is_nothing_to_show() -> None:
+    # The native runtime is stored, but the localai profile is off: both checks skip.
+    document = _doctor("skip")
+    assert [c["status"] for c in document["checks"]] == ["skip", "skip"]
+    assert find_check(document["checks"]) is None
+
+
+def test_the_launchd_state_of_the_core_on_the_mac_is_tolerated() -> None:
+    # Run on the Mac itself, the core adds the launchd job to the details and its sentence.
+    # From the manager's container it never does; the shape must not break the reading.
+    document = _doctor("pass")
+    entry = document["checks"][1]
+    entry["summary"] = (
+        "LocalAI v4.12.1 answers on http://127.0.0.1:8080/readyz"
+        " (launchd: de.fidonis.papaia.papaia.localai)"
+    )
+    entry["details"]["launchd"] = {
+        "label": "de.fidonis.papaia.papaia.localai",
+        "loaded": True,
+        "state": "running",
+        "pid": 4242,
+        "last_exit": "(never exited)",
+    }
+    check = find_check(document["checks"])
+    assert check is not None
+    assert check.running
+    assert check.summary == entry["summary"]
 
 
 @pytest.mark.parametrize(
@@ -195,7 +225,7 @@ def test_details_of_the_wrong_shape_are_left_out() -> None:
 
 
 def test_a_later_sentence_of_the_core_is_shown_as_it_is() -> None:
-    # Fidonis/papaia#367 adds the launchd state to the message; it is not parsed.
+    # Fidonis/papaia#389 adds the launchd state to the message; it is not parsed.
     document = _doctor("warn")
     document["checks"][1]["summary"] += " (launchd: not loaded)"
     check = find_check(document["checks"])
@@ -233,6 +263,42 @@ def test_the_host_reading_carries_the_check_without_judging_the_host_by_it(name:
     assert health.overall is HostState.OK
     assert health.warn_count == 0
     assert health.total == 1
+
+
+def test_the_voice_accelerator_still_judges_the_host_with_a_native_localai() -> None:
+    # For the native runtime the core skips only the LocalAI probe of `gpu`; a voice TTS
+    # engine on a GPU is probed as before and its result is the check's.
+    document = _doctor("pass")
+    document["checks"][0] = {
+        "name": "gpu",
+        "status": "warn",
+        "summary": "the voice TTS engine: no NVIDIA GPU visible",
+        "details": {"variant": "nvidia (voice)", "override_present": True},
+    }
+    health = parse_doctor(_with_memory(document))
+
+    assert [c.kind for c in health.checks] == ["memory", "gpu"]
+    assert health.overall is HostState.WARN
+    assert health.warn_count == 1
+    assert health.localai == _native("pass")
+
+
+def test_a_voice_accelerator_not_measurable_from_the_container_is_shown_unjudged() -> None:
+    # What the core writes from the manager's container for that setup.
+    document = _doctor("pass")
+    document["checks"][0] = {
+        "name": "gpu",
+        "status": "skip",
+        "summary": "not measurable from inside a container: the host's driver tools and"
+        " devices are not visible",
+        "details": {"variant": "nvidia (voice)", "override_present": False},
+    }
+    health = parse_doctor(_with_memory(document))
+
+    gpu = [c for c in health.checks if c.kind == "gpu"]
+    assert [c.state for c in gpu] == [HostState.UNKNOWN]
+    assert health.overall is HostState.OK
+    assert health.warn_count == 0
 
 
 def test_the_container_runtime_has_no_native_reading() -> None:

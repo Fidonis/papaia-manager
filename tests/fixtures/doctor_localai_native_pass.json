@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-13T09:00:00Z",
+  "generated_at": "2026-11-18T09:00:00Z",
   "platform_version": "1.8.0",
   "checks": [
     {
@@ -12,13 +12,14 @@
     {
       "name": "localai_native",
       "status": "pass",
-      "summary": "LocalAI v4.7.1 answers on http://host.docker.internal:8080/readyz",
+      "summary": "LocalAI v4.12.1 answers on http://host.docker.internal:8080/readyz",
       "details": {
         "url": "http://host.docker.internal:8080/readyz",
         "home": "/Users/operator/workspace/localai/papaia",
-        "pinned": "v4.7.1",
-        "installed": "v4.7.1",
-        "ready": true
+        "pinned": "v4.12.1",
+        "installed": "v4.12.1",
+        "ready": true,
+        "log": "/Users/operator/workspace/localai/papaia/logs/localai.log"
       }
     }
   ],

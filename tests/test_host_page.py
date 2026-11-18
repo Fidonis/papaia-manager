@@ -878,7 +878,10 @@ def test_the_page_shows_the_native_localai_apart_from_the_verdict(
     assert "http://host.docker.internal:8080/readyz" in body
     assert "Not part of the host verdict" in body
     if name == "warn":
-        assert "start it with /Users/operator/workspace/localai/papaia/run-localai" in body
+        assert (
+            "run &#39;papaia-ctl start&#39; on the Mac (log: "
+            "/Users/operator/workspace/localai/papaia/logs/localai.log)"
+        ) in body
     # The GPU check skipped without a variant: no row for it.
     assert "GPU" not in body.split("Resources")[1].split("LocalAI (native)")[0]
     assert "3 measured" in body
@@ -896,3 +899,12 @@ def test_the_container_runtime_has_no_native_section(
         _doc(backup_status="pass", cert_status="pass", resources=_resources(cpu_status="pass")),
     )
     assert "LocalAI (native)" not in _as(client, "admin").get("/partials/host").text
+
+
+def test_a_switched_off_native_localai_has_no_native_section(
+    client: TestClient, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prime(monkeypatch, workspace, _native_doc("skip"))
+    body = _as(client, "admin").get("/partials/host").text
+    assert "LocalAI (native)" not in body
+    assert "GPU" not in body.split("Resources")[1]

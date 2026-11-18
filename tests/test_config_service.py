@@ -318,6 +318,22 @@ def test_what_the_purge_printed_is_in_the_log(tmp_path: Path, run: _Run) -> None
     assert "removed volume papaia_x" in _log(ctx)
 
 
+def test_a_removed_directory_of_a_later_core_is_logged_like_a_volume(
+    tmp_path: Path, run: _Run
+) -> None:
+    # papAIa 1.9.0 prints `removed directory <path>` for the folders of a native LocalAI.
+    run.purge_result = (
+        0,
+        "removed directory /Users/operator/workspace/localai/papaia/models\nreset ai/localai\n",
+        "",
+    )
+    ctx = _context(tmp_path)
+    config = _config(tmp_path, "nginx,localai")
+    _go(_off(config, scope="data"), ctx)
+    assert "removed directory /Users/operator/workspace/localai/papaia/models" in _log(ctx)
+    assert [e["result"] for e in _audit(config)] == ["ok"]
+
+
 # -- modules: the RAG system -------------------------------------------------------------------
 
 

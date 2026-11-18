@@ -70,8 +70,12 @@ class NativeCheck:
 
     `ready` is whether `/readyz` answered; None when the core did not say (an older shape,
     or a check that stopped before probing, such as a missing workspace). `summary` is the
-    core's own sentence and is shown as it is: it names the script to start the process
-    with, and later cores add what launchd knows."""
+    core's own sentence and is shown as it is: it says how to start the process
+    (`papaia-ctl start` on the Mac) and where its log is.
+
+    The core adds `details.launchd` (label, loaded, state, pid, last_exit) only when it runs
+    on the Mac itself; from this container launchctl cannot be asked and the key is never
+    there, so it is not read."""
 
     status: str
     summary: str
