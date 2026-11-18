@@ -28,13 +28,14 @@ view it had before rather than breaking it.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from app.core import localai_runtime
 from app.core.envfile import load_env_file
 
 logger = logging.getLogger(__name__)
@@ -103,13 +104,20 @@ def active_profiles(config_dir: str) -> set[str]:
     return profiles_in(load_env_file(Path(config_dir) / ".env"))
 
 
-def core_inventory(workspace_dir: str, profiles: set[str]) -> list[ExpectedService]:
+def core_inventory(
+    workspace_dir: str, profiles: set[str], skip: Collection[str] = ()
+) -> list[ExpectedService]:
     """Core services enabled by `profiles`, read from the shipped fragments.
 
     Follows the `include:` list of `papaia/src/docker-compose.yml` rather than
     globbing for compose files, so a fragment that is not part of the stack --
     an add-on checked out inside the workspace, a leftover from a local
     experiment -- cannot leak into the target state.
+
+    `skip` names services that have no container in this deployment although
+    their profile is on: `localai` with the native runtime of a Mac (see
+    `expected_core` and `app.core.localai_runtime`), as the core's own
+    `status.core_inventory` skips it.
     """
     root = Path(workspace_dir) / "papaia" / "src" / "docker-compose.yml"
     document = _load_yaml(root)
@@ -125,8 +133,20 @@ def core_inventory(workspace_dir: str, profiles: set[str]) -> list[ExpectedServi
             # expected" is the only interpretation that matches Compose.
             if declared and not (declared & profiles):
                 continue
+            if service in skip:
+                continue
             expected.append(_expected(service, body, fallback_module=UNGROUPED_MODULE))
     return expected
+
+
+def expected_core(config_dir: str, workspace_dir: str) -> list[ExpectedService]:
+    """The core services this deployment runs containers for: the active profiles, less the
+    services the stored LocalAI runtime has no container for."""
+    return core_inventory(
+        workspace_dir,
+        active_profiles(config_dir),
+        localai_runtime.skipped_services(config_dir),
+    )
 
 
 def group_modules(expected: Iterable[ExpectedService]) -> dict[str, frozenset[str]]:
