@@ -372,6 +372,73 @@
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
+<!-- Clear the chat history of an account -->
+<dialog id="user-chats-modal" class="modal" x-data="clearChats()"
+        @user-chats.window="open($event.detail)" @close="closed()">
+  <div class="modal-box max-w-lg">
+    <h3 class="text-lg font-bold"><span x-html="fmtHtml({{ _('Clear the chats of <span class="font-mono">{username}</span>')|tojson|forceescape }}, { username: username })"></span></h3>
+    <p class="mb-3 text-sm opacity-60">{% trans %}Removes the account's LibreChat conversations with their messages, files and shared links. The account, its sign-in, its agents and its prompts stay. Memories are not removed.{% endtrans %}</p>
+
+    <div x-show="phase === 'loading'" style="display:none" class="flex flex-col items-center gap-2 py-8">
+      <span class="loading loading-spinner loading-md text-primary"></span>
+      <p class="text-sm opacity-60">{% trans %}Counting what would be removed…{% endtrans %}</p>
+    </div>
+
+    <div x-show="phase === 'running'" style="display:none" class="flex flex-col items-center gap-2 py-8">
+      <span class="loading loading-spinner loading-md text-error"></span>
+      <p class="text-sm opacity-60">{% trans %}Clearing the chats. A long history can take a while.{% endtrans %}</p>
+    </div>
+
+    <div x-show="counts && (phase === 'confirm' || phase === 'done' || phase === 'failed')" style="display:none">
+      <p class="mb-2 text-sm font-medium" x-show="phase === 'confirm'" style="display:none">{% trans %}This would be removed:{% endtrans %}</p>
+      <p class="mb-2 text-sm font-medium" x-show="phase !== 'confirm'" style="display:none">{% trans %}Removed:{% endtrans %}</p>
+      <div class="overflow-x-auto rounded-xl border border-base-300">
+        <table class="table table-sm">
+          <tbody>
+            <tr>
+              <td>{% trans %}Conversations{% endtrans %}</td>
+              <td class="text-right font-mono">
+                <span x-text="counts ? counts.conversations : ''"></span>
+                <span class="block text-xs opacity-60" style="display:none" x-show="counts && counts.sub_threads"
+                      x-text="counts ? fmtPlural(counts.sub_threads, {{ _('including {count} sub-thread')|tojson|forceescape }}, {{ _('including {count} sub-threads')|tojson|forceescape }}) : ''"></span>
+              </td>
+            </tr>
+            <tr><td>{% trans %}Messages{% endtrans %}</td><td class="text-right font-mono" x-text="counts ? counts.messages : ''"></td></tr>
+            <tr><td>{% trans %}Files{% endtrans %}</td><td class="text-right font-mono" x-text="counts ? counts.files : ''"></td></tr>
+            <tr><td>{% trans %}Shared links{% endtrans %}</td><td class="text-right font-mono" x-text="counts ? counts.shared_links : ''"></td></tr>
+            <tr><td>{% trans %}Tool call records{% endtrans %}</td><td class="text-right font-mono" x-text="counts ? counts.tool_calls : ''"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-3 text-sm opacity-70" x-show="phase === 'confirm' && counts && counts.empty" style="display:none">
+        {% trans %}There are no chats to clear.{% endtrans %}
+      </p>
+      <div class="alert alert-warning mt-3 text-sm" role="alert" x-show="phase === 'confirm' && counts && !counts.empty" style="display:none">
+        <span>{% trans %}This cannot be undone. Only restoring a backup brings the chats back, and that restores the chats of every user. Ask the user to stop chatting first: a reply that is still being written can be left behind.{% endtrans %}</span>
+      </div>
+      <div class="alert alert-warning mt-3 text-sm" role="alert" x-show="counts && counts.files_failed" style="display:none">
+        <span x-text="counts ? fmtPlural(counts.files_failed, {{ _('{count} file could not be removed from storage and was kept. The job log names it.')|tojson|forceescape }}, {{ _('{count} files could not be removed from storage and were kept. The job log names them.')|tojson|forceescape }}) : ''"></span>
+      </div>
+    </div>
+
+    <p style="display:none" x-show="error" class="mt-3 text-sm text-error" x-text="error"></p>
+    <p style="display:none" x-show="jobId && (phase === 'done' || phase === 'failed')" class="mt-2 text-xs">
+      <a class="link" :href="'/jobs/' + jobId">{% trans %}View the job log{% endtrans %}</a>
+    </p>
+
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" @click="$root.close()"
+              x-text="phase === 'confirm' ? {{ _('Cancel')|tojson|forceescape }} : {{ _('Close')|tojson|forceescape }}"></button>
+      <button type="button" class="btn btn-error" style="display:none"
+              x-show="phase === 'confirm' && counts && !counts.empty" :disabled="busy" @click="submit()">
+        <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+        {% trans %}Delete chats{% endtrans %}
+      </button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
+</dialog>
+
 {% include "partials/_rag_js.html" %}
 <script>
 const _USERS_API = '/api/v1/users';
@@ -649,6 +716,65 @@ function resetPassword() {
       if (!res.ok) { this.error = res.error; return; }
       this.$root.close();
       showToast('success', fmtHtml({{ _('A link to set a new password was sent to <b>{username}</b>.')|tojson }}, { username: this.username }));
+    },
+  };
+}
+
+// Clearing chats is two requests: the core's dry run for the counts, then, after the button in
+// the dialog, the deletion as a queued job, which is polled until it ends. Closing the dialog
+// does not stop the job; the outcome is then a toast.
+function clearChats() {
+  return {
+    id: '', username: '', phase: 'idle', counts: null, error: '', busy: false, jobId: '', run: 0,
+    async open(detail) {
+      this.run += 1;
+      const run = this.run;
+      this.id = detail.id; this.username = detail.username;
+      this.counts = null; this.error = ''; this.busy = false; this.jobId = '';
+      this.phase = 'loading';
+      this.$root.showModal();
+      const res = await _ragRequest('GET', _USERS_API + '/' + encodeURIComponent(this.id) + '/chat-history');
+      if (run !== this.run) return;
+      if (res.handled) return;
+      if (!res.ok) { this.phase = 'failed'; this.error = res.error; return; }
+      this.counts = res.data.counts;
+      this.phase = 'confirm';
+    },
+    closed() {
+      // A job that is still running reports itself with a toast when it ends.
+      if (this.phase !== 'running') this.run += 1;
+    },
+    async submit() {
+      this.error = '';
+      this.busy = true;
+      const res = await _ragRequest('POST', _USERS_API + '/' + encodeURIComponent(this.id) + '/chat-history/clear',
+                                    { confirmed: true });
+      this.busy = false;
+      if (res.handled) return;
+      if (!res.ok) { this.error = res.error; return; }
+      this.jobId = res.data.job_id;
+      this.phase = 'running';
+      this.poll(this.run, this.id, this.username, this.jobId);
+    },
+    async poll(run, id, username, jobId) {
+      const res = await _ragRequest('GET', _USERS_API + '/' + encodeURIComponent(id) + '/chat-history/jobs/' + encodeURIComponent(jobId));
+      if (res.handled) return;
+      if (!res.ok || res.data.status === 'queued' || res.data.status === 'running') {
+        setTimeout(() => this.poll(run, id, username, jobId), 2000);
+        return;
+      }
+      const job = res.data;
+      const failed = job.status === 'failed';
+      const values = { username: username, href: '/jobs/' + jobId };
+      if (failed) {
+        showToast('error', fmtHtml({{ _('The chats of <b>{username}</b> could not be cleared. <a class="underline" href="{href}">View log</a>')|tojson }}, values));
+      } else {
+        showToast('success', fmtHtml({{ _('The chats of <b>{username}</b> were cleared.')|tojson }}, values));
+      }
+      if (run !== this.run) return;
+      if (job.counts) this.counts = job.counts;
+      this.error = failed ? job.error : '';
+      this.phase = failed ? 'failed' : 'done';
     },
   };
 }

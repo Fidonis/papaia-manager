@@ -15,9 +15,13 @@ from pydantic import BaseModel, Field
 
 from app.auth.csrf import verify_csrf
 from app.config import Settings, get_settings
+from app.core import chat_history
+from app.core.ctl import CtlError, clear_chat_history
+from app.core.jobs import JobContext, JobQueue, JobStatus
 from app.core.keycloak_users import KeycloakRejectedError
 from app.core.users_service import MAX_PAGE_SIZE, PAGE_SIZE, PartiallyCreated
 from app.i18n import gettext as _
+from app.routers.stack_guard import refuse_while_locked
 from app.routers.users_deps import UsersAdmin, UsersServiceDep, translated
 from app.routers.users_deps import audit as _audit
 
@@ -29,6 +33,7 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 # string. Anything else never reaches a URL.
 UserId = Annotated[str, Path(pattern=r"^[0-9A-Fa-f-]{8,64}$")]
 SessionId = Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{8,128}$")]
+JobId = Annotated[str, Path(pattern=r"^[0-9a-f-]{36}$")]
 
 
 class CreateBody(BaseModel):
@@ -46,6 +51,12 @@ class EnabledBody(BaseModel):
 
 class RolesBody(BaseModel):
     roles: list[str] = Field(max_length=500)
+
+
+class ClearHistoryBody(BaseModel):
+    # The deletion cannot be undone: the page shows the dry run's counts first, and a request
+    # that skipped that question must not delete anything.
+    confirmed: bool = False
 
 
 def _secret(content: dict[str, Any], status_code: int = status.HTTP_200_OK) -> Response:
@@ -267,3 +278,163 @@ async def end_all_sessions(
         username, count = await service.end_all_sessions(user_id)
     _audit(settings, user, "user.session.revoke-all", username, {"sessions": count})
     return {"username": username, "ended": count}
+
+
+# -- chat history ---------------------------------------------------------------------
+
+
+def _job_queue() -> JobQueue:
+    from app.main import _job_queue as queue  # noqa: PLC0415
+
+    if queue is None:
+        raise HTTPException(status_code=503, detail=_("job queue not initialized"))
+    return queue
+
+
+def _require_clear_history(settings: Settings) -> None:
+    """A core without `librechat clear-history` (older than 1.9.0) gets a refusal, not a job."""
+    if not chat_history.core_supports_clear_history(settings.papaia_workspace_dir):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=chat_history.core_requirement_message()
+        )
+
+
+@router.get("/{user_id}/chat-history")
+async def preview_chat_history(
+    user_id: UserId,
+    user: UsersAdmin,
+    service: UsersServiceDep,
+    settings: SettingsDep,
+) -> dict[str, Any]:
+    """What clearing the account's LibreChat history would remove: the core's dry run.
+
+    Nothing is changed. A reason the core gives (no such LibreChat user, LibreChat not
+    running) is a 422 with that reason, so the dialog can show it."""
+    _require_clear_history(settings)
+    with translated():
+        username, email = await service.chat_identity(user_id)
+    try:
+        counts = await chat_history.preview(
+            email,
+            workspace_dir=settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
+        )
+    except chat_history.ChatHistoryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"username": username, "email": email, "counts": counts.as_dict()}
+
+
+@router.post("/{user_id}/chat-history/clear", status_code=status.HTTP_202_ACCEPTED)
+async def clear_history(
+    user_id: UserId,
+    request: Request,
+    user: UsersAdmin,
+    service: UsersServiceDep,
+    settings: SettingsDep,
+    body: ClearHistoryBody | None = None,
+) -> dict[str, Any]:
+    """Remove the account's LibreChat conversations, messages, files and shared links.
+
+    Needs `confirmed: true` (422 otherwise), because the deletion cannot be undone. Runs as a
+    queued job, so it never overlaps a backup that pauses LibreChat's container; the outcome is
+    read from `GET .../chat-history/jobs/{job_id}`. Audited as `user.chat-history.clear` with
+    the counts, `partial` when some files stayed in storage; a failure is the queue's own
+    `error` entry under the same action."""
+    verify_csrf(request)
+    _require_clear_history(settings)
+    if not (body and body.confirmed):
+        raise HTTPException(
+            status_code=422,
+            detail=_("Clearing the chats cannot be undone and has to be confirmed."),
+        )
+    refuse_while_locked(settings)
+    with translated():
+        username, email = await service.chat_identity(user_id)
+    queue = _job_queue()
+    actor = user.preferred_username or user.sub
+
+    async def _callback(ctx: JobContext) -> None:
+        ctx.log(f"[ctl] papaia-ctl librechat clear-history {email} -y")
+        lines: list[str] = []
+        try:
+            gen = await clear_chat_history(
+                email=email,
+                workspace_dir=settings.papaia_workspace_dir,
+                config_dir=settings.papaia_config_dir,
+            )
+            async for line in gen:
+                lines.append(line)
+                ctx.log(line)
+        except CtlError:
+            # Exit 1 with counts is the core saying that some files stayed in storage: the
+            # rest is gone, so it is recorded as the part-way it is before the job fails.
+            counts = chat_history.parse_counts("\n".join(lines))
+            if counts is not None:
+                _audit(
+                    settings,
+                    user,
+                    chat_history.AUDIT_ACTION,
+                    username,
+                    _audit_counts(counts),
+                    result="partial",
+                    job_id=ctx.job.id,
+                )
+            raise
+        counts = chat_history.parse_counts("\n".join(lines)) or chat_history.HistoryCounts()
+        _audit(
+            settings,
+            user,
+            chat_history.AUDIT_ACTION,
+            username,
+            _audit_counts(counts),
+            job_id=ctx.job.id,
+        )
+
+    job = await queue.enqueue(
+        action=chat_history.AUDIT_ACTION,
+        target=username,
+        user=actor,
+        params={"user_id": user_id},
+        callback=_callback,
+    )
+    return {"job_id": job.id, "status": "queued", "username": username}
+
+
+def _audit_counts(counts: chat_history.HistoryCounts) -> dict[str, int]:
+    params = counts.as_dict()
+    params.pop("empty", None)
+    return params
+
+
+@router.get("/{user_id}/chat-history/jobs/{job_id}")
+async def clear_history_job(
+    user_id: UserId,
+    job_id: JobId,
+    user: UsersAdmin,
+) -> dict[str, Any]:
+    """How a deletion started from this page is going, and what it removed.
+
+    Read from the job and its log rather than from the job API, which is the admin role's:
+    this page is the identity role's. Only a deletion of this account is found."""
+    queue = _job_queue()
+    job = queue.get_job(job_id)
+    if (
+        job is None
+        or job.action != chat_history.AUDIT_ACTION
+        or job.params.get("user_id") != user_id
+    ):
+        raise HTTPException(status_code=404, detail=_("that job was not found"))
+    done = job.status in (JobStatus.SUCCEEDED, JobStatus.FAILED)
+    counts = chat_history.parse_counts(queue.read_log(job_id)) if done else None
+    error = None
+    if job.status == JobStatus.FAILED:
+        error = chat_history.core_error(queue.read_log(job_id)) or _(
+            "The chats could not be cleared. The job log has the details."
+        )
+    return {
+        "job_id": job.id,
+        "username": job.target,
+        "status": job.status.value,
+        "counts": counts.as_dict() if counts is not None else None,
+        "error": error,
+    }

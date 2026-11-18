@@ -16,6 +16,7 @@ from app.auth.roles import is_admin
 from app.config import Settings, get_settings
 from app.core import (
     backups,
+    chat_history,
     docker_usage,
     host_health,
     images,
@@ -766,6 +767,7 @@ async def partial_users(
     request: Request,
     user: UsersAdmin,
     service: UsersServiceDep,
+    settings: Annotated[Settings, Depends(get_settings)],
     search: Annotated[str, Query(max_length=100)] = "",
     first: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = PAGE_SIZE,
@@ -779,7 +781,17 @@ async def partial_users(
     resp = _templates.TemplateResponse(
         request,
         "partials/user_list.html",
-        _ctx(request, user, view=view),
+        _ctx(
+            request,
+            user,
+            view=view,
+            # "Clear chats" needs `librechat clear-history` in the core (1.9.0); an older
+            # one gets the entry disabled with the reason, and nothing else changes.
+            chat_history_supported=chat_history.core_supports_clear_history(
+                settings.papaia_workspace_dir
+            ),
+            chat_history_requirement=chat_history.core_requirement_message(),
+        ),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
