@@ -32,6 +32,7 @@ import copy
 import hashlib
 import os
 import re
+import shutil
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -350,6 +351,18 @@ def restore_file(config_dir: str, key: str, previous: bytes | None, written: str
                 os.replace(tmp, path)
         except OSError:
             return False
+    return True
+
+
+def purge_history(config_dir: str) -> bool:
+    """Delete the kept versions of the operator files, after the core deleted the files.
+    Returns whether there was a history. A copy left here would keep what the administrator
+    asked to delete."""
+    directory = Path(config_dir) / HISTORY_DIR
+    if not directory.is_dir():
+        return False
+    with _LOCK:
+        shutil.rmtree(directory)
     return True
 
 
