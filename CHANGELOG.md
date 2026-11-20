@@ -21,8 +21,8 @@ based on merged pull requests; this file mirrors the published releases.
   Flow decides by its own policy whether that is enough. The audit entry names the outcome. The
   approval names the digest and version the dialog showed; a changed manifest, a missing digest or
   a dialog that cut a list is refused. Needs a core whose `addon install` takes
-  `--approve-flow-link` and checks `--expect-flow-digest` and `--expect-addon-version` (proposed
-  to the core in `docs/upstream/papaia/`); other cores get the dialog without the box. The token
+  `--approve-flow-link` and checks `--expect-flow-digest` and `--expect-addon-version` (the core's
+  branch `feat/flow-approval-at-install`, see `docs/upstream/papaia/`); other cores get the dialog without the box. The token
   exchange asks for `scope=aud-flow` together with `audience=flow`.
 - New optional settings `MANAGER_FLOW_AUDIENCE` (default `flow`) and
   `MANAGER_PERSONAL_SETTINGS_URL`, documented in both `.env.example` files.

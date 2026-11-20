@@ -1,6 +1,10 @@
 # Proposal for the core: approve a Flow link only as it was shown
 
-Status: proposed, not accepted. Base: the core's branch `feat/flow-approval-at-install`
+Status: applied on the core's local branch `feat/flow-approval-at-install` (commits
+`b155569`, `ab25b7f`, `4536166`, `454b85b`; not merged, not published). In addition to the
+patch below, the core there refuses `--approve-flow-link` without a terminal when the two flags
+are missing, and when the version Flow shows differs from `--expect-addon-version`.
+Base: the core's branch `feat/flow-approval-at-install`
 (`tools/lib/flow_link.py`, `tools/lib/cli_addon.py`, `tools/lib/cli.py`,
 `tools/lib/sh/addon.sh`). Patch: [`flow-link-expected-digest.patch`](flow-link-expected-digest.patch).
 
@@ -33,11 +37,19 @@ an approval of a declaration nobody looked at.
   catalog manifest it installs and refuses (409) an approval without them, with other values, or
   from a dialog that did not show every entry.
 - It passes both flags with `--approve-flow-link`, and it offers and accepts an approval only
-  from a core whose installer names both flags (`flow_link.core_binds_approval`). Until this
-  proposal is accepted no core does, so the manager approves no Flow link at installation;
-  the link stays a proposal to be approved in Flow.
+  from a core whose installer names both flags (`flow_link.core_binds_approval`). A core
+  without them gets no approval at installation; the link stays a proposal to be approved in
+  Flow.
 
 ## Checks
+
+On the core's branch: `uv run --locked --extra dev python -m pytest tests/` in `tools/`
+(1235 passed, 11 skipped), ruff, yamllint and shellcheck clean;
+`PAPAIA_SRC=<that worktree> uv run pytest -q -k test_flow_link_contract` from `src/`:
+12 passed, including the refusal of another digest, another version and an approval that names
+nothing. Checked against a stand-in of Flow, not on a live system.
+
+Before it was applied:
 
 The patch was applied to a copy of the four files, not to the core. Against that copy:
 `PAPAIA_SRC=<copy> uv run pytest -q -k test_flow_link_contract` (from `src/`) passed
