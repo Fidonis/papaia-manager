@@ -9762,8 +9762,14 @@ msgstr "Dieser papAIa-Core kann eine Verknüpfung mit Flow bei der Installation 
 msgid "Keycloak did not issue a token for Flow (%(reason)s). Nothing was installed. Install without approving and approve the link in Flow."
 msgstr "Keycloak hat kein Token für Flow ausgestellt (%(reason)s). Es wurde nichts installiert. Installieren Sie ohne Freigabe und geben Sie die Verknüpfung in Flow frei."
 
+msgid "My settings"
+msgstr "Meine Einstellungen"
 
+msgid "Your own settings for the services of the platform"
+msgstr "Ihre eigenen Einstellungen für die Dienste der Plattform"
 
+msgid "Personal"
+msgstr "Persönlich"
 
 msgid "Link with Flow"
 msgstr "Verknüpfung mit Flow"

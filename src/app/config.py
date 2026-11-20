@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -76,6 +77,10 @@ class Settings(BaseSettings):
     # administrator's token for one with exactly this audience and hands it to papaia-ctl.
     manager_flow_audience: str = Field(default="flow", min_length=1, max_length=255)
 
+    # Where the personal settings area lives (the core's module `me`), as the browser reaches
+    # it. Optional: without it the account menu and the dashboard show no way there.
+    manager_personal_settings_url: str | None = None
+
     # TLS (optional — path to custom CA bundle)
     ssl_cert_file: str | None = None
 
@@ -86,6 +91,21 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/")
+
+    @field_validator("manager_personal_settings_url", mode="before")
+    @classmethod
+    def _web_address(cls, v: object) -> object:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return v
+        value = v.strip()
+        if not value:
+            return None
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https") or not parts.hostname or "@" in parts.netloc:
+            raise ValueError("must be an http or https address with a host and no login")
+        return value
 
     @property
     def oidc_redirect_uri(self) -> str:

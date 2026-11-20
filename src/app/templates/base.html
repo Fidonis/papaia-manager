@@ -882,6 +882,11 @@
           </li>
           {% endfor %}
           <li class="menu-title">{% trans %}Account{% endtrans %}</li>
+          {# The personal settings area, a service of its own; only when its address is set. #}
+          {% set my_settings = personal_settings_url() %}
+          {% if my_settings %}
+          <li><a href="{{ my_settings }}">{% trans %}My settings{% endtrans %}</a></li>
+          {% endif %}
           <li>
             <form method="post" action="/auth/logout">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

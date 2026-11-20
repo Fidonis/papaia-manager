@@ -168,6 +168,22 @@ def users_nav(context: dict[str, object]) -> bool:
 
 templates.env.globals["users_nav"] = users_nav
 
+
+@pass_context
+def personal_settings_url(context: dict[str, object]) -> str | None:
+    """Where the personal settings area lives, for the account menu; None hides the entry.
+
+    A global for the same reason as `rag_enabled`: the account menu is part of every page.
+    """
+    request = context.get("request")
+    resolver = get_settings
+    if isinstance(request, Request):
+        resolver = request.app.dependency_overrides.get(get_settings, get_settings)
+    return resolver().manager_personal_settings_url
+
+
+templates.env.globals["personal_settings_url"] = personal_settings_url
+
 # Times, spans and sizes of the ingest pages. The zone is passed in by the page, because it
 # is the ingester's and not the manager's.
 templates.env.filters["ingest_when"] = display.local_time

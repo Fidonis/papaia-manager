@@ -43,6 +43,7 @@ from app.core.ingest.errors import IngestError, InvalidRequest, NotFound
 from app.core.ingest.uploads import new_store as new_upload_store
 from app.core.inventory import LINK_PROFILE, SELF_PROFILE
 from app.core.jobs import Job, JobQueue
+from app.core.personal_area import with_personal_tile
 from app.core.rag import documents_dir, with_rag_tiles
 from app.core.rag_collections import CollectionStore
 from app.core.resolve import resolve_catalog_addons, update_available
@@ -475,6 +476,16 @@ async def partial_tiles(
     groups, tiles_error = await asyncio.get_running_loop().run_in_executor(
         None, _gather_tiles, settings, is_admin(user, settings)
     )
+    if settings.manager_personal_settings_url:
+        # Translated here, in the request's context: the executor above does not carry the
+        # request's language.
+        groups = with_personal_tile(
+            groups,
+            settings.manager_personal_settings_url,
+            name=_("My settings"),
+            description=_("Your own settings for the services of the platform"),
+            group_name=_("Personal"),
+        )
     resp = _templates.TemplateResponse(
         request,
         "partials/tile_gallery.html",
