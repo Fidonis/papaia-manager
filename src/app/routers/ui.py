@@ -2001,7 +2001,8 @@ def _flow_link_view(
 
     Only while Flow is installed: without it the core keeps the declaration and Flow reads it
     later as a proposal, so there is nothing to decide in the dialog. The box to approve is
-    offered only by a core that takes `--approve-flow-link`.
+    offered only by a core that takes `--approve-flow-link` and checks the digest the dialog
+    sends with it, and only when the dialog shows every entry.
     """
     if not flow_link.flow_installed(deployment):
         return None
@@ -2013,7 +2014,12 @@ def _flow_link_view(
         "actions": shown.actions,
         "more_events": shown.more_events,
         "more_actions": shown.more_actions,
-        "can_approve": flow_link.core_approves_at_install(settings.papaia_workspace_dir),
+        "digest": shown.digest,
+        "version": shown.version,
+        "truncated": shown.truncated,
+        "core_binds": flow_link.core_binds_approval(settings.papaia_workspace_dir),
+        "can_approve": flow_link.core_binds_approval(settings.papaia_workspace_dir)
+        and not shown.truncated,
     }
 
 

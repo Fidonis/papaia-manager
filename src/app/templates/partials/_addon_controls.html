@@ -188,9 +188,11 @@
         const start = $el.querySelector('[name=start]').checked;
         const approveBox = $el.querySelector('[name=approve_flow_link]');
         const approve_flow_link = !!(approveBox && approveBox.checked);
+        const flow_link_digest = approve_flow_link ? approveBox.dataset.flowDigest : null;
+        const flow_link_version = approve_flow_link ? approveBox.dataset.flowVersion : null;
         $refs.installModal.close();
         busy = true; activeVerb = 'install';
-        {{ fn }}('{{ addon.name }}', 'install', { catalog: '{{ addon.catalog }}', env, start, approve_flow_link })
+        {{ fn }}('{{ addon.name }}', 'install', { catalog: '{{ addon.catalog }}', env, start, approve_flow_link, flow_link_digest, flow_link_version })
           .then(ok => { if (!ok) { busy = false; activeVerb = '' } });
       "
     >
@@ -270,12 +272,16 @@
           </table>
           {% if link.more_actions %}<p class="text-xs opacity-60">{% trans count=link.more_actions %}{{ count }} more action not shown{% pluralize %}{{ count }} more actions not shown{% endtrans %}</p>{% endif %}
         </div>
+        <p class="text-xs opacity-70 mb-1">{% trans version=link.version %}Version {{ version }}, declaration{% endtrans %} <span class="font-mono break-all" data-flow-digest="{{ link.digest }}" data-flow-version="{{ link.version }}">{{ link.digest }}</span></p>
         {% if link.can_approve %}
         <label class="label cursor-pointer justify-start gap-2">
           <input type="checkbox" name="approve_flow_link" value="true" class="checkbox checkbox-sm"
+                 data-flow-digest="{{ link.digest }}" data-flow-version="{{ link.version }}"
                  aria-describedby="flow-link-later-{{ addon.key }}">
           <span class="label-text">{% trans %}Approve the link with Flow{% endtrans %}</span>
         </label>
+        {% elif link.truncated %}
+        <p class="text-xs opacity-70">{% trans %}The dialog cannot show every entry of this link, so it cannot be approved here.{% endtrans %}</p>
         {% else %}
         <p class="text-xs opacity-70">{% trans %}This papAIa core cannot approve the link while installing; it needs a newer core.{% endtrans %}</p>
         {% endif %}

@@ -9822,6 +9822,24 @@ msgstr "Verknüpfung mit Flow freigeben"
 msgid "This papAIa core cannot approve the link while installing; it needs a newer core."
 msgstr "Dieser papAIa-Core kann die Verknüpfung bei der Installation nicht freigeben; dafür ist ein neuerer Core nötig."
 
+msgid "The approval does not name the Flow link it approves. Open the dialog again."
+msgstr "Die Freigabe nennt nicht die Flow-Verknüpfung, die sie freigibt. Öffnen Sie den Dialog erneut."
+
+#, python-format
+msgid "The Flow link of %(name)s has more entries than the dialog shows. Install without approving and approve the link in Flow."
+msgstr "Die Flow-Verknüpfung von %(name)s hat mehr Einträge, als der Dialog zeigt. Installieren Sie ohne Freigabe und geben Sie die Verknüpfung in Flow frei."
+
+#, python-format
+msgid "The Flow link of %(name)s changed since the dialog showed it. Nothing was installed; open the dialog again."
+msgstr "Die Flow-Verknüpfung von %(name)s hat sich geändert, seit der Dialog sie gezeigt hat. Es wurde nichts installiert; öffnen Sie den Dialog erneut."
+
+#, python-format
+msgid "Version %(version)s, declaration"
+msgstr "Version %(version)s, Deklaration"
+
+msgid "The dialog cannot show every entry of this link, so it cannot be approved here."
+msgstr "Der Dialog kann nicht alle Einträge dieser Verknüpfung zeigen; sie kann daher hier nicht freigegeben werden."
+
 #, python-format
 msgid "Without approval the link stays a proposal. An administrator of Flow can approve it later: flow link show %(name)s, then flow link approve %(name)s --at-install with the digest and version it shows."
 msgstr "Ohne Freigabe bleibt die Verknüpfung ein Vorschlag. Ein Administrator von Flow kann sie später freigeben: flow link show %(name)s, dann flow link approve %(name)s --at-install mit dem Digest und der Version, die angezeigt werden."

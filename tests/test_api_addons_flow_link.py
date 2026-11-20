@@ -293,7 +293,13 @@ def _install(
     if approve is not None:
         body["approve_flow_link"] = approve
     if approve:
-        shown = _shown(client) if _SHOWN in (digest, version) else ("", "")
+        # Where the dialog shows no link there is nothing it could have sent; a well-formed
+        # digest still has to be refused.
+        offered = 'data-flow-digest="' in _as(client).get("/partials/addons/archive").text
+        if _SHOWN in (digest, version):
+            shown = _shown(client) if offered else ("sha256:" + "0" * 64, "1.4.0")
+        else:
+            shown = ("", "")
         if digest is not None:
             body["flow_link_digest"] = shown[0] if digest is _SHOWN else digest
         if version is not None:

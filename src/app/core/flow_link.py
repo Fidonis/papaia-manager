@@ -8,12 +8,21 @@ installing administrator. Flow then decides by its own policy whether one admini
 enough; otherwise the link waits for a second person.
 
 This module is the manager's share of that: the summary the install dialog shows (a preview from
-the catalog's manifest; the text that decides is the one Flow prints into the job log), whether
-Flow is installed, whether the core can be asked to approve, and the outcome read back from what
-the core printed. The manager interprets nothing of the section beyond showing it.
+the catalog's manifest), whether Flow is installed, whether the core can be asked to approve, and
+the outcome read back from what the core printed. The manager interprets nothing of the section
+beyond showing it.
+
+An approval is bound to what the dialog showed: the dialog sends the digest of the section it
+showed (`section_digest`) and the add-on's version, the manager compares both with the manifest it
+installs, and passes them to the core, which approves only when the manifest it installs has the
+same digest and version (`--expect-flow-digest`, `--expect-addon-version`). A core without that
+check is offered no approval, and a dialog that could not show every entry offers none either.
+The core's check is a proposal (docs/upstream/papaia/flow-link-expected-digest.md).
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -26,6 +35,12 @@ from app.core.ctl import FLOW_TOKEN_ENV
 FLOW_ADDON = "papaia-flow"
 SECTION = "flow"
 APPROVE_FLAG = "--approve-flow-link"
+# The digest and version the dialog showed; the core refuses the approval when the manifest it
+# installs differs (proposal for the core, see the module docstring).
+DIGEST_FLAG = "--expect-flow-digest"
+VERSION_FLAG = "--expect-addon-version"
+_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_VERSION_MAX = 64
 # Where the core reads the person token from: the environment of the child only, since an
 # argument would show in the process list.
 TOKEN_ENV = FLOW_TOKEN_ENV
@@ -60,6 +75,36 @@ class FlowLinkPreview:
     actions: tuple[FlowAction, ...]
     more_events: int = 0
     more_actions: int = 0
+    # What an approval from this dialog names: the digest of the whole section and the version.
+    digest: str = ""
+    version: str = ""
+
+    @property
+    def truncated(self) -> bool:
+        """Whether the dialog left entries out; such a dialog cannot be approved."""
+        return bool(self.more_events or self.more_actions)
+
+
+def section_digest(manifest: Mapping[str, Any]) -> str | None:
+    """`sha256:<hex>` of the manifest's `flow:` section, or None without one.
+
+    The section as canonical JSON (keys sorted, no spaces, UTF-8), so the same declaration has
+    the same digest however its YAML is written. The core computes it the same way."""
+    section = manifest.get(SECTION)
+    if not isinstance(section, Mapping):
+        return None
+    canonical = json.dumps(
+        section, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def manifest_version(manifest: Mapping[str, Any]) -> str:
+    return str(manifest.get("version", ""))[:_VERSION_MAX]
+
+
+def is_digest(value: object) -> bool:
+    return isinstance(value, str) and bool(_DIGEST.match(value))
 
 
 def _text(value: Any) -> str:
@@ -114,6 +159,8 @@ def preview(manifest: Mapping[str, Any]) -> FlowLinkPreview | None:
         ),
         more_events=max(0, len(events) - MAX_ITEMS),
         more_actions=max(0, len(actions) - MAX_ITEMS),
+        digest=section_digest(manifest) or "",
+        version=manifest_version(manifest),
     )
 
 
@@ -126,11 +173,20 @@ def flow_installed(deployment: Mapping[str, Any]) -> bool:
     )
 
 
-@lru_cache(maxsize=4)
-def _knows_flag(script: str, mtime_ns: int) -> bool:
+@lru_cache(maxsize=8)
+def _knows_flags(script: str, mtime_ns: int, flags: tuple[str, ...]) -> bool:
     del mtime_ns  # part of the cache key: a core upgraded in place is read again
     try:
-        return APPROVE_FLAG in Path(script).read_text(encoding="utf-8", errors="replace")
+        text = Path(script).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return all(flag in text for flag in flags)
+
+
+def _installer_knows(workspace_dir: str, *flags: str) -> bool:
+    script = Path(workspace_dir) / "papaia" / "tools" / "lib" / "sh" / "addon.sh"
+    try:
+        return _knows_flags(str(script), script.stat().st_mtime_ns, flags)
     except OSError:
         return False
 
@@ -140,11 +196,18 @@ def core_approves_at_install(workspace_dir: str) -> bool:
 
     An older core refuses an unknown option of `addon install` and would fail the whole
     installation, so the flag is passed only to a core whose installer names it."""
-    script = Path(workspace_dir) / "papaia" / "tools" / "lib" / "sh" / "addon.sh"
-    try:
-        return _knows_flag(str(script), script.stat().st_mtime_ns)
-    except OSError:
-        return False
+    return _installer_knows(workspace_dir, APPROVE_FLAG)
+
+
+def core_binds_approval(workspace_dir: str) -> bool:
+    """Whether the core approves only the declaration the dialog showed.
+
+    Without `--expect-flow-digest` and `--expect-addon-version` the core would have Flow
+    approve whatever it read at that moment, which need not be what the administrator saw;
+    the manager then offers and passes no approval."""
+    return core_approves_at_install(workspace_dir) and _installer_knows(
+        workspace_dir, DIGEST_FLAG, VERSION_FLAG
+    )
 
 
 def outcome(name: str, lines: Iterable[str]) -> tuple[str, list[str]]:

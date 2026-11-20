@@ -70,6 +70,10 @@ class InstallBody(BaseModel):
     # The administrator approves the add-on's Flow link as the dialog showed it. Flow still
     # decides by its own policy whether one administrator is enough.
     approve_flow_link: bool = False
+    # What the dialog showed of the link: the digest of the section and the add-on's version.
+    # An approval without both, or for anything else, is refused.
+    flow_link_digest: str | None = None
+    flow_link_version: str | None = None
 
 
 class StopBody(BaseModel):
@@ -117,27 +121,63 @@ class SaveConfigBody(BaseModel):
 _TOKEN_SKEW_SECONDS = 90.0
 
 
-async def _flow_token_for_install(
-    request: Request, name: str, addon_dir: Path, settings: Settings, approve: bool
-) -> ExchangedToken | None:
-    """The Flow token the install of `name` passes on, when the administrator approved its link.
+def _shown_link(name: str, addon_dir: Path, body: InstallBody) -> tuple[str, str]:
+    """The digest and version of the link the dialog showed, checked against the manifest.
 
-    Refused before a job exists when there is nothing to approve here: no `flow:` section in the
-    catalog's manifest, Flow not installed, or a core that does not take the flag (it would fail
-    the whole installation on the unknown option). The token is made now, from the request's
-    session, because the job runs without one.
-    """
-    if not approve:
-        return None
+    An approval names what the administrator saw. It is refused when the dialog sent no digest
+    or version, when the dialog could not show every entry, or when the catalog's manifest now
+    declares something else than what was shown."""
     try:
         raw = yaml.safe_load((addon_dir / "papaia-app.yaml").read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
         raw = {}
-    if not isinstance(raw, dict) or flow_link.preview(raw) is None:
+    shown = flow_link.preview(raw) if isinstance(raw, dict) else None
+    if shown is None:
         raise HTTPException(
             status_code=409,
             detail=gettext("%(name)s declares no Flow link to approve.") % {"name": name},
         )
+    if not flow_link.is_digest(body.flow_link_digest) or not body.flow_link_version:
+        raise HTTPException(
+            status_code=409,
+            detail=gettext(
+                "The approval does not name the Flow link it approves. Open the dialog again."
+            ),
+        )
+    if shown.truncated:
+        raise HTTPException(
+            status_code=409,
+            detail=gettext(
+                "The Flow link of %(name)s has more entries than the dialog shows. Install "
+                "without approving and approve the link in Flow."
+            ) % {"name": name},
+        )
+    if body.flow_link_digest != shown.digest or body.flow_link_version != shown.version:
+        raise HTTPException(
+            status_code=409,
+            detail=gettext(
+                "The Flow link of %(name)s changed since the dialog showed it. Nothing was "
+                "installed; open the dialog again."
+            ) % {"name": name},
+        )
+    return shown.digest, shown.version
+
+
+async def _flow_token_for_install(
+    request: Request, name: str, addon_dir: Path, settings: Settings, body: InstallBody
+) -> tuple[ExchangedToken, str, str] | None:
+    """The Flow token the install of `name` passes on, with the digest and version it approves,
+    when the administrator approved its link.
+
+    Refused before a job exists when there is nothing to approve here: no `flow:` section in the
+    catalog's manifest, an approval that does not name what the dialog showed, Flow not
+    installed, or a core that does not take the flag (it would fail the whole installation on
+    the unknown option) or cannot check the digest. The token is made now, from the request's
+    session, because the job runs without one.
+    """
+    if not body.approve_flow_link:
+        return None
+    digest, version = _shown_link(name, addon_dir, body)
     if not flow_link.flow_installed(load_deployment_yaml(settings.papaia_config_dir)):
         raise HTTPException(
             status_code=409,
@@ -145,7 +185,7 @@ async def _flow_token_for_install(
                 "Flow is not installed. The link of %(name)s becomes a proposal once Flow is."
             ) % {"name": name},
         )
-    if not flow_link.core_approves_at_install(settings.papaia_workspace_dir):
+    if not flow_link.core_binds_approval(settings.papaia_workspace_dir):
         raise HTTPException(
             status_code=409,
             detail=gettext(
@@ -154,7 +194,7 @@ async def _flow_token_for_install(
             ),
         )
     try:
-        return await token_for(request, settings.manager_flow_audience)
+        token = await token_for(request, settings.manager_flow_audience)
     except UserTokenUnavailable as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=gettext("session expired")
@@ -167,6 +207,7 @@ async def _flow_token_for_install(
                 "Install without approving and approve the link in Flow."
             ) % {"reason": str(exc)},
         ) from exc
+    return token, digest, version
 
 
 def _queue() -> JobQueue:
@@ -473,7 +514,12 @@ async def install(
         else {}
     )
     _approve = body.approve_flow_link
-    _flow_token = await _flow_token_for_install(request, name, clone / name, settings, _approve)
+    _granted = await _flow_token_for_install(request, name, clone / name, settings, body)
+    _flow_token = _granted[0] if _granted else None
+    _bound = [
+        f"{flow_link.DIGEST_FLAG}={_granted[1]}",
+        f"{flow_link.VERSION_FLAG}={_granted[2]}",
+    ] if _granted else []
 
     async def _callback(ctx: JobContext) -> None:
         ctx.log(f"[info] materializing snapshot for {name!r} from {_cat!r}")
@@ -511,6 +557,7 @@ async def install(
         token_env: dict[str, str] = {}
         if _approve:
             flags.append(flow_link.APPROVE_FLAG)
+            flags.extend(_bound)
             fresh = (
                 _flow_token is not None
                 and _flow_token.expires_at - _TOKEN_SKEW_SECONDS > time.time()
@@ -523,7 +570,7 @@ async def install(
                     "the Flow link stays a proposal"
                 )
         ctx.log(f"[ctl] papaia-ctl addon install {name}" + (
-            f" {flow_link.APPROVE_FLAG}" if _approve else ""
+            " " + " ".join([flow_link.APPROVE_FLAG, *_bound]) if _approve else ""
         ))
         gen = await run_addon_verb(
             verb="install",

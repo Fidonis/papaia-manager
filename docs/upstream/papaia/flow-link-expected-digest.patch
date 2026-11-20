@@ -1,0 +1,132 @@
+diff -ru a/tools/lib/cli.py b/tools/lib/cli.py
+--- a/tools/lib/cli.py
++++ b/tools/lib/cli.py
+@@ -708,6 +708,8 @@
+     # token of a Flow administrator from this file (or PAPAIA_FLOW_TOKEN).
+     p_addon_install.add_argument("--approve-flow-link", action="store_true")
+     p_addon_install.add_argument("--flow-token-file", default=None)
++    p_addon_install.add_argument("--expect-flow-digest", default=None)
++    p_addon_install.add_argument("--expect-addon-version", default=None)
+     p_addon_install.set_defaults(func=cli_addon.cmd_addon_install)
+ 
+     p_addon_start = sub.add_parser("addon-start")
+diff -ru a/tools/lib/cli_addon.py b/tools/lib/cli_addon.py
+--- a/tools/lib/cli_addon.py
++++ b/tools/lib/cli_addon.py
+@@ -174,6 +174,8 @@
+         token=token,
+         out=sys.stdout,
+         poll_s=flow_link.POLL_S,
++        expect_digest=getattr(args, "expect_flow_digest", None),
++        expect_version=getattr(args, "expect_addon_version", None),
+     )
+ 
+ 
+diff -ru a/tools/lib/flow_link.py b/tools/lib/flow_link.py
+--- a/tools/lib/flow_link.py
++++ b/tools/lib/flow_link.py
+@@ -21,6 +21,7 @@
+ 
+ from __future__ import annotations
+ 
++import hashlib
+ import json
+ import os
+ import shutil
+@@ -183,6 +184,20 @@
+ # ── the link at installation ─────────────────────────────────────────────────
+ 
+ 
++def section_digest(manifest: dict) -> str | None:
++    """`sha256:<hex>` of the manifest's `flow:` section as canonical JSON (keys
++    sorted, no spaces, UTF-8), or None without one. A caller that showed the
++    section to a person names it by this digest (papaia-manager computes it
++    the same way)."""
++    section = manifest.get(SECTION)
++    if not isinstance(section, dict):
++        return None
++    canonical = json.dumps(
++        section, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
++    )
++    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
++
++
+ def summary(shown: dict) -> list[str]:
+     """What the link may do, from the declaration as the module read it."""
+     declaration = shown.get("declaration") or {}
+@@ -249,6 +264,8 @@
+     wait_s: float = WAIT_S,
+     poll_s: float = POLL_S,
+     sleep: Callable[[float], None] = time.sleep,
++    expect_digest: str | None = None,
++    expect_version: str | None = None,
+ ) -> str:
+     """Show the link of `name` and ask the module to approve it. Returns the
+     outcome: none, no_token, not_read, unchanged, refused, approved,
+@@ -256,6 +273,18 @@
+     or a `y` from `ask`); a failure is reported and never fails the install."""
+     if not manifest.get(SECTION):
+         return "none"
++    version = str(manifest.get("version", ""))[:64]
++    # An approval given elsewhere (the manager's dialog) names what was shown;
++    # a manifest that differs is not approved, whatever Flow reads.
++    if approve and (expect_digest is not None or expect_version is not None):
++        if expect_digest != section_digest(manifest) or expect_version != version:
++            print(
++                f"WARNING: Flow link of {name} not approved: the declaration differs from"
++                " the one that was shown for approval.",
++                file=out,
++            )
++            _later(name, out)
++            return "error"
+     if not token:
+         print(
+             f"NOTE: {name} declares a Flow link; without a token of a Flow administrator"
+@@ -264,7 +293,6 @@
+         )
+         _later(name, out)
+         return "no_token"
+-    version = str(manifest.get("version", ""))[:64]
+     api = make_client(token)
+     try:
+         shown = _wait(api, name, version, wait_s, poll_s, sleep)
+diff -ru a/tools/lib/sh/addon.sh b/tools/lib/sh/addon.sh
+--- a/tools/lib/sh/addon.sh
++++ b/tools/lib/sh/addon.sh
+@@ -10,7 +10,7 @@
+ 
+ cmd_addon_install() {
+     local config_dir="$DEFAULT_CONFIG_DIR" addon_name="" addon_path="" addon_version="" force=0
+-    local approve_flow_link=0 flow_token_file=""
++    local approve_flow_link=0 flow_token_file="" expect_flow_digest="" expect_addon_version=""
+     while [ $# -gt 0 ]; do
+         case "$1" in
+             --config-dir=*) config_dir="${1#*=}" ;;
+@@ -19,6 +19,8 @@
+             --force) force=1 ;;
+             --approve-flow-link) approve_flow_link=1 ;;
+             --flow-token-file=*) flow_token_file="${1#*=}" ;;
++            --expect-flow-digest=*) expect_flow_digest="${1#*=}" ;;
++            --expect-addon-version=*) expect_addon_version="${1#*=}" ;;
+             -h|--help) usage; exit 0 ;;
+             -*) error "Unknown option: $1"; exit 2 ;;
+             *) addon_name="$1" ;;
+@@ -27,7 +29,8 @@
+     done
+     if [ -z "$addon_name" ]; then
+         error "Usage: papaia-ctl addon install <name> --path=PATH [--version=VER] [--force]" \
+-            "[--approve-flow-link] [--flow-token-file=PATH]"
++            "[--approve-flow-link] [--flow-token-file=PATH]" \
++            "[--expect-flow-digest=sha256:HEX --expect-addon-version=VER]"
+         exit 2
+     fi
+     CONFIG_DIR="$config_dir"
+@@ -38,6 +41,8 @@
+     [ "$force" -eq 1 ]      && extra+=(--force)
+     [ "$approve_flow_link" -eq 1 ] && extra+=(--approve-flow-link)
+     [ -n "$flow_token_file" ] && extra+=(--flow-token-file="$flow_token_file")
++    [ -n "$expect_flow_digest" ] && extra+=(--expect-flow-digest="$expect_flow_digest")
++    [ -n "$expect_addon_version" ] && extra+=(--expect-addon-version="$expect_addon_version")
+     py_cli addon-install --name="$addon_name" "${extra[@]}"
+     success "addon install complete: $addon_name"
+ }
