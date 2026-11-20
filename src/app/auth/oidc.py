@@ -228,9 +228,10 @@ class OIDCClient:
         """Exchange the signed-in person's access token for one with exactly `audience`.
 
         Standard token exchange (RFC 8693, Keycloak's version 2): the manager's confidential
-        client asks on behalf of the person, so the new token carries that person's rights and
-        no more. A token issued for anything but exactly `audience` is refused rather than
-        handed on: it would reach a service it was not meant for. The token is not validated
+        client asks on behalf of the person, with `scope=aud-<audience>` and `audience` together,
+        so the new token carries that person's rights and no more. A token whose `aud` is not
+        exactly `audience` is refused rather than handed on: it would reach a service it was not
+        meant for. The token is not validated
         here; the service it is for checks signature, issuer and expiry itself.
         """
         response = await self._token_request(
@@ -241,6 +242,10 @@ class OIDCClient:
                 "subject_token": subject_token,
                 "subject_token_type": _ACCESS_TOKEN_TYPE,
                 "requested_token_type": _ACCESS_TOKEN_TYPE,
+                # The realm adds `audience` only through its scope `aud-<audience>`, and its
+                # one-audience policy refuses that scope next to any other; `audience` keeps
+                # the realm's default audiences out of the token.
+                "scope": f"aud-{audience}",
                 "audience": audience,
             }
         )
