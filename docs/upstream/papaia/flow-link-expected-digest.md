@@ -1,10 +1,10 @@
 # Proposal for the core: approve a Flow link only as it was shown
 
-Status: applied on the core's local branch `feat/flow-approval-at-install` (commits
-`b155569`, `ab25b7f`, `4536166`, `454b85b`; not merged, not published). In addition to the
+Status: applied on the core's branch `feat/flow-links-in-addon-manifest` (commits
+`63045d9`, `a5afa55`, `c5dacc7`, `e6d6d18`; not merged). In addition to the
 patch below, the core there refuses `--approve-flow-link` without a terminal when the two flags
 are missing, and when the version Flow shows differs from `--expect-addon-version`.
-Base: the core's branch `feat/flow-approval-at-install`
+Base: the core's branch `feat/flow-links-in-addon-manifest`
 (`tools/lib/flow_link.py`, `tools/lib/cli_addon.py`, `tools/lib/cli.py`,
 `tools/lib/sh/addon.sh`). Patch: [`flow-link-expected-digest.patch`](flow-link-expected-digest.patch).
 
