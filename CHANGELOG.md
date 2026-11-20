@@ -12,6 +12,20 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+### Added
+- Approve an add-on's Flow link while installing it. While papaia Flow is installed, the install
+  dialog of an add-on with a `flow:` section lists its events and actions (identity, effect,
+  data class, address) and offers **Approve the link with Flow**. Ticked, the job passes
+  `--approve-flow-link` and a Flow token of the signed-in administrator, made by a token exchange
+  for Flow's audience, to `papaia-ctl addon install` in its environment (`PAPAIA_FLOW_TOKEN`).
+  Flow decides by its own policy whether that is enough. The audit entry names the outcome. Needs
+  a core whose `addon install` takes `--approve-flow-link`; older cores get the dialog without the
+  box.
+- New optional settings `MANAGER_FLOW_AUDIENCE` (default `flow`) and
+  `MANAGER_PERSONAL_SETTINGS_URL`, documented in both `.env.example` files.
+- **My settings** in the account menu and as a dashboard tile, for every role, when
+  `MANAGER_PERSONAL_SETTINGS_URL` names the personal settings area.
+
 ## [1.6.0] - 2026-11-07
 
 ### Added

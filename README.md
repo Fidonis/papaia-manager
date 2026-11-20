@@ -130,6 +130,12 @@ filtered server-side, so an admin-only tile is absent from a regular user's
 response rather than hidden by CSS. Authorization is enforced by the route
 dependencies, so the JSON API is restricted exactly like the pages.
 
+**Personal settings.** Every person sets their own preferences in the personal
+settings area, a service of its own. When `MANAGER_PERSONAL_SETTINGS_URL` names
+its address, the account menu has a **My settings** entry and the dashboard a
+**My settings** tile, for every role; without it neither is shown. The manager
+only links there and stores nothing of it.
+
 **Widgets.** Besides links, a group can hold widgets: cards that show live
 state and link to the page that explains it.
 
@@ -558,6 +564,26 @@ polls for live status and streamed log output. A line of output longer than
 1 MiB is cut and ends in `... [truncated]`, so a progress meter that never
 prints a newline cannot grow the job log without bound.
 
+**Flow link at installation.** An add-on can declare in its manifest (`flow:`)
+what workflows in papaia Flow may do with it: events that start or wake a
+workflow, and actions a workflow may call. Flow treats every declaration as a
+proposal. While Flow is installed, the install dialog of such an add-on lists the
+events (format, data class) and the actions (identity, effect, data class,
+address) and offers **Approve the link with Flow**. With the box ticked the job
+runs `papaia-ctl addon install --approve-flow-link` and hands the core a Flow token
+of the signed-in administrator in its environment (`PAPAIA_FLOW_TOKEN`), never as
+an argument. The manager gets that token by a token exchange in Keycloak for
+Flow's audience (`MANAGER_FLOW_AUDIENCE`, default `flow`) from the administrator's
+own session; a token for any other or any further audience is refused, and the
+token is never stored, logged or audited. Flow then decides by its own policy
+whether one administrator may approve; otherwise the link waits for a second
+person. The job log shows Flow's summary and answer, and the audit entry of the
+install names the outcome (`flow_link`: `approved`, `proposal` with Flow's
+`flow_link_reasons`, `not_approved`, `no_token` and so on) and whether the box was
+ticked. Without the box the link stays a proposal and the dialog says how to
+approve it later in Flow. The box needs a core whose `addon install` takes
+`--approve-flow-link`; with an older core the dialog shows the link without it.
+
 **Remove.** *Remove* takes an add-on's containers down and then marks it
 inactive; its volumes and configuration stay. `papaia-ctl addon remove` alone
 only marks it inactive and leaves the containers running, so the job stops them
@@ -773,7 +799,7 @@ PUT    /api/v1/rag/ingest/catalog/defaults # {defaults}
 GET  /api/v1/addons                        # each add-on with its status and its bundled `components`
 GET  /api/v1/addons/{name}
 GET  /api/v1/addons/{name}/env-form
-POST /api/v1/addons/{name}/install         # → 202
+POST /api/v1/addons/{name}/install         # {catalog, env?, start?, approve_flow_link?} → 202
 POST /api/v1/addons/{name}/start           # → 202
 POST /api/v1/addons/{name}/stop            # {clean_up?} → 202
 POST /api/v1/addons/{name}/restart         # {clean_up?} stop then start → 202

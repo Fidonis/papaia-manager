@@ -12,6 +12,8 @@ It also serves the stack dashboard: a tile overview of the deployed applications
 
 When the core's optional RAG system is active (profile `rag` in the core `.env`'s `COMPOSE_PROFILES`), administrators also get a computed "RAG" tile group on the dashboard (Qdrant) and a "RAG" category in the sidebar (pages of the manager only, no link out). `core/rag.py` owns this: it reads the profile and `QDRANT_PUBLIC_URL` and never tests whether the URL key exists, because the core keeps it while the profile is off. The tile is added in `_gather_tiles` at render time and is not persisted to `tiles.yaml`; the sidebar gates the whole category wrapper on the profile alone (`rag_enabled`, `templating.py`), so no empty caption remains and a missing URL key does not hide a page. The ingester's own web interface (removed in `qdrant-ingest` 1.0.0) has no tile and no entry: its jobs, runs and credentials are the Ingest Jobs pages. The RAG pages need a core that ships the `rag` profile (papAIa 1.5.0 or newer) and, for their ingest features, `qdrant-ingest` 1.0.0 or newer (see the RAG ingest jobs section below).
 
+Every person sets their own preferences in the personal settings area, a service of its own (the core's module `me`). The manager stores nothing of it and only links there, when `MANAGER_PERSONAL_SETTINGS_URL` is set: a "My settings" entry in the account menu (`personal_settings_url`, a global in `templating.py`) and a "My settings" tile in a group of its own at the start of the dashboard, for every role (`core/personal_area.py`, added in `partial_tiles` after `_gather_tiles`, in the request's context so the texts are translated, never written to `tiles.yaml`; an operator's tile with the same address wins).
+
 Another surface, Connections (`/connections`), is listed before Collections and manages the vector database connections of the RAG system: create, edit, test and delete them, with the connection `default` (the integrated Qdrant) created automatically, editable and marked as the default. They are stored in the ingester's own store, `ai/rag/catalog/connections.yaml`, so the ingest service uses them unchanged (see the RAG connections section below). Collections (`/collections`), the next surface, manages the Qdrant collections of the selected connection (the default one unless another is chosen) of the RAG system and the Keycloak roles that may use them: list, create and delete collections, and keep any number of role names with the access level `r` or `rw` per collection. It is admin-only and exists only while the `rag` profile is active (a 404 otherwise, after the role check). The roles are stored in the format `qdrant-mcp-rbac` defines, so the MCP server enforces them unchanged (see the RAG collections section below).
 
 A page after those two, Embedding (`/embedding`), puts files into a collection through the ingester: files are uploaded into a staging folder that is deleted after a successful run, or picked in the documents folder, and embedded either as "add and update" (nothing is deleted) or as "replace the collection". The run is the ingester's, and its status is read from it (see the RAG embedding section below).
@@ -68,7 +70,8 @@ papaia-manager/
 │       │   │               #   the step-up request (prompt=login, max_age=0)
 │       │   ├── roles.py    # Authorization policy: which realm role grants what
 │       │   ├── deps.py     # FastAPI dependencies: AdminUser, AnyUser, IdentityAdmin, SteppedUpAdmin
-│       │   ├── user_token.py # The signed-in user's own access token, from the session's refresh token
+│       │   ├── user_token.py # The signed-in user's own access token, from the session's refresh token;
+│       │   │                 #   `token_for`: a token exchange for another service's audience (Flow)
 │       │   └── csrf.py     # Session-bound CSRF Double-Submit token
 │       ├── core/
 │       │   ├── papaia_lib.py   # sys.path bootstrap + core version handshake
@@ -154,6 +157,9 @@ papaia-manager/
 │       │   ├── envfile.py      # Shared KEY=value env-file parsing
 │       │   ├── snapshots.py    # git-archive materialization, revision directories, pruning + installed.yaml
 │       │   ├── addon_upgrades.py # Staging a version, `addon upgrade --dry-run`, answers file, following the registration
+│       │   ├── flow_link.py    # An add-on's Flow link at install: the dialog's summary, Flow installed?, the core's
+│       │   │                   #   `--approve-flow-link`, the outcome read back from papaia-ctl's lines
+│       │   ├── personal_area.py # The dashboard tile of the personal settings area (computed, never stored)
 │       │   ├── semver.py       # SemVer precedence for add-on versions
 │       │   ├── state.py        # Merged addon status (catalog × deployment × Docker)
 │       │   ├── envforms.py     # Env-form spec from .env.example + manifest prompts
@@ -352,6 +358,16 @@ The decisions belong to `papaia-ctl addon upgrade` and `addon rollback` (papAIa 
 - **The changelog is best effort.** `changelog_between` reads the staged add-on's `CHANGELOG.md` (Keep a Changelog headings, `## [x.y.z] - date`) and returns the sections newer than the installed version up to the candidate, at most about 6000 characters; the page shows them as plain text. An add-on without the file, or one in another format, shows no card.
 - **A scoped restore point is not a backup of the stack.** `backup.yaml` entries of `addon upgrade` carry `scope: [addon:NAME]`; `RestorePoint.is_scoped` marks them in the list, `POST /maintenance/restore` answers 409 for one (papaia-ctl refuses it too), the wizard presets "choose what to restore", and `newest_successful` (the status strip, the dashboard widget, the schedule's retention guard) skips them.
 - **Not done:** the compatibility verdict is not shown on the gallery (only the review page asks papaia-ctl), there is no "catalogs refreshed N minutes ago" line (a catalog records no refresh time), the catalogs carry no signature, so there is no "verified" mark, and a catalog that needs authentication is refreshed as before.
+
+### Flow link at installation
+
+An add-on's manifest can carry `flow:` (events and actions for papaia Flow; the core passes it through, Flow validates it and treats it as a proposal). With the core's approval at install (Flow ADR 0122, the core's `--approve-flow-link`), the administrator who installs approves the link in the install dialog. `core/flow_link.py` holds the manager's share:
+
+- **The dialog is a preview.** `preview(manifest)` reads the catalog manifest's section into events (name, format, data class hint) and actions (name, identity, effect, `data_class_max`, address: `METHOD base_url+path` for `via: rest`, `server/tool` otherwise). Only strings are shown, one line each, cut at 200 characters, at most 50 entries per list. It is shown only while Flow is an active add-on (`flow_installed`, the core's own test) and the add-on is available or inactive. What decides is the declaration Flow read after the install, which the core prints into the job log with its digest; Flow compares that digest under its own lock.
+- **The flag only for a core that takes it.** `core_approves_at_install` looks for `--approve-flow-link` in the core's `addon.sh`: an older core refuses an unknown option of `addon install` and would fail the installation. Without it the dialog shows the link and no box, and the route answers 409 to `approve_flow_link`.
+- **A token of the person, made from the session.** `POST /api/v1/addons/{name}/install` with `approve_flow_link: true` refuses with 409 when there is nothing to approve (no section, Flow not installed, old core), then calls `user_token.token_for(request, MANAGER_FLOW_AUDIENCE)`: the session's access token is exchanged by the manager's confidential client (RFC 8693, Keycloak's standard token exchange v2) for a token with exactly Flow's audience; a token with another or a further audience is refused (`OIDCClient.exchange_token`). This happens in the request, before a job exists (401 for an ended session, 502 when Keycloak refuses), because the job runs without a session. The token lives in the job's closure only.
+- **Handed over in the environment.** The job adds `--approve-flow-link` and passes the token as `PAPAIA_FLOW_TOKEN` in `env_override` of `run_addon_verb`, never as an argument and never as a file. `run_addon_verb`, `run_core_verb` and `_py_env` drop a `PAPAIA_FLOW_TOKEN` of the manager's own environment, so only the administrator who approved is ever handed on. A token with less than 90 seconds left when the job reaches papaia-ctl is not passed (the core waits up to a minute for Flow to read the add-on); the log says so and the link stays a proposal.
+- **Flow decides; the audit says what happened.** `outcome(name, lines)` reads the outcome from the core's wording (`approved`, `proposal` with Flow's reasons, `not_approved`, `error`, `no_token`, `not_read`, `unchanged`, `skipped`, or `none`). The audit entry of `install` carries `flow_link`, `flow_link_confirmed` and, for a proposal, `flow_link_reasons`. `tests/test_flow_link_contract.py` runs the core's `link_at_install` for every outcome against the manager's reading (needs `PAPAIA_SRC`).
 
 ### Restore model
 
@@ -791,7 +807,8 @@ uv run pytest -q
 - **YAML**: yamllint with the project `.yamllint` config
 - **Python version**: 3.12 minimum
 - **Tests that need another checkout** are skipped without it: `tests/test_ingester_contract.py` needs
-  `QDRANT_INGEST_SRC` (the `src` directory of a `qdrant-ingest` checkout), `tests/test_mail_contract.py` and
+  `QDRANT_INGEST_SRC` (the `src` directory of a `qdrant-ingest` checkout), `tests/test_mail_contract.py`,
+  `tests/test_flow_link_contract.py` (a core with `tools/lib/flow_link.py`) and
   `tests/test_config_contract.py` need `PAPAIA_SRC` (a checkout of the papAIa core that has the mail relay and the
   module operations). Run them with the latest release of the other repository whenever either side changes. The
   tests that need a symbolic link or read a file mode are skipped on Windows; run them on Linux.
@@ -824,6 +841,8 @@ All settings are loaded via Pydantic Settings in `app/config.py`. See `src/.env.
 | `INGEST_UPLOAD_TTL_HOURS` | How long an upload that was not embedded successfully stays before it is deleted (default: 24; 1 to 720) |
 | `INGEST_MAX_UPLOAD_MB` / `INGEST_MAX_BATCH_MB` | Size limits of one uploaded file (default: 200; 1 to 10240) and of one upload (default: 2048; 1 to 102400), in MiB |
 | `SSL_CERT_FILE` | Optional path to a custom CA bundle. It is trusted for the OIDC endpoints and, next to the public CAs, for connections to a Qdrant |
+| `MANAGER_FLOW_AUDIENCE` | Audience of papaia Flow's API (Flow's `FLOW_OIDC_AUDIENCE`, default `flow`). Approving an add-on's Flow link at install exchanges the administrator's token for one with exactly this audience |
+| `MANAGER_PERSONAL_SETTINGS_URL` | Optional address of the personal settings area (http or https, no login in the address). Set: an entry in the account menu and a dashboard tile for every role. Empty or absent: nothing is shown |
 | `MANAGER_DEFAULT_LOCALE` | Language for an account that has not chosen one and whose browser asks for none that is shipped: a directory under `src/app/locale`, or `en` (default). Anything else means `en` |
 | `LOG_LEVEL` | Log level of the application (default: `INFO`) |
 
@@ -848,7 +867,7 @@ mount.
 ## Security boundaries
 
 - **Never log** session secrets, OIDC client secrets, the mail relay's upstream password, catalog tokens, Qdrant api-keys (`QDRANT_JWT_SECRET` and the keys stored in connections), `QI_API_TOKEN`, `QI_CONNECTIONS_SECRET`, `LITELLM_MASTER_KEY`, the values of ingest credentials, the webhook URLs of notification recipients or the content of overlay files (it can hold an API key). They are never part of a response or an audit entry either.
-- **The signed-in user's access token** (used by the Users page) lives in memory only: never in the session cookie, a response, an audit entry or a log line. Temporary passwords are returned once and are never part of an audit entry or a log line.
+- **The signed-in user's access token** (used by the Users page) lives in memory only: never in the session cookie, a response, an audit entry or a log line. The same holds for the Flow token an install makes from it: it reaches papaia-ctl in the child's environment only and is dropped from the manager's own environment for every call. Temporary passwords are returned once and are never part of an audit entry or a log line.
 - **docker.sock access is root-equivalent.** The manager container mounts `/var/run/docker.sock`. This is required for Compose operations and is intentional — the manager profile is off by default.
 - **Subprocess inputs are whitelisted.** All calls to `papaia-ctl` go through `core/ctl.py` which validates the verb against an allowlist and uses arg arrays (never `shell=True`). The commands that write, the core's `setup` and `module-purge`, have an allowlist of their own and are reachable only through `run_smtp_setup` and `run_module_setup` (the options of the mail relay or of one optional module) and `run_module_purge` (one module's volumes and settings, never while it is on).
 - **Copyleft dependencies are not accepted.** The CI license-check workflow rejects GPL, LGPL, AGPL, EUPL, and similar licences.
