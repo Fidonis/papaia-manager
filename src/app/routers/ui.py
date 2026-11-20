@@ -17,6 +17,7 @@ from app.config import Settings, get_settings
 from app.core import (
     backups,
     docker_usage,
+    flow_link,
     host_health,
     images,
     nodes,
@@ -1841,6 +1842,9 @@ async def _gather_addons(settings: Settings) -> list[dict[str, Any]]:
             )
             if st in (AddonStatus.AVAILABLE, AddonStatus.INACTIVE)
             else [],
+            "flow_link": _flow_link_view(resolved.manifest, deployment, settings)
+            if st in (AddonStatus.AVAILABLE, AddonStatus.INACTIVE)
+            else None,
         }
 
     for addon_name, deploy_entry in deployment_addons.items():
@@ -1970,9 +1974,35 @@ async def _get_addon(
             deploy_entry,
         ),
         "env_fields": env_fields,
+        "flow_link": _flow_link_view(manifest, deployment, settings)
+        if st in (AddonStatus.AVAILABLE, AddonStatus.INACTIVE)
+        else None,
         **version_state(
             settings.papaia_config_dir, settings.papaia_workspace_dir, variant_inst, deploy_entry
         ),
+    }
+
+
+def _flow_link_view(
+    manifest: dict[str, Any], deployment: dict[str, Any], settings: Settings
+) -> dict[str, Any] | None:
+    """What the install dialog shows of the add-on's Flow link, or None.
+
+    Only while Flow is installed: without it the core keeps the declaration and Flow reads it
+    later as a proposal, so there is nothing to decide in the dialog. The box to approve is
+    offered only by a core that takes `--approve-flow-link`.
+    """
+    if not flow_link.flow_installed(deployment):
+        return None
+    shown = flow_link.preview(manifest)
+    if shown is None:
+        return None
+    return {
+        "events": shown.events,
+        "actions": shown.actions,
+        "more_events": shown.more_events,
+        "more_actions": shown.more_actions,
+        "can_approve": flow_link.core_approves_at_install(settings.papaia_workspace_dir),
     }
 
 

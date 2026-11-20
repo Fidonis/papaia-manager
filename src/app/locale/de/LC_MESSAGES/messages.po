@@ -9739,3 +9739,83 @@ msgstr "Die Änderung ist übernommen, aber ein Node, der nur ihre Hooks ausfüh
 
 msgid "the node's doctor gave no readable answer"
 msgstr "der doctor des Nodes gab keine lesbare Antwort"
+
+msgid "Keycloak answered the token exchange without an access token"
+msgstr "Keycloak hat den Tokentausch ohne Zugriffstoken beantwortet"
+
+#, python-format
+msgid "Keycloak issued a token for more or other services than %(audience)s"
+msgstr "Keycloak hat ein Token für mehr oder andere Dienste als %(audience)s ausgestellt"
+
+#, python-format
+msgid "%(name)s declares no Flow link to approve."
+msgstr "%(name)s erklärt keine Verknüpfung mit Flow, die freigegeben werden könnte."
+
+#, python-format
+msgid "Flow is not installed. The link of %(name)s becomes a proposal once Flow is."
+msgstr "Flow ist nicht installiert. Die Verknüpfung von %(name)s wird zum Vorschlag, sobald Flow installiert ist."
+
+msgid "This papAIa core cannot approve a Flow link at installation. Install without approving and approve the link in Flow."
+msgstr "Dieser papAIa-Core kann eine Verknüpfung mit Flow bei der Installation nicht freigeben. Installieren Sie ohne Freigabe und geben Sie die Verknüpfung in Flow frei."
+
+#, python-format
+msgid "Keycloak did not issue a token for Flow (%(reason)s). Nothing was installed. Install without approving and approve the link in Flow."
+msgstr "Keycloak hat kein Token für Flow ausgestellt (%(reason)s). Es wurde nichts installiert. Installieren Sie ohne Freigabe und geben Sie die Verknüpfung in Flow frei."
+
+
+
+
+msgid "Link with Flow"
+msgstr "Verknüpfung mit Flow"
+
+msgid "This add-on declares what workflows in Flow may do with it. Flow reads the declaration after the installation and decides by its own rules whether your approval is enough or a second person has to approve; the job log shows its answer."
+msgstr "Dieses Add-on erklärt, was Abläufe in Flow mit ihm tun dürfen. Flow liest die Erklärung nach der Installation und entscheidet nach eigenen Regeln, ob Ihre Freigabe genügt oder eine zweite Person freigeben muss; das Job-Log zeigt die Antwort."
+
+msgid "Events: start or wake a workflow; their data stays untrusted"
+msgstr "Ereignisse: starten oder wecken einen Ablauf; ihre Daten bleiben nicht vertrauenswürdig"
+
+msgid "Format"
+msgstr "Format"
+
+msgid "Data class"
+msgstr "Datenklasse"
+
+msgid "not stated"
+msgstr "nicht angegeben"
+
+#, python-format
+msgid "%(count)s more event not shown"
+msgid_plural "%(count)s more events not shown"
+msgstr[0] "%(count)s weiteres Ereignis nicht angezeigt"
+msgstr[1] "%(count)s weitere Ereignisse nicht angezeigt"
+
+msgid "Actions: a workflow may call them"
+msgstr "Aktionen: ein Ablauf darf sie aufrufen"
+
+msgid "Identity"
+msgstr "Identität"
+
+msgid "Effect"
+msgstr "Wirkung"
+
+msgid "Data class up to"
+msgstr "Datenklasse bis"
+
+msgid "no limit"
+msgstr "keine Grenze"
+
+#, python-format
+msgid "%(count)s more action not shown"
+msgid_plural "%(count)s more actions not shown"
+msgstr[0] "%(count)s weitere Aktion nicht angezeigt"
+msgstr[1] "%(count)s weitere Aktionen nicht angezeigt"
+
+msgid "Approve the link with Flow"
+msgstr "Verknüpfung mit Flow freigeben"
+
+msgid "This papAIa core cannot approve the link while installing; it needs a newer core."
+msgstr "Dieser papAIa-Core kann die Verknüpfung bei der Installation nicht freigeben; dafür ist ein neuerer Core nötig."
+
+#, python-format
+msgid "Without approval the link stays a proposal. An administrator of Flow can approve it later: flow link show %(name)s, then flow link approve %(name)s --at-install with the digest and version it shows."
+msgstr "Ohne Freigabe bleibt die Verknüpfung ein Vorschlag. Ein Administrator von Flow kann sie später freigeben: flow link show %(name)s, dann flow link approve %(name)s --at-install mit dem Digest und der Version, die angezeigt werden."

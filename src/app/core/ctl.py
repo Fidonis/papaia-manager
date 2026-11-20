@@ -185,6 +185,10 @@ SMTP_SECURITY_MODES: tuple[str, ...] = ("starttls", "tls", "none")
 # in an argument would show in `ps` and in the process table of the container.
 SMTP_PASSWORD_ENV = "PAPAIA_SMTP_PASSWORD"
 
+# The environment variable the core reads the Flow token of `addon install` from (see
+# app.core.flow_link). Like the password, never an argument.
+FLOW_TOKEN_ENV = "PAPAIA_FLOW_TOKEN"
+
 # Longer than the read-only commands: setup renders the configuration and writes the
 # env tree, but it starts nothing.
 SETUP_TIMEOUT_SECONDS = 120.0
@@ -260,6 +264,10 @@ async def run_addon_verb(
     ]
 
     env = dict(os.environ)
+    # Never inherited: the install passes the Flow token of the administrator who approved
+    # the link and nobody else's, so a token in the manager's own environment must not reach
+    # papaia-ctl (the core reads it from there).
+    env.pop(FLOW_TOKEN_ENV, None)
     env["PAPAIA_CONFIG_DIR"] = config_dir
     if env_override:
         env.update(env_override)
@@ -399,6 +407,7 @@ async def run_core_verb(
     ]
 
     env = dict(os.environ)
+    env.pop(FLOW_TOKEN_ENV, None)
     env["PAPAIA_CONFIG_DIR"] = config_dir
 
     return _stream_subprocess(cmd, env)
@@ -773,6 +782,7 @@ def _py_env(workspace_dir: str, config_dir: str) -> dict[str, str]:
     # Never inherited: a password the manager's own environment happens to carry is
     # not the one the operator typed.
     env.pop(SMTP_PASSWORD_ENV, None)
+    env.pop(FLOW_TOKEN_ENV, None)
     env["PAPAIA_CONFIG_DIR"] = config_dir
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = f"{tools}{os.pathsep}{existing}" if existing else str(tools)

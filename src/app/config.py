@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     # shipped language is the same as `en`.
     manager_default_locale: str = "en"
 
+    # The audience of papaia Flow's API (Flow's `FLOW_OIDC_AUDIENCE`). Installing an add-on that
+    # declares a Flow link can approve the link; the manager then exchanges the signed-in
+    # administrator's token for one with exactly this audience and hands it to papaia-ctl.
+    manager_flow_audience: str = Field(default="flow", min_length=1, max_length=255)
+
     # TLS (optional — path to custom CA bundle)
     ssl_cert_file: str | None = None
 

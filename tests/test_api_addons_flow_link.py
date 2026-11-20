@@ -56,7 +56,7 @@ from app.config import get_settings  # noqa: E402
 from app.core.catalogs import Catalog, CatalogRegistry, save_registry  # noqa: E402
 from app.core.jobs import Job, JobCallback, JobContext  # noqa: E402
 from app.main import create_app  # noqa: E402
-from app.routers import api_addons, ui  # noqa: E402
+from app.routers import ui  # noqa: E402
 
 _CSRF = "test-csrf-token"
 _CONFIG = Path(_CONFIG_DIR)
@@ -78,13 +78,15 @@ answer="$(cat "$out/answer" 2>/dev/null || echo approved)"
 approve=0
 for arg in "$@"; do [[ "$arg" == --approve-flow-link ]] && approve=1; done
 if [[ -z "${PAPAIA_FLOW_TOKEN-}" ]]; then
-  echo "NOTE: $name declares a Flow link; without a token of a Flow administrator it stays a proposal."
+  echo "NOTE: $name declares a Flow link; without a token of a Flow administrator" \
+    "it stays a proposal."
 elif [[ "$approve" -eq 0 ]]; then
   echo "Flow link of $name not approved; it stays a proposal. Run the install again"
 elif [[ "$answer" == approved ]]; then
   echo "Flow link of $name approved at install."
 else
-  echo "Flow link of $name stays a proposal for a second person: egress:tag_document, data_class:find"
+  echo "Flow link of $name stays a proposal for a second person:" \
+    "egress:tag_document, data_class:find"
 fi
 echo "Addon installed: $name"
 """
@@ -338,14 +340,14 @@ def test_without_flow_the_dialog_says_nothing_of_a_link(client: TestClient) -> N
 
     html = _as(client).get("/partials/addons/archive").text
 
-    assert "approve_flow_link" not in html
+    assert 'name="approve_flow_link"' not in html
     assert "find_documents" not in html
 
 
 def test_an_add_on_without_a_flow_section_gets_no_box(client: TestClient) -> None:
     _world(section=False)
 
-    assert "approve_flow_link" not in _as(client).get("/partials/addons/archive").text
+    assert 'name="approve_flow_link"' not in _as(client).get("/partials/addons/archive").text
 
 
 def test_a_core_that_cannot_approve_shows_the_link_without_the_box(client: TestClient) -> None:

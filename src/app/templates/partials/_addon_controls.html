@@ -186,9 +186,11 @@
           if (send) env[el.dataset.envKey] = val;
         });
         const start = $el.querySelector('[name=start]').checked;
+        const approveBox = $el.querySelector('[name=approve_flow_link]');
+        const approve_flow_link = !!(approveBox && approveBox.checked);
         $refs.installModal.close();
         busy = true; activeVerb = 'install';
-        {{ fn }}('{{ addon.name }}', 'install', { catalog: '{{ addon.catalog }}', env, start })
+        {{ fn }}('{{ addon.name }}', 'install', { catalog: '{{ addon.catalog }}', env, start, approve_flow_link })
           .then(ok => { if (!ok) { busy = false; activeVerb = '' } });
       "
     >
@@ -229,6 +231,58 @@
         </div>
         {% endfor %}
       </details>
+      {% endif %}
+
+      {# The add-on's Flow link, as its catalog manifest declares it. A preview: Flow prints the
+         declaration it read into the job log, and that is what an approval names. #}
+      {% if addon.flow_link %}
+      {% set link = addon.flow_link %}
+      <fieldset class="mb-4 rounded-box border border-base-300 p-3">
+        <legend class="px-1 text-sm font-semibold">{% trans %}Link with Flow{% endtrans %}</legend>
+        <p class="text-xs opacity-70 mb-2">
+          {% trans %}This add-on declares what workflows in Flow may do with it. Flow reads the declaration after the installation and decides by its own rules whether your approval is enough or a second person has to approve; the job log shows its answer.{% endtrans %}
+        </p>
+        <div class="overflow-x-auto mb-2">
+          <table class="table table-xs">
+            <caption class="text-left text-xs font-medium">{% trans %}Events: start or wake a workflow; their data stays untrusted{% endtrans %}</caption>
+            <thead><tr><th scope="col">{% trans %}Event{% endtrans %}</th><th scope="col">{% trans %}Format{% endtrans %}</th><th scope="col">{% trans %}Data class{% endtrans %}</th></tr></thead>
+            <tbody>
+              {% for e in link.events %}
+              <tr><td class="font-mono">{{ e.name }}</td><td>{{ e.format }}</td><td>{{ e.data_class or _('not stated') }}</td></tr>
+              {% else %}
+              <tr><td colspan="3" class="opacity-60">{% trans %}none{% endtrans %}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% if link.more_events %}<p class="text-xs opacity-60">{% trans count=link.more_events %}{{ count }} more event not shown{% pluralize %}{{ count }} more events not shown{% endtrans %}</p>{% endif %}
+        </div>
+        <div class="overflow-x-auto mb-2">
+          <table class="table table-xs">
+            <caption class="text-left text-xs font-medium">{% trans %}Actions: a workflow may call them{% endtrans %}</caption>
+            <thead><tr><th scope="col">{% trans %}Action{% endtrans %}</th><th scope="col">{% trans %}Identity{% endtrans %}</th><th scope="col">{% trans %}Effect{% endtrans %}</th><th scope="col">{% trans %}Data class up to{% endtrans %}</th><th scope="col">{% trans %}Address{% endtrans %}</th></tr></thead>
+            <tbody>
+              {% for a in link.actions %}
+              <tr><td class="font-mono">{{ a.name }}</td><td>{{ a.identity }}</td><td>{{ a.effect }}</td><td>{{ a.data_class or _('no limit') }}</td><td class="font-mono break-all">{{ a.address }}</td></tr>
+              {% else %}
+              <tr><td colspan="5" class="opacity-60">{% trans %}none{% endtrans %}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% if link.more_actions %}<p class="text-xs opacity-60">{% trans count=link.more_actions %}{{ count }} more action not shown{% pluralize %}{{ count }} more actions not shown{% endtrans %}</p>{% endif %}
+        </div>
+        {% if link.can_approve %}
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" name="approve_flow_link" value="true" class="checkbox checkbox-sm"
+                 aria-describedby="flow-link-later-{{ addon.key }}">
+          <span class="label-text">{% trans %}Approve the link with Flow{% endtrans %}</span>
+        </label>
+        {% else %}
+        <p class="text-xs opacity-70">{% trans %}This papAIa core cannot approve the link while installing; it needs a newer core.{% endtrans %}</p>
+        {% endif %}
+        <p id="flow-link-later-{{ addon.key }}" class="text-xs opacity-70">
+          {% trans name=addon.name %}Without approval the link stays a proposal. An administrator of Flow can approve it later: flow link show {{ name }}, then flow link approve {{ name }} --at-install with the digest and version it shows.{% endtrans %}
+        </p>
+      </fieldset>
       {% endif %}
 
       <div class="form-control mb-4">

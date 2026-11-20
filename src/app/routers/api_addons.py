@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -11,8 +12,10 @@ from pydantic import BaseModel
 
 from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
-from app.auth.oidc import OIDCClaims
+from app.auth.oidc import ExchangedToken, OIDCClaims, OIDCError
+from app.auth.user_token import UserTokenUnavailable, token_for
 from app.config import Settings, get_settings
+from app.core import flow_link
 from app.core.addon_upgrades import (
     UpgradeError,
     answerable_keys,
@@ -64,6 +67,9 @@ class InstallBody(BaseModel):
     catalog: str
     env: dict[str, str] = {}
     start: bool = True
+    # The administrator approves the add-on's Flow link as the dialog showed it. Flow still
+    # decides by its own policy whether one administrator is enough.
+    approve_flow_link: bool = False
 
 
 class StopBody(BaseModel):
@@ -104,6 +110,63 @@ class RollbackBody(BaseModel):
 class SaveConfigBody(BaseModel):
     env: dict[str, str] = {}
     restart: bool = False
+
+
+# A Flow token that has less than this left when the job reaches papaia-ctl is not passed: the
+# core first waits up to a minute for Flow to read the add-on, and the call must still carry it.
+_TOKEN_SKEW_SECONDS = 90.0
+
+
+async def _flow_token_for_install(
+    request: Request, name: str, addon_dir: Path, settings: Settings, approve: bool
+) -> ExchangedToken | None:
+    """The Flow token the install of `name` passes on, when the administrator approved its link.
+
+    Refused before a job exists when there is nothing to approve here: no `flow:` section in the
+    catalog's manifest, Flow not installed, or a core that does not take the flag (it would fail
+    the whole installation on the unknown option). The token is made now, from the request's
+    session, because the job runs without one.
+    """
+    if not approve:
+        return None
+    try:
+        raw = yaml.safe_load((addon_dir / "papaia-app.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        raw = {}
+    if not isinstance(raw, dict) or flow_link.preview(raw) is None:
+        raise HTTPException(
+            status_code=409,
+            detail=gettext("%(name)s declares no Flow link to approve.") % {"name": name},
+        )
+    if not flow_link.flow_installed(load_deployment_yaml(settings.papaia_config_dir)):
+        raise HTTPException(
+            status_code=409,
+            detail=gettext(
+                "Flow is not installed. The link of %(name)s becomes a proposal once Flow is."
+            ) % {"name": name},
+        )
+    if not flow_link.core_approves_at_install(settings.papaia_workspace_dir):
+        raise HTTPException(
+            status_code=409,
+            detail=gettext(
+                "This papAIa core cannot approve a Flow link at installation. Install without "
+                "approving and approve the link in Flow."
+            ),
+        )
+    try:
+        return await token_for(request, settings.manager_flow_audience)
+    except UserTokenUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=gettext("session expired")
+        ) from exc
+    except OIDCError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=gettext(
+                "Keycloak did not issue a token for Flow (%(reason)s). Nothing was installed. "
+                "Install without approving and approve the link in Flow."
+            ) % {"reason": str(exc)},
+        ) from exc
 
 
 def _queue() -> JobQueue:
@@ -409,6 +472,8 @@ async def install(
         if body.env
         else {}
     )
+    _approve = body.approve_flow_link
+    _flow_token = await _flow_token_for_install(request, name, clone / name, settings, _approve)
 
     async def _callback(ctx: JobContext) -> None:
         ctx.log(f"[info] materializing snapshot for {name!r} from {_cat!r}")
@@ -442,16 +507,37 @@ async def install(
             )
             ctx.log(f"[info] wrote {len(_env)} env value(s) to config bundle .env")
 
-        ctx.log(f"[ctl] papaia-ctl addon install {name}")
+        flags = [f"--path={dest}"]
+        token_env: dict[str, str] = {}
+        if _approve:
+            flags.append(flow_link.APPROVE_FLAG)
+            fresh = (
+                _flow_token is not None
+                and _flow_token.expires_at - _TOKEN_SKEW_SECONDS > time.time()
+            )
+            if _flow_token is not None and fresh:
+                token_env[flow_link.TOKEN_ENV] = _flow_token.access_token
+            else:
+                ctx.log(
+                    "[warn] the Flow token expired while the job waited; "
+                    "the Flow link stays a proposal"
+                )
+        ctx.log(f"[ctl] papaia-ctl addon install {name}" + (
+            f" {flow_link.APPROVE_FLAG}" if _approve else ""
+        ))
         gen = await run_addon_verb(
             verb="install",
             name=name,
             workspace_dir=settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
-            extra_flags=[f"--path={dest}"],
+            extra_flags=flags,
+            env_override=token_env or None,
         )
+        printed: list[str] = []
         async for line in gen:
+            printed.append(line)
             ctx.log(line)
+        link, reasons = flow_link.outcome(name, printed)
 
         before = load_installed(settings.papaia_config_dir).get(name)
         record_installed(
@@ -478,12 +564,20 @@ async def install(
             async for line in gen:
                 ctx.log(line)
 
+        audit_params: dict[str, Any] = {
+            "catalog": _cat,
+            "start": _start,
+            "flow_link": link,
+            "flow_link_confirmed": _approve,
+        }
+        if reasons:
+            audit_params["flow_link_reasons"] = reasons
         write_audit_entry(
             settings.papaia_config_dir,
             user=_username,
             action="install",
             target=name,
-            params={"catalog": _cat, "start": _start},
+            params=audit_params,
             job_id=ctx.job.id,
         )
         ctx.log("[info] done")
