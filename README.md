@@ -573,16 +573,21 @@ address) and offers **Approve the link with Flow**. With the box ticked the job
 runs `papaia-ctl addon install --approve-flow-link` and hands the core a Flow token
 of the signed-in administrator in its environment (`PAPAIA_FLOW_TOKEN`), never as
 an argument. The manager gets that token by a token exchange in Keycloak for
-Flow's audience (`MANAGER_FLOW_AUDIENCE`, default `flow`) from the administrator's
-own session; a token for any other or any further audience is refused, and the
+Flow's audience (`MANAGER_FLOW_AUDIENCE`, default `flow`; it asks for the scope
+`aud-flow` with it) from the administrator's own session; a token for any other or
+any further audience is refused, and the
 token is never stored, logged or audited. Flow then decides by its own policy
 whether one administrator may approve; otherwise the link waits for a second
 person. The job log shows Flow's summary and answer, and the audit entry of the
 install names the outcome (`flow_link`: `approved`, `proposal` with Flow's
 `flow_link_reasons`, `not_approved`, `no_token` and so on) and whether the box was
 ticked. Without the box the link stays a proposal and the dialog says how to
-approve it later in Flow. The box needs a core whose `addon install` takes
-`--approve-flow-link`; with an older core the dialog shows the link without it.
+approve it later in Flow. An approval is bound to what the dialog showed: the
+dialog shows and sends the digest of the declaration and the add-on's version, the
+manager refuses an approval of anything else (or from a dialog that had to cut a
+long list), and the core approves only that manifest. The box needs a core whose
+`addon install` takes `--approve-flow-link`, `--expect-flow-digest` and
+`--expect-addon-version`; with any other core the dialog shows the link without it.
 
 **Remove.** *Remove* takes an add-on's containers down and then marks it
 inactive; its volumes and configuration stay. `papaia-ctl addon remove` alone

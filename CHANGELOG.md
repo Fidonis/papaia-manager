@@ -18,9 +18,12 @@ based on merged pull requests; this file mirrors the published releases.
   data class, address) and offers **Approve the link with Flow**. Ticked, the job passes
   `--approve-flow-link` and a Flow token of the signed-in administrator, made by a token exchange
   for Flow's audience, to `papaia-ctl addon install` in its environment (`PAPAIA_FLOW_TOKEN`).
-  Flow decides by its own policy whether that is enough. The audit entry names the outcome. Needs
-  a core whose `addon install` takes `--approve-flow-link`; older cores get the dialog without the
-  box.
+  Flow decides by its own policy whether that is enough. The audit entry names the outcome. The
+  approval names the digest and version the dialog showed; a changed manifest, a missing digest or
+  a dialog that cut a list is refused. Needs a core whose `addon install` takes
+  `--approve-flow-link` and checks `--expect-flow-digest` and `--expect-addon-version` (proposed
+  to the core in `docs/upstream/papaia/`); other cores get the dialog without the box. The token
+  exchange asks for `scope=aud-flow` together with `audience=flow`.
 - New optional settings `MANAGER_FLOW_AUDIENCE` (default `flow`) and
   `MANAGER_PERSONAL_SETTINGS_URL`, documented in both `.env.example` files.
 - **My settings** in the account menu and as a dashboard tile, for every role, when
