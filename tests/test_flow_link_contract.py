@@ -123,3 +123,21 @@ def test_the_core_takes_the_flag_and_the_variable_the_manager_passes() -> None:
     assert flow_link.APPROVE_FLAG in installer.read_text(encoding="utf-8")
     assert core.FLOW_ADDON == flow_link.FLOW_ADDON
     assert core.SECTION == flow_link.SECTION
+
+
+def test_the_manager_binds_an_approval_only_to_a_core_that_checks_the_digest(
+    tmp_path: Path,
+) -> None:
+    """Until the core checks the digest the dialog showed (proposal in
+    docs/upstream/papaia/), the manager offers and passes no approval at all."""
+    installer = Path(_SRC) / "tools" / "lib" / "sh" / "addon.sh"
+    text = installer.read_text(encoding="utf-8")
+    knows = flow_link.DIGEST_FLAG in text and flow_link.VERSION_FLAG in text
+    copy = tmp_path / "papaia" / "tools" / "lib" / "sh" / "addon.sh"
+    copy.parent.mkdir(parents=True)
+    copy.write_text(text, encoding="utf-8")
+
+    assert flow_link.core_binds_approval(str(tmp_path)) is knows
+    core = _core()
+    if knows:
+        assert core.section_digest(_MANIFEST) == flow_link.section_digest(_MANIFEST)

@@ -17,6 +17,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -229,7 +230,7 @@ _FLOW_SECTION: dict[str, Any] = {
 
 def _world(
     *, flow: bool = True, section: bool = True, core_approves: bool = True,
-    answer: str = "approved",
+    core_binds: bool = True, answer: str = "approved", actions: int | None = None,
 ) -> None:
     """`archive` in a local catalog, Flow registered or not, and the papaia-ctl stand-in."""
     ctl = _WORKSPACE / "papaia" / "tools" / "papaia-ctl"
@@ -240,6 +241,12 @@ def _world(
     addon_sh.write_text(
         "cmd_addon_install() {\n"
         + ("  --approve-flow-link) approve_flow_link=1 ;;\n" if core_approves else "")
+        + (
+            "  --expect-flow-digest=*) expect_flow_digest=\"${1#*=}\" ;;\n"
+            "  --expect-addon-version=*) expect_addon_version=\"${1#*=}\" ;;\n"
+            if core_binds
+            else ""
+        )
         + "}\n",
         encoding="utf-8",
     )
@@ -247,7 +254,12 @@ def _world(
 
     manifest: dict[str, Any] = {"name": "archive", "version": "1.4.0"}
     if section:
-        manifest["flow"] = _FLOW_SECTION
+        manifest["flow"] = json.loads(json.dumps(_FLOW_SECTION))
+        if actions is not None:
+            manifest["flow"]["actions"] = [
+                {"name": f"act_{n}", "via": "tools", "server": "s", "tool": "t"}
+                for n in range(actions)
+            ]
     addon = _CATALOG_SOURCE / "archive"
     addon.mkdir(parents=True)
     (addon / "papaia-app.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
@@ -262,10 +274,30 @@ def _world(
     (_CONFIG / ".ctl" / "answer").write_text(answer, encoding="utf-8")
 
 
-def _install(client: TestClient, *, approve: bool | None, refresh: bool = True) -> Any:
+_SHOWN = object()
+
+
+def _shown(client: TestClient) -> tuple[str, str]:
+    """The digest and version the install dialog shows and sends with an approval."""
+    html = _as(client).get("/partials/addons/archive").text
+    match = re.search(r'data-flow-digest="([^"]*)" data-flow-version="([^"]*)"', html)
+    assert match, "the dialog carries what it shows"
+    return match.group(1), match.group(2)
+
+
+def _install(
+    client: TestClient, *, approve: bool | None, refresh: bool = True,
+    digest: Any = _SHOWN, version: Any = _SHOWN,
+) -> Any:
     body: dict[str, Any] = {"catalog": "cat", "start": False}
     if approve is not None:
         body["approve_flow_link"] = approve
+    if approve:
+        shown = _shown(client) if _SHOWN in (digest, version) else ("", "")
+        if digest is not None:
+            body["flow_link_digest"] = shown[0] if digest is _SHOWN else digest
+        if version is not None:
+            body["flow_link_version"] = shown[1] if version is _SHOWN else version
     return _as(client, refresh=refresh).post(
         "/api/v1/addons/archive/install", json=body, headers={"X-CSRF-Token": _CSRF}
     )
@@ -374,10 +406,15 @@ def test_a_confirmation_passes_the_flag_and_the_flow_token_in_the_environment(
     (exchange,) = keycloak.exchanges
     assert exchange["subject_token"] == [_ADMIN_ACCESS]
     assert exchange["audience"] == ["flow"]
+    assert exchange["scope"] == ["aud-flow"]
     log = _run(queue, tmp_path)
     argv = _argv()
     assert argv[:3] == ["addon", "install", "archive"]
     assert "--approve-flow-link" in argv
+    digest, version = _shown(client)
+    assert digest.startswith("sha256:") and version == "1.4.0"
+    assert f"--expect-flow-digest={digest}" in argv
+    assert "--expect-addon-version=1.4.0" in argv
     flow_token = keycloak.flow_token()
     assert _token_seen() == flow_token
     assert not any(flow_token in arg for arg in argv), "the token is never an argument"
@@ -497,3 +534,80 @@ def test_a_token_that_expired_while_the_job_waited_is_not_passed(
     assert _token_seen() == "<unset>"
     assert "expired" in log
     assert _audit()[0]["params"]["flow_link"] == "no_token"
+
+
+# ── the approval names what the dialog showed ────────────────────────────────
+
+
+def test_an_approval_without_the_digest_it_showed_is_refused(
+    client: TestClient, queue: _FakeQueue, keycloak: _Keycloak
+) -> None:
+    _world()
+
+    response = _install(client, approve=True, digest=None)
+
+    assert response.status_code == 409, response.text
+    assert queue.enqueued == [] and keycloak.exchanges == []
+
+
+def test_an_approval_without_the_version_it_showed_is_refused(
+    client: TestClient, queue: _FakeQueue
+) -> None:
+    _world()
+
+    assert _install(client, approve=True, version=None).status_code == 409
+    assert queue.enqueued == []
+
+
+def test_an_approval_of_a_declaration_that_changed_since_the_dialog_is_refused(
+    client: TestClient, queue: _FakeQueue, keycloak: _Keycloak
+) -> None:
+    _world()
+    digest, version = _shown(client)
+    manifest_path = _CATALOG_SOURCE / "archive" / "papaia-app.yaml"
+    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    manifest["flow"]["actions"][0]["effect"] = "delete"
+    manifest_path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
+
+    response = _install(client, approve=True, digest=digest, version=version)
+
+    assert response.status_code == 409, response.text
+    assert queue.enqueued == [] and keycloak.exchanges == []
+
+
+def test_an_approval_for_another_version_is_refused(
+    client: TestClient, queue: _FakeQueue
+) -> None:
+    _world()
+    digest, _version = _shown(client)
+
+    assert _install(client, approve=True, digest=digest, version="1.3.9").status_code == 409
+    assert queue.enqueued == []
+
+
+def test_a_core_that_cannot_check_the_digest_gets_no_approval(
+    client: TestClient, queue: _FakeQueue, keycloak: _Keycloak
+) -> None:
+    """Without the core's check Flow would approve whatever it read, not what was shown."""
+    _world(core_binds=False)
+
+    html = _as(client).get("/partials/addons/archive").text
+    assert "find_documents" in html
+    assert 'name="approve_flow_link"' not in html
+    response = _install(client, approve=True, digest="sha256:" + "0" * 64, version="1.4.0")
+    assert response.status_code == 409, response.text
+    assert queue.enqueued == [] and keycloak.exchanges == []
+
+
+def test_a_cut_dialog_offers_no_approval_and_one_sent_anyway_is_refused(
+    client: TestClient, queue: _FakeQueue, keycloak: _Keycloak
+) -> None:
+    _world(actions=60)
+
+    html = _as(client).get("/partials/addons/archive").text
+    assert "10 more actions not shown" in html
+    assert 'name="approve_flow_link"' not in html
+    digest, version = _shown(client)
+    response = _install(client, approve=True, digest=digest, version=version)
+    assert response.status_code == 409, response.text
+    assert queue.enqueued == [] and keycloak.exchanges == []

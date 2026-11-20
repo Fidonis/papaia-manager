@@ -154,6 +154,56 @@ def test_only_a_core_that_knows_the_flag_is_asked_to_approve(tmp_path: Path) -> 
     assert flow_link.core_approves_at_install(str(tmp_path))
 
 
+# ── what an approval is bound to ─────────────────────────────────────────────
+
+
+def test_the_digest_covers_the_section_and_not_its_spelling() -> None:
+    first = flow_link.section_digest(_manifest())
+    reordered = _manifest()
+    reordered["flow"] = dict(reversed(list(reordered["flow"].items())))
+    assert first is not None and first.startswith("sha256:") and len(first) == 7 + 64
+    assert flow_link.section_digest(reordered) == first
+    changed = _manifest()
+    changed["flow"]["actions"][1]["effect"] = "delete"
+    assert flow_link.section_digest(changed) != first
+    assert flow_link.section_digest({"name": "x"}) is None
+
+
+def test_the_preview_carries_the_digest_and_the_version_it_shows() -> None:
+    shown = flow_link.preview(_manifest())
+    assert shown is not None
+    assert shown.digest == flow_link.section_digest(_manifest())
+    assert shown.version == "1.4.0"
+    assert not shown.truncated
+
+
+def test_a_cut_preview_counts_as_truncated() -> None:
+    manifest = _manifest()
+    manifest["flow"]["events"] = [
+        {"name": f"e{n}", "format": "plain"} for n in range(flow_link.MAX_ITEMS + 1)
+    ]
+    shown = flow_link.preview(manifest)
+    assert shown is not None and shown.truncated
+
+
+def test_only_a_core_that_checks_the_digest_binds_an_approval(tmp_path: Path) -> None:
+    script = tmp_path / "papaia" / "tools" / "lib" / "sh" / "addon.sh"
+    script.parent.mkdir(parents=True)
+    script.write_text(
+        "cmd_addon_install() {\n  --approve-flow-link) approve_flow_link=1 ;;\n}\n",
+        encoding="utf-8",
+    )
+    assert not flow_link.core_binds_approval(str(tmp_path))
+    script.write_text(
+        "cmd_addon_install() {\n  --approve-flow-link) approve_flow_link=1 ;;\n"
+        "  --expect-flow-digest=*) expect_flow_digest=\"${1#*=}\" ;;\n"
+        "  --expect-addon-version=*) expect_addon_version=\"${1#*=}\" ;;\n}\n",
+        encoding="utf-8",
+    )
+    os.utime(script, ns=(time.time_ns(), time.time_ns() + 2_000_000))
+    assert flow_link.core_binds_approval(str(tmp_path))
+
+
 # ── what the installation reported ───────────────────────────────────────────
 
 
@@ -249,6 +299,10 @@ async def test_the_exchange_asks_for_exactly_flows_audience_with_the_admins_toke
         "subject_token": ["admin-access"],
         "subject_token_type": ["urn:ietf:params:oauth:token-type:access_token"],
         "requested_token_type": ["urn:ietf:params:oauth:token-type:access_token"],
+        # The scope is the only way the realm adds Flow's audience, and its one-audience
+        # policy refuses any other `aud-*` scope next to it; the audience keeps the realm's
+        # default audiences (`account`) out.
+        "scope": ["aud-flow"],
         "audience": ["flow"],
     }
 
