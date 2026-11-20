@@ -104,6 +104,12 @@ class RollbackBody(BaseModel):
     restore_data: bool = False
 
 
+class ActionBody(BaseModel):
+    # A destructive action (`destructive: true` in the manifest) is refused without it: the
+    # page asks first, and a request that skipped the question must not delete anything.
+    confirmed: bool = False
+
+
 class SaveConfigBody(BaseModel):
     env: dict[str, str] = {}
     restart: bool = False
@@ -1200,12 +1206,14 @@ async def run_action(
     request: Request,
     user: AdminUser,
     settings: Annotated[Settings, Depends(get_settings)],
+    body: ActionBody | None = None,
 ) -> dict[str, str]:
     """Run a maintenance action the add-on's manifest declares (`actions`).
 
     Only a declared action of an active add-on is accepted; the request carries a name, never
-    a command or arguments. papaia-ctl looks the action up again and runs it. A distributed
-    installation gets 409: `papaia-ctl addon run` does not support it (Fidonis/papaia#319)."""
+    a command or arguments. papaia-ctl looks the action up again and runs it. A destructive
+    action needs `confirmed: true` (422 otherwise). A distributed installation gets 409:
+    `papaia-ctl addon run` does not support it (Fidonis/papaia#319)."""
     verify_csrf(request)
     refuse_while_locked(settings)
     if nodes.is_distributed(settings.papaia_config_dir):
@@ -1213,12 +1221,18 @@ async def run_action(
             status_code=status.HTTP_409_CONFLICT,
             detail=gettext("Add-on actions are not supported in a distributed installation"),
         )
-    declared = {a["name"] for a in actions_at(_active_addon_dir(name, settings))}
+    declared = {a["name"]: a for a in actions_at(_active_addon_dir(name, settings))}
     if action not in declared:
         raise HTTPException(
             status_code=404,
             detail=gettext("Add-on %(name)s declares no action %(action)s")
             % {"name": name, "action": action},
+        )
+    if declared[action]["destructive"] and not (body and body.confirmed):
+        raise HTTPException(
+            status_code=422,
+            detail=gettext("The action %(action)s cannot be undone and has to be confirmed.")
+            % {"action": action},
         )
     queue = _queue()
     _username = _user_id(user)
@@ -1231,8 +1245,14 @@ async def run_action(
             workspace_dir=settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
         )
-        async for line in gen:
-            ctx.log(line)
+        try:
+            async for line in gen:
+                ctx.log(line)
+        except CtlError as exc:
+            # The queue sets the job's own exit code to 1 for any failure; the page shows the
+            # action's real one, so keep it with the job.
+            ctx.job.params["exit_code"] = exc.exit_code
+            raise
         write_audit_entry(
             settings.papaia_config_dir,
             user=_username,
