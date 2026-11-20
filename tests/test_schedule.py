@@ -192,8 +192,8 @@ def test_the_next_runs_walk_forward_through_the_hour_the_clocks_repeat() -> None
 
 
 def test_a_fixed_time_inside_the_repeated_hour_runs_twice_on_that_day() -> None:
-    """Known behaviour of APScheduler 3.x, documented in AGENTS.md and not worked
-    around: 02:30 happens twice on the day the clocks go back, and a daily 02:30
+    """Known behaviour of APScheduler 3.x, documented in `app.core.scheduler` and
+    not worked around: 02:30 happens twice on the day the clocks go back, and a daily 02:30
     schedule runs at both. With the single-flight queue that is a second backup an
     hour later, once a year. If this starts failing, APScheduler has changed and the
     note can go."""

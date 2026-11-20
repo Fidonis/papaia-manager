@@ -8,7 +8,7 @@ body:
     attributes:
       label: Where in the docs?
       description: File path or URL of the affected section.
-      placeholder: README.md, AGENTS.md, ...
+      placeholder: README.md, CONTRIBUTING.md, ...
     validations:
       required: true
   - type: textarea

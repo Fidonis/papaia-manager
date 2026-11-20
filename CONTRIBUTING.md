@@ -124,7 +124,7 @@ The application expects a running Keycloak instance with a configured `papaia-ma
 The interface is written in English and ships a German catalogue. A language is a directory
 `src/app/locale/<code>/LC_MESSAGES/messages.po`; the application finds it at start-up, lists it in the
 account menu under its own name and uses it for browsers that ask for it. Nothing else names a language,
-so adding one needs no change to the code. See "Internationalisation" in `AGENTS.md` for how texts are
+so adding one needs no change to the code. The docstring of `src/app/i18n/__init__.py` describes how texts are
 marked in templates, JavaScript and Python.
 
 All commands run from `src/`:
@@ -148,7 +148,7 @@ a translation (the header's `Plural-Forms` line says how many there are), and do
 entries behind. `tests/test_i18n_catalog.py` runs for every catalogue it finds and fails with the
 texts that are missing, empty, fuzzy, stale or malformed, so a half-translated language does not pass
 CI. Texts that stay in English on purpose (logs, audit entries, notification mails) are listed in
-`AGENTS.md` and are not part of a catalogue.
+the docstring of `src/app/i18n/__init__.py` and are not part of a catalogue.
 
 A change to a text of the interface is a change to every catalogue: extract, update, translate the
 new entries, and run `uv run pytest -q ../tests/test_i18n_catalog.py`.

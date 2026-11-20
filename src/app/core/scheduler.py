@@ -12,6 +12,12 @@ source of truth (`app.core.schedule`), so a persistent store would be a second o
 and a schedule that was removed could come back from it after a restart. The
 price is that APScheduler does not know about runs missed while the process was
 down; `catchup` below is what covers that, from the catalogue instead.
+
+Known limit, not worked around: APScheduler 3.x runs a fixed time inside the hour
+that repeats when the clocks go back twice on that day (02:30 CEST and 02:30 CET).
+With the single-flight queue that is a second backup an hour later, once a year.
+`test_a_fixed_time_inside_the_repeated_hour_runs_twice_on_that_day` pins the
+behaviour, so a fixed APScheduler fails it and this note can go.
 """
 from __future__ import annotations
 
