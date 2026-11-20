@@ -106,13 +106,57 @@ def test_the_manager_reads_each_outcome_the_core_prints(
         wait_s=0,
         poll_s=0,
         sleep=lambda _s: None,
+        **_named(core),
     )
 
     expected = "not_approved" if returned == "refused" else returned
     read, reasons = flow_link.outcome(_NAME, out.getvalue().splitlines())
     assert read == expected, out.getvalue()
+    if case in ("approved", "proposal"):
+        assert returned == case, out.getvalue()
     if case == "proposal":
         assert reasons == ["data_class:find", "egress:tag"]
+
+
+def _named(core: types.ModuleType) -> dict[str, Any]:
+    """The digest and version the manager passes, for a core that takes them."""
+    if not hasattr(core, "section_digest"):
+        return {}
+    return {
+        "expect_digest": flow_link.section_digest(_MANIFEST),
+        "expect_version": flow_link.manifest_version(_MANIFEST),
+    }
+
+
+@pytest.mark.parametrize(
+    "named",
+    [
+        {"expect_digest": "sha256:" + "0" * 64},
+        {"expect_version": "1.3.9"},
+        {"expect_digest": None, "expect_version": None},
+    ],
+    ids=["other-digest", "other-version", "nothing-named"],
+)
+def test_the_core_refuses_an_approval_that_names_something_else(named: dict[str, Any]) -> None:
+    core = _core()
+    if not hasattr(core, "section_digest"):
+        pytest.skip("this core does not check what an approval names")
+    out = io.StringIO()
+    approvals: list[Any] = []
+
+    class _Counting(_Flow):
+        def approve(self, addon: str, digest: str, version: str, reason: str) -> dict[str, Any]:
+            approvals.append(digest)
+            return super().approve(addon, digest, version, reason)
+
+    returned = core.link_at_install(
+        _NAME, _MANIFEST, lambda _t: _Counting(core, "approved"), approve=True, ask=None,
+        token="t", out=out, wait_s=0, poll_s=0, sleep=lambda _s: None,
+        **(_named(core) | named),
+    )
+
+    assert (returned, approvals) == ("error", [])
+    assert flow_link.outcome(_NAME, out.getvalue().splitlines())[0] == "error"
 
 
 def test_the_core_takes_the_flag_and_the_variable_the_manager_passes() -> None:
