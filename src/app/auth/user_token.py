@@ -18,7 +18,7 @@ import time
 
 from fastapi import Request
 
-from app.auth.oidc import OIDCError, get_oidc_client
+from app.auth.oidc import ExchangedToken, OIDCError, get_oidc_client
 
 # Ask for a new token this long before the cached one expires, so a request that is already
 # on its way does not arrive with a token that dies in transit.
@@ -111,3 +111,15 @@ async def user_access_token(request: Request) -> str:
         request.session["user"] = token_set.claims.to_dict()
         request.session["oidc"] = {"refresh_token": rotated}
         return token_set.access_token
+
+
+async def token_for(request: Request, audience: str) -> ExchangedToken:
+    """A token of the account behind this request for another service, `audience` alone.
+
+    Made from the account's own access token by a token exchange, so the service sees the
+    person and the rights that person has there. Not cached: each caller asks for the one
+    call it makes. Raises `UserTokenUnavailable` like `user_access_token`, and `OIDCError`
+    when Keycloak refuses the exchange or answers with a token for anything else.
+    """
+    subject_token = await user_access_token(request)
+    return await get_oidc_client().exchange_token(subject_token=subject_token, audience=audience)

@@ -96,6 +96,23 @@ class TokenSet:
     access_expires_at: float = 0.0
 
 
+@dataclass(frozen=True, slots=True)
+class ExchangedToken:
+    """An access token for another service's audience, from a token exchange.
+
+    It carries the rights of the person whose token was exchanged. It lives in memory for the
+    one call it was made for, and is kept out of `repr`.
+    """
+
+    access_token: str = field(repr=False)
+    # Epoch seconds at which the token stops being valid.
+    expires_at: float
+
+
+_TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
+_ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+
+
 class OIDCClient:
     """OIDC Authorization Code + PKCE S256 client for papaia-manager.
 
@@ -206,6 +223,43 @@ class OIDCClient:
             return token_set
         # Keycloak normally rotates the token; keep the current one if it did not.
         return replace(token_set, refresh_token=refresh_token)
+
+    async def exchange_token(self, *, subject_token: str, audience: str) -> ExchangedToken:
+        """Exchange the signed-in person's access token for one with exactly `audience`.
+
+        Standard token exchange (RFC 8693, Keycloak's version 2): the manager's confidential
+        client asks on behalf of the person, so the new token carries that person's rights and
+        no more. A token issued for anything but exactly `audience` is refused rather than
+        handed on: it would reach a service it was not meant for. The token is not validated
+        here; the service it is for checks signature, issuer and expiry itself.
+        """
+        response = await self._token_request(
+            {
+                "grant_type": _TOKEN_EXCHANGE,
+                "client_id": self._client_id,
+                "client_secret": self._client_secret,
+                "subject_token": subject_token,
+                "subject_token_type": _ACCESS_TOKEN_TYPE,
+                "requested_token_type": _ACCESS_TOKEN_TYPE,
+                "audience": audience,
+            }
+        )
+        access_token = response.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise OIDCError(_("Keycloak answered the token exchange without an access token"))
+        if _audiences(access_token) != [audience]:
+            logger.warning("token exchange returned a token for another audience")
+            raise OIDCError(
+                _("Keycloak issued a token for more or other services than %(audience)s")
+                % {"audience": audience}
+            )
+        expires_in = response.get("expires_in")
+        lifetime = (
+            float(expires_in)
+            if isinstance(expires_in, int | float) and not isinstance(expires_in, bool)
+            else 60.0
+        )
+        return ExchangedToken(access_token=access_token, expires_at=time.time() + lifetime)
 
     async def end_session(self, *, refresh_token: str) -> bool:
         """End the provider's SSO session behind a refresh token.
@@ -395,6 +449,20 @@ def _error_code(response: httpx.Response) -> str | None:
         return None
     error = body.get("error") if isinstance(body, dict) else None
     return error if isinstance(error, str) else None
+
+
+def _audiences(token: str) -> list[str]:
+    """The `aud` of a token as a list, read without verifying it; empty when unreadable."""
+    try:
+        payload = jwt.get_unverified_claims(token)
+    except JWTError:
+        return []
+    aud = payload.get("aud")
+    if isinstance(aud, str):
+        return [aud]
+    if isinstance(aud, list) and all(isinstance(a, str) for a in aud):
+        return list(aud)
+    return []
 
 
 def _pkce_pair() -> tuple[str, str]:
