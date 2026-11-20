@@ -688,6 +688,9 @@ _PHASES: tuple[tuple[str, str, str, str], ...] = (
 # Reached only at the very end, after `cmd_start` returned.
 _COMPLETE_MARKER = "upgrade complete:"
 
+# The note on a phase whose announcement fell out of a full log window.
+_OUTSIDE_WINDOW = N_("earlier than the part of the log shown")
+
 # The optional seventh step. It is announced by the manager's own runner script
 # (`images.START_LINE` / `images.DONE_PREFIX`), not by papaia-ctl, and it comes
 # after `_COMPLETE_MARKER`: the upgrade is over by then, and a cleanup that
@@ -751,7 +754,12 @@ def _phase_match(key: str, prefix: str, contains: str, line: str) -> bool:
 
 
 def phases_from_log(
-    log: str, *, running: bool = True, prune_images: bool = False
+    log: str,
+    *,
+    running: bool = True,
+    prune_images: bool = False,
+    tail: int | None = None,
+    no_backup: bool = False,
 ) -> list[Phase]:
     """Turn the runner's output into the six phases, in order -- seven with a cleanup.
 
@@ -762,6 +770,14 @@ def phases_from_log(
     `prune_images` is whether the run was started with the image cleanup. Without
     it the step is not listed at all, so a run that never asked for it does not
     show a "skipped" row.
+
+    `tail` is the number of lines the log was cut to. A window that is full can
+    begin after the opening phases: Compose prints a line per layer while `start`
+    pulls the release's images, and that alone can push every earlier line out.
+    The phases before the first one in the window were then passed, not skipped,
+    and are shown as done with a note. `no_backup` is whether the run was started
+    with `--no-backup` (read from the runner's command line), the one phase that
+    is really skipped and can no longer be told apart from the log.
     """
     lines = [_strip_prefix(raw.strip()) for raw in log.splitlines()]
     seen: dict[str, str] = {}
@@ -774,9 +790,25 @@ def phases_from_log(
 
     order = [key for key, _, _, _ in _PHASES]
     last_seen = max((order.index(k) for k in seen), default=-1)
+    # In a full window, everything before the first phase found lies outside it. A run
+    # that completed passed every phase, so with none found that is all six.
+    window_full = tail is not None and len(lines) >= tail
+    if not window_full:
+        outside = 0
+    elif seen:
+        outside = min(order.index(k) for k in seen)
+    else:
+        outside = len(order) if complete else 0
 
     phases: list[Phase] = []
     for index, (key, _, _, label) in enumerate(_PHASES):
+        if index < outside:
+            if key == "backup" and no_backup:
+                state, detail = PHASE_SKIPPED, ""
+            else:
+                state, detail = PHASE_DONE, gettext(_OUTSIDE_WINDOW)
+            phases.append(Phase(key=key, label=gettext(label), state=state, detail=detail))
+            continue
         if complete:
             state = PHASE_DONE if key in seen else PHASE_SKIPPED
         elif key in seen:

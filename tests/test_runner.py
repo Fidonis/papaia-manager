@@ -501,6 +501,25 @@ def test_the_label_is_read_back_from_a_runner_the_previous_manager_started() -> 
     assert _status_from_inspect(payload, UPGRADE_KIND).prune_images is False
 
 
+@pytest.mark.parametrize("prune", [False, True])
+def test_no_backup_is_read_back_from_the_runners_command_line(
+    spec: ContainerSpec, prune: bool
+) -> None:
+    # The flag is the one thing the log cannot tell once its opening lines are gone.
+    args = _upgrade(spec, no_backup=True, prune_images=prune)
+    payload = json.loads(json.dumps(_INSPECT))
+    payload[0]["Name"] = "/papaia-upgrade-1.2.0"
+    payload[0]["Config"]["Cmd"] = args[args.index(spec.image) + 1 :]
+    assert _status_from_inspect(payload, UPGRADE_KIND).no_backup is True
+    args = _upgrade(spec, prune_images=prune)
+    payload[0]["Config"]["Cmd"] = args[args.index(spec.image) + 1 :]
+    assert _status_from_inspect(payload, UPGRADE_KIND).no_backup is False
+
+
+def test_a_runner_without_a_command_line_has_no_no_backup() -> None:
+    assert _status_from_inspect(_status_payload("exited", 0)).no_backup is False
+
+
 # `bash` on a Windows PATH is usually the WSL launcher, which does not pass a
 # multi-line `-c` script through intact; the suite runs this on Linux in CI.
 @pytest.mark.skipif(

@@ -48,15 +48,18 @@ def describe(job: Job) -> tuple[str, str, str]:
                 f"{title} is on",
                 f"Switching {title} on failed",
             )
-        scope = job.params.get("scope")
-        also = {
-            modules.SCOPE_DATA: " and deleting its data",
-            modules.SCOPE_ALL: " and deleting its data and settings",
-        }.get(str(scope), "")
-        done = {
-            modules.SCOPE_DATA: ", its data is deleted",
-            modules.SCOPE_ALL: ", its data and settings are deleted",
-        }.get(str(scope), "")
+        scope = str(job.params.get("scope"))
+        gone = [
+            *(["data"] if scope in (modules.SCOPE_DATA, modules.SCOPE_ALL) else []),
+            *(["settings"] if scope == modules.SCOPE_ALL else []),
+            *(["operator files"] if job.params.get("operator_files") else []),
+        ]
+        listed = (
+            " and ".join(gone) if len(gone) < 3 else f"{', '.join(gone[:-1])} and {gone[-1]}"
+        )
+        also = f" and deleting its {listed}" if gone else ""
+        verb = "is" if gone == ["data"] else "are"
+        done = f", its {listed} {verb} deleted" if gone else ""
         return (
             f"Switching {title} off{also}",
             f"{title} is off{done}",
@@ -138,8 +141,12 @@ async def modules_page(
                     settings.papaia_config_dir, settings.papaia_workspace_dir
                 ),
                 variants=modules.variant_options(),
+                voice_variants=modules.variant_options("voice"),
                 host_only_variants=list(modules.HOST_ONLY_VARIANTS),
                 stored_variant=modules.stored_variant(settings.papaia_config_dir),
+                stored_voice_variant=modules.stored_variant(
+                    settings.papaia_config_dir, "voice"
+                ),
                 security_modes=SECURITY_MODES,
                 default_ports=DEFAULT_PORTS,
             ),
@@ -161,7 +168,9 @@ async def overlay_page(
         "selected": selected,
         "preview_available": preview.available(settings.papaia_workspace_dir),
         "targets": [target_json(settings, t) for t in overlay.TARGETS],
-        "other": overlay.other_files(settings.papaia_config_dir),
+        "other": overlay.other_files(
+            settings.papaia_config_dir, settings.papaia_workspace_dir
+        ),
     }
     return _no_store(
         _templates.TemplateResponse(

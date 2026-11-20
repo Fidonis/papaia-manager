@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import tempfile
 import time
 from collections.abc import Iterator
@@ -75,6 +76,14 @@ services:
     profiles: [smtp]
     labels:
       de.fidonis.module: papaia-smtp-relay
+  speaches:
+    profiles: [voice]
+    labels:
+      de.fidonis.module: papaia-voice
+  chatterbox:
+    profiles: [voice]
+    labels:
+      de.fidonis.module: papaia-voice
 """
 
 
@@ -275,6 +284,7 @@ def test_the_modules_document_has_the_state_and_the_variants(client: TestClient)
     assert {m["name"]: m["enabled"] for m in body["modules"]}["localai"] is False
     assert [v["id"] for v in body["variants"]][0] == "cpu"
     assert "vulkan" not in [v["id"] for v in body["variants"]]
+    assert [v["id"] for v in body["voice_variants"]] == ["cpu", "nvidia", "hipblas"]
     assert body["host_only_variants"] == ["vulkan"]
     localai = next(m for m in body["modules"] if m["name"] == "localai")
     assert (localai["services"], localai["modules"]) == (2, 1)
@@ -290,6 +300,18 @@ def test_switching_localai_on_queues_a_job(client: TestClient, queue: JobQueue) 
     [job] = queue.list_jobs()
     assert (job.action, job.target) == (service.ENABLE_ACTION, "module:localai")
     assert job.params == {"module": "localai", "variant": "nvidia-cuda-12", "public_url": None}
+
+
+def test_switching_voice_on_queues_a_job(client: TestClient, queue: JobQueue) -> None:
+    response = _admin(client).post(
+        f"{_BASE}/modules/voice/enable",
+        json={"revision": _modules_revision(client), "variant": "nvidia"},
+        headers=_CSRF_HEADER,
+    )
+    assert response.status_code == 202
+    [job] = queue.list_jobs()
+    assert (job.action, job.target) == (service.ENABLE_ACTION, "module:voice")
+    assert job.params == {"module": "voice", "variant": "nvidia", "public_url": None}
 
 
 def test_switching_web_search_off_queues_a_job(
@@ -313,7 +335,9 @@ def test_switching_web_search_off_queues_a_job(
         ("localai", {"variant": None}, 422, "Choose"),
         ("localai", {"variant": "vulkan"}, 422, "set on the host"),
         ("localai", {"variant": "bogus"}, 422, "Unknown"),
-        ("web-search", {"variant": "cpu"}, 422, "Only LocalAI"),
+        ("web-search", {"variant": "cpu"}, 422, "no accelerator variant"),
+        ("voice", {"variant": None}, 422, "Choose"),
+        ("voice", {"variant": "auto"}, 422, "Unknown"),
         ("manager", {}, 404, "can't be switched"),
         ("nope", {}, 404, "can't be switched"),
     ],
@@ -370,7 +394,7 @@ def _mail_server(config_dir: Path) -> None:
 
 def test_the_modules_document_marks_what_can_be_deleted(client: TestClient) -> None:
     rows = {m["name"]: m for m in _admin(client).get(f"{_BASE}/modules").json()["modules"]}
-    for name in ("localai", "web-search", "rag", "mail"):
+    for name in ("localai", "web-search", "rag", "voice", "mail"):
         assert rows[name]["switchable"] is True
         assert rows[name]["can_delete"] is True
     assert rows["manager"]["switchable"] is False
@@ -612,6 +636,51 @@ def test_there_is_no_settings_only_state(
     assert queue.list_jobs() == []
 
 
+def test_the_operator_files_of_the_map_go_only_when_asked_and_confirmed(
+    client: TestClient, queue: JobQueue, config_dir: Path
+) -> None:
+    _on(config_dir, "knowledge-map")
+    response = _off(client, "knowledge-map", operator_files=True)
+    assert response.status_code == 422
+    assert "Type the module name (knowledge-map)" in response.json()["detail"]
+    assert queue.list_jobs() == []
+    response = _off(client, "knowledge-map", operator_files=True, confirm="knowledge-map")
+    assert response.status_code == 202
+    [job] = queue.list_jobs()
+    assert job.params == {"module": "knowledge-map", "scope": "keep", "operator_files": True}
+
+
+def test_without_the_choice_the_operator_files_stay(
+    client: TestClient, queue: JobQueue, config_dir: Path
+) -> None:
+    _on(config_dir, "knowledge-map")
+    assert _off(client, "knowledge-map", scope="all", confirm="knowledge-map").status_code == 202
+    [job] = queue.list_jobs()
+    assert job.params == {"module": "knowledge-map", "scope": "all"}
+
+
+def test_a_module_without_operator_files_refuses_the_choice(
+    client: TestClient, queue: JobQueue, config_dir: Path
+) -> None:
+    _on(config_dir, "rag")
+    response = _off(client, "rag", scope="data", operator_files=True, confirm="rag")
+    assert response.status_code == 422
+    assert "no files of its own" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+def test_the_dialog_offers_the_operator_files_unticked(client: TestClient) -> None:
+    html = _admin(client).get("/settings/modules").text
+    dialog = html.split('id="module-off-operator"')[1].split("</fieldset>")[0]
+    assert 'id="module-off-operator-input" type="checkbox"' in dialog
+    tag = dialog.split('id="module-off-operator-input"')[1].split(">")[0]
+    # No `checked` attribute (the handler reads `this.checked`).
+    assert not re.search(r"\schecked[\s=]|\schecked$", tag)
+    assert "Also delete these files" in dialog
+    # Hidden until the core names files that exist.
+    assert 'class="mt-4 hidden' in html.split('id="module-off-operator"')[1][:40]
+
+
 def test_a_core_that_cannot_delete_refuses_a_deletion_but_not_a_plain_switch_off(
     client: TestClient, queue: JobQueue, workspace: Path, config_dir: Path
 ) -> None:
@@ -688,22 +757,40 @@ def test_a_body_that_cannot_be_read_is_refused_without_repeating_it(client: Test
 
 
 def test_the_overlay_list_has_the_three_targets_and_the_other_files(
-    client: TestClient, config_dir: Path
+    client: TestClient, config_dir: Path, workspace: Path
 ) -> None:
     _seed(config_dir)
     stray = config_dir / "overlay" / "ai" / "typo.yaml"
     stray.parent.mkdir(parents=True, exist_ok=True)
     stray.write_text("x: 1\n", encoding="utf-8")
+    # Below a directory target the core's checkout decides (#199): the route hands the
+    # workspace to the listing.
+    theme = "infra/keycloak/themes/papaia/login/resources/css"
+    shipped = workspace / "papaia" / "src" / theme / "papaia.css"
+    shipped.parent.mkdir(parents=True)
+    shipped.write_text("x\n", encoding="utf-8")
+    for name in ("papaia.css", "extra.css"):
+        (config_dir / "overlay" / theme).mkdir(parents=True, exist_ok=True)
+        (config_dir / "overlay" / theme / name).write_text("x\n", encoding="utf-8")
     body = _admin(client).get(f"{_BASE}/overlay").json()
     assert body["preview_available"] is True
     targets = {t["key"]: t for t in body["targets"]}
-    assert set(targets) == {"librechat", "litellm", "searxng"}
+    assert set(targets) == {"librechat", "litellm", "chatterbox", "searxng"}
     assert targets["librechat"]["exists"] is True and targets["librechat"]["lines"] == 1
     assert targets["litellm"]["exists"] is False
     assert targets["librechat"]["group_active"] is True
     assert targets["searxng"]["group_active"] is False
     assert targets["librechat"]["services"] == 1
-    assert body["other"] == [{"path": "ai/typo.yaml", "note": "ignored by the render"}]
+    assert body["other"] == [
+        {"path": "ai/typo.yaml", "note": "ignored by the render"},
+        {
+            "path": f"{theme}/extra.css",
+            "note": "ignored by the render: the core ships no file of that name",
+        },
+        {"path": f"{theme}/papaia.css", "note": "used by the render, not editable here"},
+    ]
+    html = _admin(client).get("/settings/overlay").text
+    assert "the core ships no file of that name" in html
 
 
 def test_one_overlay_has_its_content_revision_and_versions(
@@ -1068,11 +1155,12 @@ def test_settings_has_three_tabs_and_the_menu_has_no_new_entry(client: TestClien
     assert 'aria-label="Configuration"' not in sidebar
 
 
-def test_the_modules_page_has_a_switch_for_the_four_optional_modules(client: TestClient) -> None:
+def test_the_modules_page_has_a_switch_for_the_five_optional_modules(client: TestClient) -> None:
     html = _admin(client).get("/settings/modules").text
-    assert html.count('onchange="moduleToggled(this)"') == 4
+    assert html.count('onchange="moduleToggled(this)"') == 5
     assert "Optional Modules" in html
     assert 'data-module="manager"' in html and 'data-module="rag"' in html
+    assert 'data-module="voice"' in html and 'id="voice-variant"' in html
     # The manager is shown and locked.
     assert "disabled>" in html.split('data-module="manager"')[1][:200]
 

@@ -200,7 +200,8 @@ class JobQueue:
                         target=job.target,
                         job_id=job.id,
                         result="error",
-                        params={"error": type(exc).__name__},
+                        # The job's own params too: which action, which version.
+                        params={**job.params, "error": type(exc).__name__},
                     )
                 finally:
                     job.finished_at = datetime.now(tz=UTC)

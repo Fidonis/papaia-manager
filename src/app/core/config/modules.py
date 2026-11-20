@@ -5,9 +5,10 @@ acts on and what `papaia-ctl setup --enable-...` edits (`deployment.yaml` only m
 so the state is read from there and a change is asked of `setup`
 (`app.core.ctl.run_module_setup`, `run_smtp_setup`). The manager does not write the file.
 
-Four modules are switched here, and this tab is the only place that switches them: LocalAI,
-web search, the RAG system and the mail relay. The RAG and Mail pages hold their settings and
-work with the module off as well. The manager runs this page and can't switch itself off.
+Six modules are switched here, and this tab is the only place that switches them: LocalAI,
+web search, the RAG system, voice, the mail relay and the knowledge map (the AI map page). The
+RAG and Mail pages hold their settings and work with the module off as well. The manager runs
+this page and can't switch itself off.
 
 Switching a module off can also delete what it leaves behind. The core knows what that is
 (`module-info`): the named volumes the module owns and the settings it keeps. Three results
@@ -16,6 +17,11 @@ RAG system (its stored credentials are encrypted with a secret that belongs to t
 a module whose settings were deleted but whose data stayed would not be one anybody can use.
 On a distributed installation only `keep` is offered: the core refuses `stop --volumes` there,
 and `module-purge` would only see the controller's volumes.
+
+The knowledge map also has operator files: the declarations, overrides, governance records and
+gold set an administrator wrote for it (the AI map page edits them). They are neither data nor
+settings, so no scope deletes them. A separate choice does, off by default and only on a single
+host (`validate_operator_files`); the edit history this manager keeps of them goes with them.
 """
 
 from __future__ import annotations
@@ -27,9 +33,11 @@ from pathlib import Path
 from typing import Any
 
 from app.core import ctl, nodes
+from app.core import knowledge_map as km
 from app.core.ctl import (
-    LOCALAI_VARIANTS,
     MODULE_URL_FLAGS,
+    MODULE_VARIANTS,
+    OPERATOR_FILE_MODULES,
     PURGE_MODULES,
     CtlError,
     run_module_info,
@@ -40,20 +48,27 @@ from app.core.mail.settings import load_mail_settings, settings_json
 from app.core.state import load_deployment_yaml
 from app.i18n import N_, gettext
 
-KEY_VARIANT = "LOCALAI_IMAGE_VARIANT"
+# The root-env key a module's stored accelerator variant lives under.
+VARIANT_KEYS: dict[str, str] = {
+    "localai": "LOCALAI_IMAGE_VARIANT",
+    "voice": "VOICE_TTS_IMAGE_VARIANT",
+}
 DEFAULT_VARIANT = "cpu"
 
 VARIANT_LABELS: dict[str, str] = {
     "cpu": N_("CPU (works everywhere)"),
     "nvidia-cuda-12": N_("NVIDIA CUDA 12"),
     "nvidia-cuda-13": N_("NVIDIA CUDA 13"),
+    # The core's NVIDIA image of the speech synthesis requires CUDA 12.8, and the NVIDIA
+    # runtime refuses it on an older driver; this container cannot look at the driver.
+    "nvidia": N_("NVIDIA GPU (driver with CUDA 12.8 or newer)"),
     "intel": N_("Intel GPU"),
     "hipblas": N_("AMD ROCm"),
 }
 
-def variant_options() -> list[dict[str, str]]:
-    """The LocalAI variants the page offers, labelled in the language of the request."""
-    return [{"id": v, "label": gettext(VARIANT_LABELS[v])} for v in LOCALAI_VARIANTS]
+def variant_options(name: str = "localai") -> list[dict[str, str]]:
+    """The variants of `name` the page offers, labelled in the language of the request."""
+    return [{"id": v, "label": gettext(VARIANT_LABELS[v])} for v in MODULE_VARIANTS[name]]
 
 
 # Offered by the core, not by this page: see `app.core.ctl.LOCALAI_VARIANTS`.
@@ -97,6 +112,15 @@ class ModuleDef:
     recreate: tuple[str, ...] = ()
     # The module needs the core to ship the module operations, not only its own profile.
     needs_core_modules: bool = False
+    # The containers take longer to come up than a job waits for them: the core's healthcheck
+    # gives them a start period beyond `service.HEALTH_TIMEOUT_SECONDS`. A group that is
+    # still starting when the wait ends is then loading, not failing, and the job finishes;
+    # anything worse still fails it. The queue runs one job at a time, so waiting out the
+    # core's budget would hold every other job back for as long.
+    slow_start: bool = False
+    # The switch-off dialog offers to delete the files an administrator wrote for the module
+    # (`OPERATOR_FILE_MODULES`), as a separate choice next to the scope.
+    operator_files: bool = False
 
 
 MODULES: tuple[ModuleDef, ...] = (
@@ -134,6 +158,27 @@ MODULES: tuple[ModuleDef, ...] = (
         needs_core_modules=True,
     ),
     ModuleDef(
+        name="voice",
+        profile="voice",
+        title=N_("Voice"),
+        description=(
+            N_(
+                "Local speech-to-text and text-to-speech behind LiteLLM, wired into LibreChat's "
+                "speech panel."
+            )
+        ),
+        switchable=True,
+        # LiteLLM reads the routes of the engines from its rendered configuration and their
+        # key from its env file; LibreChat reads the speech panel from librechat.yaml. All
+        # three files change with the switch, and the containers read them once at start.
+        recreate=("litellm", "librechat"),
+        needs_core_modules=True,
+        # The first start downloads several GB of models inside the containers; the core's
+        # healthcheck gives the speech synthesis a start period of 5 minutes and a budget of
+        # about 25.
+        slow_start=True,
+    ),
+    ModuleDef(
         name="mail",
         profile="smtp",
         title=N_("Mail Relay"),
@@ -149,6 +194,26 @@ MODULES: tuple[ModuleDef, ...] = (
         needs_core_modules=True,
     ),
     ModuleDef(
+        name="knowledge-map",
+        profile="knowledge-map",
+        title=N_("AI Map"),
+        description=(
+            N_(
+                "A directory of the installation's knowledge sources for the chat: where "
+                "knowledge lives, trimmed to the roles of each user, with governance checks."
+            )
+        ),
+        switchable=True,
+        link="/knowledge-map",
+        link_label=N_("Open the AI map"),
+        link_needs_module=True,
+        # LibreChat's configuration lists the map's MCP server only while the module is on,
+        # and LibreChat reads the rendered file once.
+        recreate=("librechat",),
+        needs_core_modules=True,
+        operator_files=True,
+    ),
+    ModuleDef(
         name="manager",
         profile="manager",
         title="papaia-manager",
@@ -161,6 +226,10 @@ SWITCHABLE: dict[str, ModuleDef] = {m.name: m for m in MODULES if m.switchable}
 
 # Every module the core can purge is switchable here, and the other way round.
 assert set(SWITCHABLE) == set(PURGE_MODULES)  # noqa: S101 - a constant, checked at import
+# The same for the modules with operator files.
+assert {  # noqa: S101 - a constant, checked at import
+    m.name for m in SWITCHABLE.values() if m.operator_files
+} == set(OPERATOR_FILE_MODULES)
 
 
 class ModuleError(Exception):
@@ -172,20 +241,21 @@ def active(config_dir: str) -> set[str]:
     return profiles_in(load_env_file(Path(config_dir) / ".env"))
 
 
-def stored_variant(config_dir: str) -> str:
-    """The LocalAI image variant the core stored, `cpu` when none."""
-    value = load_env_file(Path(config_dir) / ".env").get(KEY_VARIANT, "").strip()
+def stored_variant(config_dir: str, name: str = "localai") -> str:
+    """The image variant the core stored for `name`, `cpu` when none."""
+    value = load_env_file(Path(config_dir) / ".env").get(VARIANT_KEYS[name], "").strip()
     return value or DEFAULT_VARIANT
 
 
 def revision(config_dir: str) -> str:
-    """A fingerprint of what the tab shows: the profile set and the LocalAI variant.
+    """A fingerprint of what the tab shows: the profile set and the stored variants.
 
     The form carries it back, so a switch made from an older page (or on the host
     meanwhile) is refused instead of overwriting the newer state."""
     env = load_env_file(Path(config_dir) / ".env")
     profiles = ",".join(sorted(profiles_in(env)))
-    material = f"{profiles}\n{env.get(KEY_VARIANT, '')}"
+    variants = "\n".join(env.get(VARIANT_KEYS[name], "") for name in sorted(VARIANT_KEYS))
+    material = f"{profiles}\n{variants}"
     return hashlib.sha256(material.encode()).hexdigest()[:16]
 
 
@@ -233,7 +303,6 @@ def mail_defaults(config_dir: str) -> dict[str, object]:
 def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
     """What the tab renders: one row per module, in the order of `MODULES`."""
     on = active(config_dir)
-    variant = stored_variant(config_dir)
     manages = core_manages_modules(workspace_dir)
     distributed = nodes.is_distributed(config_dir)
     rows: list[dict[str, object]] = []
@@ -266,7 +335,11 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
                 "modules": modules,
                 # The node the module's services are placed on; empty on a single host.
                 "node": nodes.profile_node(config_dir, module.profile),
-                "variant": variant if module.name == "localai" else None,
+                "variant": (
+                    stored_variant(config_dir, module.name)
+                    if module.name in VARIANT_KEYS
+                    else None
+                ),
                 "configured": mail_configured(config_dir) if module.name == "mail" else None,
                 "mail_defaults": mail_defaults(config_dir) if module.name == "mail" else None,
                 "can_delete": manages and module.name in PURGE_MODULES,
@@ -276,32 +349,78 @@ def state(config_dir: str, workspace_dir: str) -> list[dict[str, object]]:
                     if distributed and module.name in PURGE_MODULES
                     else ""
                 ),
+                # What each operator file is, by the path the core's `module-info` names it.
+                "operator_files": operator_file_labels() if module.operator_files else None,
             }
         )
     return rows
 
 
+def operator_file_labels() -> dict[str, dict[str, str]]:
+    """The knowledge map's operator files by their path in the configuration directory, with
+    the label and description the AI map page gives them, in the language of the request."""
+    return {
+        f"{km.OPERATOR_DIR}/{f.filename}": {
+            "label": gettext(f.label),
+            "description": gettext(f.description),
+        }
+        for f in km.OPERATOR_FILES
+    }
+
+
+def validate_operator_files(
+    name: str, wanted: bool, confirm: str | None, workspace_dir: str, *, config_dir: str
+) -> bool:
+    """Whether a switch-off request also deletes the module's operator files, or raises
+    ModuleError.
+
+    Like any deletion it needs the module's name typed back, a core that can do it and a single
+    host; only a module with operator files has the choice."""
+    if not wanted:
+        return False
+    module = SWITCHABLE.get(name)
+    if module is None or not module.operator_files:
+        raise ModuleError(gettext("This module keeps no files of its own to delete."))
+    if nodes.is_distributed(config_dir):
+        raise ModuleError(gettext(DISTRIBUTED_KEEP_ONLY))
+    if not core_manages_modules(workspace_dir):
+        raise ModuleError(
+            gettext("This papAIa core can't delete a module's data (it needs 1.6.0).")
+        )
+    if (confirm or "").strip() != name:
+        raise ModuleError(gettext(
+            "Type the module name (%(name)s) to confirm the deletion."
+        ) % {"name": name})
+    return True
+
+
 def validate_enable(name: str, variant: str | None) -> str | None:
     """The variant to store for an enable request, or raises ModuleError.
 
-    Only LocalAI has one; it is required and must be one of the variants this page offers."""
+    Only the modules in `MODULE_VARIANTS` have one; it is required then and must be one of
+    the variants this page offers."""
     module = SWITCHABLE.get(name)
     if module is None:
         raise ModuleError(gettext("This module can't be switched from here."))
-    if name != "localai":
+    variants = MODULE_VARIANTS.get(name)
+    if variants is None:
         if variant is not None:
-            raise ModuleError(gettext("Only LocalAI takes an accelerator variant."))
+            raise ModuleError(gettext("This module takes no accelerator variant."))
         return None
     if variant is None:
-        raise ModuleError(gettext("Choose the accelerator variant for LocalAI."))
-    if variant in HOST_ONLY_VARIANTS:
+        raise ModuleError(
+            gettext(
+                "Choose the accelerator variant for %(title)s."
+            ) % {"title": gettext(module.title)}
+        )
+    if name == "localai" and variant in HOST_ONLY_VARIANTS:
         raise ModuleError(
             gettext(
                 "The %(variant)s variant is set on the host: run `papaia-ctl setup "
                 "--localai-variant=%(variant)s`."
             ) % {"variant": variant}
         )
-    if variant not in LOCALAI_VARIANTS:
+    if variant not in variants:
         raise ModuleError(gettext("Unknown accelerator variant."))
     return variant
 

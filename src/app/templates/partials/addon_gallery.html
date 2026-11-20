@@ -1,4 +1,4 @@
-{% from "partials/_addon_controls.html" import primary_action, overflow_actions, remove_modal, uninstall_modal, install_modal %}
+{% from "partials/_addon_controls.html" import primary_action, overflow_actions, remove_modal, uninstall_modal, install_modal, requirements_list %}
 {% from "partials/_actions.html" import row_actions %}
 {% if not addons %}
 <div class="flex flex-col items-center py-24 gap-4 opacity-60">
@@ -164,6 +164,7 @@
           <span class="badge badge-outline badge-xs" title="{{ _('Same version also in: %(shadowed_by)s', shadowed_by=addon.shadowed_by | join(', ')) }}">{% trans shadowed_by=(addon.shadowed_by | join(', ')) %}also in {{ shadowed_by }}{% endtrans %}</span>
         {% endif %}
       </div>
+      {{ requirements_list(addon, compact=True) }}
 
       {# Actions — Tier 2. The state verb on the left, then the gear (navigation,
          not a verb) and the overflow on the right. `row_actions` is called

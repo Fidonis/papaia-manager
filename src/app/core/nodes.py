@@ -115,6 +115,9 @@ def registry(config_dir: str) -> dict[str, NodeRef]:
     }
 
 
+# The profile of Keycloak, whose realm holds the mail server the relay provides.
+KEYCLOAK_PROFILE = "keycloak"
+
 # The catalogue services whose node runs the provisioning hooks at the end of `start`:
 # `npm-provision` where the proxy runs, `keycloak-role-sync` (roles, mappers and the realm's
 # mail server) where Keycloak runs. The core runs a hook only when that node is started.
@@ -147,6 +150,36 @@ def profile_node(config_dir: str, profile: str) -> str:
     topology, topo = found
     service = topology.service_of_profile(profile)
     return str(topo.node_of(service)) if service else ""
+
+
+class HookNodesFailedError(Exception):
+    """The change is in place, but a node that only runs hooks for it did not take part."""
+
+
+def hook_nodes_failed(skipped: list[str]) -> HookNodesFailedError:
+    """The error that ends a job whose change is in place but missed a node's hooks."""
+    return HookNodesFailedError(
+        _(
+            "The change is in place, but a node that only runs its hooks did not take part. "
+            "Once it answers, run: %(value)s"
+        ) % {"value": "; ".join(skipped)}
+    )
+
+
+def with_retries(message: str, skipped: list[str]) -> str:
+    """`message`, followed by the commands that catch up the hook nodes a job missed, so a
+    job that ends for another reason still names them."""
+    if not skipped:
+        return message
+    return _(
+        "%(message)s A node that only runs its hooks did not take part either; once it "
+        "answers, run: %(value)s"
+    ) % {"message": message, "value": "; ".join(skipped)}
+
+
+def run_node(run: tuple[str, ...]) -> str:
+    """The node a run from `profile_runs` names, or "" for a run without one."""
+    return next((f.removeprefix("--node=") for f in run if f.startswith("--node=")), "")
 
 
 def profile_runs(

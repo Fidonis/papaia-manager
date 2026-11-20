@@ -68,6 +68,9 @@ class DisableBody(BaseModel):
     revision: str
     # What the switch-off deletes besides the containers: `keep`, `data` or `all`.
     scope: str = "keep"
+    # Whether the files an administrator wrote for the module go too (the knowledge map's);
+    # separate from `scope`, which never deletes them.
+    operator_files: bool = False
     # The module's name, typed back to confirm a deletion.
     confirm: str | None = None
 
@@ -169,6 +172,7 @@ async def get_modules(
         "revision": modules.revision(settings.papaia_config_dir),
         "modules": modules.state(settings.papaia_config_dir, settings.papaia_workspace_dir),
         "variants": modules.variant_options(),
+        "voice_variants": modules.variant_options("voice"),
         "host_only_variants": list(modules.HOST_ONLY_VARIANTS),
     }
 
@@ -279,8 +283,9 @@ async def disable_module(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     """Stop a module, remove its containers and switch it off. The body says whether its data
-    and its settings are deleted too (`scope`: `keep`, `data`, `all`); a deletion needs the
-    module's name in `confirm`."""
+    and its settings are deleted too (`scope`: `keep`, `data`, `all`) and, for a module that
+    has them, its operator files (`operator_files`); a deletion needs the module's name in
+    `confirm`."""
     verify_csrf(request)
     body = await _body(request, DisableBody)
     if not _module_current(settings, name, body.revision):
@@ -293,21 +298,32 @@ async def disable_module(
             settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
         )
+        operator_files = modules.validate_operator_files(
+            name,
+            body.operator_files,
+            body.confirm,
+            settings.papaia_workspace_dir,
+            config_dir=settings.papaia_config_dir,
+        )
     except modules.ModuleError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await require_idle_stack()
     username = _user_id(user)
+    params: dict[str, Any] = {"module": name, "scope": scope}
+    if operator_files:
+        params["operator_files"] = True
     job = await _queue().enqueue(
         action=service.DISABLE_ACTION,
         target=f"module:{name}",
         user=username,
-        params={"module": name, "scope": scope},
+        params=params,
         callback=service.disable_callback(
             module=name,
             scope=scope,
             user=username,
             workspace_dir=settings.papaia_workspace_dir,
             config_dir=settings.papaia_config_dir,
+            operator_files=operator_files,
         ),
     )
     return {"job_id": job.id, "status": "queued"}
@@ -351,7 +367,9 @@ async def list_overlay(
     return {
         "preview_available": preview.available(settings.papaia_workspace_dir),
         "targets": [target_json(settings, t) for t in overlay.TARGETS],
-        "other": overlay.other_files(settings.papaia_config_dir),
+        "other": overlay.other_files(
+            settings.papaia_config_dir, settings.papaia_workspace_dir
+        ),
     }
 
 

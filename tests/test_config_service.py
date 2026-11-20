@@ -15,9 +15,10 @@ from typing import Any
 
 import pytest
 
+from app.core import knowledge_map as km
 from app.core import services
 from app.core.audit import audit_path
-from app.core.config import history, overlay
+from app.core.config import history, modules, overlay
 from app.core.config import service as svc
 from app.core.ctl import CtlError, ModuleSetup, SmtpSetup
 from app.core.jobs import Job, JobContext
@@ -37,6 +38,8 @@ class _Run:
         self.steps: list[tuple[str, Any]] = []
         self.setup_result: tuple[int, str, str] = (0, "Setup complete.", "")
         self.purge_result: tuple[int, str, str] = (0, "removed volume papaia_x", "")
+        # `operator_files` of each purge, in order (the steps keep their old shape).
+        self.purge_operator_files: list[bool] = []
         # verb name -> how many of its first calls fail
         self.fail: dict[str, int] = {}
         self.lines: dict[str, list[str]] = {}
@@ -47,6 +50,7 @@ class _Run:
 
     async def purge(self, name: str, **kwargs: Any) -> tuple[int, str, str]:
         self.steps.append(("purge", (name, kwargs["data"], kwargs["config"])))
+        self.purge_operator_files.append(kwargs.get("operator_files", False))
         return self.purge_result
 
     async def verb(self, **kwargs: Any) -> AsyncGenerator[str, None]:
@@ -91,7 +95,15 @@ def health(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         return StackSnapshot(
             groups=[
                 ServiceGroup(name=name, modules=(name,), containers=1, health=state["health"])
-                for name in ("librechat", "localai", "librechat-websearch", "rag", "smtp")
+                for name in (
+                    "librechat",
+                    "localai",
+                    "librechat-websearch",
+                    "rag",
+                    "voice",
+                    "smtp",
+                    "knowledge-map",
+                )
             ]
         )
 
@@ -218,10 +230,20 @@ def test_a_module_that_does_not_become_healthy_is_said_so_and_recorded_as_partia
 
 
 def _off(
-    config: str, module: str = "localai", scope: str = "keep", user: str = "admin"
+    config: str,
+    module: str = "localai",
+    scope: str = "keep",
+    user: str = "admin",
+    *,
+    operator_files: bool = False,
 ) -> Any:
     return svc.disable_callback(
-        module=module, scope=scope, user=user, workspace_dir="/w", config_dir=config
+        module=module,
+        scope=scope,
+        user=user,
+        workspace_dir="/w",
+        config_dir=config,
+        operator_files=operator_files,
     )
 
 
@@ -318,6 +340,91 @@ def test_what_the_purge_printed_is_in_the_log(tmp_path: Path, run: _Run) -> None
     assert "removed volume papaia_x" in _log(ctx)
 
 
+# -- modules: the knowledge map and its operator files -----------------------------------------
+
+
+def _history(config: str) -> Path:
+    path = Path(config) / km.HISTORY_DIR / "sources" / "1.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("sources: []\n", encoding="utf-8")
+    return Path(config) / km.HISTORY_DIR
+
+
+def test_switching_the_map_on_recreates_librechat_after_it_started(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="knowledge-map",
+            variant=None,
+            user="admin",
+            workspace_dir="/w",
+            config_dir=config,
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps == [
+        ("setup", ModuleSetup("knowledge-map", True)),
+        ("start", ["--profiles=knowledge-map"]),
+        ("stop", ["--clean-up", "--profiles=librechat"]),
+        ("start", ["--profiles=librechat"]),
+    ]
+
+
+def test_switching_the_map_off_keeps_its_operator_files_unless_asked(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,librechat,knowledge-map")
+    history = _history(config)
+    _go(_off(config, "knowledge-map", "all"), _context(tmp_path))
+    assert run.steps[-1] == ("purge", ("knowledge-map", True, True))
+    assert run.purge_operator_files == [False]
+    assert history.is_dir()
+    [entry] = _audit(config)
+    assert "operator_files" not in entry["params"]
+
+
+def test_the_operator_files_go_alone_with_everything_else_kept(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,librechat,knowledge-map")
+    history = _history(config)
+    ctx = _context(tmp_path)
+    _go(_off(config, "knowledge-map", "keep", operator_files=True), ctx)
+    # No `--volumes`: the scope keeps the data.
+    assert run.steps[0] == ("stop", ["--clean-up", "--profiles=knowledge-map"])
+    assert run.steps[-1] == ("purge", ("knowledge-map", False, False))
+    assert run.purge_operator_files == [True]
+    assert not history.exists()
+    assert "removed the edit history of the operator files" in _log(ctx)
+    [entry] = _audit(config)
+    assert entry["params"] == {"module": "knowledge-map", "scope": "keep", "operator_files": True}
+
+
+def test_the_operator_files_go_together_with_the_data_and_the_settings(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,librechat,knowledge-map")
+    ctx = _context(tmp_path)
+    _go(_off(config, "knowledge-map", "all", operator_files=True), ctx)
+    assert [s for s in run.steps if s[0] == "purge"] == [("purge", ("knowledge-map", True, True))]
+    assert run.purge_operator_files == [True]
+    assert "deleting its data, settings and operator files" in _log(ctx)
+
+
+def test_a_refused_purge_keeps_the_history_of_the_operator_files(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.purge_result = (3, "", "ERROR: knowledge-map is still switched on\n")
+    config = _config(tmp_path, "nginx,librechat,knowledge-map")
+    history = _history(config)
+    with pytest.raises(svc.PurgeFailedError, match="its operator files could not be deleted"):
+        _go(_off(config, "knowledge-map", "keep", operator_files=True), _context(tmp_path))
+    assert history.is_dir()
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
 # -- modules: the RAG system -------------------------------------------------------------------
 
 
@@ -352,6 +459,99 @@ def test_switching_the_rag_system_off_recreates_librechat_without_it(
         ("start", ["--profiles=librechat"]),
         ("purge", ("rag", True, True)),
     ]
+
+
+def test_switching_voice_on_recreates_litellm_and_librechat_after_it_started(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    # LiteLLM holds the routes and the engine key, LibreChat the speech panel; both read
+    # their rendered files once at start.
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="voice", variant="cpu", user="admin", workspace_dir="/w", config_dir=config
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps == [
+        ("setup", ModuleSetup("voice", True, "cpu")),
+        ("start", ["--profiles=voice"]),
+        ("stop", ["--clean-up", "--profiles=litellm"]),
+        ("start", ["--profiles=litellm"]),
+        ("stop", ["--clean-up", "--profiles=librechat"]),
+        ("start", ["--profiles=librechat"]),
+    ]
+    assert [e["target"] for e in _audit(config)] == ["module:voice"]
+
+
+def test_switching_voice_off_recreates_litellm_and_librechat_without_it(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,librechat,litellm,voice")
+    _go(_off(config, "voice", "all"), _context(tmp_path))
+    assert run.steps == [
+        ("stop", ["--clean-up", "--volumes", "--profiles=voice"]),
+        ("setup", ModuleSetup("voice", False)),
+        ("stop", ["--clean-up", "--profiles=litellm"]),
+        ("start", ["--profiles=litellm"]),
+        ("stop", ["--clean-up", "--profiles=librechat"]),
+        ("start", ["--profiles=librechat"]),
+        ("purge", ("voice", True, True)),
+    ]
+
+
+def _voice_on(config: str) -> Any:
+    return svc.enable_callback(
+        module="voice", variant="cpu", user="admin", workspace_dir="/w", config_dir=config
+    )
+
+
+def test_voice_that_is_still_loading_its_models_is_switched_on(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    # The first start downloads the models inside the containers, for far longer than the
+    # job waits (the core allows about 25 minutes). Still starting is loading, not failing.
+    health["health"] = ServiceHealth.STARTING
+    config = _config(tmp_path)
+    ctx = _context(tmp_path)
+    _go(_voice_on(config), ctx)
+    assert "voice: still starting" in _log(ctx)
+    assert "Services page" in _log(ctx)
+    assert run.names()[-2:] == ["stop", "start"]
+    assert [e["result"] for e in _audit(config)] == ["ok"]
+
+
+@pytest.mark.parametrize(
+    "state", [ServiceHealth.UNHEALTHY, ServiceHealth.STOPPED, ServiceHealth.MISSING]
+)
+def test_voice_that_fails_while_it_loads_is_still_said_so(
+    tmp_path: Path, run: _Run, health: dict[str, Any], state: ServiceHealth
+) -> None:
+    health["health"] = state
+    config = _config(tmp_path)
+    with pytest.raises(svc.NotHealthyError, match=f"the voice containers are {state.value}"):
+        _go(_voice_on(config), _context(tmp_path))
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_a_module_that_starts_quickly_and_is_still_starting_is_said_so(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    health["health"] = ServiceHealth.STARTING
+    config = _config(tmp_path)
+    with pytest.raises(svc.NotHealthyError, match="the localai containers are starting"):
+        _go(
+            svc.enable_callback(
+                module="localai", variant="cpu", user="admin", workspace_dir="/w", config_dir=config
+            ),
+            _context(tmp_path),
+        )
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_only_voice_and_its_overlay_load_for_longer_than_the_job_waits() -> None:
+    assert {m.name for m in modules.MODULES if m.slow_start} == {"voice"}
+    assert {t.key for t in overlay.TARGETS if t.slow_start} == {"chatterbox"}
 
 
 def test_a_core_that_refuses_the_rag_system_stops_before_anything_starts(
@@ -714,6 +914,34 @@ def test_a_group_that_starts_but_is_not_healthy_keeps_the_file_and_says_so(
     with pytest.raises(svc.NotHealthyError, match="Versions"):
         _go(_overlay_job(config), _context(tmp_path))
     assert overlay.read(config, "librechat").raw == NEW
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_a_chatterbox_overlay_is_applied_while_the_voice_engines_load_again(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    # Applying recreates the voice profile, whose engines load their models for longer than
+    # the job waits.
+    health["health"] = ServiceHealth.STARTING
+    config = _config(tmp_path, "nginx,litellm,voice")
+    ctx = _context(tmp_path)
+    _go(_overlay_job(config, key="chatterbox"), ctx)
+    assert run.steps == [
+        ("stop", ["--clean-up", "--profiles=voice"]),
+        ("start", ["--profiles=voice"]),
+    ]
+    assert overlay.read(config, "chatterbox").raw == NEW
+    assert "voice: still starting" in _log(ctx)
+    assert [e["result"] for e in _audit(config)] == ["ok"]
+
+
+def test_a_chatterbox_overlay_that_breaks_the_engine_is_still_said_so(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    health["health"] = ServiceHealth.UNHEALTHY
+    config = _config(tmp_path, "nginx,litellm,voice")
+    with pytest.raises(svc.NotHealthyError, match="Versions"):
+        _go(_overlay_job(config, key="chatterbox"), _context(tmp_path))
     assert [e["result"] for e in _audit(config)] == ["partial"]
 
 

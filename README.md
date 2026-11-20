@@ -65,12 +65,21 @@ default 60 seconds); it applies to every administrator.
 
 **Modules and overlay.** Settings has three tabs: **Manager** (the cards above),
 **Modules** and **Overlay**. **Modules** is the one place that switches the
-optional parts of the stack on and off: LocalAI, web search, the RAG system and the
-mail relay. Switching a module on stores the choice with the core's own `setup`
-(`--enable-local-ai`, `--enable-web-search`, `--enable-rag`, `--enable-smtp`, and for
-LocalAI the accelerator variant, which is chosen on the page because GPU detection
-cannot see the host from inside the container) and starts the module's profile; the
-RAG system also recreates LibreChat, whose configuration lists the RAG tools. The
+optional parts of the stack on and off: LocalAI, web search, the RAG system, voice
+(local speech-to-text and text-to-speech, papAIa 1.9.0 and newer), the mail relay and
+the AI map (the core's knowledge map, papAIa 1.9.0 and newer; switching it on also
+generates its secrets on an installation set up before the module existed, and shows
+the AI map page).
+Switching a module on stores the choice with the core's own `setup`
+(`--enable-local-ai`, `--enable-web-search`, `--enable-rag`, `--enable-voice`,
+`--enable-knowledge-map`, `--enable-smtp`, and for LocalAI and voice the accelerator variant, which is chosen on
+the page because GPU detection cannot see the host from inside the container; voice
+offers CPU, NVIDIA with a driver for CUDA 12.8 or newer, and AMD ROCm) and starts the
+module's profile; the RAG system and the AI map also recreate LibreChat, whose
+configuration lists their tools, and voice recreates LiteLLM and LibreChat, which route speech to its
+engines and offer it in the speech panel. Voice downloads several GB of models on its
+first start, which takes longer than a switch waits: the switch finishes while they
+load, and the Services page shows when voice is ready. The
 RAG pages and the Mail page hold those modules' settings and no longer switch
 anything. Switching a module on asks the questions `papaia-ctl setup` asks, inline under
 its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings
@@ -89,10 +98,14 @@ Deleting asks you to type the module's name, and the dialog lists the volumes th
 core reports. Settings alone are not offered: the RAG system's stored credentials are
 encrypted with a secret that belongs to its data, and a module without its settings
 but with its data would be of no use to anyone. The RAG documents folder is never
-deleted. Deleting needs a core with the module operations (papAIa 1.6.0); an older
+deleted. The AI map's own files (entries, overrides, gold set and governance records,
+edited on the AI map page) are neither data nor settings: no choice above deletes them.
+The dialog lists the ones that exist under **Your own files** with a separate,
+unticked **Also delete these files**, which also removes their edit history and the map
+built from them (papAIa 1.9.0 and newer). Deleting needs a core with the module operations (papAIa 1.6.0); an older
 core still switches modules off and keeps everything. **Overlay** edits the customer overlay, the files under
 `$PAPAIA_CONFIG_DIR/overlay/` that the core merges last into the LibreChat,
-LiteLLM and SearXNG configuration. The editor checks the YAML while you type,
+LiteLLM, Chatterbox (the speech synthesis of voice) and SearXNG configuration. The editor checks the YAML while you type,
 shows the effective result (the core merges the draft in memory and the page
 shows the difference to what the file renders to now; this needs a core with the
 `render-preview` command, otherwise only the syntax check is available), and
@@ -171,7 +184,7 @@ administrators:
 
 **Mail.** Administrators open **Mail** (System), which has two tabs: **Notifications** (the page the menu entry opens) and **Mail Server**.
 
-**Notifications.** The first tab is where the manager tells people when something needs attention. A recipient is one email address or one webhook URL, and each recipient ticks which events it receives, in a matrix of recipients and events that saves at once. The events: a **job failed** (a job in the manager's queue ended with an error, reported when it ends); the **backup is overdue** (the newest good backup is older than the backup schedule allows, so it needs a schedule); a **service is unhealthy** (a service a check saw brought up is now stopped, unhealthy or gone, also after you stopped it in the manager, with or without “Clean up”; a check runs right after every job in the manager ends; at most once per debounce window for each service); an **update is available** (a newer papAIa release, or a newer version of an installed add-on in a catalog on disk; catalogs are refreshed by hand, so an add-on update shows up after the refresh); a **certificate is expiring** (within the lead time, among the certificates the host check sees). The check interval (default 5 minutes), the debounce (30 minutes) and the lead time (14 days) are the same for every recipient. Each event is reported once per occurrence, and the manager remembers what it reported (`manager/notifications-state.json`), so a restart sends nothing twice. Email goes through the mail relay: while the Mail Server is not set up, the tab says so and email recipients wait, and webhooks keep working. A webhook gets a JSON `POST` of `{event, severity, message, timestamp, details}`; redirects are not followed and a network error or a 5xx answer is tried once more. Its URL is kept in `manager/notifications.yaml` (mode 0600, part of the configuration directory's backups) and is never shown again after it is saved, only its host. **Send test** checks a recipient, and the tab lists what was sent lately. A notification carries no job log and no error text, only what is needed to find the job. Restores, upgrades and whole-stack actions run outside the job queue and are not reported.
+**Notifications.** The first tab is where the manager tells people when something needs attention. A recipient is one email address or one webhook URL, and each recipient ticks which events it receives, in a matrix of recipients and events that saves at once. The events: a **job failed** (a job in the manager's queue ended with an error, reported when it ends); the **backup is overdue** (the newest good backup is older than the backup schedule allows, so it needs a schedule); a **service is unhealthy** (a service a check saw brought up is now stopped, unhealthy or gone, also after you stopped it in the manager, with or without “Clean up”; a check runs right after every job in the manager ends; at most once per debounce window for each service); an **update is available** (a newer papAIa release, or a newer version of an installed add-on in a catalog on disk; catalogs are refreshed by hand, so an add-on update shows up after the refresh); a **certificate is expiring** (within the lead time, among the certificates the host check sees); an **AI map finding** (a new or changed high finding of the AI map that no exception covers, from the core's render or from the manager's check of the models against LiteLLM; only while the `knowledge-map` profile runs). The check interval (default 5 minutes), the debounce (30 minutes) and the lead time (14 days) are the same for every recipient. Each event is reported once per occurrence, and the manager remembers what it reported (`manager/notifications-state.json`), so a restart sends nothing twice. Email goes through the mail relay: while the Mail Server is not set up, the tab says so and email recipients wait, and webhooks keep working. A webhook gets a JSON `POST` of `{event, severity, message, timestamp, details}`; redirects are not followed and a network error or a 5xx answer is tried once more. Its URL is kept in `manager/notifications.yaml` (mode 0600, part of the configuration directory's backups) and is never shown again after it is saved, only its host. **Send test** checks a recipient, and the tab lists what was sent lately. A notification carries no job log and no error text, only what is needed to find the job. Restores, upgrades and whole-stack actions run outside the job queue and are not reported.
 
 **Mail Server.** The second tab sets up the stack's outbound mail relay, the optional `smtp` profile of papAIa 1.6.0 and newer. One internal relay holds the credentials of your mail server and forwards to it, and Keycloak, and add-ons that attach it, send through it. The page edits the mail server behind the relay, with the relay on or off: host, connection security (STARTTLS, TLS or none), port, login, password, sender address and sender name. The password is write-only: it is never shown, an empty field keeps the stored one, and a stored password is only used for the host, port and login it was stored with. **Save and apply** is a queued job: the core's own `setup` stores the values (so its validation, sticky values and password revision stay in one place), and while the relay is on `papaia-ctl start --profiles=smtp` recreates it and Keycloak's realm gets the relay as its mail server, so the Users page offers "email a link" from then on. With the relay off the button is **Save settings** and only stores the values. The relay is switched on and off in Settings > Modules. A job whose last step could not reach Keycloak fails with that reason instead of reporting success. **Test connection** talks to the mail server with the values in the form (greeting, STARTTLS or TLS, login) without sending a mail or saving anything, and **Send test mail** hands one message to the relay: "sent" means the relay took it, not that it arrived, because the relay queues and retries for a day. The page shows whether the relay runs and how many messages wait in its queue. Switching the relay off (in Settings > Modules) stops it, takes it out of the stack's profiles and removes the mail server it put into the realm; the settings and the password are kept unless you choose to delete them there. The page needs a core with the relay and tells you so otherwise.
 
@@ -521,6 +534,41 @@ logs or sends anywhere else; a LiteLLM that is down, or a key it refuses, is a m
 page and not an error. A reading is kept for a minute and shared between everyone who has the
 page open.
 
+**AI map.** An admin-only page at `/knowledge-map` with its own sidebar entry, shown while the
+core runs its `knowledge-map` profile (without it, the page links to **Settings > Modules**, where the AI map is switched on). It shows which data the AI reaches, for whom, over which access path
+and with which model. The **Map** tab draws the rendered map as a layered graph (topics,
+sources, access paths, agents) and can show it as a chosen role; the **Entries** tab lists every
+entry with all its access paths and their roles; **Findings** lists what the core's render
+reports. **Test routing** asks the map server which source would answer a question for a set
+of roles, without recording the question. **Usage** shows what the map server records (its
+learning mode, how long it keeps records and how many distinct profiles a need must come from
+before it is listed) and the gold-set runs (the **Usage & quality** tab); **Suggestions** offers refinements the map server
+mined from use, to accept or reject: a suggestion that carries text people asked is only
+accepted with the confirmation that it names no person. **New entry** and **Edit** open an
+entry as a form (what it is, topics and which of them it is authoritative for, example
+questions, "not here, but there", access paths, who may know it exists) with a quality checklist
+and a probe that asks the map server where each example question would land with the entry as
+it stands in the form, each question tested without itself among the examples; nothing is
+saved or recorded by the probe. An entry of your own is saved in `sources.yaml` and can be
+removed; an entry an add-on, a module or the inventory declares is saved as an override of
+only the fields that differ, each changed field marked and resettable to the declaration. An
+undescribed MCP server opens as a new entry for the source behind it. **Files** edits the operator files under
+`overlay/knowledge-map/` (own entries, overrides, gold set). The **Governance** tab documents
+owner, classification, personal data, data subjects and the record-of-processing reference of
+each source and the tier of each model (`overlay/knowledge-map/governance.yaml`), confirms an
+add-on's proposal or a model's suggested tier with one click, lists the agents with their model
+tier and what they reach, and shows the findings with what to change, each acceptable until a
+date; the render evaluates the rules, the page shows its results in the reader's language and
+adds a live check of the model tiers against LiteLLM. The facts can be exported as
+`facts.json` or `facts.csv` for a GRC tool, a CMDB or a wiki. Every change is a queued job that
+checks the file, writes it, renders the map and puts the previous file back when the render
+refuses it. The page reads the map from the configuration directory and the rest from the map
+server's admin API at `KNOWLEDGE_MAP_URL` (default `http://knowledge-map-mcp:8200`) with the
+bearer `KM_ADMIN_TOKEN` from `ai/knowledge-map/.env`, which it never shows, logs or sends
+anywhere else; a map server that can't be asked is a message on the page. Neither the map nor
+the page restricts data access or model use; the target systems, LiteLLM and the chat's agent
+bindings do.
+
 **Catalogs.** A catalog is a source of add-ons — a public or private Git
 repository, or a local directory — registered at runtime (not versioned in
 this repo). Each catalog is scanned for top-level `papaia-app.yaml`
@@ -551,6 +599,26 @@ add-on's `.env`. The pinned tags are read from that file, so the pages need no
 Docker. The list is also `components` in the JSON of an add-on. A catalog whose
 manifests have no `components` shows nothing new.
 
+**Requirements.** An add-on can require other add-ons (`requires.addons` in its
+manifest, by name or with a version range; papAIa 1.9.0 and newer). The gallery card
+and the add-on page show each requirement as a badge that links to the required
+add-on and says whether it is active, inactive, missing, too old or could not be
+checked. While one is not met, *Install* and *Reactivate* are disabled with the reason;
+in the core's warn mode the button stays usable, because `papaia-ctl` then installs
+anyway. The other direction is shown too: the page of a required add-on lists the
+active add-ons that require it under **Required by**, and while there are any, *Remove*
+and *Uninstall* are disabled and refused, because `papaia-ctl` would refuse them as
+well. `papaia-ctl` stays the gate: what the manager cannot read never disables a button.
+
+**Maintenance actions.** An add-on can declare maintenance actions in its manifest
+(`actions`; papAIa 1.9.0 and newer), for example a re-index or a reset. While the add-on
+is installed and active, its page lists them as buttons under **Maintenance actions**
+with their descriptions, and a click runs `papaia-ctl addon run <add-on> <action>` as a
+job. A destructive action is outlined in red and asks for confirmation first; when the
+job ends, the page reports the outcome with a link to its log. The request names the
+action only, never a command, and an action the manifest does not declare is refused.
+A distributed installation offers no actions, since the core does not run them there.
+
 **Jobs.** Installs, upgrades, and lifecycle verbs that shell out to
 `papaia-ctl` can take minutes (image pulls, container starts). These run as
 queued `Job` objects processed one at a time by a single worker; the UI
@@ -563,7 +631,9 @@ inactive; its volumes and configuration stay. `papaia-ctl addon remove` alone
 only marks it inactive and leaves the containers running, so the job stops them
 first (`addon stop --clean-up`) and leaves the add-on active if that fails. It is
 refused (409) while the add-on's `docker-compose.yml` is missing: `papaia-ctl`
-then aims its Compose call at the core project instead of the add-on's.
+then aims its Compose call at the core project instead of the add-on's. It is
+also refused (409), like *Uninstall*, while an active add-on requires it, and the
+job checks that again before it stops anything.
 
 **Backup / Restore.** A separate, admin-only section for stack-level operations,
 served at `/backup` — it was called "Maintenance" up to 0.2.0 and `/maintenance`
@@ -635,6 +705,9 @@ at the end of its start (the NPM proxy hosts or the Keycloak role sync), because
 papaia-ctl only warns about those; the result panel then lists each such step with
 the line papaia-ctl printed and the command that runs it again on the host. The
 runner logs carry stderr as well as stdout, so these warnings reach the panel.
+The panel reads the end of the runner's log; when the image pull fills that part,
+the phases before the first one shown count as done ("earlier than the part of the
+log shown"), and a backup skipped with `--no-backup` still reads as skipped.
 
 Upgrades leave the previous versions of the stack's Docker images behind. The
 upgrade dialog offers to remove them once the upgrade has succeeded (selected by
@@ -679,7 +752,7 @@ instead.
 
 **Nodes.** On a distributed installation (papAIa 1.8.0 and newer, an experimental mode of the core) an admin-only `/nodes` page lists the machines with their services, address, status, version and link health. A node that does not answer stays in the list and says so. Adding a node registers it and writes its join archive; the page shows the commands to run on the node and the host keys it offers, for the administrator to compare and confirm. Removing a node and confirming a host key are on its detail page. Each of these changes needs a fresh sign-in at Keycloak, valid for five minutes, on top of the admin role, and each is audited. On a single host the page and its sidebar entry do not exist. The image carries an SSH client for this, and its entrypoint gives the host's user id a name, which OpenSSH requires; the keys stay in the configuration directory, managed by the core.
 
-On such an installation the other pages follow the nodes. Services has a section per node, read from the core's merged `status`, and names a node that does not answer; an action on a group runs on the node that owns it. Host offers a node selector and shows the core's `nodes` and `links` checks. The dashboard's service, disk and certificate cards look at every node and name the one that needs attention, and a node without a reading keeps a card from saying everything is fine. Modules, the overlay editor and the mail settings name the node a module runs on, and a change runs on that node and then on the nodes of the proxy and of Keycloak, whose provisioning steps add proxy hosts, roles and the realm's mail server. A failure on one of those two nodes does not undo the change, which is in place on the module's own node: the job ends with a warning that names the node and the `papaia-ctl start --node=<node>` that catches it up. Switching a module off keeps its data and its settings there, since the core does not delete volumes across nodes yet; the dialog offers no deletion and the API refuses `data` and `all`. The mail relay's state comes from its node's health reading, so the Mail page adds no `doctor` run of its own. Users & Roles and Models & Usage keep dialling `keycloak:8443` and `litellm:4000`, which the link gateway carries.
+On such an installation the other pages follow the nodes. Services has a section per node, read from the core's merged `status`, and names a node that does not answer; an action on a group runs on the node that owns it. Host offers a node selector and shows the core's `nodes` and `links` checks. The dashboard's service, disk and certificate cards look at every node and name the one that needs attention, and a node without a reading keeps a card from saying everything is fine. Modules, the overlay editor and the mail settings name the node a module runs on, and a change runs on that node and then on the nodes of the proxy and of Keycloak, whose provisioning steps add proxy hosts, roles and the realm's mail server. A failure on one of those two nodes does not undo the change, which is in place on the module's own node: the job ends with a warning that names the node and the `papaia-ctl start --node=<node>` that catches it up. The mail relay is the exception for Keycloak's node, since giving the realm its mail server is what its start is for; only the proxy's node is skipped there. Switching a module off keeps its data and its settings there, since the core does not delete volumes across nodes yet; the dialog offers no deletion and the API refuses `data` and `all`. The mail relay's state comes from its node's health reading, so the Mail page adds no `doctor` run of its own. Users & Roles and Models & Usage keep dialling `keycloak:8443` and `litellm:4000`, which the link gateway carries.
 
 Backups keep going to the controller, as in the core: the Backup page can back up one node or all, and a restore can pick a remote node as a whole, which touches no other node. The page says that a restore point is not one moment across nodes. An upgrade moves all nodes through the same detached runner; the Upgrade page shows the release per node and each node's latest step. While an upgrade has not finished or a node runs another release, every admin page says so, and starting the stack or a backup is refused with that reason. `stop`, the upgrade and a restore stay possible.
 
@@ -770,7 +843,8 @@ PUT    /api/v1/rag/ingest/catalog/raw      # {text, revision}
 GET    /api/v1/rag/ingest/catalog/defaults # the defaults every job inherits
 PUT    /api/v1/rag/ingest/catalog/defaults # {defaults}
 
-GET  /api/v1/addons                        # each add-on with its status and its bundled `components`
+GET  /api/v1/addons                        # each add-on with its status, its bundled `components`, its `requirements`
+                                           #   (`requirements_met`, `requirements_enforced`) and `required_by`
 GET  /api/v1/addons/{name}
 GET  /api/v1/addons/{name}/env-form
 POST /api/v1/addons/{name}/install         # → 202
@@ -778,7 +852,9 @@ POST /api/v1/addons/{name}/start           # → 202
 POST /api/v1/addons/{name}/stop            # {clean_up?} → 202
 POST /api/v1/addons/{name}/restart         # {clean_up?} stop then start → 202
 POST /api/v1/addons/{name}/remove          # stop and remove the containers, then deactivate → 202; 409 without its docker-compose.yml
-POST /api/v1/addons/{name}/uninstall       # → 202
+                                           #   or while an active add-on requires it
+POST /api/v1/addons/{name}/uninstall       # → 202; 409 while an active add-on requires it
+POST /api/v1/addons/{name}/actions/{action} # run an action the manifest declares → 202; 404 if undeclared or the add-on is not active, 409 in a distributed installation
 GET  /api/v1/addons/upgrades                # {supported, upgrades: [{name, installed, available, catalog}]}
 POST /api/v1/addons/{name}/upgrade-plan     # {revision?} stage the catalog's version, ask papaia-ctl what upgrading would do → {revision, plan, form}
 POST /api/v1/addons/{name}/upgrade          # {env?, revision?, backup?} → 202; 409 if the gate refuses, 422 for a missing value
@@ -842,6 +918,29 @@ GET    /api/v1/models                        # the models LiteLLM serves: type, 
 GET    /api/v1/models/usage                  # ?range=7d|30d|90d|month|custom&from=&to= (UTC days):
                                              #   totals, per day and per model; 422 for a window that
                                              #   makes no sense, 503 when LiteLLM cannot be read
+GET    /api/v1/knowledge-map                 # the rendered map: entries, findings, warnings, operator files
+GET    /api/v1/knowledge-map/server          # the map server's own view; 503 when it can't be asked
+POST   /api/v1/knowledge-map/simulate        # {need, roles?} route a question as a role set (not recorded)
+GET    /api/v1/knowledge-map/stats           # usage aggregates and what the server records
+GET    /api/v1/knowledge-map/eval/history    # the gold-set runs
+POST   /api/v1/knowledge-map/eval            # run the gold set
+GET    /api/v1/knowledge-map/suggestions     # ?days= refinements mined from use
+POST   /api/v1/knowledge-map/suggestions/{id}  # {decision: accepted|rejected, days?, confirm_no_personal_data?}
+                                             #   accepted → 202 {job_id}; 422 when the merged file fails the check
+GET    /api/v1/knowledge-map/entries/{id}      # one entry as a form: fields, origin, changed fields, revision
+POST   /api/v1/knowledge-map/entries           # {fields, revision} a new own entry → 202 {job_id}
+PUT    /api/v1/knowledge-map/entries/{id}      # {fields, reset?, revision} own: sources.yaml, declared: override → 202
+DELETE /api/v1/knowledge-map/entries/{id}      # {revision} an own entry → 202 {job_id}
+POST   /api/v1/knowledge-map/entries/probe     # {fields, questions, replaces?} where the questions would land (not saved)
+POST   /api/v1/knowledge-map/files/{key}/check # {content} → {ok, problems}; key: sources|overrides|goldset|governance
+PUT    /api/v1/knowledge-map/files/{key}     # {content, revision} → 202 {job_id}
+GET    /api/v1/knowledge-map/governance      # sources, models, agents and findings of the Governance tab
+PUT    /api/v1/knowledge-map/governance/entries/{id}   # {revision, owner?, classification?, personal_data?,
+                                             #   data_subjects?, ropa_ref?} → 202 {job_id}
+POST   /api/v1/knowledge-map/governance/entries/{id}/confirm-proposal  # {revision} → 202 {job_id}
+PUT    /api/v1/knowledge-map/governance/models/{name}  # {revision, tier?, role?}; no tier removes it → 202
+PUT    /api/v1/knowledge-map/governance/exceptions     # {revision, exceptions} → 202 {job_id}
+GET    /api/v1/knowledge-map/governance/export/{name}  # facts.json or facts.csv
 GET    /brand/logo                           # the stored logo, for any signed-in user
 POST   /account/language                     # form fields locale (auto or a shipped language), csrf_token, next?: the
                                              #   signed-in account's own language, for every role; 303 back to the page
@@ -874,14 +973,16 @@ PUT    /api/v1/mail                          # {revision, host, port?, security,
 POST   /api/v1/mail/probe                    # {host?, port?, security?, user?, password?} try the mail server, send nothing
 POST   /api/v1/mail/test-message             # {to} hand one message to the relay
 
-GET    /api/v1/config/modules                # the optional modules, their state, the LocalAI variants, the revision
-GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | mail: the volumes and settings a switch-off could delete,
-                                             #   and the open setup questions (public URL) a switch-on asks
-POST   /api/v1/config/modules/{name}/enable  # {revision, variant?, public_url?, mail?} 202 with a job. public_url: rag | localai; mail: the mail
+GET    /api/v1/config/modules                # the optional modules, their state, the LocalAI and voice variants (variants, voice_variants), the revision
+GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | voice | mail | knowledge-map: the volumes and settings a switch-off
+                                             #   could delete, the knowledge map's operator files and whether each exists, and the open setup questions (public URL)
+                                             #   a switch-on asks
+POST   /api/v1/config/modules/{name}/enable  # {revision, variant?, public_url?, mail?} 202 with a job. variant: localai | voice; public_url: rag | localai; mail: the mail
                                              #   server when none is stored. The RAG system needs no clashing add-on
-POST   /api/v1/config/modules/{name}/disable # {revision, scope?: keep|data|all, confirm?}; 202 with a job. A deletion needs the module name in confirm, and a single host
-GET    /api/v1/config/overlay                # the three editable overlay files and the other files under overlay/
-GET    /api/v1/config/overlay/{key}          # librechat | litellm | searxng: content, revision, versions
+POST   /api/v1/config/modules/{name}/disable # {revision, scope?: keep|data|all, operator_files?, confirm?}; 202 with a job. A deletion needs the module name in
+                                             #   confirm, and a single host. operator_files: knowledge-map only, also deletes the files written on the AI map page
+GET    /api/v1/config/overlay                # the four editable overlay files and the other files under overlay/
+GET    /api/v1/config/overlay/{key}          # librechat | litellm | chatterbox | searxng: content, revision, versions
 POST   /api/v1/config/overlay/{key}/check    # {content} syntax check, nothing is written
 POST   /api/v1/config/overlay/{key}/preview  # {content} the effective result as a diff (needs the core's render-preview)
 PUT    /api/v1/config/overlay/{key}          # {content, revision} save, back up and recreate; 202 with a job, 409 if stale
@@ -917,6 +1018,8 @@ papaia-manager/
 │       ├── core/           # ctl (whitelisted papaia-ctl calls), papaia_lib (core handshake),
 │       │                   # catalogs, snapshots, status, env-forms, jobs, audit, tiles,
 │       │                   # components (the software an add-on bundles),
+│       │                   # requirements (the add-ons an add-on requires, and which require it),
+│       │                   # actions (the maintenance actions an add-on declares),
 │       │                   # addon_upgrades + semver (reviewing, applying and rolling back an add-on upgrade),
 │       │                   # user_prefs (what each account chose: its language),
 │       │                   # keycloak, keycloak_users + users_service + roles_service (the Users page),
@@ -929,6 +1032,9 @@ papaia-manager/
 │       │                   # host_health + docker_usage (host readings from the core's doctor),
 │       │                   # nodes (a distributed installation: the registry, the executors, the lock),
 │       │                   # litellm + model_usage + usage_view + charts (Models & Usage),
+│       │                   # knowledge_map + knowledge_map_client + knowledge_map_jobs +
+│       │                   # knowledge_map_entries (the entry editor) +
+│       │                   # knowledge_map_governance (the AI map page),
 │       │                   # rag (optional RAG system: dashboard tile, sidebar gate, settings
 │       │                   # read from the RAG module's .env) +
 │       │                   # qdrant (REST client) + rag_collections (collections and roles),
@@ -953,6 +1059,8 @@ papaia-manager/
 │       │                   # api_config, ui_config, api_mail, ui_mail, api_notifications,
 │       │                   # ui_notifications, ui_widgets, account (the account's language),
 │       │                   # api_models, ui_models, models_deps (Models & Usage),
+│       │                   # api_knowledge_map, api_knowledge_map_governance, ui_knowledge_map,
+│       │                   # knowledge_map_deps (the AI map page),
 │       │                   # api_nodes, ui_nodes (a distributed installation),
 │       │                   # stack_guard (the refusals the configuration routes share)
 │       ├── templates/      # Jinja2 pages + HTMX partials
