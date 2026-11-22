@@ -1,12 +1,9 @@
-{# Aggregate status, rendered into the sidebar above the footer of every page.
+{# Aggregate status, rendered into the status row at the top of every page.
 
-   One row, not a pill per area: it always says the same amount, and the
-   breakdown is in the popover behind it. It is a `sidebar-row`, so the rail
-   treats it like every other entry -- the label goes, the dot stays, and the
-   dot is then the whole message, which is why `aria-label` carries the verdict.
+   One chip, not a pill per area: it always says the same amount, and the
+   breakdown is in the popover behind it. `aria-label` carries the verdict.
 
-   It is tinted only when something is wrong. The sidebar is made of quiet rows,
-   and a healthy stack should look like one of them.
+   It is tinted only when something is wrong; a healthy stack should look quiet.
 
    Core and add-ons still do not share a verdict. The row aggregates them for
    its one line -- `worst()` in the router decides that, so the severity order
@@ -39,41 +36,36 @@
 
 {# `dropdown-hover` on top of the default focus behaviour, not instead of it:
    the trigger stays a `tabindex="0"` element, so the popover is reachable by
-   keyboard as well. It opens upwards, like the account menu in the same
-   footer, and the panel does not clip it (see the Sidebar block in
-   docker/tailwind.app.css), so it escapes the rail. #}
-<div class="dropdown dropdown-top dropdown-hover w-full">
+   keyboard as well. It opens downwards, below the chip. #}
+<div class="dropdown dropdown-hover">
 
-  {# The dot sits in a 1rem slot so it lines up with the icons of the rows above
-     it, and the row is as tall as they are, so the height reserved for it in
-     base.html is exact. #}
   {% if state in ("missing", "stopped") %}
   <div tabindex="0" role="button" aria-label="{{ _('Stack status: %(label)s', label=label) }}"
-       class="sidebar-row flex w-full items-center gap-3 rounded-lg bg-error/10 px-3 py-2.5 text-sm font-medium text-error">
+       class="flex items-center gap-2 rounded-lg bg-error/10 px-2 py-1 text-sm font-medium text-error">
     <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-error"></span></span>
-    <span class="sidebar-label">{{ label }}</span>
+    <span>{{ label }}</span>
   </div>
   {% elif state in ("unhealthy", "starting") %}
   <div tabindex="0" role="button" aria-label="{{ _('Stack status: %(label)s', label=label) }}"
-       class="sidebar-row flex w-full items-center gap-3 rounded-lg bg-warning/10 px-3 py-2.5 text-sm font-medium text-warning">
+       class="flex items-center gap-2 rounded-lg bg-warning/10 px-2 py-1 text-sm font-medium text-warning">
     <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-warning"></span></span>
-    <span class="sidebar-label">{{ label }}</span>
+    <span>{{ label }}</span>
   </div>
   {% elif state == "unknown" %}
   <div tabindex="0" role="button" aria-label="{{ _('Stack status unknown') }}"
-       class="sidebar-row flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-base-content/70">
+       class="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-base-content/70">
     <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-neutral"></span></span>
-    <span class="sidebar-label">{% trans %}Status unknown{% endtrans %}</span>
+    <span>{% trans %}Status unknown{% endtrans %}</span>
   </div>
   {% else %}
   <div tabindex="0" role="button" aria-label="{{ _('Stack status: all healthy') }}"
-       class="sidebar-row flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-success">
+       class="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-success">
     <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-success"></span></span>
-    <span class="sidebar-label">{% trans %}All healthy{% endtrans %}</span>
+    <span>{% trans %}All healthy{% endtrans %}</span>
   </div>
   {% endif %}
 
-  <div tabindex="0" class="dropdown-content z-30 mb-1 w-64 rounded-box border border-base-300 bg-base-100 p-3 shadow">
+  <div tabindex="0" class="dropdown-content z-30 mt-1 w-64 rounded-box border border-base-300 bg-base-100 p-3 shadow">
 
     <div class="flex items-center gap-2 text-sm">
       {% trans dot=(dot(core_overall | string)) %}{{ dot }} <span class="flex-1 font-medium">Core stack</span> <span class="text-xs opacity-60">{{ core_running }} / {{ core_total }} running</span>{% endtrans %}

@@ -41,7 +41,7 @@
   {# ---- the latest run ---- #}
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
-      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}Latest run{% endtrans %}</p>
+      <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}Latest run{% endtrans %}</p>
       {% if row.active_run %}
         {% set run = row.active_run %}
         <div class="flex flex-wrap items-center gap-2">
@@ -82,7 +82,7 @@
   {# ---- what it does ---- #}
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
-      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}What it does{% endtrans %}</p>
+      <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}What it does{% endtrans %}</p>
       <dl class="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-[10rem_1fr]">
         <dt class="opacity-60">{% trans %}Source{% endtrans %}</dt>
         <dd>

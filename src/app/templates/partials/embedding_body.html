@@ -67,7 +67,7 @@
   <!-- 1. The collection -->
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
-      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">{% trans %}Collection{% endtrans %}</p>
+      <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide">{% trans %}Collection{% endtrans %}</p>
       <div class="flex flex-wrap items-center gap-3">
         <select class="select select-bordered select-sm font-mono" aria-label="{{ _('Collection') }}"
                 onchange="reloadEmbedding(this.value)">
@@ -90,7 +90,7 @@
   <!-- 2. The files -->
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
-      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">{% trans %}Files{% endtrans %}</p>
+      <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide">{% trans %}Files{% endtrans %}</p>
 
       <div role="tablist" class="tabs tabs-boxed w-fit">
         <button type="button" role="tab" class="tab" :class="tab === 'upload' ? 'tab-active' : ''"
@@ -169,7 +169,7 @@
   <!-- 3. How -->
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
-      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">{% trans %}What to do with them{% endtrans %}</p>
+      <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide">{% trans %}What to do with them{% endtrans %}</p>
 
       <div class="grid gap-3 sm:grid-cols-2">
         <label class="flex cursor-pointer items-start gap-3 rounded-lg border p-3"

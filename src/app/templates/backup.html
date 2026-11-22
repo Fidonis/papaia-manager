@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% from "partials/_actions.html" import bulk_bar %}
-{% block title %}{% trans branding=branding().name %}Backup / Restore — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{% trans %}Backup / Restore{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Back up and restore the stack{% endtrans %}</p>{% endblock %}
@@ -309,7 +308,7 @@ async function _apiError(r) {
 }
 
 function _csrf() {
-  return document.querySelector('meta[name=csrf]').content;
+  return csrfToken();
 }
 
 // refreshBackupJobStatus: re-read the strip that owns the running state. Called
@@ -543,7 +542,7 @@ function _renderPicker() {
     if (group.kind !== lastKind) {
       lastKind = group.kind;
       box.appendChild(_node('div',
-        'px-3 py-1.5 text-xs uppercase tracking-wide opacity-50 bg-base-200',
+        'px-3 py-1.5 text-xs uppercase tracking-wide text-pk-text-muted bg-base-200',
         headings[group.kind] || {{ _('Other')|tojson }}));
     }
     box.appendChild(_groupRow(group));
@@ -706,7 +705,7 @@ function _renderStep() {
 
 function _section(title, bodyClass) {
   var wrap = _node('div', '');
-  wrap.appendChild(_node('p', 'text-xs uppercase tracking-wide opacity-50 mb-1.5', title));
+  wrap.appendChild(_node('p', 'text-xs uppercase tracking-wide text-pk-text-muted mb-1.5', title));
   var body = _node('div', bodyClass || '');
   wrap.appendChild(body);
   return { wrap: wrap, body: body };

@@ -258,21 +258,19 @@ def test_another_account_is_not_affected(app: FastAPI) -> None:
     assert '<html lang="en">' in page.text
 
 
-def test_the_picker_marks_the_choice_and_offers_every_shipped_language(app: FastAPI) -> None:
+def test_the_picker_marks_the_choice_and_offers_the_frame_languages(app: FastAPI) -> None:
+    """The account menu of the shared frame offers automatic, German and English."""
     browser = _device(app, _ALICE, "admin")
     _choose(browser, "de")
 
     page = browser.get("/").text
 
-    assert 'name="locale" value="auto"' in page
-    codes = get_catalogs().codes()
-    assert {"en", "de"} <= set(codes)
-    for code in codes:
-        assert f'name="locale" value="{code}"' in page
-    german = page.index('name="locale" value="de"')
-    assert 'aria-current="true"' in page[german : german + 300]
-    english = page.index('name="locale" value="en"')
-    assert 'aria-current="true"' not in page[english : english + 300]
+    assert {"en", "de"} <= set(get_catalogs().codes())
+    for value in ("browser", "de", "en"):
+        assert f'name="language" value="{value}"' in page
+    assert 'name="language" value="de" aria-current="true"' in page
+    assert 'name="language" value="en" aria-current="true"' not in page
+    assert 'name="language" value="browser" aria-current="true"' not in page
 
 
 # ---------------------------------------------------------------------------

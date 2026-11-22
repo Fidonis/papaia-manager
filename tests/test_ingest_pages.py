@@ -47,6 +47,7 @@ from app.main import create_app  # noqa: E402
 from app.routers.rag_deps import get_http_transport  # noqa: E402
 from tests.fake_ingest import TOKEN, FakeIngest  # noqa: E402
 from tests.fake_qdrant import API_KEY, FakeQdrant, Fleet  # noqa: E402
+from tests.shell_nav import current_rows, nav_groups, nav_section  # noqa: E402
 
 _CSRF = "test-csrf-token-value"
 
@@ -204,32 +205,26 @@ def test_the_pages_are_not_there_when_the_rag_system_is_off(
 
 
 def _nav(body: str) -> dict[str, list[str]]:
-    nav = body[body.index("<nav") : body.index("</nav>")]
-    parts = re.split(r'<p class="sidebar-label[^>]*>([^<]+)</p>', nav)
-    groups = {"": re.findall(r'aria-label="([^"]+)"', parts[0])}
-    for caption, chunk in zip(parts[1::2], parts[2::2], strict=True):
-        groups[caption] = re.findall(r'aria-label="([^"]+)"', chunk)
-    return groups
+    return nav_groups(body)
 
 
 def test_the_sidebar_lights_the_right_entry(client: TestClient) -> None:
     def active(path: str) -> list[str]:
-        body = _body(client, path)
-        return re.findall(r'aria-label="([^"]+)"\s+class="[^"]*bg-secondary/15', body)
+        return current_rows(_body(client, path))
 
-    assert active("/ingest/jobs") == ["Ingest Jobs"]
-    assert active("/ingest/secrets") == ["Ingest Jobs"]
-    assert active("/ingest/new") == ["Ingest Jobs"]
+    assert active("/ingest/jobs") == ["/ingest/jobs"]
+    assert active("/ingest/secrets") == ["/ingest/jobs"]
+    assert active("/ingest/new") == ["/ingest/jobs"]
     # The runs are a tab of the jobs section and have no entry of their own.
-    assert active("/ingest/runs") == ["Ingest Jobs"]
-    assert active("/ingest/runs/abc") == ["Ingest Jobs"]
+    assert active("/ingest/runs") == ["/ingest/jobs"]
+    assert active("/ingest/runs/abc") == ["/ingest/jobs"]
     # The manager's own queue is another page and does not light these.
-    assert "Ingest Jobs" not in active("/jobs")
+    assert "/ingest/jobs" not in active("/jobs")
 
 
 def test_the_sidebar_has_one_entry_for_the_ingest_pages(client: TestClient) -> None:
     body = _body(client, "/ingest/runs")
-    sidebar = body[body.index("<nav") : body.index("</nav>")]
+    sidebar = nav_section(body)
 
     assert _nav(body)["RAG"] == ["Connections", "Collections", "Embedding", "Ingest Jobs"]
     assert 'href="/ingest/runs"' not in sidebar
@@ -241,11 +236,11 @@ def test_the_pages_are_named_in_title_case(client: TestClient, deployment: Deplo
     jobs = _body(client, "/ingest/jobs")
     runs_page = _body(client, "/ingest/runs")
 
-    assert ">Ingest Jobs</h1>" in jobs and "<title>Ingest Jobs —" in jobs
-    assert ">Ingest Runs</h1>" in runs_page and "<title>Ingest Runs —" in runs_page
+    assert ">Ingest Jobs</h1>" in jobs and "<title>Ingest Jobs – Manager –" in jobs
+    assert ">Ingest Runs</h1>" in runs_page and "<title>Ingest Runs – Manager –" in runs_page
     # A page that names its parent says it the same way.
-    assert re.search(r"Ingest Jobs\s*</a>", _body(client, "/ingest/jobs/handbook"))
-    assert re.search(r"Ingest Runs\s*</a>", _body(client, "/ingest/runs/some-run"))
+    assert '<a href="/ingest/jobs">Ingest Jobs</a>' in _body(client, "/ingest/jobs/handbook")
+    assert '<a href="/ingest/runs">Ingest Runs</a>' in _body(client, "/ingest/runs/some-run")
     assert "Ingest Jobs" in _body(client, "/ingest/new")
 
 
@@ -917,8 +912,9 @@ def test_a_poll_waits_while_a_row_menu_is_open_and_a_wide_table_cannot_widen_the
 
     # The list swaps itself every few seconds while a run works; that must not close a menu.
     assert "htmx:beforeSwap" in jobs and "shouldSwap = false" in jobs
-    # Without `min-w-0` a table in `overflow-x-auto` widens the main column and with it the page.
-    assert 'class="app-main ml-64 flex min-h-screen w-full min-w-0 flex-col"' in jobs
+    # The frame's content column has `min-width: 0` (kit stylesheet), so a table in
+    # `overflow-x-auto` scrolls in its wrapper instead of widening the page; the page sits in it.
+    assert '<div class="pk-content">' in jobs and '<main id="pk-main"' in jobs
 
 
 def test_the_credentials_page_explains_a_missing_key_and_an_old_ingester(

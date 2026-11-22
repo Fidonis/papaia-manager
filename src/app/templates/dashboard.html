@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}{% trans branding=branding().name %}Dashboard — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{% trans %}Dashboard{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Your papAIa applications{% endtrans %}</p>{% endblock %}
@@ -60,7 +59,7 @@
   function tilesCsrf() {
     return {
       "Content-Type": "application/json",
-      "X-CSRF-Token": document.querySelector("meta[name=csrf]").content,
+      "X-CSRF-Token": csrfToken(),
     };
   }
 

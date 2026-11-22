@@ -3642,10 +3642,6 @@ msgstr "Dieses Konto wurde nicht gefunden"
 msgid "Add-Ons"
 msgstr "Add-ons"
 
-#, python-format
-msgid "Upgrade %(name)s — %(branding)s"
-msgstr "%(name)s aktualisieren — %(branding)s"
-
 msgid "Review what the new version changes before it is applied"
 msgstr "Prüfen Sie, was die neue Version ändert, bevor sie eingespielt wird"
 
@@ -3782,10 +3778,6 @@ msgstr "Zurück zum Add-on"
 msgid "Upgrade to {version}"
 msgstr "Auf {version} aktualisieren"
 
-#, python-format
-msgid "Add-Ons — %(branding)s"
-msgstr "Add-ons — %(branding)s"
-
 msgid "Manage all the add-ons in your AI stack"
 msgstr "Alle Add-ons in Ihrem KI-Stack verwalten"
 
@@ -3794,10 +3786,6 @@ msgstr "Kataloge aktualisieren"
 
 msgid "Manage catalogs"
 msgstr "Kataloge verwalten"
-
-#, python-format
-msgid "Audit log — %(branding)s"
-msgstr "Audit-Log — %(branding)s"
 
 msgid "Audit log"
 msgstr "Audit-Log"
@@ -3883,10 +3871,6 @@ msgstr "{count} Eintrag gelöscht."
 #, python-brace-format
 msgid "{count} entries deleted."
 msgstr "{count} Einträge gelöscht."
-
-#, python-format
-msgid "Backup / Restore — %(branding)s"
-msgstr "Backup / Restore — %(branding)s"
 
 msgid "Backup / Restore"
 msgstr "Backup / Restore"
@@ -4343,41 +4327,8 @@ msgstr "Mail"
 msgid "Settings"
 msgstr "Einstellungen"
 
-msgid "Toggle sidebar"
-msgstr "Seitenleiste umschalten"
-
-msgid "Collapse"
-msgstr "Einklappen"
-
-msgid "Toggle dark mode"
-msgstr "Dunkelmodus umschalten"
-
-msgid "Light mode"
-msgstr "Heller Modus"
-
-msgid "Dark mode"
-msgstr "Dunkler Modus"
-
-#, python-format
-msgid "Account menu for %(preferred_username)s"
-msgstr "Kontomenü für %(preferred_username)s"
-
-msgid "Language"
-msgstr "Sprache"
-
-#, python-format
-msgid "Automatic (%(language)s)"
-msgstr "Automatisch (%(language)s)"
-
 msgid "Account"
 msgstr "Konto"
-
-msgid "Sign out"
-msgstr "Abmelden"
-
-#, python-format
-msgid "Catalogs — %(branding)s"
-msgstr "Kataloge — %(branding)s"
 
 msgid "Manage your add-on sources"
 msgstr "Ihre Add-on-Quellen verwalten"
@@ -4427,10 +4378,6 @@ msgstr "Speichern"
 msgid "Add catalog failed:"
 msgstr "Katalog konnte nicht hinzugefügt werden:"
 
-#, python-format
-msgid "Collections — %(branding)s"
-msgstr "Collections — %(branding)s"
-
 msgid "Qdrant collections of the selected connection and the Keycloak roles that may use them"
 msgstr "Qdrant-Collections der gewählten Verbindung und die Keycloak-Rollen, die sie verwenden dürfen"
 
@@ -4473,10 +4420,6 @@ msgstr "Collection <b>{name}</b> gelöscht"
 msgid "The grant was not created:"
 msgstr "Die Berechtigung wurde nicht angelegt:"
 
-#, python-format
-msgid "Connections — %(branding)s"
-msgstr "Verbindungen — %(branding)s"
-
 msgid "Vector databases of the RAG system, shared with the ingester"
 msgstr "Vektordatenbanken des RAG-Systems, gemeinsam mit dem Ingester genutzt"
 
@@ -4504,10 +4447,6 @@ msgstr "Verbindung <b>{name}</b> gelöscht"
 #, python-brace-format
 msgid "Connection <b>{name}</b> reset to the integrated Qdrant"
 msgstr "Verbindung <b>{name}</b> auf das integrierte Qdrant zurückgesetzt"
-
-#, python-format
-msgid "Dashboard — %(branding)s"
-msgstr "Dashboard — %(branding)s"
 
 msgid "Your papAIa applications"
 msgstr "Ihre papAIa-Anwendungen"
@@ -4572,10 +4511,6 @@ msgstr "Alle ungespeicherten Änderungen am Dashboard verwerfen?"
 
 msgid "Leave the editor and discard all unsaved changes?"
 msgstr "Den Editor verlassen und alle ungespeicherten Änderungen verwerfen?"
-
-#, python-format
-msgid "Embedding — %(branding)s"
-msgstr "Embedding — %(branding)s"
 
 msgid "Put files into a collection. The ingester reads them in the background"
 msgstr "Dateien in eine Collection legen. Der Ingester liest sie im Hintergrund"
@@ -4650,19 +4585,11 @@ msgstr "Abbruch angefordert. Der Ingester stoppt zwischen zwei Dokumenten, das g
 msgid "Back to dashboard"
 msgstr "Zurück zum Dashboard"
 
-#, python-format
-msgid "Host — %(branding)s"
-msgstr "Host — %(branding)s"
-
 msgid "Resources, disk space and certificates of the machine this deployment runs on"
 msgstr "Ressourcen, Speicherplatz und Zertifikate der Maschine, auf der diese Installation läuft"
 
 msgid "Re-check"
 msgstr "Erneut prüfen"
-
-#, python-format
-msgid "Catalog file — Ingest — %(branding)s"
-msgstr "Katalogdatei — Ingest — %(branding)s"
 
 msgid "Catalog file"
 msgstr "Katalogdatei"
@@ -4758,10 +4685,6 @@ msgstr "Vorgaben gespeichert"
 msgid "jobs.yaml saved"
 msgstr "jobs.yaml gespeichert"
 
-#, python-format
-msgid "%(job_id)s — Ingest Jobs — %(branding)s"
-msgstr "%(job_id)s — Ingest-Jobs — %(branding)s"
-
 msgid "All runs"
 msgstr "Alle Läufe"
 
@@ -4815,13 +4738,6 @@ msgstr "Dateien"
 
 msgid "This tab could not be loaded."
 msgstr "Dieser Tab konnte nicht geladen werden."
-
-#, python-format
-msgid "%(value)s — Ingest Jobs — %(branding)s"
-msgstr "%(value)s — Ingest-Jobs — %(branding)s"
-
-msgid "New ingest job"
-msgstr "Neuer Ingest-Job"
 
 msgid "New job"
 msgstr "Neuer Job"
@@ -5202,10 +5118,6 @@ msgstr "Job <b>{id}</b> gespeichert"
 msgid "The dry run could not be started:"
 msgstr "Der Testlauf konnte nicht gestartet werden:"
 
-#, python-format
-msgid "Ingest Jobs — %(branding)s"
-msgstr "Ingest-Jobs — %(branding)s"
-
 msgid "Sources the ingester reads on a schedule and keeps in a collection"
 msgstr "Quellen, die der Ingester nach Zeitplan liest und in einer Collection hält"
 
@@ -5217,10 +5129,6 @@ msgstr "Die Jobs konnten nicht geladen werden."
 
 msgid "Ingest jobs are not available"
 msgstr "Ingest-Jobs sind nicht verfügbar"
-
-#, python-format
-msgid "Leftovers — Ingest — %(branding)s"
-msgstr "Reste — Ingest — %(branding)s"
 
 msgid "Leftovers"
 msgstr "Reste"
@@ -5238,19 +5146,11 @@ msgstr "Die Reste konnten nicht geladen werden."
 msgid "Leftovers are not available"
 msgstr "Reste sind nicht verfügbar"
 
-#, python-format
-msgid "Run %(run_id)s — Ingest Runs — %(branding)s"
-msgstr "Lauf %(run_id)s — Ingest-Läufe — %(branding)s"
-
 msgid "Ingest Runs"
 msgstr "Ingest-Läufe"
 
 msgid "The run could not be loaded."
 msgstr "Der Lauf konnte nicht geladen werden."
-
-#, python-format
-msgid "Ingest Runs — %(branding)s"
-msgstr "Ingest-Läufe — %(branding)s"
 
 msgid "What the ingester did, newest first"
 msgstr "Was der Ingester getan hat, neueste zuerst"
@@ -5276,10 +5176,6 @@ msgstr "Die Läufe konnten nicht geladen werden."
 msgid "Runs are not available"
 msgstr "Läufe sind nicht verfügbar"
 
-#, python-format
-msgid "Credentials — Ingest — %(branding)s"
-msgstr "Zugangsdaten — Ingest — %(branding)s"
-
 msgid "Credentials"
 msgstr "Zugangsdaten"
 
@@ -5299,23 +5195,11 @@ msgstr "Die Zugangsdaten konnten nicht geladen werden."
 msgid "Credentials are not available"
 msgstr "Zugangsdaten sind nicht verfügbar"
 
-#, python-format
-msgid "Job %(job_id)s — %(branding)s"
-msgstr "Job %(job_id)s — %(branding)s"
-
 msgid "Job Log"
 msgstr "Job-Log"
 
-#, python-format
-msgid "Jobs — %(branding)s"
-msgstr "Jobs — %(branding)s"
-
 msgid "What the manager has run, newest first"
 msgstr "Was der Manager ausgeführt hat, neueste zuerst"
-
-#, python-format
-msgid "Mail — %(branding)s"
-msgstr "Mail — %(branding)s"
 
 msgid "The mail server this deployment sends its mail through"
 msgstr "Der Mailserver, über den diese Installation ihre E-Mails versendet"
@@ -5453,10 +5337,6 @@ msgstr "Gestoppt bei {stage}: {reason}"
 
 msgid "The relay accepted the message. It may take a moment to arrive; the status above shows it while it waits."
 msgstr "Das Relay hat die Nachricht angenommen. Bis zur Zustellung kann es einen Moment dauern; der Status oben zeigt sie, solange sie wartet."
-
-#, python-format
-msgid "Models & Usage — %(branding)s"
-msgstr "Modelle & Verbrauch — %(branding)s"
 
 msgid "The models LiteLLM serves and what they consumed"
 msgstr "Die Modelle, die LiteLLM bereitstellt, und was sie verbraucht haben"
@@ -5635,10 +5515,6 @@ msgstr "Empfänger <b>{name}</b> gespeichert."
 msgid "Recipient <b>{name}</b> deleted."
 msgstr "Empfänger <b>{name}</b> gelöscht."
 
-#, python-format
-msgid "Roles — %(branding)s"
-msgstr "Rollen — %(branding)s"
-
 msgid "Roles"
 msgstr "Rollen"
 
@@ -5731,16 +5607,8 @@ msgstr "Rolle <b>{name}</b> gespeichert."
 msgid "Role <b>{name}</b> deleted."
 msgstr "Rolle <b>{name}</b> gelöscht."
 
-#, python-format
-msgid "Services — %(branding)s"
-msgstr "Dienste — %(branding)s"
-
 msgid "What this deployment is configured to run, and what of it is up"
 msgstr "Was diese Installation ausführen soll und was davon läuft"
-
-#, python-format
-msgid "Settings — %(branding)s"
-msgstr "Einstellungen — %(branding)s"
 
 msgid "Configure this manager. Each section is saved on its own."
 msgstr "Konfigurieren Sie diesen Manager. Jeder Abschnitt wird für sich gespeichert."
@@ -5748,10 +5616,6 @@ msgstr "Konfigurieren Sie diesen Manager. Jeder Abschnitt wird für sich gespeic
 #, python-brace-format
 msgid "Request failed ({status})"
 msgstr "Anfrage fehlgeschlagen ({status})"
-
-#, python-format
-msgid "Modules — Settings — %(branding)s"
-msgstr "Module — Einstellungen — %(branding)s"
 
 msgid "Optional parts of the stack. A change recreates the affected containers and runs as a job."
 msgstr "Optionale Teile des Stacks. Eine Änderung erstellt die betroffenen Container neu und läuft als Job."
@@ -5914,10 +5778,6 @@ msgstr "Fertig"
 
 msgid "The change failed. The log is above."
 msgstr "Die Änderung ist fehlgeschlagen. Das Log steht oben."
-
-#, python-format
-msgid "Overlay — Settings — %(branding)s"
-msgstr "Overlay — Einstellungen — %(branding)s"
 
 msgid "Your own settings on top of the stack's configuration. They survive every upgrade."
 msgstr "Ihre eigenen Einstellungen über der Konfiguration des Stacks. Sie überstehen jedes Upgrade."
@@ -6120,10 +5980,6 @@ msgstr "Das Overlay wird zurückgerollt …"
 msgid "Discarding the overlay …"
 msgstr "Das Overlay wird verworfen …"
 
-#, python-format
-msgid "Upgrade — %(branding)s"
-msgstr "Upgrade — %(branding)s"
-
 msgid "Move this deployment to a newer papAIa release"
 msgstr "Diese Installation auf ein neueres papAIa-Release bringen"
 
@@ -6286,10 +6142,6 @@ msgstr "{count} Image entfernt, {size} freigegeben"
 #, python-brace-format
 msgid "Removed {count} images, {size} reclaimed"
 msgstr "{count} Images entfernt, {size} freigegeben"
-
-#, python-format
-msgid "Users — %(branding)s"
-msgstr "Benutzer — %(branding)s"
 
 msgid "Who can sign in, with which roles, and from where"
 msgstr "Wer sich mit welchen Rollen und von wo anmelden kann"
@@ -9647,12 +9499,6 @@ msgstr "Das hat nicht funktioniert:"
 msgid "Remove this node? Its SSH key and link certificate are deleted."
 msgstr "Diesen Node entfernen? Sein SSH-Schlüssel und sein Link-Zertifikat werden gelöscht."
 
-msgid "Nodes — %(branding)s"
-msgstr "Nodes — %(branding)s"
-
-msgid "Node %(name)s — %(branding)s"
-msgstr "Node %(name)s — %(branding)s"
-
 msgid "Node %(name)s"
 msgstr "Node %(name)s"
 
@@ -9955,10 +9801,6 @@ msgstr "Die Auftragswarteschlange läuft nicht."
 
 msgid "AI Map"
 msgstr "KI-Landkarte"
-
-#, python-format
-msgid "AI Map — %(branding)s"
-msgstr "KI-Landkarte — %(branding)s"
 
 msgid "Which data the AI reaches, for whom, over which path and with which model"
 msgstr "Welche Daten die KI erreicht – für wen, über welchen Weg und mit welchem Modell"
@@ -10907,9 +10749,6 @@ msgstr "Diese Person hat bei diesem Modul keine Vollmacht."
 msgid "Module catalog"
 msgstr "Modulkatalog"
 
-msgid "Module catalog — %(branding)s"
-msgstr "Modulkatalog — %(branding)s"
-
 msgid "The modules of this suite, in the version of its bill of materials"
 msgstr "Die Module dieser Suite in der Version ihrer Stückliste"
 
@@ -10972,3 +10811,24 @@ msgstr "Die Vollmachten von {person} bei {module} sind entzogen."
 
 msgid "The overview could not be loaded: {detail}"
 msgstr "Die Übersicht konnte nicht geladen werden: {detail}"
+
+msgid "Knowledge"
+msgstr "Wissen"
+
+msgid "Not signed in"
+msgstr "Nicht angemeldet"
+
+msgid "Invalid value."
+msgstr "Ungültiger Wert."
+
+msgid "Help"
+msgstr "Hilfe"
+
+msgid "Terms"
+msgstr "Begriffe"
+
+msgid "Contact"
+msgstr "Kontakt"
+
+msgid "My area"
+msgstr "Mein Bereich"

@@ -1,14 +1,13 @@
-{# The dot on the Jobs nav entry. Renders to nothing when the queue is idle,
-   which is nearly always -- and is the only reason it can sit in the sidebar of
-   every page without becoming furniture.
+{# The job hint in the status row at the top of every admin page. Renders to nothing when
+   the queue is idle, which is nearly always -- and is the only reason it can sit on every
+   page without becoming furniture.
 
-   This is what a running backup looks like from Add-Ons: the strip on the backup
-   page answers "what is running" in full, the sidebar only has to say that
-   something is. Both read the same `active_job()`.
-
-   `aria-label` rather than a title: collapsed to a rail the nav row has no
-   visible text at all, so the dot is the whole message. #}
+   This is what a running backup looks like from Add-Ons: the strip on the backup page
+   answers "what is running" in full, the status row only has to say that something is.
+   Both read the same `active_job()`. The text is visible; the dot repeats it in colour. #}
 {% if active %}
-<span class="h-2 w-2 shrink-0 rounded-full bg-warning"
-      aria-label="{{ _('%(action)s job running', action=active.action) }}"></span>
+<a href="/jobs" class="inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-base-300">
+  <span class="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden="true"></span>
+  {{ _('%(action)s job running', action=active.action) }}
+</a>
 {% endif %}

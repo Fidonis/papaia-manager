@@ -1,991 +1,446 @@
 {#
-  fidonis-brand: 2 -- four pieces of this template are vendored verbatim into
-  Fidonis/qdrant-ingest's src/ui/templates/base.html: the theme-init script
-  just below, the <meta name="theme-color">/favicon/stylesheet/script tags,
-  the brand-mark SVG in the sidebar header, and the dark-mode toggle control.
-  Everything else here -- the sidebar-state script, the addon/stack/catalog
-  action helpers, the navigation, the page chrome -- is specific to this app
-  and has no counterpart in the vendored copy. Keep the four pieces in step
-  with qdrant-ingest; see that repo's docs/ui.md.
+  fidonis-brand: 3 -- the page is the content of the platform's shared frame: the
+  kit's macro `shell` (pk/shell.html, papaia-kit shell contract) renders <head>,
+  brand, module switcher, navigation, footer, account menu and page header, so the
+  manager keeps no frame, theme script, font or colour of its own.
+
+  The frame's <head> is exactly the kit's, so everything the manager's own pages need
+  -- its stylesheet, htmx, Alpine and the helpers below -- is part of `main`. A
+  stylesheet link is allowed in the body; the frame is styled by the kit's stylesheet
+  in <head> before any of it loads.
+
+  A child template names the page in `page_title` (the one h1 and the first part of
+  <title>) and may set `breadcrumb` to a list of {label, href} at its top level.
 #}
-<!doctype html>
-<html lang="{{ html_lang() }}">
-<head>
-  <script>
-    (function () {
-      var KEY = "papaia-theme";
-      var stored = localStorage.getItem(KEY);
-      var theme = stored === "fidonis-light" || stored === "fidonis-dark"
-        ? stored
-        : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-            ? "fidonis-dark" : "fidonis-light");
-      document.documentElement.setAttribute("data-theme", theme);
-    })();
-  </script>
-  <script>
-    // Sidebar state, applied before first paint for the same reason as the theme
-    // above: every navigation is a full page load, so a collapsed sidebar restored
-    // after the deferred bundles boot would snap 16rem -> 4rem on every click.
-    // The attribute is the single source of truth; all the geometry lives in CSS.
-    (function () {
-      var KEY = "papaia-sidebar";
-      var stored = localStorage.getItem(KEY);
-      var state = stored === "collapsed" || stored === "pinned" ? stored : "pinned";
-      document.documentElement.setAttribute("data-sidebar", state);
-    })();
-  </script>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="csrf" content="{{ csrf_token }}">
-  {# One per scheme: a single value painted the browser chrome navy next to a
-     light panel and next to a graphite one alike. #}
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#101214" media="(prefers-color-scheme: dark)">
-  {% set brand = branding() %}
-  <title>{% block title %}{{ brand.name }}{% if brand.tagline %} {{ brand.tagline }}{% endif %}{% endblock %}</title>
-  <link rel="icon" type="image/svg+xml" href="{{ asset_url('favicon.svg') }}">
-  <link rel="stylesheet" href="{{ asset_url('app.css') }}">
-  <script src="{{ asset_url('htmx.min.js') }}" defer></script>
-  <script src="{{ asset_url('alpine.min.js') }}" defer></script>
-  <script>
-    // ── Texts ────────────────────────────────────────────────────────────
-    // The sentences the helpers below put on the page, in the language of the page. A whole
-    // sentence each, never pieces glued together: the order of the pieces differs between
-    // languages. `{name}` marks a value that fmt() fills in; fmtHtml() does the same for a
-    // sentence that carries markup and escapes the values.
-    var I18N = {
-      addonFailed: {{ _("The add-on action failed: {detail}")|tojson }},
-      maintenanceActionFailed: {{ _('The action "{action}" failed &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
-      maintenanceActionFinished: {{ _('The action "{action}" finished &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
-      requestRefused: {{ _("The request was refused: {detail}")|tojson }},
-      stackActionFailed: {{ _('The stack action failed &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
-      stackActionFinished: {{ _("The stack action finished.")|tojson }},
-      stackActionStarted: {{ _("The stack action has started — this panel may go down with it.")|tojson }},
-      catalogActionFailed: {{ _("The catalog action failed: {detail}")|tojson }},
-      catalogRefreshed: {{ _('Catalog "{name}" refreshed.')|tojson }},
-      catalogRefreshFailed: {{ _('Catalog "{name}" refresh failed. <a href="{href}" class="link">View log</a>')|tojson }},
-      updateFailed: {{ _("The update failed: {detail}")|tojson }},
-      catalogUpdated: {{ _('Catalog "{name}" updated.')|tojson }},
-      deleteFailed: {{ _("The deletion failed: {detail}")|tojson }},
-      catalogDeleted: {{ _('Catalog "{name}" deleted.')|tojson }},
-    };
-    function _escapeHtml(value) {
-      return String(value).replace(/[&<>"']/g, function (c) {
-        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-      });
-    }
-    function fmt(template, values) {
-      return template.replace(/\{(\w+)\}/g, function (m, k) {
-        return Object.prototype.hasOwnProperty.call(values, k) ? values[k] : m;
-      });
-    }
-    // fmtPlural(): picks between the two messages of a counted noun with the browser's plural rules
-    // for the page's language ("one" or everything else) and fills `{count}`. A language with more
-    // plural forms than that needs this extended, together with its catalogue.
-    function fmtPlural(count, one, other, values, html) {
-      var category = new Intl.PluralRules(document.documentElement.lang || undefined).select(count);
-      return (html ? fmtHtml : fmt)(category === "one" ? one : other, Object.assign({ count: count }, values || {}));
-    }
-    function fmtHtml(template, values) {
-      return template.replace(/\{(\w+)\}/g, function (m, k) {
-        return Object.prototype.hasOwnProperty.call(values, k) ? _escapeHtml(values[k]) : m;
-      });
-    }
-
-    // ── Sidebar ──────────────────────────────────────────────────────────
-    // Three states on <html data-sidebar>: "pinned" (full width, pushes the
-    // content), "collapsed" (icon rail, hover peeks it open as an overlay) and
-    // "open" (transient overlay drawer). Only the first two are remembered.
-    //
-    // Below lg the CSS forces the rail whatever the stored value says, and the
-    // toggle drives the transient "open" state instead — so working on a phone
-    // never overwrites the desktop preference.
-    var SIDEBAR_KEY = "papaia-sidebar";
-    var sidebarWide = window.matchMedia("(min-width: 1024px)");
-
-    function toggleSidebar() {
-      var root = document.documentElement;
-      var cur = root.getAttribute("data-sidebar");
-      if (sidebarWide.matches) {
-        var next = cur === "pinned" ? "collapsed" : "pinned";
-        root.setAttribute("data-sidebar", next);
-        localStorage.setItem(SIDEBAR_KEY, next);
-      } else {
-        root.setAttribute("data-sidebar", cur === "open" ? "collapsed" : "open");
-      }
-    }
-
-    function closeSidebarDrawer() {
-      var root = document.documentElement;
-      if (root.getAttribute("data-sidebar") === "open") {
-        root.setAttribute("data-sidebar", "collapsed");
-      }
-    }
-
-    // Crossing the breakpoint drops any transient drawer state: "open" carries no
-    // desktop meaning and would otherwise render as if the panel were pinned.
-    function syncSidebarToBreakpoint() {
-      var stored = localStorage.getItem(SIDEBAR_KEY);
-      document.documentElement.setAttribute(
-        "data-sidebar",
-        stored === "collapsed" || stored === "pinned" ? stored : "pinned",
-      );
-    }
-
-    sidebarWide.addEventListener("change", syncSidebarToBreakpoint);
-
-    // ── Floating row menus ───────────────────────────────────────────────
-    // A menu marked `.dropdown-float` (overflow_menu(float=True), for the rows of
-    // a table that scrolls sideways) is `position: fixed`, so the scroll container
-    // neither clips it nor grows a scrollbar for it. It still opens on focus, like
-    // every daisyUI dropdown; here it is put next to its trigger, right-aligned,
-    // and above the trigger when there is no room below, because a fixed menu
-    // cannot be scrolled to. Scrolling or resizing closes it: it would stay behind.
-    function placeFloatMenu(dropdown) {
-      var trigger = dropdown.querySelector('[role="button"]');
-      var menu = dropdown.querySelector(".dropdown-content");
-      if (!trigger || !menu) return;
-      var t = trigger.getBoundingClientRect();
-      var w = menu.offsetWidth;
-      var h = menu.offsetHeight;
-      var gap = 4;
-      var edge = 8;
-      var top = t.bottom + gap;
-      if (top + h > window.innerHeight - edge) {
-        top = t.top - gap - h >= edge ? t.top - gap - h : Math.max(edge, window.innerHeight - h - edge);
-      }
-      var left = Math.max(edge, Math.min(t.right - w, window.innerWidth - w - edge));
-      menu.style.top = top + "px";
-      menu.style.left = left + "px";
-      menu.style.right = "auto";
-      menu.style.bottom = "auto";
-    }
-
-    function closeFloatMenu() {
-      var active = document.activeElement;
-      if (active && active.blur && active.closest && active.closest(".dropdown-float")) active.blur();
-    }
-
-    document.addEventListener("focusin", function (event) {
-      var dropdown = event.target.closest && event.target.closest(".dropdown-float");
-      if (dropdown) placeFloatMenu(dropdown);
+{% from "pk/shell.html" import shell %}
+{% set pk = pk_shell(self.page_title() | striptags | trim, breadcrumb | default([])) %}
+{% set page_actions = self.page_actions() | trim %}
+{% set page_subtitle = self.page_subtitle() | trim %}
+{% call shell(pk) %}
+<link rel="stylesheet" href="{{ asset_url('app.css') }}">
+<script src="{{ asset_url('htmx.min.js') }}" defer></script>
+<script src="{{ asset_url('alpine.min.js') }}" defer></script>
+<script>
+  // ── Texts ────────────────────────────────────────────────────────────
+  // The sentences the helpers below put on the page, in the language of the page. A whole
+  // sentence each, never pieces glued together: the order of the pieces differs between
+  // languages. `{name}` marks a value that fmt() fills in; fmtHtml() does the same for a
+  // sentence that carries markup and escapes the values.
+  var I18N = {
+    addonFailed: {{ _("The add-on action failed: {detail}")|tojson }},
+    maintenanceActionFailed: {{ _('The action "{action}" failed &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
+    maintenanceActionFinished: {{ _('The action "{action}" finished &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
+    requestRefused: {{ _("The request was refused: {detail}")|tojson }},
+    stackActionFailed: {{ _('The stack action failed &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
+    stackActionFinished: {{ _("The stack action finished.")|tojson }},
+    stackActionStarted: {{ _("The stack action has started — this panel may go down with it.")|tojson }},
+    catalogActionFailed: {{ _("The catalog action failed: {detail}")|tojson }},
+    catalogRefreshed: {{ _('Catalog "{name}" refreshed.')|tojson }},
+    catalogRefreshFailed: {{ _('Catalog "{name}" refresh failed. <a href="{href}" class="link">View log</a>')|tojson }},
+    updateFailed: {{ _("The update failed: {detail}")|tojson }},
+    catalogUpdated: {{ _('Catalog "{name}" updated.')|tojson }},
+    deleteFailed: {{ _("The deletion failed: {detail}")|tojson }},
+    catalogDeleted: {{ _('Catalog "{name}" deleted.')|tojson }},
+  };
+  function _escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
-    window.addEventListener("scroll", closeFloatMenu, true);
-    window.addEventListener("resize", closeFloatMenu);
-
-    // ── Session expiry ───────────────────────────────────────────────────
-    // The server renews an expiring Keycloak token on its own; this path is
-    // only reached once the SSO session itself is over. An XHR cannot follow
-    // the cross-origin login redirect, so reload: that re-runs auth in the
-    // top-level context and the server sends it on to Keycloak, then back here.
-    function _reauth() {
-      window.location.reload();
-    }
-    function _authGuard(response) {
-      if (response && response.status === 401) {
-        _reauth();
-        return true;
-      }
-      return false;
-    }
-    document.addEventListener("htmx:responseError", (event) => {
-      if (event.detail && event.detail.xhr && event.detail.xhr.status === 401) {
-        _reauth();
-      }
+  }
+  function fmt(template, values) {
+    return template.replace(/\{(\w+)\}/g, function (m, k) {
+      return Object.prototype.hasOwnProperty.call(values, k) ? values[k] : m;
     });
+  }
+  // fmtPlural(): picks between the two messages of a counted noun with the browser's plural rules
+  // for the page's language ("one" or everything else) and fills `{count}`. A language with more
+  // plural forms than that needs this extended, together with its catalogue.
+  function fmtPlural(count, one, other, values, html) {
+    var category = new Intl.PluralRules(document.documentElement.lang || undefined).select(count);
+    return (html ? fmtHtml : fmt)(category === "one" ? one : other, Object.assign({ count: count }, values || {}));
+  }
+  function fmtHtml(template, values) {
+    return template.replace(/\{(\w+)\}/g, function (m, k) {
+      return Object.prototype.hasOwnProperty.call(values, k) ? _escapeHtml(values[k]) : m;
+    });
+  }
 
-    // Shared helpers for addon lifecycle actions.
-    // _addonPost: sends the action request and returns a Promise<data|null>.
-    // _pollJob:   polls /api/v1/jobs/{id} every 2 s and calls onDone() on completion.
-    // addonAction:   reloads the detail panel after the job finishes.
-    // galleryAction: reloads the dashboard gallery after the job finishes.
-    function _addonPost(name, verb, body) {
-      return fetch("/api/v1/addons/" + name + "/" + verb, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": document.querySelector("meta[name=csrf]").content,
-        },
-        body: JSON.stringify(body || {}),
-      }).then(async (r) => {
+  // ── CSRF ─────────────────────────────────────────────────────────────
+  // The token of this session, read from the frame's own forms (every one of them carries
+  // it as `pk_csrf`), so the page needs no second copy of it in the markup.
+  function csrfToken() {
+    var field = document.querySelector("input[name=pk_csrf]");
+    return field ? field.value : "";
+  }
+
+  // ── Floating row menus ───────────────────────────────────────────────
+  // A menu marked `.dropdown-float` (overflow_menu(float=True), for the rows of
+  // a table that scrolls sideways) is `position: fixed`, so the scroll container
+  // neither clips it nor grows a scrollbar for it. It still opens on focus, like
+  // every daisyUI dropdown; here it is put next to its trigger, right-aligned,
+  // and above the trigger when there is no room below, because a fixed menu
+  // cannot be scrolled to. Scrolling or resizing closes it: it would stay behind.
+  function placeFloatMenu(dropdown) {
+    var trigger = dropdown.querySelector('[role="button"]');
+    var menu = dropdown.querySelector(".dropdown-content");
+    if (!trigger || !menu) return;
+    var t = trigger.getBoundingClientRect();
+    var w = menu.offsetWidth;
+    var h = menu.offsetHeight;
+    var gap = 4;
+    var edge = 8;
+    var top = t.bottom + gap;
+    if (top + h > window.innerHeight - edge) {
+      top = t.top - gap - h >= edge ? t.top - gap - h : Math.max(edge, window.innerHeight - h - edge);
+    }
+    var left = Math.max(edge, Math.min(t.right - w, window.innerWidth - w - edge));
+    menu.style.top = top + "px";
+    menu.style.left = left + "px";
+    menu.style.right = "auto";
+    menu.style.bottom = "auto";
+  }
+
+  function closeFloatMenu() {
+    var active = document.activeElement;
+    if (active && active.blur && active.closest && active.closest(".dropdown-float")) active.blur();
+  }
+
+  document.addEventListener("focusin", function (event) {
+    var dropdown = event.target.closest && event.target.closest(".dropdown-float");
+    if (dropdown) placeFloatMenu(dropdown);
+  });
+  window.addEventListener("scroll", closeFloatMenu, true);
+  window.addEventListener("resize", closeFloatMenu);
+
+  // ── Session expiry ───────────────────────────────────────────────────
+  // The server renews an expiring Keycloak token on its own; this path is
+  // only reached once the SSO session itself is over. An XHR cannot follow
+  // the cross-origin login redirect, so reload: that re-runs auth in the
+  // top-level context and the server sends it on to Keycloak, then back here.
+  function _reauth() {
+    window.location.reload();
+  }
+  function _authGuard(response) {
+    if (response && response.status === 401) {
+      _reauth();
+      return true;
+    }
+    return false;
+  }
+  document.addEventListener("htmx:responseError", (event) => {
+    if (event.detail && event.detail.xhr && event.detail.xhr.status === 401) {
+      _reauth();
+    }
+  });
+
+  // Shared helpers for addon lifecycle actions.
+  // _addonPost: sends the action request and returns a Promise<data|null>.
+  // _pollJob:   polls /api/v1/jobs/{id} every 2 s and calls onDone() on completion.
+  // addonAction:   reloads the detail panel after the job finishes.
+  // galleryAction: reloads the dashboard gallery after the job finishes.
+  function _addonPost(name, verb, body) {
+    return fetch("/api/v1/addons/" + name + "/" + verb, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrfToken(),
+      },
+      body: JSON.stringify(body || {}),
+    }).then(async (r) => {
+      if (_authGuard(r)) return null;
+      if (!r.ok) {
+        let detail = r.status;
+        try {
+          const e = await r.json();
+          detail = e.detail || JSON.stringify(e);
+        } catch (_) {}
+        alert(fmt(I18N.addonFailed, { detail: detail }));
+        return null;
+      }
+      return r.json();
+    });
+  }
+
+  function _pollJob(jobId, onDone) {
+    fetch("/api/v1/jobs/" + jobId)
+      .then(r => {
         if (_authGuard(r)) return null;
-        if (!r.ok) {
-          let detail = r.status;
-          try {
-            const e = await r.json();
-            detail = e.detail || JSON.stringify(e);
-          } catch (_) {}
-          alert(fmt(I18N.addonFailed, { detail: detail }));
-          return null;
-        }
         return r.json();
+      })
+      .then(job => {
+        if (!job) return;
+        if (job.status === "succeeded" || job.status === "failed") {
+          onDone(job);
+        } else {
+          setTimeout(() => _pollJob(jobId, onDone), 2000);
+        }
+      })
+      .catch(() => setTimeout(() => _pollJob(jobId, onDone), 2000));
+  }
+
+  function addonAction(name, verb, body) {
+    return _addonPost(name, verb, body).then(data => {
+      if (!data) return false;
+      _pollJob(data.job_id, () =>
+        htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" })
+      );
+      return true;
+    });
+  }
+
+  // addonMaintenanceAction: run an action the add-on declares, refresh the panel when the job
+  // ends and say how it went, with a link to the log: the output is often the point.
+  function addonMaintenanceAction(name, action) {
+    return _addonPost(name, "actions/" + action, {}).then(data => {
+      if (!data) return false;
+      _pollJob(data.job_id, job => {
+        htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" });
+        const values = { action: action, href: "/jobs/" + job.id };
+        if (job.status === "failed") {
+          showToast("error", fmtHtml(I18N.maintenanceActionFailed, values));
+        } else {
+          showToast("success", fmtHtml(I18N.maintenanceActionFinished, values));
+        }
       });
-    }
+      return true;
+    });
+  }
 
-    function _pollJob(jobId, onDone) {
-      fetch("/api/v1/jobs/" + jobId)
-        .then(r => {
-          if (_authGuard(r)) return null;
-          return r.json();
-        })
-        .then(job => {
-          if (!job) return;
-          if (job.status === "succeeded" || job.status === "failed") {
-            onDone(job);
-          } else {
-            setTimeout(() => _pollJob(jobId, onDone), 2000);
-          }
-        })
-        .catch(() => setTimeout(() => _pollJob(jobId, onDone), 2000));
-    }
+  function galleryAction(name, verb, body) {
+    return _addonPost(name, verb, body).then(data => {
+      if (!data) return false;
+      _pollJob(data.job_id, () => htmx.ajax("GET", "/partials/addons", { target: "#addon-gallery", swap: "innerHTML" }));
+      return true;
+    });
+  }
 
-    function addonAction(name, verb, body) {
-      return _addonPost(name, verb, body).then(data => {
-        if (!data) return false;
-        _pollJob(data.job_id, () =>
-          htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" })
-        );
-        return true;
-      });
-    }
+  // serviceAddonAction: an addon verb driven from the services page. Same
+  // request as galleryAction, different thing to swap back in afterwards.
+  function serviceAddonAction(name, verb, body) {
+    return _addonPost(name, verb, body).then(data => {
+      if (!data) return false;
+      _pollJob(data.job_id, () => refreshServices());
+      return true;
+    });
+  }
 
-    // addonMaintenanceAction: run an action the add-on declares, refresh the panel when the job
-    // ends and say how it went, with a link to the log: the output is often the point.
-    function addonMaintenanceAction(name, action) {
-      return _addonPost(name, "actions/" + action, {}).then(data => {
+  // _stackBody: the request body for a stack or group verb.
+  //
+  // `clean_up` maps onto `papaia-ctl stop --clean-up`, so it rides along with
+  // anything that stops -- a restart included, where it turns the operation
+  // into a full recreate. A start has no such flag and the API rejects the
+  // field outright rather than ignoring it.
+  //
+  // It lives here rather than in an Alpine scope because both callers need it:
+  // the group selection in the content area and the whole-stack menu in the
+  // page header are separate components, and a copy per component would be a
+  // second place for this API contract to drift.
+  function _stackBody(action, cleanUp) {
+    return action === "start" ? {} : { clean_up: cleanUp };
+  }
+
+  // stackGroupAction: POST /api/v1/stack/groups/{action} for a set of Compose
+  // profiles, poll the job, then refresh the services list. Resolves false when
+  // the request was rejected, so the caller can release its busy flag —
+  // a resolved-true call leaves it set, because the swap that follows replaces
+  // the button anyway.
+  function stackGroupAction(action, groups, body) {
+    return _stackPost("/api/v1/stack/groups/" + action,
+                      Object.assign({ groups: groups }, body || {}), action)
+      .then(data => {
         if (!data) return false;
         _pollJob(data.job_id, job => {
-          htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" });
-          const values = { action: action, href: "/jobs/" + job.id };
+          refreshServices();
           if (job.status === "failed") {
-            showToast("error", fmtHtml(I18N.maintenanceActionFailed, values));
+            showToast("error", fmtHtml(I18N.stackActionFailed, { href: "/jobs/" + job.id }));
           } else {
-            showToast("success", fmtHtml(I18N.maintenanceActionFinished, values));
+            showToast("success", I18N.stackActionFinished);
           }
         });
         return true;
       });
-    }
+  }
 
-    function galleryAction(name, verb, body) {
-      return _addonPost(name, verb, body).then(data => {
-        if (!data) return false;
-        _pollJob(data.job_id, () => htmx.ajax("GET", "/partials/addons", { target: "#addon-gallery", swap: "innerHTML" }));
-        return true;
-      });
-    }
+  // stackAction: the whole stack, including this container's own profile. The
+  // runner outlives us, so there is no job to poll — /partials/stack-runner
+  // picks the outcome back up, here and after a reload.
+  function stackAction(action, body) {
+    return _stackPost("/api/v1/stack/" + action, body || {}, action).then(data => {
+      if (!data) return false;
+      refreshStackRunner();
+      showToast("info", I18N.stackActionStarted);
+      return true;
+    });
+  }
 
-    // serviceAddonAction: an addon verb driven from the services page. Same
-    // request as galleryAction, different thing to swap back in afterwards.
-    function serviceAddonAction(name, verb, body) {
-      return _addonPost(name, verb, body).then(data => {
-        if (!data) return false;
-        _pollJob(data.job_id, () => refreshServices());
-        return true;
-      });
-    }
-
-    // _stackBody: the request body for a stack or group verb.
-    //
-    // `clean_up` maps onto `papaia-ctl stop --clean-up`, so it rides along with
-    // anything that stops -- a restart included, where it turns the operation
-    // into a full recreate. A start has no such flag and the API rejects the
-    // field outright rather than ignoring it.
-    //
-    // It lives here rather than in an Alpine scope because both callers need it:
-    // the group selection in the content area and the whole-stack menu in the
-    // page header are separate components, and a copy per component would be a
-    // second place for this API contract to drift.
-    function _stackBody(action, cleanUp) {
-      return action === "start" ? {} : { clean_up: cleanUp };
-    }
-
-    // stackGroupAction: POST /api/v1/stack/groups/{action} for a set of Compose
-    // profiles, poll the job, then refresh the services list. Resolves false when
-    // the request was rejected, so the caller can release its busy flag —
-    // a resolved-true call leaves it set, because the swap that follows replaces
-    // the button anyway.
-    function stackGroupAction(action, groups, body) {
-      return _stackPost("/api/v1/stack/groups/" + action,
-                        Object.assign({ groups: groups }, body || {}), action)
-        .then(data => {
-          if (!data) return false;
-          _pollJob(data.job_id, job => {
-            refreshServices();
-            if (job.status === "failed") {
-              showToast("error", fmtHtml(I18N.stackActionFailed, { href: "/jobs/" + job.id }));
-            } else {
-              showToast("success", I18N.stackActionFinished);
-            }
-          });
-          return true;
-        });
-    }
-
-    // stackAction: the whole stack, including this container's own profile. The
-    // runner outlives us, so there is no job to poll — /partials/stack-runner
-    // picks the outcome back up, here and after a reload.
-    function stackAction(action, body) {
-      return _stackPost("/api/v1/stack/" + action, body || {}, action).then(data => {
-        if (!data) return false;
-        refreshStackRunner();
-        showToast("info", I18N.stackActionStarted);
-        return true;
-      });
-    }
-
-    function _stackPost(url, body, label) {
-      return fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": document.querySelector("meta[name=csrf]").content,
-        },
-        body: JSON.stringify(body || {}),
-      }).then(async (r) => {
-        if (_authGuard(r)) return null;
-        if (!r.ok) {
-          let detail = r.status;
-          try {
-            const e = await r.json();
-            detail = e.detail || JSON.stringify(e);
-          } catch (_) {}
-          showToast("error", fmt(I18N.requestRefused, { detail: detail }));
-          return null;
-        }
-        return r.json();
-      });
-    }
-
-    function refreshServices() {
-      if (document.getElementById("service-list")) {
-        htmx.ajax("GET", "/partials/services", { target: "#service-list", swap: "innerHTML" });
+  function _stackPost(url, body, label) {
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrfToken(),
+      },
+      body: JSON.stringify(body || {}),
+    }).then(async (r) => {
+      if (_authGuard(r)) return null;
+      if (!r.ok) {
+        let detail = r.status;
+        try {
+          const e = await r.json();
+          detail = e.detail || JSON.stringify(e);
+        } catch (_) {}
+        showToast("error", fmt(I18N.requestRefused, { detail: detail }));
+        return null;
       }
-    }
+      return r.json();
+    });
+  }
 
-    function refreshStackRunner() {
-      if (document.getElementById("stack-runner")) {
-        htmx.ajax("GET", "/partials/stack-runner", { target: "#stack-runner", swap: "innerHTML" });
+  function refreshServices() {
+    if (document.getElementById("service-list")) {
+      htmx.ajax("GET", "/partials/services", { target: "#service-list", swap: "innerHTML" });
+    }
+  }
+
+  function refreshStackRunner() {
+    if (document.getElementById("stack-runner")) {
+      htmx.ajax("GET", "/partials/stack-runner", { target: "#stack-runner", swap: "innerHTML" });
+    }
+  }
+
+  // showToast: appends a dismissable daisyUI alert into #toasts, auto-removed after 6s.
+  // `html` may contain markup (e.g. a "view log" link) — only ever called with
+  // server-validated catalog names / job ids (uuid4), never free-form user text.
+  function showToast(type, html) {
+    const box = document.getElementById("toasts");
+    const el = document.createElement("div");
+    el.className = "alert alert-" + type + " shadow-lg text-sm";
+    el.innerHTML = "<span>" + html + "</span>";
+    box.appendChild(el);
+    setTimeout(() => el.remove(), 6000);
+  }
+
+  // catalogAction: POST /api/v1/catalogs/{name}/{verb}, poll the returned job to
+  // completion, then refresh the catalog list and toast the outcome.
+  // onJobId (optional) is called as soon as the job id is known, so callers can
+  // show a "view log" link while the job is still running.
+  function catalogAction(name, verb, onJobId) {
+    return fetch("/api/v1/catalogs/" + name + "/" + verb, {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken() },
+    }).then(async (r) => {
+      if (_authGuard(r)) return false;
+      if (!r.ok) {
+        let detail = r.status;
+        try {
+          const e = await r.json();
+          detail = e.detail || JSON.stringify(e);
+        } catch (_) {}
+        showToast("error", fmt(I18N.catalogActionFailed, { detail: detail }));
+        return false;
       }
-    }
-
-    // showToast: appends a dismissable daisyUI alert into #toasts, auto-removed after 6s.
-    // `html` may contain markup (e.g. a "view log" link) — only ever called with
-    // server-validated catalog names / job ids (uuid4), never free-form user text.
-    function showToast(type, html) {
-      const box = document.getElementById("toasts");
-      const el = document.createElement("div");
-      el.className = "alert alert-" + type + " shadow-lg text-sm";
-      el.innerHTML = "<span>" + html + "</span>";
-      box.appendChild(el);
-      setTimeout(() => el.remove(), 6000);
-    }
-
-    // catalogAction: POST /api/v1/catalogs/{name}/{verb}, poll the returned job to
-    // completion, then refresh the catalog list and toast the outcome.
-    // onJobId (optional) is called as soon as the job id is known, so callers can
-    // show a "view log" link while the job is still running.
-    function catalogAction(name, verb, onJobId) {
-      return fetch("/api/v1/catalogs/" + name + "/" + verb, {
-        method: "POST",
-        headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
-      }).then(async (r) => {
-        if (_authGuard(r)) return false;
-        if (!r.ok) {
-          let detail = r.status;
-          try {
-            const e = await r.json();
-            detail = e.detail || JSON.stringify(e);
-          } catch (_) {}
-          showToast("error", fmt(I18N.catalogActionFailed, { detail: detail }));
-          return false;
-        }
-        const data = await r.json();
-        if (onJobId) onJobId(data.job_id);
-        return new Promise(resolve => {
-          _pollJob(data.job_id, (job) => {
-            htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
-            if (job.status === "succeeded") {
-              showToast("success", fmtHtml(I18N.catalogRefreshed, { name: name }));
-            } else {
-              showToast("error", fmtHtml(I18N.catalogRefreshFailed, { name: name, href: "/jobs/" + data.job_id }));
-            }
-            resolve(true);
-          });
+      const data = await r.json();
+      if (onJobId) onJobId(data.job_id);
+      return new Promise(resolve => {
+        _pollJob(data.job_id, (job) => {
+          htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
+          if (job.status === "succeeded") {
+            showToast("success", fmtHtml(I18N.catalogRefreshed, { name: name }));
+          } else {
+            showToast("error", fmtHtml(I18N.catalogRefreshFailed, { name: name, href: "/jobs/" + data.job_id }));
+          }
+          resolve(true);
         });
       });
-    }
+    });
+  }
 
-    // catalogUpdate: PUT /api/v1/catalogs/{name}. Synchronous (no job), so just
-    // refresh the list and toast on success — same rationale as catalogDelete.
-    function catalogUpdate(name, body) {
-      return fetch("/api/v1/catalogs/" + name, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": document.querySelector("meta[name=csrf]").content,
-        },
-        body: JSON.stringify(body),
-      }).then(async (r) => {
-        if (_authGuard(r)) return false;
-        if (!r.ok) {
-          let detail = r.status;
-          try {
-            const e = await r.json();
-            detail = e.detail || JSON.stringify(e);
-          } catch (_) {}
-          showToast("error", fmt(I18N.updateFailed, { detail: detail }));
-          return false;
-        }
-        htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
-        showToast("success", fmtHtml(I18N.catalogUpdated, { name: name }));
-        return true;
-      });
-    }
+  // catalogUpdate: PUT /api/v1/catalogs/{name}. Synchronous (no job), so just
+  // refresh the list and toast on success — same rationale as catalogDelete.
+  function catalogUpdate(name, body) {
+    return fetch("/api/v1/catalogs/" + name, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrfToken(),
+      },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (_authGuard(r)) return false;
+      if (!r.ok) {
+        let detail = r.status;
+        try {
+          const e = await r.json();
+          detail = e.detail || JSON.stringify(e);
+        } catch (_) {}
+        showToast("error", fmt(I18N.updateFailed, { detail: detail }));
+        return false;
+      }
+      htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
+      showToast("success", fmtHtml(I18N.catalogUpdated, { name: name }));
+      return true;
+    });
+  }
 
-    // catalogDelete: DELETE /api/v1/catalogs/{name}. Synchronous (no job), so just
-    // refresh the list and toast on success — the endpoint returns 204, which htmx
-    // never swaps, so the caller must not rely on htmx to update the list.
-    function catalogDelete(name) {
-      return fetch("/api/v1/catalogs/" + name, {
-        method: "DELETE",
-        headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
-      }).then(async (r) => {
-        if (_authGuard(r)) return false;
-        if (!r.ok) {
-          let detail = r.status;
-          try {
-            const e = await r.json();
-            detail = e.detail || JSON.stringify(e);
-          } catch (_) {}
-          showToast("error", fmt(I18N.deleteFailed, { detail: detail }));
-          return false;
-        }
-        htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
-        showToast("success", fmtHtml(I18N.catalogDeleted, { name: name }));
-        return true;
-      });
-    }
-  </script>
-</head>
-<body
-  class="bg-base-200 text-base-content"
-  hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'
-  x-data
->
-{% set path = request.url.path %}
-{% set nav_dashboard = path == "/" %}
-{% set nav_addons    = path.startswith("/addons") %}
-{% set nav_services  = path.startswith("/services") %}
-{% set nav_host      = path.startswith("/host") %}
-{% set nav_models    = path.startswith("/models") %}
-{% set nav_catalogs  = path.startswith("/catalogs") %}
-{% set nav_connections = path.startswith("/connections") %}
-{% set nav_collections = path.startswith("/collections") %}
-{% set nav_embedding = path.startswith("/embedding") %}
-{% set nav_knowledge_map = path.startswith("/knowledge-map") %}
-{# The ingest pages live under /ingest, which does not meet /jobs (the manager's own queue).
-   Jobs, runs, credentials, leftovers and the catalog file are the tabs of one section. #}
-{% set nav_ingest_jobs = path.startswith("/ingest/") %}
-{% set nav_backup    = path.startswith("/backup") %}
-{% set nav_mail      = path.startswith("/mail") %}
-{# /jobs used to be folded into Add-Ons, back when a job log was only ever
-   reached from an add-on action. Jobs now have their own entry, and a job log is
-   a page of that section rather than a detour out of another one. #}
-{% set nav_jobs      = path.startswith("/jobs") %}
-{% set nav_audit     = path.startswith("/audit") %}
-{% set nav_nodes     = path.startswith("/nodes") %}
-{% set nav_users     = path.startswith("/users") %}
-{% set nav_upgrade   = path.startswith("/upgrade") %}
-{% set nav_settings  = path.startswith("/settings") %}
-
-<div class="flex">
-
-  <!-- ── Sidebar ───────────────────────────────────────── -->
-  {# Width, label visibility and row alignment are all driven from
-     <html data-sidebar> in app.css -- see the "Sidebar" block in
-     docker/tailwind.input.css. Alpine is used only to dismiss the mobile
-     drawer; the collapse itself works without JavaScript having booted. #}
-  <aside class="app-sidebar fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-base-100 border-r border-base-300"
-         x-data
-         @click.outside="closeSidebarDrawer()">
-
-    <!-- Brand -->
-    <div class="sidebar-row flex items-center gap-3 px-5 py-5 border-b border-base-300">
-      {% if brand.logo_url %}
-      <img src="{{ brand.logo_url }}" alt="" class="brand-logo h-8 w-auto shrink-0 object-contain">
-      {% else %}
-      <svg viewBox="0 0 72 72" fill="none" aria-hidden="true" class="brand-mark h-8 w-8 shrink-0">
-        <rect x="43.5" y="19.5" width="18" height="18" rx="3" transform="rotate(22.5 52.5 28.5)" fill="#C8972A"/>
-        <rect class="brand-mark-ink" x="19.5" y="9.5" width="18" height="18" rx="3" transform="rotate(22.5 28.5 18.5)"/>
-        <rect class="brand-mark-ink" x="9.5" y="33.5" width="18" height="18" rx="3" transform="rotate(22.5 18.5 42.5)"/>
-        <rect class="brand-mark-ink" x="33.5" y="43.5" width="18" height="18" rx="3" transform="rotate(22.5 42.5 52.5)"/>
-      </svg>
-      {% endif %}
-      <div class="sidebar-label min-w-0 leading-tight">
-        <p class="font-brand font-extrabold text-base tracking-tight truncate">{{ brand.name }}</p>
-        {% if brand.tagline %}<p class="text-xs opacity-50 font-medium truncate">{{ brand.tagline }}</p>{% endif %}
-      </div>
-    </div>
-
-    <!-- Navigation -->
-    {# `gap` rather than `space-y`: the latter's `> * ~ *` selector outranks a
-       `mt-*` utility on a direct child, so the admin group below could not set
-       its own separating margin. #}
-    <nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
-
-      {# The active row is a tint, not a fill. Both `primary` and `secondary` are
-         blue in the dark theme, and what tells an action apart from a location
-         is the form rather than the hue: filled is something you do, tinted is
-         where you are. A filled active row would read as a second primary
-         button next to the real one in the header.
-
-         aria-label on every nav row: the visible text is display:none while the
-         sidebar is a rail, which also removes it from the accessibility tree. #}
-      <a href="/" aria-label="{{ _('Dashboard') }}"
-         class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                {{ 'bg-secondary/15 text-secondary font-semibold' if nav_dashboard else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
-        </svg>
-        <span class="sidebar-label">{% trans %}Dashboard{% endtrans %}</span>
-      </a>
-
-      {# Administrative surfaces. Hiding them here is presentation only --
-         the routes and their /api/v1 counterparts enforce the admin role
-         themselves, so a typed URL is rejected just the same.
-
-         Three groups, split by what an entry acts on: what is running now
-         (Monitor), what extends the installation (Extensions), and what
-         concerns the deployment as a whole (System) -- backup and upgrade
-         are stack-level `papaia-ctl` commands, not something done to an
-         add-on.
-
-         Each caption is a `sidebar-label`, so it disappears with every other
-         label the moment the panel becomes a rail -- the divider on the
-         group's wrapper stays and carries the grouping on its own. That is
-         also why the divider sits on a wrapper rather than being a row of its
-         own: a bare `<hr>` would have to be hidden and re-shown per state. #}
-      {% if is_admin %}
-      <div class="mt-3 flex flex-col gap-0.5 border-t border-base-300 pt-3">
-
-        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">{% trans %}Monitor{% endtrans %}</p>
-
-        <a href="/services" aria-label="{{ _('Services') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_services else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Services{% endtrans %}</span>
-        </a>
-
-        {# Disk space and certificates. The dot is positioned rather than placed in
-           the flex flow, for the reason the Upgrade one is, and it reads the cache
-           only: the status row's poll is what keeps that warm. #}
-        <a href="/host" aria-label="{{ _('Host') }}"
-           class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_host else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Host{% endtrans %}</span>
-          <span class="absolute right-3 top-1/2 -translate-y-1/2 flex"
-                hx-get="/partials/nav/host-indicator"
-                hx-trigger="load, every 30s"
-                hx-swap="innerHTML"></span>
-        </a>
-
-        {# Which models LiteLLM serves and what they consumed. A reading of the
-           running stack like the two above, so it sits with them. #}
-        <a href="/models" aria-label="{{ _('Models & Usage') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_models else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Models & Usage{% endtrans %}</span>
-        </a>
-
-        {# The indicator is positioned rather than placed in the flex flow: as a
-           rail the row centres its icon and drops its padding, and an `ml-auto`
-           dot would end up against the panel edge in that state. Anchored to the
-           row it sits in the same spot at both widths.
-
-           It polls from the sidebar of every admin page, which is the point --
-           this is how a backup started on one page stays visible from another.
-           The Jobs page itself is where it says what and since when. #}
-        <a href="/jobs" aria-label="{{ _('Jobs') }}"
-           class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_jobs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Jobs{% endtrans %}</span>
-          <span class="absolute right-3 top-1/2 -translate-y-1/2 flex"
-                hx-get="/partials/nav/job-indicator"
-                hx-trigger="load, every 5s"
-                hx-swap="innerHTML"></span>
-        </a>
-
-      </div>
-
-      <div class="mt-3 flex flex-col gap-0.5 border-t border-base-300 pt-3">
-
-        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">{% trans %}Extensions{% endtrans %}</p>
-
-        <a href="/addons" aria-label="{{ _('Add-Ons') }}"
-           class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_addons else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Add-Ons{% endtrans %}</span>
-          {# The dot says an upgrade is on offer; the add-ons page says which. Reads what the
-             catalogs on disk say, so it costs no network. #}
-          <span class="absolute right-3 top-1/2 -translate-y-1/2 flex"
-                hx-get="/partials/nav/addon-upgrades"
-                hx-trigger="load, every 45s"
-                hx-swap="innerHTML"></span>
-        </a>
-
-        <a href="/catalogs" aria-label="{{ _('Catalogs') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_catalogs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Catalogs{% endtrans %}</span>
-        </a>
-
-      </div>
-
-      {# RAG system (core profile `rag`). The whole wrapper is conditional, not just
-         its rows: an empty category would leave its divider and caption behind.
-         It hangs off the profile alone (`rag_enabled`), so the pages stay reachable whatever
-         else is configured. Every entry is a page of the manager, in the order the work
-         goes: a connection first, then the collections on it, then the files that go into
-         them (by hand on Embedding, on a schedule in the ingest jobs, whose tabs also
-         show what the ingester did). There is no link out to the web interfaces of the system: the
-         ingester's is replaced by these pages, and the Qdrant dashboard has its tile. #}
-      {% if rag_enabled() %}
-      <div class="mt-3 flex flex-col gap-0.5 border-t border-base-300 pt-3">
-
-        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">RAG</p>
-
-        <a href="/connections" aria-label="{{ _('Connections') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_connections else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Connections{% endtrans %}</span>
-        </a>
-
-        <a href="/collections" aria-label="{{ _('Collections') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_collections else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Collections{% endtrans %}</span>
-        </a>
-
-        <a href="/embedding" aria-label="{{ _('Embedding') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_embedding else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Embedding{% endtrans %}</span>
-        </a>
-
-        <a href="/ingest/jobs" aria-label="{{ _('Ingest Jobs') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_ingest_jobs else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h10M4 18h6"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Ingest Jobs{% endtrans %}</span>
-        </a>
-
-      </div>
-      {% endif %}
-
-      {# Knowledge map (core profile `knowledge-map`): which source answers what, for whom,
-         over which access path. Its own entry, not part of RAG: the map spans every
-         connected system, the vector index is one access path among them. #}
-      {% if knowledge_map_enabled() %}
-      <div class="mt-3 flex flex-col gap-0.5 border-t border-base-300 pt-3">
-        <a href="/knowledge-map" aria-label="{{ _('AI Map') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_knowledge_map else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}AI Map{% endtrans %}</span>
-        </a>
-      </div>
-      {% endif %}
-
-      <div class="mt-3 flex flex-col gap-0.5 border-t border-base-300 pt-3">
-
-        <p class="sidebar-label px-3 pb-1 text-xs font-medium uppercase opacity-50">{% trans %}System{% endtrans %}</p>
-
-        {# Archive box rather than the former cog: collapsed to a rail the icon is
-           the only thing left of this entry, so it has to carry the meaning the
-           label spells out. #}
-        <a href="/backup" aria-label="{{ _('Backup / Restore') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_backup else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Backup / Restore{% endtrans %}</span>
-        </a>
-
-        {# Its own entry rather than a control on Services or Backup: an upgrade
-           has its own preflight, its own progress model and its own recovery
-           story, and none of the three compresses into a row on another page.
-
-           The indicator is positioned rather than placed in the flex flow, for
-           the same reason the Jobs one is: as a rail the row centres its icon
-           and drops its padding, and an `ml-auto` dot would end up against the
-           panel edge. Unlike the Jobs dot it costs nothing to poll -- it reads
-           the cached check, never git or the network. #}
-        <a href="/upgrade" aria-label="{{ _('Upgrade') }}"
-           class="sidebar-row relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_upgrade else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Upgrade{% endtrans %}</span>
-          <span class="absolute right-3 top-1/2 -translate-y-1/2 flex"
-                hx-get="/partials/nav/upgrade-indicator"
-                hx-trigger="load, every 30s"
-                hx-swap="innerHTML"></span>
-        </a>
-
-        {# Who may sign in. Only for the role that may manage accounts, and only where the
-           accounts live in the bundled Keycloak (`users_nav`); the page and its API enforce
-           the role themselves, so this is presentation. #}
-        {% if users_nav() %}
-        <a href="/users" aria-label="{{ _('Users') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_users else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Users{% endtrans %}</span>
-        </a>
-        {% endif %}
-
-        {# The mail relay's settings. Stack-level like Backup and Upgrade, not a setting of
-           the manager itself, so it is not a card on Settings. #}
-        <a href="/mail" aria-label="{{ _('Mail') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_mail else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Mail{% endtrans %}</span>
-        </a>
-
-        {# Only on a distributed installation: a single host has no nodes to show. #}
-        {% if nodes_enabled() %}
-        <a href="/nodes" aria-label="{{ _('Nodes') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_nodes else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Nodes{% endtrans %}</span>
-        </a>
-        {% endif %}
-
-        {# Shield: this is the one entry that is about the deployment's own
-           record-keeping rather than about a service it runs. No indicator --
-           unlike a job or an upgrade, there is no single "in flight" state for
-           an audit trail to flag from the sidebar. #}
-        <a href="/audit" aria-label="{{ _('Audit log') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_audit else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Audit log{% endtrans %}</span>
-        </a>
-
-        <a href="/settings" aria-label="{{ _('Settings') }}"
-           class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                  {{ 'bg-secondary/15 text-secondary font-semibold' if nav_settings else 'text-base-content/70 hover:bg-base-300 hover:text-base-content' }}">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
-          </svg>
-          <span class="sidebar-label">{% trans %}Settings{% endtrans %}</span>
-        </a>
-
-      </div>
-      {% endif %}
-
-    </nav>
-
-    <!-- Stack status -->
-    {# Aggregate stack status, on every page for every role. It is pinned here
-       rather than placed in the scrolling nav, so it can never be scrolled out
-       of reach, and the footer's divider sits directly beneath it.
-
-       Loaded out of band rather than passed into each page's context, so a new
-       page picks it up by extending this template and nothing else. The wrapper
-       reserves the height of the row it receives, so the footer does not jump
-       when the first response lands. #}
-    {% if user %}
-    <div class="px-3 pb-2 min-h-[3rem]"
-         hx-get="/partials/service-status"
-         hx-trigger="load, every 30s"
-         hx-swap="innerHTML"></div>
+  // catalogDelete: DELETE /api/v1/catalogs/{name}. Synchronous (no job), so just
+  // refresh the list and toast on success — the endpoint returns 204, which htmx
+  // never swaps, so the caller must not rely on htmx to update the list.
+  function catalogDelete(name) {
+    return fetch("/api/v1/catalogs/" + name, {
+      method: "DELETE",
+      headers: { "X-CSRF-Token": csrfToken() },
+    }).then(async (r) => {
+      if (_authGuard(r)) return false;
+      if (!r.ok) {
+        let detail = r.status;
+        try {
+          const e = await r.json();
+          detail = e.detail || JSON.stringify(e);
+        } catch (_) {}
+        showToast("error", fmt(I18N.deleteFailed, { detail: detail }));
+        return false;
+      }
+      htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
+      showToast("success", fmtHtml(I18N.catalogDeleted, { name: name }));
+      return true;
+    });
+  }
+</script>
+<div class="mgr-page" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}' x-data>
+  {# The status row, on every page for every role: the aggregate stack status, and for an
+     administrator the hints that used to be dots on navigation rows (host, jobs, add-on
+     upgrades, release upgrade). Each renders to nothing while there is nothing to say.
+     Loaded out of band rather than passed into each page's context, so a new page picks
+     it up by extending this template and nothing else; the row reserves its height, so the
+     content does not jump when the first response lands. #}
+  {% if user %}
+  <div class="mb-4 flex min-h-[2rem] flex-wrap items-center gap-2">
+    <div hx-get="/partials/service-status" hx-trigger="load, every 30s" hx-swap="innerHTML"></div>
+    {% if is_admin %}
+    <span hx-get="/partials/nav/host-indicator" hx-trigger="load, every 30s" hx-swap="innerHTML"></span>
+    <span hx-get="/partials/nav/job-indicator" hx-trigger="load, every 5s" hx-swap="innerHTML"></span>
+    <span hx-get="/partials/nav/addon-upgrades" hx-trigger="load, every 45s" hx-swap="innerHTML"></span>
+    <span hx-get="/partials/nav/upgrade-indicator" hx-trigger="load, every 30s" hx-swap="innerHTML"></span>
     {% endif %}
-
-    <!-- Bottom: collapse + theme + user -->
-    <div class="border-t border-base-300 px-3 py-3 space-y-0.5">
-
-      {# One control for every state. Sitting at the bottom of the panel it stays
-         reachable as a rail icon, in the hover peek and in the mobile drawer,
-         which the brand header could not do at 4rem. Which glyph shows is CSS,
-         not Alpine, so it is already correct before the bundles boot. #}
-      <button type="button" onclick="toggleSidebar()"
-              aria-label="{{ _('Toggle sidebar') }}"
-              class="sidebar-row flex w-full items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors select-none">
-        <svg class="sidebar-icon-collapse h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM10 4v16M7.5 9.5L5.5 12l2 2.5"/>
-        </svg>
-        <svg class="sidebar-icon-expand h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM10 4v16M14.5 9.5l2 2.5-2 2.5"/>
-        </svg>
-        <span class="sidebar-label">{% trans %}Collapse{% endtrans %}</span>
-      </button>
-
-      <label
-        class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors select-none"
-        x-data="{ dark: document.documentElement.getAttribute('data-theme') === 'fidonis-dark' }"
-        x-init="$watch('dark', (v) => {
-          var t = v ? 'fidonis-dark' : 'fidonis-light';
-          document.documentElement.setAttribute('data-theme', t);
-          localStorage.setItem('papaia-theme', t);
-        })"
-      >
-        <input type="checkbox" x-model="dark" class="hidden" aria-label="{{ _('Toggle dark mode') }}">
-        <svg x-show="dark" class="h-4 w-4 shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-          <path d="M5.64 17l-.71.71a1 1 0 001.41 1.41l.71-.71A1 1 0 005.64 17zM5 12a1 1 0 00-1-1H3a1 1 0 000 2h1a1 1 0 001-1zm7-7a1 1 0 001-1V3a1 1 0 00-2 0v1a1 1 0 001 1zm5.36 2.71a1 1 0 001.41-1.41l-.71-.71a1 1 0 10-1.41 1.41zM17 12a5 5 0 11-5-5 5 5 0 015 5zm4-1h1a1 1 0 010 2h-1a1 1 0 010-2zm-2.36 6.29a1 1 0 00-1.41 1.41l.71.71a1 1 0 001.41-1.41zM12 20a1 1 0 00-1 1v1a1 1 0 002 0v-1a1 1 0 00-1-1z"/>
-        </svg>
-        <svg x-show="!dark" class="h-4 w-4 shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-          <path d="M21.64 13a1 1 0 00-1.05-.14 8.05 8.05 0 01-3.37.73 8.15 8.15 0 01-8.14-8.14 8.05 8.05 0 01.73-3.37 1 1 0 00-1.32-1.32A10.14 10.14 0 1022.96 14.32 1 1 0 0021.64 13z"/>
-        </svg>
-        <span class="sidebar-label" x-text="dark ? {{ _('Light mode')|tojson|forceescape }} : {{ _('Dark mode')|tojson|forceescape }}"></span>
-      </label>
-
-      {% if user %}
-      <div class="dropdown dropdown-top w-full">
-        <div tabindex="0" role="button" aria-label="{{ _('Account menu for %(preferred_username)s', preferred_username=user.preferred_username) }}"
-             class="sidebar-row flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer text-sm font-medium text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors w-full">
-          <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-300 text-base-content text-xs font-bold uppercase">
-            {{ user.preferred_username[0] }}
-          </span>
-          <span class="sidebar-label truncate">{{ user.preferred_username }}</span>
-        </div>
-        {# The language of this account, kept on the server and so the same on every computer
-           it signs in from. One small form per choice, like Sign out: it works without script,
-           and the browser's Referer brings the account back to the page it was on (the page's
-           own address is not written into the markup: it can carry values nobody vetted). #}
-        {% set lang = locale_state() %}
-        <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-10 w-52 p-2 shadow border border-base-300 mb-1">
-          <li class="menu-title">{% trans %}Language{% endtrans %}</li>
-          <li>
-            <form method="post" action="/account/language">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button type="submit" name="locale" value="auto" class="w-full text-left"{% if not lang.stored %} aria-current="true"{% endif %}>
-                <span class="inline-block w-4" aria-hidden="true">{% if not lang.stored %}✓{% endif %}</span>{% trans language=locale_name(lang.auto) %}Automatic ({{ language }}){% endtrans %}
-              </button>
-            </form>
-          </li>
-          {% for choice in available_locales() %}
-          <li>
-            <form method="post" action="/account/language">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button type="submit" name="locale" value="{{ choice.code }}" lang="{{ choice.code|replace('_', '-') }}" class="w-full text-left"{% if lang.stored == choice.code %} aria-current="true"{% endif %}>
-                <span class="inline-block w-4" aria-hidden="true">{% if lang.stored == choice.code %}✓{% endif %}</span>{{ choice.name }}
-              </button>
-            </form>
-          </li>
-          {% endfor %}
-          <li class="menu-title">{% trans %}Account{% endtrans %}</li>
-          <li>
-            <form method="post" action="/auth/logout">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button type="submit" class="w-full text-left">{% trans %}Sign out{% endtrans %}</button>
-            </form>
-          </li>
-        </ul>
-      </div>
-      {% endif %}
-
-    </div>
-  </aside>
-
-  <!-- ── Main ──────────────────────────────────────────── -->
-  {# `min-w-0`: this is a flex item, and without it its minimum width is the width of its
-     widest content. A wide table in an `overflow-x-auto` wrapper then widened the whole
-     page instead of scrolling in its wrapper, and pushed the header's buttons out of the
-     window. #}
-  <div class="app-main ml-64 flex min-h-screen w-full min-w-0 flex-col">
-
-    <!-- Page header -->
-    {# The cap is on the inner row rather than on the header itself, so the
-       border and the background still run the full width -- the header has to
-       read as the top edge of the window, not as a floating band. #}
-    <header class="sticky top-0 z-20 border-b border-base-300 bg-base-100 px-8 py-5">
-      <div class="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-4">
-        <div class="min-w-0">
-          {# Two slots around the title, and a page fills at most one of them.
-             `page_breadcrumb` is for a page that sits under another one and
-             says where it came from; it goes above the title, because the path
-             is read before the name. `page_subtitle` describes a top-level page
-             and goes below. A page with a parent does not also need a sentence
-             about itself -- the parent already said it. #}
-          {% block page_breadcrumb %}{% endblock %}
-          {# `truncate`, because the action cluster next to it is `shrink-0`: an
-             add-on name in a narrow viewport has to give way, and ellipsising is
-             the graceful version of that -- without it the whole title collapses
-             to zero width and the page loses its label entirely. #}
-          <h1 class="font-brand text-2xl font-bold leading-tight truncate">{% block page_title %}{% endblock %}</h1>
-          {% block page_subtitle %}{% endblock %}
-        </div>
-        {# The corner belongs to the page's own actions and nothing else: the
-           stack status is in the sidebar, so a poll can never move them. #}
-        <div class="flex items-center gap-3 shrink-0">
-          {# Tier 1 of the action contract in partials/_actions.html: exactly
-             one filled primary button per page, everything else behind the
-             overflow menu. Every page fills this -- no page grows its own
-             action row inside the content area. #}
-          {% block page_actions %}{% endblock %}
-        </div>
-      </div>
-    </header>
-
-    <!-- Flash messages -->
-    <div id="toasts" class="toast toast-top toast-end z-50"></div>
-
-    <!-- Content -->
-    <main class="flex-1 px-8 py-6">
-      <div class="mx-auto w-full max-w-[1680px]">
-        {% if is_admin %}{% set locked = nodes_lock() %}{% if locked %}
-        <div class="alert alert-warning mb-6"><span>{{ locked }}</span></div>
-        {% endif %}{% endif %}
-        {% block content %}{% endblock %}
-      </div>
-    </main>
-
   </div>
+  {% endif %}
+  {# The frame's page header carries the h1 and at most one primary link. The page's own
+     actions (tier 1 of the action contract in partials/_actions.html: one filled primary
+     button, everything else behind the overflow menu) and its subtitle open the content. #}
+  {% if page_subtitle or page_actions %}
+  <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div class="min-w-0">{{ page_subtitle }}</div>
+    <div class="flex shrink-0 items-center gap-3">{{ page_actions }}</div>
+  </div>
+  {% endif %}
+
+  <div id="toasts" class="toast toast-top toast-end z-50"></div>
+
+  {% if is_admin %}{% set locked = nodes_lock() %}{% if locked %}
+  <div class="alert alert-warning mb-6"><span>{{ locked }}</span></div>
+  {% endif %}{% endif %}
+  {% block content %}{% endblock %}
 </div>
-</body>
-</html>
+{% endcall %}
+{#- Blocks a page fills; the frame above places them. -#}
+{% if false %}{% block page_title %}{% endblock %}{% block page_subtitle %}{% endblock %}{% block page_actions %}{% endblock %}{% endif %}

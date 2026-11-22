@@ -41,7 +41,7 @@ from app.core.jobs import JobQueue  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.routers import stack_guard  # noqa: E402
 
-_CSRF = "test-csrf-token"
+_CSRF = "test-csrf-token-value"
 _TOPOLOGY = {
     "topology": {
         "mode": "distributed",

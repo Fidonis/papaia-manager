@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}{% trans branding=branding().name %}Catalogs — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{% trans %}Catalogs{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Manage your add-on sources{% endtrans %}</p>{% endblock %}
@@ -127,7 +126,7 @@ function submitAddCatalog(event) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-Token': document.querySelector('meta[name=csrf]').content,
+      'X-CSRF-Token': csrfToken(),
     },
     body: JSON.stringify(body),
   }).then(async function(r) {

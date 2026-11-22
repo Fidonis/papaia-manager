@@ -210,6 +210,11 @@ def _reader(config_dir: str) -> ServicesReader:
         return reader
 
 
+def platform_catalog(config_dir: str) -> Catalog | None:
+    """The last valid platform catalog, or None while there is none (no platform, or broken)."""
+    return _reader(config_dir).get()
+
+
 def _text(value: Any) -> Mapping[str, str]:
     if isinstance(value, Mapping):
         return {k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, str)}

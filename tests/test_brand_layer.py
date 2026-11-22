@@ -5,7 +5,9 @@ shared build: the files are copied over there, each carrying a stamp. These
 tests catch the two ways the *source* side of that contract rots -- a file
 that lost its stamp, and stamps that disagree with each other.
 
-What they cannot catch is drift against the other repository. That is a
+Since stamp 3 the brand values themselves are the platform's design tokens from
+papaia-kit (its Tailwind preset and the frame's stylesheet); the stamped files only
+consume them. What they cannot catch is drift against the other repository. That is a
 release-checklist rule, not a check: a brand change is finished when both
 interfaces carry it in the same revision. See CONTRIBUTING.md and
 Fidonis/qdrant-ingest's docs/ui.md.
@@ -58,14 +60,11 @@ def test_the_theme_definitions_are_present() -> None:
     assert "fidonis-dark" in config
 
 
-def test_font_urls_stay_relative() -> None:
-    """Absolute /static paths are what qdrant-ingest's copy deliberately
-    avoids, since it is served from a mounted sub-application. Keeping this
-    repo's own URLs relative too is what makes the two files byte-identical.
-    """
+def test_the_brand_layer_loads_no_font_of_its_own() -> None:
+    """Since stamp 3 the fonts are the platform's: the kit's stylesheet loads them from the
+    kit's own path, so the brand layer names no font file."""
     brand = (REPO / "docker/tailwind.brand.css").read_text(encoding="utf-8")
-    assert 'url("fonts/files/' in brand
-    assert 'url("/static/' not in brand
+    assert "url(" not in brand
 
 
 def test_the_stylesheet_inputs_stay_separate() -> None:

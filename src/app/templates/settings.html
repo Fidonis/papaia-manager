@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% from "partials/_settings_tabs.html" import tabs %}
-{% block title %}{% trans branding=branding().name %}Settings — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{% trans %}Settings{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Configure this manager. Each section is saved on its own.{% endtrans %}</p>{% endblock %}
@@ -29,7 +28,7 @@
 
   async function settingsRequest(url, options) {
     const headers = Object.assign(
-      { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
+      { "X-CSRF-Token": csrfToken() },
       options.json !== undefined ? { "Content-Type": "application/json" } : {},
     );
     const res = await fetch(url, {

@@ -51,7 +51,7 @@ from app.core.jobs import Job, JobCallback, JobContext  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.routers import api_addons  # noqa: E402
 
-_CSRF = "test-csrf-token"
+_CSRF = "test-csrf-token-value"
 
 
 class _FakeQueue:

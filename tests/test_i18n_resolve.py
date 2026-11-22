@@ -92,15 +92,15 @@ def test_negotiation_returns_none_without_a_match() -> None:
 
 
 def test_texts_follow_the_language_of_the_block_and_fall_back_to_the_source() -> None:
-    assert gettext("Sign out") == "Sign out"
+    assert gettext("Settings") == "Settings"
     with use_locale("de"):
-        assert gettext("Sign out") == "Abmelden"
+        assert gettext("Settings") == "Einstellungen"
         assert gettext("A text that has no translation anywhere") == (
             "A text that has no translation anywhere"
         )
         assert ngettext("%(count)d day", "%(count)d days", 1) % {"count": 1} == "1 Tag"
         assert ngettext("%(count)d day", "%(count)d days", 5) % {"count": 5} == "5 Tage"
-    assert gettext("Sign out") == "Sign out"
+    assert gettext("Settings") == "Settings"
 
 
 def test_a_language_is_a_directory_and_nothing_else(tmp_path: Path) -> None:

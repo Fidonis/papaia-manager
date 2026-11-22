@@ -233,10 +233,9 @@ def test_oversized_logo_is_refused() -> None:
 def test_default_rendering_is_unchanged(client: TestClient) -> None:
     html = _admin(client).get("/settings").text
 
-    assert ">papAIa manager</p>" in html
-    assert ">by Fidonis</p>" in html
-    assert "brand-mark" in html
-    assert "<title>Settings — papAIa manager</title>" in html
+    assert '<span class="pk-brand-name">papAIa manager</span>' in html
+    assert '<span class="pk-brand-suffix">by Fidonis</span>' in html
+    assert "<title>Settings – Manager – papAIa manager</title>" in html
 
 
 def test_reset_asks_through_a_dialog_not_the_browser(client: TestClient) -> None:
@@ -250,9 +249,9 @@ def test_custom_branding_reaches_the_sidebar_and_titles(client: TestClient) -> N
     assert _put_branding(client, name="Acme Hub", tagline="for Acme").status_code == 200
 
     html = _admin(client).get("/settings").text
-    assert ">Acme Hub</p>" in html
-    assert ">for Acme</p>" in html
-    assert "<title>Settings — Acme Hub</title>" in html
+    assert '<span class="pk-brand-name">Acme Hub</span>' in html
+    assert '<span class="pk-brand-suffix">for Acme</span>' in html
+    assert "<title>Settings – Manager – Acme Hub</title>" in html
     assert "by Fidonis" not in html.split("</aside>")[0]
 
 
@@ -261,7 +260,8 @@ def test_blank_tagline_removes_the_second_line(client: TestClient) -> None:
 
     sidebar = _admin(client).get("/settings").text.split("</aside>")[0]
     assert "by Fidonis" not in sidebar
-    assert ">Acme</p>" in sidebar
+    assert "pk-brand-suffix" not in sidebar
+    assert '<span class="pk-brand-name">Acme</span>' in sidebar
 
 
 def test_name_is_escaped(client: TestClient) -> None:
@@ -272,12 +272,14 @@ def test_name_is_escaped(client: TestClient) -> None:
     assert "<b>x</b>" not in html
 
 
-def test_logo_replaces_the_builtin_mark(client: TestClient) -> None:
+def test_the_frame_shows_a_logo_only_from_the_platform_catalog(client: TestClient) -> None:
+    """The shared frame takes the logo from the catalog's branding (digest-pinned); the
+    manager's own upload stays stored and served, but the frame does not show it."""
     assert _upload(client, _PNG).status_code == 200
 
     sidebar = _admin(client).get("/settings").text.split("</aside>")[0]
-    assert 'class="brand-logo' in sidebar
-    assert "brand-mark" not in sidebar
+    assert "pk-brand-logo" not in sidebar
+    assert "/brand/logo" not in sidebar
 
 
 # ---------------------------------------------------------------------------

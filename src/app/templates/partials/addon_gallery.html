@@ -27,31 +27,31 @@
    reader. Classes are spelled out per figure; nothing is assembled. #}
 <div class="grid grid-cols-2 lg:grid-cols-5 overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l lg:first:border-l-0">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Add-Ons{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Add-Ons{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
       <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ cnt_total }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Active{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Active{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-success">
       <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span>{{ cnt_running }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 lg:border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Disabled{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Disabled{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-warning">
       <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>{{ cnt_inactive }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Available{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Available{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
       <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ cnt_avail }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-t lg:border-t-0 lg:border-l col-span-2 lg:col-span-1">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Upgrades{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Upgrades{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums {{ 'text-accent' if upgrades else '' }}">
       <span class="h-2 w-2 shrink-0 rounded-full {{ 'bg-accent' if upgrades else 'bg-neutral' }}"></span>{{ upgrades | length }}
     </p>
@@ -88,7 +88,7 @@
    The catalog link that used to sit here is the page's secondary action and
    lives in the header now, next to every other page's actions. #}
 <div class="flex items-center justify-between mb-4">
-  <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">{% trans %}Add-Ons &nbsp;·&nbsp; {{ cnt_total }} modules{% endtrans %}</p>
+  <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide">{% trans %}Add-Ons &nbsp;·&nbsp; {{ cnt_total }} modules{% endtrans %}</p>
 </div>
 
 {# The monogram is decoration, so it takes a neutral surface. It used to cycle

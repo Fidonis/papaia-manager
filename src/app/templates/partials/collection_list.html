@@ -96,7 +96,7 @@
 
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
-      <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">{% trans %}Access to every collection{% endtrans %}</p>
+      <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide">{% trans %}Access to every collection{% endtrans %}</p>
       <div class="flex flex-wrap items-center gap-1.5">
         {{ operator_chip(view.operator_role, 'manage') }}
         {% for role in view.global_roles %}

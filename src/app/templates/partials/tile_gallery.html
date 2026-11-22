@@ -60,7 +60,7 @@
 <section class="{% if not loop.first %}mt-10{% endif %}">
 
   <div class="flex items-center justify-between mb-4">
-    <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">
+    <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide">
       {{ group.name }} &nbsp;·&nbsp;
       {% if links %}{% trans count=(links | length) %}{{ count }} application{% pluralize %}{{ count }} applications{% endtrans %}{% endif %}
       {% if links and widgets %}&nbsp;·&nbsp;{% endif %}

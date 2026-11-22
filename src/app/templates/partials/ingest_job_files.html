@@ -15,7 +15,7 @@
   </div>
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
-      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}Files a run would pick up now{% endtrans %}</p>
+      <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}Files a run would pick up now{% endtrans %}</p>
       <div id="ingest-preview">
         <button type="button" class="btn btn-outline btn-sm"
                 hx-get="/partials/ingest/preview/{{ row.id }}" hx-target="#ingest-preview" hx-swap="innerHTML">{% trans %}Show{% endtrans %}</button>
@@ -29,7 +29,7 @@
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body gap-3 p-4">
       <div class="flex flex-wrap items-center gap-2">
-        <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}Files this job tracks{% endtrans %}</p>
+        <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}Files this job tracks{% endtrans %}</p>
         {% for key, text in status_text.items() %}
           {% if result.counts.get(key) %}
           <button type="button" class="badge badge-sm {{ 'badge-neutral' if selected_status == key else 'badge-outline' }}"
@@ -69,7 +69,7 @@
 
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
-      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}Files a run would pick up now{% endtrans %}</p>
+      <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}Files a run would pick up now{% endtrans %}</p>
       <p class="text-xs opacity-60">{% trans %}What the filters match, without running anything. For a remote source it is what was fetched last time.{% endtrans %}</p>
       <div id="ingest-preview">
         <button type="button" class="btn btn-outline btn-sm"

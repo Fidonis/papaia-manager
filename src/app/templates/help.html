@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{# The account menu's "Help": the words the manager uses, as the platform's glossary defines
+   them for every module, and whom to ask at this installation. #}
+{% block page_title %}{% trans %}Help{% endtrans %}{% endblock %}
+
+{% block content %}
+<div class="card bg-base-100 border border-base-300 max-w-3xl">
+  <div class="card-body">
+    <h2 class="card-title text-base">{% trans %}Terms{% endtrans %}</h2>
+    <dl class="flex flex-col gap-4">
+      {% for term in terms %}
+      <div>
+        <dt class="font-semibold">{{ term.term }}</dt>
+        <dd class="text-sm">{{ term.definition }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+  </div>
+</div>
+
+{% if contact.name or contact.mail %}
+<div class="card bg-base-100 border border-base-300 max-w-3xl mt-6">
+  <div class="card-body">
+    <h2 class="card-title text-base">{% trans %}Contact{% endtrans %}</h2>
+    <p class="text-sm">
+      {% if contact.name %}{{ contact.name }}{% endif %}
+      {% if contact.mail %}<br><a class="link" href="mailto:{{ contact.mail | urlencode }}">{{ contact.mail }}</a>{% endif %}
+    </p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

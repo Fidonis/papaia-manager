@@ -50,7 +50,7 @@ from app.core.upgrade import (  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.routers import api_upgrade  # noqa: E402
 
-_CSRF = "test-csrf-token"
+_CSRF = "test-csrf-token-value"
 _OUTDATED = "sha256:" + "a" * 64
 _OTHER = "sha256:" + "b" * 64
 
@@ -204,8 +204,8 @@ def test_the_install_button_names_an_undismissed_result_as_the_reason(
 
 def test_the_menu_entry_and_the_heading_say_upgrade(client: TestClient) -> None:
     html = _admin(client).get("/upgrade").text
-    assert '<span class="sidebar-label">Upgrade</span>' in html
-    assert "<title>Upgrade — papAIa manager</title>" in html
+    assert '<span class="pk-label">Upgrade</span>' in html
+    assert "<title>Upgrade – Manager – papAIa manager</title>" in html
     assert 'aria-label="Update"' not in html
 
 

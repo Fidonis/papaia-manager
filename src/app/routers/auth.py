@@ -207,12 +207,14 @@ async def callback(
 async def logout(
     request: Request,
     csrf_token: Annotated[str, Form()] = "",
+    pk_csrf: Annotated[str, Form()] = "",
 ) -> Response:
     """End the Keycloak session, clear the manager's own and show the login page.
 
-    The sidebar's sign-out is a plain HTML form, so the CSRF token arrives as the form field
-    `csrf_token`. There is deliberately no GET variant: it would end the SSO session shared
-    with the rest of the stack for anyone who can make a browser load a link.
+    The account menu's sign-out is a plain HTML form, so the CSRF token arrives as a form
+    field: `pk_csrf` from the platform's shared frame, `csrf_token` from older forms. There is
+    deliberately no GET variant: it would end the SSO session shared with the rest of the
+    stack for anyone who can make a browser load a link.
 
     The login page is the one the Keycloak realm shows: with its SSO session over, the
     redirect to `/auth/login` is answered with the login form instead of a silent sign-in.
@@ -226,7 +228,7 @@ async def logout(
         session.clear()
         return RedirectResponse("/auth/login", status_code=status.HTTP_303_SEE_OTHER)
 
-    verify_csrf(request, csrf_token)
+    verify_csrf(request, pk_csrf or csrf_token)
 
     username = _username(session)
     if refresh_token is not None:

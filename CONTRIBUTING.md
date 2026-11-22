@@ -155,11 +155,15 @@ new entries, and run `uv run pytest -q ../tests/test_i18n_catalog.py`.
 
 ## Brand layer
 
-The visual identity of the interface (the daisyUI themes, the self-hosted fonts and the brand mark) is
-defined in this repository, in `docker/tailwind.config.js`, `docker/tailwind.brand.css`,
-`docker/tailwind.app.css`, the `asset_url()` fingerprinting in `src/app/templating.py` and the theme init,
-brand mark and theme toggle in `src/app/templates/base.html`. Each of these carries a `fidonis-brand: N`
-comment stamp.
+Since stamp 3 the visual identity of the interface is the platform's: the colours, radii and fonts are
+the design tokens of `papaia-kit`, and every page is the content of the kit's shared frame (brand, module
+switcher, navigation, account menu, page header; see "Shared frame" in the README). The manager's files
+only consume them: `docker/tailwind.config.js` builds the daisyUI themes from the kit's Tailwind preset
+(taken from the vendored wheel in the image build, no value of its own), `docker/tailwind.brand.css` opens
+the build, `docker/tailwind.app.css` holds the element defaults of the content (scoped to `#pk-main`, so the
+frame's layered stylesheet is never overridden), `src/app/templating.py` the `asset_url()` fingerprinting
+and `src/app/templates/base.html` the call of the frame. Each of these carries a `fidonis-brand: N` comment
+stamp. A colour or font changes in the kit, never here.
 
 Up to `qdrant-ingest` 0.3.0 its operator web interface carried copies of these files, and a brand change was
 finished only when both repositories carried the same stamp. `qdrant-ingest` 1.0.0 removed that interface,

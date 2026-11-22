@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}{% trans branding=branding().name %}Module catalog — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{% trans %}Module catalog{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}The modules of this suite, in the version of its bill of materials{% endtrans %}</p>{% endblock %}
@@ -139,7 +138,7 @@
         if (!window.confirm(fmt(T.confirm, values))) return;
         fetch("/api/v1/delegations/" + encodeURIComponent(m.module) + "/persons/" + encodeURIComponent(p.user_id), {
           method: "DELETE",
-          headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
+          headers: { "X-CSRF-Token": csrfToken() },
         }).then(r => {
           if (_authGuard(r)) return;
           if (r.ok) {

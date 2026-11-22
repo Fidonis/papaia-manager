@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}{% trans branding=branding().name %}Add-Ons — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{% trans %}Add-Ons{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Manage all the add-ons in your AI stack{% endtrans %}</p>{% endblock %}
@@ -48,7 +47,7 @@
         catalogs.filter(c => c.type === "git" && c.enabled).map(c =>
           fetch("/api/v1/catalogs/" + encodeURIComponent(c.name) + "/refresh", {
             method: "POST",
-            headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
+            headers: { "X-CSRF-Token": csrfToken() },
           }).then(r => (r.ok ? r.json() : null)).then(data => new Promise(resolve => {
             if (!data) {
               showToast("error", fmt(I18N.catalogActionFailed, { detail: c.name }));

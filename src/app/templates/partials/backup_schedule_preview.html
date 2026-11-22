@@ -14,7 +14,7 @@
   <input type="hidden" id="schedule-compiled-timezone" value="{{ preview.timezone }}">
   <p class="text-sm font-semibold">{{ preview.description }}
     <span class="font-normal opacity-60">&middot; {{ preview.timezone }}</span></p>
-  <p class="mt-1 text-xs uppercase tracking-wide opacity-50">{% trans %}Next runs{% endtrans %}</p>
+  <p class="mt-1 text-xs uppercase tracking-wide text-pk-text-muted">{% trans %}Next runs{% endtrans %}</p>
   <ul class="text-sm font-mono">
     {% for run in preview.runs %}<li>{{ run }}</li>{% endfor %}
   </ul>

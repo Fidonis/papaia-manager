@@ -57,7 +57,7 @@ from app import main as app_main  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.main import create_app  # noqa: E402
 
-_CSRF = "test-csrf-token"
+_CSRF = "test-csrf-token-value"
 
 
 def _job(action: str, status: JobStatus, *, minutes_ago: int = 0) -> Job:

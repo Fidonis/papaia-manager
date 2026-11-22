@@ -88,7 +88,7 @@
                    @input="group.name = $event.target.value; $store.tiles.touch()">
           </template>
           <template x-if="$store.tiles.preview">
-            <p class="text-sm font-semibold opacity-60 uppercase tracking-wide" x-text="group.name"></p>
+            <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide" x-text="group.name"></p>
           </template>
 
           <p class="text-sm opacity-40" x-text="$store.tiles.groupCount(group)"></p>
@@ -356,7 +356,7 @@
                values behind a placeholder live in the core .env next to every
                stack secret, so only the finished string is sent back. #}
             <div class="rounded-xl bg-base-200 p-4">
-              <p class="text-xs uppercase tracking-wide opacity-50 mb-3">{% trans %}Live preview{% endtrans %}</p>
+              <p class="text-xs uppercase tracking-wide text-pk-text-muted mb-3">{% trans %}Live preview{% endtrans %}</p>
 
               <div class="card bg-base-100 border border-base-300">
                 <div class="card-body p-4 gap-2">
@@ -512,7 +512,7 @@
                 </div>
 
                 <div class="rounded-xl bg-base-200 p-4">
-                  <p class="text-xs uppercase tracking-wide opacity-50 mb-3">{% trans %}Live preview{% endtrans %}</p>
+                  <p class="text-xs uppercase tracking-wide text-pk-text-muted mb-3">{% trans %}Live preview{% endtrans %}</p>
                   <div id="widget-preview" aria-live="polite">
                     <span class="loading loading-dots loading-sm opacity-50"></span>
                   </div>

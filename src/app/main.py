@@ -50,6 +50,7 @@ from app.routers import (
     api_users,
     auth,
     health,
+    kit,
     ui,
     ui_config,
     ui_ingest,
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(account.router)
+    app.include_router(kit.router)
     app.include_router(ui.router)
     app.include_router(ui_config.router)
     app.include_router(ui_knowledge_map.router)

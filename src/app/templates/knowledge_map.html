@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}{% trans branding=branding().name %}AI Map — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{% trans %}AI Map{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Which data the AI reaches, for whom, over which path and with which model{% endtrans %}</p>{% endblock %}
@@ -168,7 +167,7 @@
             <p class="font-mono text-xs opacity-60" x-text="selected.id"></p>
             <p x-show="selected.coverage" x-text="selected.coverage"></p>
             <template x-if="selected.access && selected.access.length">
-              <div><p class="text-xs font-semibold uppercase opacity-60">{% trans %}Access paths{% endtrans %}</p>
+              <div><p class="text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Access paths{% endtrans %}</p>
                 <ul class="space-y-1"><template x-for="p in selected.access">
                   <li><span class="badge badge-outline badge-sm uppercase" x-text="p.via"></span>
                     <span class="font-mono text-xs" x-text="p.target || p.location"></span>
@@ -178,7 +177,7 @@
                   </li></template></ul></div>
             </template>
             <template x-if="selected.not_covered && selected.not_covered.length">
-              <div><p class="text-xs font-semibold uppercase opacity-60">{% trans %}Not here{% endtrans %}</p>
+              <div><p class="text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Not here{% endtrans %}</p>
                 <ul class="list-disc pl-4"><template x-for="n in selected.not_covered"><li><span x-text="n.what"></span><span x-show="n.instead" class="opacity-60" x-text="' → ' + n.instead"></span></li></template></ul></div>
             </template>
             <p x-show="selected.required_roles" class="text-xs opacity-70"><span class="font-semibold">{% trans %}Roles{% endtrans %}:</span> <span x-text="rolesText(selected)"></span></p>
@@ -267,7 +266,7 @@
 
           {# what is it #}
           <fieldset class="grid gap-3 md:grid-cols-2">
-            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}What is it?{% endtrans %}</legend>
+            <legend class="mb-2 text-xs font-semibold uppercase text-pk-text-muted">{% trans %}What is it?{% endtrans %}</legend>
             <label class="form-control"><span class="label-text">{% trans %}Name{% endtrans %} {{ mark('system') }}</span>
               <input class="input input-bordered input-sm" x-model="ed.f.system" @input="autoId()" maxlength="200" required
                      placeholder="{{ _('e.g. Team calendar') }}"></label>
@@ -289,7 +288,7 @@
 
           {# topics #}
           <fieldset x-show="ed.f.kind !== 'agent'">
-            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}Topics{% endtrans %} {{ mark('topics') }}</legend>
+            <legend class="mb-2 text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Topics{% endtrans %} {{ mark('topics') }}</legend>
             <div class="flex flex-wrap gap-2">
               <template x-for="(t, i) in ed.f.topics" :key="t.id + i">
                 <span class="badge gap-1 py-3" :class="t.sot ? 'badge-secondary' : 'badge-outline'">
@@ -308,7 +307,7 @@
 
           {# example questions #}
           <fieldset x-show="ed.f.kind !== 'agent'">
-            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}Example questions{% endtrans %} {{ mark('example_queries') }}</legend>
+            <legend class="mb-2 text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Example questions{% endtrans %} {{ mark('example_queries') }}</legend>
             <ul class="space-y-1">
               <template x-for="(q, i) in ed.f.example_queries" :key="q + i">
                 <li class="flex items-center gap-2 text-sm">
@@ -325,7 +324,7 @@
 
           {# not here #}
           <fieldset x-show="ed.f.kind !== 'agent'">
-            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}Not here, but there{% endtrans %} {{ mark('not_covered') }}</legend>
+            <legend class="mb-2 text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Not here, but there{% endtrans %} {{ mark('not_covered') }}</legend>
             <template x-for="(n, i) in ed.f.not_covered" :key="i">
               <div class="mb-2 flex flex-wrap items-center gap-2">
                 <input class="input input-bordered input-sm min-w-0 flex-1" x-model="n.what" maxlength="300" placeholder="{{ _('e.g. holidays') }}">
@@ -342,7 +341,7 @@
 
           {# access #}
           <fieldset x-show="ed.f.kind !== 'reference'">
-            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}How is it reached?{% endtrans %} {{ mark('access') }}</legend>
+            <legend class="mb-2 text-xs font-semibold uppercase text-pk-text-muted">{% trans %}How is it reached?{% endtrans %} {{ mark('access') }}</legend>
             <template x-for="(p, i) in ed.f.access" :key="i">
               <div class="mb-2 grid gap-2 rounded-box border border-base-300 p-2 md:grid-cols-[110px_minmax(0,1fr)_minmax(0,1fr)_auto]">
                 <select class="select select-bordered select-sm" x-model="p.via">
@@ -361,7 +360,7 @@
 
           {# roles #}
           <fieldset>
-            <legend class="mb-2 text-xs font-semibold uppercase opacity-60">{% trans %}Who may know it exists?{% endtrans %} {{ mark('required_roles') }}</legend>
+            <legend class="mb-2 text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Who may know it exists?{% endtrans %} {{ mark('required_roles') }}</legend>
             <div class="flex flex-wrap items-center gap-2">
               <span x-show="!ed.f.required_roles.length" class="badge badge-ghost" x-text="T.all_roles"></span>
               <template x-for="(r, i) in ed.f.required_roles" :key="r">
@@ -476,7 +475,7 @@
             </div>
           </template>
           <template x-if="sim.result.agents && sim.result.agents.length">
-            <div class="text-sm"><p class="text-xs font-semibold uppercase opacity-60">{% trans %}Agents to delegate to{% endtrans %}</p>
+            <div class="text-sm"><p class="text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Agents to delegate to{% endtrans %}</p>
               <template x-for="a in sim.result.agents"><p><span class="font-medium" x-text="a.system"></span> <span class="opacity-60" x-text="a.delegate_when"></span></p></template></div>
           </template>
         </div>
@@ -493,10 +492,10 @@
           <div class="space-y-2">
             <p><span class="text-2xl font-bold" x-text="usage.totals.requests"></span> {% trans %}routing requests{% endtrans %},
                <span x-text="Math.round(100 * (usage.totals.abstention_rate || 0)) + ' %'"></span> {% trans %}abstained{% endtrans %}</p>
-            <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Answered first by{% endtrans %}</p>
+            <p class="text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Answered first by{% endtrans %}</p>
             <template x-for="(n, id) in usage.top_sources"><div class="flex items-center gap-2"><span class="w-40 truncate" x-text="nameOf(id)"></span>
               <progress class="progress progress-secondary flex-1" :value="n" :max="maxOf(usage.top_sources)"></progress><span class="w-8 text-right" x-text="n"></span></div></template>
-            <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Asked, but nothing fits{% endtrans %}</p>
+            <p class="text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Asked, but nothing fits{% endtrans %}</p>
             <ul class="list-disc pl-4"><template x-for="u in usage.unmatched || []"><li><span x-text="u.need"></span> <span class="opacity-60" x-text="'×' + u.count"></span></li></template></ul>
             <template x-if="usage.telemetry">
               <div class="rounded-box bg-base-200 p-2 text-xs">
@@ -525,7 +524,7 @@
             </tr></template></tbody>
           </table>
         </template>
-        <p class="text-xs font-semibold uppercase opacity-60">{% trans %}Earlier runs{% endtrans %}</p>
+        <p class="text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Earlier runs{% endtrans %}</p>
         <ul class="text-xs"><template x-for="run in history.slice(-8).reverse()"><li x-text="when(run.at) + ' — Hit@1 ' + pct(run.hit_at_1) + ' · F1 ' + pct(run.abstention_f1)"></li></template></ul>
       </div>
     </div>
@@ -800,7 +799,7 @@
 <script>
   function knowledgeMap() {
     const T = JSON.parse(document.getElementById("km-i18n").textContent);
-    const csrf = () => document.querySelector("meta[name=csrf]").content;
+    const csrf = () => csrfToken();
     const NS = "http://www.w3.org/2000/svg";
     const W = 1040, NODE_W = 200, NODE_H = 36, TOP = 40;
     const X = { topic: 10, source: 290, access: 570, agent: 830 };

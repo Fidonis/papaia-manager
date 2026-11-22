@@ -38,7 +38,7 @@
 
 {% macro section_header(title, count_text) %}
 <div class="flex items-center justify-between mb-4">
-  <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">
+  <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide">
     {{ title }} &nbsp;·&nbsp; {{ count_text }}
   </p>
 </div>
@@ -64,25 +64,25 @@
 {# ── Stats row ───────────────────────────────────────────────────── #}
 <div class="grid grid-cols-2 lg:grid-cols-4 overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Checks{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Checks{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
       <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ host.total }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-b border-l lg:border-b-0">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">OK</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">OK</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-success">
       <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span>{{ host.ok_count }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 lg:border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Warning{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Warning{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-warning">
       <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>{{ host.warn_count }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Critical{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Critical{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-error">
       <span class="h-2 w-2 shrink-0 rounded-full bg-error"></span>{{ host.critical_count }}
     </p>

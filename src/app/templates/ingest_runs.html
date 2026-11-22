@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/_actions.html" import overflow_menu %}
 {% from "partials/_ingest_macros.html" import tabs %}
-{% block title %}{% trans branding=branding().name %}Ingest Runs — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{% trans %}Ingest Runs{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}What the ingester did, newest first{% endtrans %}</p>{% endblock %}

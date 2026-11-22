@@ -10,7 +10,7 @@
 {% else %}
 <div class="overflow-x-auto rounded-lg border border-base-300">
   <table class="table table-sm">
-    <thead><tr class="text-xs uppercase opacity-60"><th>{% trans %}File{% endtrans %}</th><th>{% trans %}Result{% endtrans %}</th><th>{% trans %}Chunks{% endtrans %}</th><th>{% trans %}Last change{% endtrans %}</th></tr></thead>
+    <thead><tr class="text-xs uppercase text-pk-text-muted"><th>{% trans %}File{% endtrans %}</th><th>{% trans %}Result{% endtrans %}</th><th>{% trans %}Chunks{% endtrans %}</th><th>{% trans %}Last change{% endtrans %}</th></tr></thead>
     <tbody>
       {% for item in result["items"] %}
       <tr>

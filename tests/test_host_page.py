@@ -11,7 +11,6 @@ import asyncio
 import base64
 import json
 import os
-import re
 import tempfile
 import time
 from collections.abc import Iterator
@@ -51,6 +50,7 @@ from app.core.services import (  # noqa: E402
 )
 from app.main import create_app  # noqa: E402
 from app.routers import ui  # noqa: E402
+from tests.shell_nav import nav_groups  # noqa: E402
 
 _GIB = 1024**3
 _BACKUP_PATH = "/mnt/backup-secret-volume"
@@ -730,8 +730,8 @@ def test_a_healthy_host_leaves_the_chip_green(
 
     assert "All healthy" in body
     assert "4 / 4 ok" in body
-    # A row of the sidebar, not a pill: in the rail the label goes and the dot stays.
-    assert '<span class="sidebar-label">All healthy</span>' in body
+    # One chip with a visible verdict; the dot repeats it in colour.
+    assert "<span>All healthy</span>" in body
 
 
 def test_a_critical_host_turns_the_chip_red_without_touching_the_stack_rows(
@@ -762,7 +762,7 @@ def test_without_a_reading_the_chip_has_no_host_row_and_is_not_dragged_down(
 
 
 # ---------------------------------------------------------------------------
-# The sidebar
+# The navigation and the status row
 # ---------------------------------------------------------------------------
 
 
@@ -771,20 +771,15 @@ def _between(body: str, start: str, end: str) -> str:
 
 
 def _nav_groups(body: str) -> dict[str, list[str]]:
-    """Caption -> the entries under it, in order; the caption-less lead is ''."""
-    nav = _between(body, "<nav", "</nav>")
-    parts = re.split(r'<p class="sidebar-label[^>]*>([^<]+)</p>', nav)
-    groups = {"": re.findall(r'aria-label="([^"]+)"', parts[0])}
-    for caption, chunk in zip(parts[1::2], parts[2::2], strict=True):
-        groups[caption] = re.findall(r'aria-label="([^"]+)"', chunk)
-    return groups
+    """Heading -> the entries under it, in order; the overview row is ''."""
+    return nav_groups(body)
 
 
 def test_the_admin_nav_is_grouped_by_what_an_entry_acts_on(client: TestClient) -> None:
     groups = _nav_groups(_as(client, "admin").get("/host").text)
 
     assert list(groups) == ["", "Monitor", "Extensions", "System"]
-    assert groups[""] == ["Dashboard"]
+    assert groups[""] == ["Overview"]
     assert groups["Monitor"] == ["Services", "Host", "Models & Usage", "Jobs"]
     assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
     # Backup and upgrade are stack-level commands, so they sit with the system, and so does
@@ -792,28 +787,25 @@ def test_the_admin_nav_is_grouped_by_what_an_entry_acts_on(client: TestClient) -
     assert groups["System"] == ["Backup / Restore", "Upgrade", "Mail", "Audit log", "Settings"]
 
 
-def test_a_user_without_the_admin_role_sees_the_dashboard_and_no_groups(
+def test_a_user_without_the_admin_role_sees_the_overview_and_no_groups(
     client: TestClient,
 ) -> None:
-    assert _nav_groups(_as(client, "user").get("/").text) == {"": ["Dashboard"]}
+    assert _nav_groups(_as(client, "user").get("/").text) == {"": ["Overview"]}
 
 
-def test_the_status_row_is_in_the_sidebar_for_every_role_and_not_in_the_header(
+def test_the_status_row_opens_the_content_for_every_role_and_not_the_header(
     client: TestClient,
 ) -> None:
     for roles in (("user",), ("admin",)):
         body = _as(client, *roles).get("/").text
         header = _between(body, "<header", "</header>")
-        sidebar = _between(body, "<aside", "</aside>")
+        main = _between(body, '<main id="pk-main"', "</main>")
 
         assert "/partials/service-status" not in header
-        # Between the nav and the footer, so the footer's divider sits right
-        # under it and the nav can scroll without taking it along.
-        assert (
-            sidebar.index("</nav>")
-            < sidebar.index('hx-get="/partials/service-status"')
-            < sidebar.index('aria-label="Toggle sidebar"')
-        )
+        assert "/partials/service-status" not in _between(body, "<aside", "</aside>")
+        # Above the page's own content, so it is the first thing under the header.
+        assert main.index('hx-get="/partials/service-status"') < main.index('id="toasts"')
+        assert ("/partials/nav/job-indicator" in main) == ("admin" in roles)
 
 
 # ---------------------------------------------------------------------------

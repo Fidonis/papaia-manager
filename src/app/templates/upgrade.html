@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}{% trans branding=branding().name %}Upgrade — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{% trans %}Upgrade{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Move this deployment to a newer papAIa release{% endtrans %}</p>{% endblock %}
@@ -237,7 +236,7 @@
 // git worktree of the target tag. So the page asks for one explicitly on load,
 // which is what makes "open the page" mean "look for upgrades".
 function _csrfToken() {
-  return document.querySelector('meta[name=csrf]').content;
+  return csrfToken();
 }
 
 async function _upgradeError(r) {

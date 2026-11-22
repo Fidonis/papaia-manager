@@ -2,11 +2,11 @@
 
 Page routes and the application-level error handlers both render templates.
 Sharing one environment keeps a single template search path and one compiled
-template cache, instead of each module standing up its own.
+template cache, instead of each module standing up its own. The kit's templates
+(`pk/shell.html`, the platform's shared frame) are on the same search path.
 
-fidonis-brand: 2 -- the asset fingerprinting below is vendored verbatim into
-Fidonis/qdrant-ingest's src/ui/templating.py. Keep the two in step; see that
-repo's docs/ui.md.
+fidonis-brand: 3 -- the asset fingerprinting below is part of the brand layer
+(CONTRIBUTING.md, "Brand layer").
 """
 from __future__ import annotations
 
@@ -15,21 +15,30 @@ from pathlib import Path
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
-from jinja2 import pass_context
+from jinja2 import ChoiceLoader, pass_context
+from papaia_kit.ui import shell_context
+from papaia_kit.ui.shell import kit_loader
 
+from app import shell
+from app.auth.csrf import get_csrf_token
 from app.auth.oidc import OIDCClaims
-from app.auth.roles import is_identity_admin
-from app.config import get_settings
+from app.auth.roles import is_admin, is_identity_admin
+from app.config import Settings, get_settings
 from app.core.ingest import display
 from app.core.knowledge_map import active as knowledge_map_active
+from app.core.module_catalog import platform_catalog
 from app.core.nodes import is_distributed, lock_reason
 from app.core.rag import rag_active
 from app.core.settings_store import EffectiveBranding, effective_branding
 from app.core.widgets import registry as widget_registry
 from app.core.widgets import view as widget_view
+from app.i18n import gettext
+from app.i18n import runtime as i18n_runtime
 from app.i18n.jinja import install as install_i18n
 
 templates = Jinja2Templates(directory="app/templates")
+assert templates.env.loader is not None
+templates.env.loader = ChoiceLoader([templates.env.loader, kit_loader()])
 
 # Resolved from this module rather than the working directory: unlike the
 # template search path above, this is read at request time, long after
@@ -77,6 +86,15 @@ templates.env.globals["asset_url"] = asset_url
 
 # `_()`, `{% trans %}` and the language helpers. Not part of the brand layer above.
 install_i18n(templates.env)
+
+
+def _settings(context: dict[str, object]) -> Settings:
+    """The settings, honouring a dependency override so tests can point them elsewhere."""
+    request = context.get("request")
+    resolver = get_settings
+    if isinstance(request, Request):
+        resolver = request.app.dependency_overrides.get(get_settings, get_settings)
+    return resolver()
 
 
 @pass_context
@@ -183,6 +201,60 @@ def users_nav(context: dict[str, object]) -> bool:
 
 
 templates.env.globals["users_nav"] = users_nav
+
+
+@pass_context
+def pk_shell(
+    context: dict[str, object], title: str, breadcrumb: list[dict[str, str]] | None = None
+) -> dict[str, object]:
+    """The context of the kit's frame for the page being rendered (`templates/base.html`).
+
+    A global for the same reason as `rag_enabled`: the frame is part of every page, including
+    the ones an error handler renders. Everything it shows is presentation; the routes check
+    the roles themselves.
+    """
+    request = context.get("request")
+    settings = _settings(context)
+    config_dir = settings.papaia_config_dir
+    claims = context.get("user")
+    user = claims if isinstance(claims, OIDCClaims) else None
+    flags = shell.NavFlags(
+        admin=user is not None and is_admin(user, settings),
+        rag=rag_enabled(context),
+        knowledge_map=knowledge_map_enabled(context),
+        users=users_nav(context),
+        nodes=nodes_enabled(context),
+    )
+    csrf = context.get("csrf_token")
+    theme, sidebar, path = "system", "pinned", "/"
+    if isinstance(request, Request):
+        if not isinstance(csrf, str) or not csrf:
+            csrf = get_csrf_token(request)
+        theme = str(request.session.get(shell.APPEARANCE_KEY) or "system")
+        sidebar = request.cookies.get(shell.SIDEBAR_COOKIE, "pinned")
+        path = request.url.path
+    brand = branding(context)
+    state = i18n_runtime.locale_state()
+    doc = shell.document(
+        catalog=platform_catalog(config_dir),
+        installation=brand.name,
+        suffix=brand.tagline,
+        person=user.preferred_username if user is not None else gettext("Not signed in"),
+        roles=user.roles if user is not None else [],
+        lang=shell.frame_language(state.locale),
+        language=shell.language_setting(state.stored),
+        theme=theme,
+        sidebar=sidebar,
+        csrf=str(csrf or ""),
+        title=title,
+        breadcrumb=breadcrumb or [],
+        path=path,
+        groups=shell.nav_groups(flags, gettext),
+    )
+    return shell_context(shell.checked(doc))
+
+
+templates.env.globals["pk_shell"] = pk_shell
 
 # Times, spans and sizes of the ingest pages. The zone is passed in by the page, because it
 # is the ingester's and not the manager's.

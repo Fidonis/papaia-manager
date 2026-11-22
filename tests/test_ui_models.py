@@ -47,6 +47,7 @@ from app.core import model_usage, usage_view  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.routers.models_deps import get_litellm_transport  # noqa: E402
 from tests.fake_litellm import MASTER_KEY, FakeLitellm  # noqa: E402
+from tests.shell_nav import current_rows, nav_groups  # noqa: E402
 
 TODAY = date(2026, 10, 24)  # a Saturday
 _CSRF = "test-csrf-token-value"
@@ -179,10 +180,8 @@ def test_the_sidebar_lists_the_page_in_the_monitor_group_for_an_administrator(
 ) -> None:
     html = admin.get("/models").text
 
-    entries = re.findall(r'<a href="(/[a-z]*)" aria-label="([^"]+)"', html)
-    monitor = [href for href, _ in entries[: entries.index(("/jobs", "Jobs")) + 1]]
-    assert monitor[-3:] == ["/host", "/models", "/jobs"]
-    assert ("/models", "Models & Usage") in entries
+    assert nav_groups(html)["Monitor"] == ["Services", "Host", "Models & Usage", "Jobs"]
+    assert current_rows(html) == ["/models"]
 
 
 # ── who may open it ─────────────────────────────────────────────────────────────────────────

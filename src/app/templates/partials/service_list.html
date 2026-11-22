@@ -11,7 +11,7 @@
 {% from "partials/_group_controls.html" import group_checkbox, group_badge, addon_buttons %}
 {% macro module_section(title, modules, groups=0) %}
 <div class="flex items-center justify-between mb-4">
-  <p class="text-sm font-semibold opacity-60 uppercase tracking-wide">
+  <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide">
     {{ title }} &nbsp;·&nbsp; {% trans count=(modules | length) %}{{ count }} module{% pluralize %}{{ count }} modules{% endtrans %}
     {%- if groups %} &nbsp;·&nbsp; {% trans count=groups %}{{ count }} group{% pluralize %}{{ count }} groups{% endtrans %}{% endif %}
   </p>
@@ -134,31 +134,31 @@
    a colour-blind reader. #}
 <div class="grid grid-cols-2 lg:grid-cols-5 overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
   <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l lg:first:border-l-0">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Modules{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Modules{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums">
       <span class="h-2 w-2 shrink-0 rounded-full bg-neutral"></span>{{ total }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Running{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Running{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-success">
       <span class="h-2 w-2 shrink-0 rounded-full bg-success"></span>{{ cnt_running }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-b lg:border-b-0 lg:border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Degraded{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Degraded{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-warning">
       <span class="h-2 w-2 shrink-0 rounded-full bg-warning"></span>{{ cnt_degraded }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 lg:border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Stopped{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Stopped{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-error">
       <span class="h-2 w-2 shrink-0 rounded-full bg-error"></span>{{ cnt_stopped }}
     </p>
   </div>
   <div class="px-5 py-3.5 border-base-300 border-l">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{% trans %}Not deployed{% endtrans %}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{% trans %}Not deployed{% endtrans %}</p>
     <p class="mt-1 flex items-center gap-2 text-2xl font-bold font-brand tabular-nums text-error">
       <span class="h-2 w-2 shrink-0 rounded-full border-2 border-error"></span>{{ cnt_missing }}
     </p>

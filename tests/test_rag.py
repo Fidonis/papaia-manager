@@ -44,6 +44,7 @@ from app.core import rag  # noqa: E402
 from app.core.inventory import profiles_in  # noqa: E402
 from app.core.tiles import Tile, TileGroup  # noqa: E402
 from app.main import create_app  # noqa: E402
+from tests.shell_nav import current_rows, nav_groups  # noqa: E402
 
 _CSRF = "test-csrf-token-value"
 
@@ -110,13 +111,7 @@ def _admin(client: TestClient) -> TestClient:
 
 
 def _nav_groups(body: str) -> dict[str, list[str]]:
-    """Caption -> the entries under it, in order; the caption-less lead is ''."""
-    nav = body[body.index("<nav") : body.index("</nav>")]
-    parts = re.split(r'<p class="sidebar-label[^>]*>([^<]+)</p>', nav)
-    groups = {"": re.findall(r'aria-label="([^"]+)"', parts[0])}
-    for caption, chunk in zip(parts[1::2], parts[2::2], strict=True):
-        groups[caption] = re.findall(r'aria-label="([^"]+)"', chunk)
-    return groups
+    return nav_groups(body)
 
 
 def _tile(name: str, href: str) -> Tile:
@@ -381,14 +376,11 @@ def test_the_manager_pages_are_not_links_out(client: TestClient, page: str) -> N
     anchor = re.search(rf'<a href="{page}"[^>]*>', nav)
     assert anchor
     assert "target=" not in anchor.group(0)
-    assert "aria-label=" in anchor.group(0), "the collapsed rail has no other label"
 
 
 def test_connections_is_marked_active_on_its_own_page_only(client: TestClient) -> None:
     def active(body: str) -> bool:
-        nav = body[body.index("<nav") : body.index("</nav>")]
-        row = nav[nav.index('<a href="/connections"') :]
-        return "bg-secondary/15" in row[: row.index("</a>")]
+        return current_rows(body) == ["/connections"]
 
     assert not active(_admin(client).get("/collections").text)
     assert active(_admin(client).get("/connections").text)
@@ -397,9 +389,7 @@ def test_connections_is_marked_active_on_its_own_page_only(client: TestClient) -
 def test_collections_is_marked_active_on_its_own_page_only(client: TestClient) -> None:
     # The page is a shell; the list is fetched afterwards, so no Qdrant is involved.
     def active(body: str) -> bool:
-        nav = body[body.index("<nav") : body.index("</nav>")]
-        row = nav[nav.index('<a href="/collections"') :]
-        return "bg-secondary/15" in row[: row.index("</a>")]
+        return current_rows(body) == ["/collections"]
 
     assert not active(_admin(client).get("/catalogs").text)
     assert active(_admin(client).get("/collections").text)
@@ -408,9 +398,7 @@ def test_collections_is_marked_active_on_its_own_page_only(client: TestClient) -
 def test_embedding_is_marked_active_on_its_own_page_only(client: TestClient) -> None:
     # The page is a shell; the body is fetched afterwards, so no Qdrant is involved.
     def active(body: str) -> bool:
-        nav = body[body.index("<nav") : body.index("</nav>")]
-        row = nav[nav.index('<a href="/embedding"') :]
-        return "bg-secondary/15" in row[: row.index("</a>")]
+        return current_rows(body) == ["/embedding"]
 
     assert not active(_admin(client).get("/collections").text)
     assert active(_admin(client).get("/embedding").text)
@@ -459,7 +447,7 @@ def test_a_user_without_the_admin_role_gets_no_category_even_with_the_profile(
 ) -> None:
     body = _as(client, "user").get("/").text
 
-    assert _nav_groups(body) == {"": ["Dashboard"]}
+    assert _nav_groups(body) == {"": ["Overview"]}
     assert _QDRANT not in body[body.index("<nav") : body.index("</nav>")]
 
 

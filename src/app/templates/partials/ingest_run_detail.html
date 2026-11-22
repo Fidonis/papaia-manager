@@ -93,7 +93,7 @@
   {% if view.sync_stderr_tail %}
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body gap-1 p-4">
-      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}Output of the fetch{% endtrans %}</p>
+      <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}Output of the fetch{% endtrans %}</p>
       <pre class="max-h-72 overflow-auto rounded-lg bg-base-300 p-3 font-mono text-xs">{{ view.sync_stderr_tail }}</pre>
       <p class="text-xs opacity-60">{% trans %}The last lines of the tool that fetches remote files. It can contain addresses.{% endtrans %}</p>
     </div>
@@ -103,7 +103,7 @@
   {% if view.events %}
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body gap-2 p-4">
-      <p class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans %}Messages from the ingester{% endtrans %}</p>
+      <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}Messages from the ingester{% endtrans %}</p>
       {% if problems %}
       <details open>
         <summary class="cursor-pointer text-sm">{% trans count=(problems | length) %}{{ count }} problem{% pluralize count %}{{ count }} problems{% endtrans %}{% if view.events_truncated %} {% trans count=(view.events | length) %}(among the first {{ count }} messages){% endtrans %}{% endif %}</summary>

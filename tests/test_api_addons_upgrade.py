@@ -55,7 +55,7 @@ from app.core.snapshots import load_installed, managed_snapshot_path, record_ins
 from app.main import create_app  # noqa: E402
 from app.routers import api_addons  # noqa: E402
 
-_CSRF = "test-csrf-token"
+_CSRF = "test-csrf-token-value"
 _CONFIG = Path(_CONFIG_DIR)
 _WORKSPACE = Path(_WORKSPACE_DIR)
 _CATALOG_SOURCE = _WORKSPACE / "catalog-source"

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{# "My area" of a manager that runs without a platform catalog. With one, /me leads to
+   Mein Bereich, and the account menu links there directly. #}
+{% block page_title %}{% trans %}My area{% endtrans %}{% endblock %}
+
+{% block content %}
+<div class="card bg-base-100 border border-base-300 max-w-3xl">
+  <div class="card-body">
+    <dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-3 text-sm">
+      <dt class="font-semibold">{% trans %}Account{% endtrans %}</dt>
+      <dd>{{ user.preferred_username }}</dd>
+      <dt class="font-semibold">{% trans %}Roles{% endtrans %}</dt>
+      <dd>{% for role in roles %}<span class="badge badge-ghost mr-1">{{ role }}</span>{% else %}–{% endfor %}</dd>
+    </dl>
+  </div>
+</div>
+{% endblock %}

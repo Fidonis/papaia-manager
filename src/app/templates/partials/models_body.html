@@ -106,7 +106,7 @@
 <div class="grid {{ 'grid-cols-2 lg:grid-cols-4' if items | length > 3 else 'grid-cols-1 sm:grid-cols-3' }} gap-px overflow-hidden rounded-xl border border-base-300 bg-base-300">
   {% for item in items %}
   <div class="bg-base-100 px-5 py-3.5">
-    <p class="text-xs font-medium opacity-50 uppercase tracking-wide">{{ item.label }}</p>
+    <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{{ item.label }}</p>
     <p class="mt-1 text-2xl font-bold font-brand tabular-nums">{{ item.value }}</p>
     <p class="mt-0.5 text-xs opacity-60">{{ item.sub }}</p>
   </div>
@@ -312,7 +312,7 @@
 <div class="mb-4">{{ kpi_grid(kpis) }}</div>
 
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-  <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+  <p class="text-xs font-semibold uppercase tracking-wide text-pk-text-muted">
     {% if kind == 'detail' %}{% trans %}This model per day{% endtrans %}{% else %}{% trans %}All models per day{% endtrans %}{% endif %}
   </p>
   {{ metric_toggle() }}
@@ -322,7 +322,7 @@
 
 {% if kind == 'overview' %}
 {% if shares %}
-<p class="mb-1 mt-8 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans metric=metric_label %}Share by model · {{ metric }}{% endtrans %}</p>
+<p class="mb-1 mt-8 text-xs font-semibold uppercase tracking-wide text-pk-text-muted">{% trans metric=metric_label %}Share by model · {{ metric }}{% endtrans %}</p>
 <ul class="divide-y divide-base-300 rounded-xl border border-base-300 bg-base-100 px-4">
   {% for s in shares %}
   <li class="flex items-center gap-3 py-2.5">

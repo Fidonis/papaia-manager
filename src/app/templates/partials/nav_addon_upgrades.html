@@ -1,7 +1,8 @@
-{# The dot on the Add-Ons nav entry: renders to nothing unless a catalog on disk offers a
-   higher version of an add-on this panel installed. Collapsed to a rail the nav row has no
-   visible text, so the dot carries its meaning in `aria-label`. #}
+{# The add-on hint in the status row: renders to nothing unless a catalog on disk offers a
+   higher version of an add-on this panel installed. #}
 {% if count %}
-<span class="h-2 w-2 shrink-0 rounded-full bg-accent"
-      aria-label="{{ _('Add-on upgrades are available') }}"></span>
+<a href="/addons" class="inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-base-300">
+  <span class="h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden="true"></span>
+  {{ _('Add-on upgrades are available') }}
+</a>
 {% endif %}

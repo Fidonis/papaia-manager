@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}{% trans branding=branding().name %}Embedding — {{ branding }}{% endtrans %}{% endblock %}
 
 {% block page_title %}{% trans %}Embedding{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Put files into a collection. The ingester reads them in the background{% endtrans %}</p>{% endblock %}
@@ -256,7 +255,7 @@ function embedPage() {
           this.selected = { '': true };
         }
         const url = '/api/v1/rag/ingest/uploads/' + encodeURIComponent(this.batch) + '/files';
-        const token = document.querySelector('meta[name=csrf]').content;
+        const token = csrfToken();
         let done = 0;
         for (const file of files) {
           const path = file.webkitRelativePath || file.name;

@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import tempfile
 import time
 from collections.abc import Iterator
@@ -314,7 +315,8 @@ def test_the_audit_page_needs_an_admin(client: TestClient) -> None:
 
 def test_the_audit_page_renders_the_nav_entry_and_filter_form(client: TestClient) -> None:
     html = _admin(client).get("/audit").text
-    assert 'aria-label="Audit log"' in html
+    row = r'<a href="/audit" aria-current="page">\s*<span class="pk-label">Audit log</span>'
+    assert re.search(row, html)
     assert 'id="audit-filters"' in html
     assert 'id="audit-prune-modal"' in html
 

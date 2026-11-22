@@ -44,9 +44,30 @@ the VM boundary.
 
 ## How it works
 
+**Shared frame.** Every page is the content of the platform's shared frame from
+`papaia-kit` (the vendored wheel under `src/vendor/`): the installation's name, the module
+switcher, the navigation, the footer with the sidebar and appearance buttons and the account
+menu (**Language**, **My area**, **Help**, **Sign out**), and the page header with the one
+heading. The switcher lists the modules of the platform catalog
+`$PAPAIA_CONFIG_DIR/platform/services.json` that the account may open; without a catalog it
+names the manager alone, the brand leads to the dashboard and **My area** is `/me`, the
+account's own page. With a catalog the brand and **My area** lead to Mein Bereich. A catalog
+the frame cannot verify is left out, never half used. The frame is display only: every page
+and API route checks the roles itself. Below 1024 px the sidebar is a drawer behind the menu
+button. The frame's stylesheet, script, symbols and fonts are served from the wheel at
+`/_kit/<kit version>/…`, the platform logo at `/_kit/brand/logo` while its SHA-256 matches the
+catalog; nothing is loaded from another host. The footer forms (`POST /_kit/sidebar`,
+`/_kit/appearance`, `/_kit/language`) need the session and its CSRF token, accept exactly one
+of their values and write an audit entry each: the sidebar state is kept in the `pk_sidebar`
+cookie, the appearance (light, dark, or the system setting until one is chosen) in the
+session, the language with the account as before. **Help** (`/help`) explains the manager's
+terms from the platform glossary and names the contact of the installation.
+`cd src && uv run python -m app.shell --input <file>` renders a shell input as the manager
+does, for the kit's markup check.
+
 **Language.** The interface is available in English and German. Every account chooses its
-own language in the account menu at the bottom of the sidebar (**Automatic**, **English** or
-**Deutsch**). The choice is stored on the server with the account, not in the browser, so it is
+own language in the account menu at the bottom of the sidebar (**Language**: **Automatic**,
+**Deutsch** or **English**). The choice is stored on the server with the account, not in the browser, so it is
 the same on every computer the account signs in from. **Automatic**, which is also what an account has before
 it chooses, follows the browser's language and falls back to the installation's default
 (`MANAGER_DEFAULT_LOCALE`, English unless set). Another language is a catalogue file under
@@ -88,7 +109,10 @@ not mounted, the rows wait and the manager keeps working.
 **Settings and branding.** Administrators open **Settings** to change the
 name and second line shown at the top of the sidebar (defaults: "papAIa
 manager" / "by Fidonis") and to upload their own logo (PNG, JPEG, WebP or SVG,
-up to 512 KB; it is scaled to fit the header). The values are stored in
+up to 512 KB). With a platform catalog the frame shows the platform's branding
+instead (name, second line and logo from `platform/services.json`), and the shared
+frame shows a logo only from there: the uploaded logo is kept and served at
+`/brand/logo`, but not shown in the sidebar. The values are stored in
 `$PAPAIA_CONFIG_DIR/manager/settings.yaml`, one section per topic, and the logo
 in `$PAPAIA_CONFIG_DIR/manager/branding/`, so both are part of a backup.
 Without a settings file nothing changes. A second card, **Host monitoring**, sets
@@ -514,8 +538,8 @@ The profile serving this panel is the one group that cannot be selected. Stoppin
 it would remove the container handling the request, which could then never report
 whether it worked.
 
-The same data drives a status row in the sidebar of every page, visible to every
-authenticated account regardless of role. Its popover keeps three rows apart: the
+The same data drives a status chip in the status row at the top of every page, visible
+to every authenticated account regardless of role. Its popover keeps three rows apart: the
 core stack, the add-ons and the host. Each carries counts only, so a user without
 the admin role learns that something is unhealthy, but not which service, disk or
 certificate. Core and add-ons stay separate so that a failing add-on out of a
@@ -545,8 +569,9 @@ containers, volumes and build cache, with what the daemon calls reclaimable) is
 listed under "Docker usage" when the core has the `docker_usage` check. The
 daemon has to size every volume to answer, so it is measured on its own, every
 tenth interval and no sooner than every 5 minutes, and a slow or failing
-measurement leaves the rest of the page as it is. The Host entry in the sidebar carries a
-dot while a check warns or has failed.
+measurement leaves the rest of the page as it is. For administrators the status row also
+says "Host needs attention" while a check warns or has failed, and in the same way when a
+job is running, an add-on upgrade or a newer papAIa release is available.
 
 **Models & Usage.** An admin-only page at `/models`, in the *Monitor* group after Host, that
 shows which models LiteLLM serves and what they consumed. A window of days is chosen at the top:
@@ -1087,7 +1112,9 @@ papaia-manager/
 │       │                   # find what to report, delivery by email and webhook, the background task),
 │       │                   # widgets/ (the dashboard's widgets: the payload they produce, the registry,
 │       │                   # reading and caching, the built-in types)
-│       ├── routers/        # auth, health, ui, api_catalogs, api_addons, api_jobs,
+│       ├── shell.py        # the input of the platform's shared frame (papaia-kit shell contract)
+│       ├── routers/        # auth, health, kit (the frame's assets, forms, help), ui, api_catalogs,
+│       │                   # api_addons, api_jobs,
 │       │                   # api_maintenance, api_stack, api_upgrade, api_audit,
 │       │                   # api_tiles, api_settings, api_collections, api_connections, api_ingest,
 │       │                   # api_ingest_jobs, ui_ingest, rag_deps (RAG role, profile and store),

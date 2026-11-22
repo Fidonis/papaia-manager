@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}{% trans branding=branding().name %}Node {{ name }} — {{ branding }}{% endtrans %}{% endblock %}
 {% block page_title %}{% trans %}Node {{ name }}{% endtrans %}{% endblock %}
 
 {% block content %}
@@ -72,7 +71,7 @@
         method: method,
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': document.querySelector('meta[name=csrf]').content,
+          'X-CSRF-Token': csrfToken(),
         },
         body: body ? JSON.stringify(body) : undefined,
       }).then(async function(r) {
