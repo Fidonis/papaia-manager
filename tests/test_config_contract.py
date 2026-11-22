@@ -373,6 +373,40 @@ async def test_switching_localai_off_removes_the_profile_and_keeps_the_variant(
     assert deployment.env(".env")["LOCALAI_IMAGE_VARIANT"] == "nvidia-cuda-12"
 
 
+async def test_switching_localai_changes_what_litellm_reads(deployment: _Deployment) -> None:
+    """Why the LocalAI switch recreates LiteLLM: the core renders LocalAI's models into LiteLLM's
+    `model_list` while the profile is on (papAIa 1.9.0 and newer)."""
+    example = deployment.repo / "src" / "ai" / "litellm" / ".env.example"
+    if "LOCALAI_API_KEY" not in example.read_text(encoding="utf-8"):
+        pytest.skip("this core does not generate LocalAI's entries of LiteLLM's model_list")
+    shipped = sorted((deployment.repo / "src" / "ai" / "localai" / "models").glob("*.yaml"))[0]
+    model = yaml.safe_load(shipped.read_text(encoding="utf-8"))
+    downloads = deployment.config / "overlay" / "ai" / "localai" / "models.txt"
+    downloads.parent.mkdir(parents=True, exist_ok=True)
+    downloads.write_text(f"https://models.test/{model['parameters']['model']}\n", encoding="utf-8")
+
+    async def listed() -> set[str]:
+        result = await preview.run(
+            workspace_dir=str(deployment.workspace),
+            config_dir=str(deployment.config),
+            target_path="ai/litellm/config.yaml",
+            draft="",
+        )
+        assert result.ok, result.error
+        rendered = yaml.safe_load(result.current) or {}
+        return {entry["model_name"] for entry in rendered.get("model_list") or []}
+
+    assert model["name"] not in await listed()
+    code, _, err = await _apply(deployment, ModuleSetup("localai", True, "cpu"))
+    assert code == 0, err
+    assert model["name"] in await listed()
+    assert deployment.env("ai/litellm/.env")["LOCALAI_API_KEY"]
+    assert modules.SWITCHABLE["localai"].recreate == ("litellm",)
+    code, _, err = await _apply(deployment, ModuleSetup("localai", False))
+    assert code == 0, err
+    assert model["name"] not in await listed()
+
+
 async def test_web_search_is_one_profile_and_touches_no_other(deployment: _Deployment) -> None:
     before = deployment.profiles()
     code, _, err = await _apply(deployment, ModuleSetup("web-search", True))

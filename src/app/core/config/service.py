@@ -4,18 +4,21 @@ Every change is a queued job, so it is single-flight with everything else the ma
 the stack, streams a log and leaves an audit entry.
 
 * **Module on:** the core's `setup` stores the choice, then `start --profiles=<profile>`
-  brings the module up. The RAG system also recreates LibreChat (its configuration lists the
-  RAG system's MCP server and is read once, at start), voice recreates LiteLLM and LibreChat
-  (their rendered files carry its routes, its key and the speech panel); the mail relay ends
-  with the sync that puts its mail server into Keycloak's realm. Then the job waits for the
-  group to be healthy. Voice loads its models for longer than that wait (`slow_start`): still
-  starting at the end of it is reported as loading, not as a failure.
+  brings the module up. LocalAI also recreates LiteLLM (its rendered `model_list` and its env
+  file carry LocalAI's models and their key), the RAG system recreates LibreChat (its
+  configuration lists the RAG system's MCP server and is read once, at start), voice recreates
+  LiteLLM and LibreChat (their rendered files carry its routes, its key and the speech panel);
+  the mail relay ends with the sync that puts its mail server into Keycloak's realm. A profile
+  that is not switched on is not recreated. Then the job waits for the group to be healthy.
+  Voice loads its models for longer than that wait (`slow_start`): still starting at the end
+  of it is reported as loading, not as a failure.
 * **Module off:** the module is stopped and its containers removed while its profile is still
   active (with `--volumes` when its data is to go), then `setup` takes the profile out, then
   the core deletes what was asked for (`module-purge`): nothing, the data, or the data and
   the settings, and for the knowledge map, on a separate choice, the operator files (this
-  manager then drops its history of them). The RAG system and the knowledge map recreate
-  LibreChat again; the mail relay's mail server is taken out of the realm.
+  manager then drops its history of them). Before that deletion LocalAI recreates LiteLLM
+  again, voice LiteLLM and LibreChat, the RAG system and the knowledge map LibreChat; the mail
+  relay's mail server is taken out of the realm.
 * **Overlay apply, discard and roll back** share one sequence: check that the file is still
   the one the page showed, copy the old bytes into the history, write (or remove) the file,
   then recreate the containers that read the rendered target (`stop --clean-up` and `start`
@@ -264,9 +267,14 @@ async def _recreate(
     config_dir: str,
     skipped: list[str],
 ) -> None:
-    """Recreate the containers of `profiles`: render replaces the files they read, and a
-    running container keeps the old one (see the overlay jobs)."""
+    """Recreate the containers of those `profiles` that are switched on: render replaces the
+    files they read, and a running container keeps the old one (see the overlay jobs). The
+    others are left alone: `start --profiles` starts whatever it names, switched on or not."""
+    active = modules.active(config_dir)
     for profile in profiles:
+        if profile not in active:
+            ctx.log(f"[info] {profile} is not switched on; not recreated")
+            continue
         flag = f"--profiles={profile}"
         await _verb(
             ctx, "stop", "--clean-up", flag, workspace_dir=workspace_dir, config_dir=config_dir
