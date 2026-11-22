@@ -75,11 +75,13 @@ Switching a module on stores the choice with the core's own `setup`
 `--enable-knowledge-map`, `--enable-smtp`, and for LocalAI and voice the accelerator variant, which is chosen on
 the page because GPU detection cannot see the host from inside the container; voice
 offers CPU, NVIDIA with a driver for CUDA 12.8 or newer, and AMD ROCm) and starts the
-module's profile; the RAG system and the AI map also recreate LibreChat, whose
-configuration lists their tools, and voice recreates LiteLLM and LibreChat, which route speech to its
-engines and offer it in the speech panel. Voice downloads several GB of models on its
-first start, which takes longer than a switch waits: the switch finishes while they
-load, and the Services page shows when voice is ready. The
+module's profile. Switching on or off also recreates the services that read the change:
+LiteLLM for LocalAI, whose models it lists (papAIa 1.9.0 and newer), LibreChat for the RAG
+system and the AI map, whose tools its configuration lists, and both for voice, as they route
+speech to its engines and offer it in the speech panel. The chat is unavailable for a short
+while during that; a service that is switched off is left alone. Voice downloads several
+GB of models on its first start, which takes longer than a switch waits: the switch
+finishes while they load, and the Services page shows when voice is ready. The
 RAG pages and the Mail page hold those modules' settings and no longer switch
 anything. Switching a module on asks the questions `papaia-ctl setup` asks, inline under
 its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings

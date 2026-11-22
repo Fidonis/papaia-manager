@@ -107,8 +107,8 @@ class ModuleDef:
     # without the RAG system).
     link_needs_module: bool = False
     note: str = ""
-    # Other profiles whose containers read this module's rendered configuration: they are
-    # recreated after the module is switched on or off.
+    # Other profiles whose containers read this module's rendered configuration: the active
+    # ones are recreated after the module is switched on or off.
     recreate: tuple[str, ...] = ()
     # The module needs the core to ship the module operations, not only its own profile.
     needs_core_modules: bool = False
@@ -135,6 +135,10 @@ MODULES: tuple[ModuleDef, ...] = (
             )
         ),
         switchable=True,
+        # The core (1.9.0 and newer) renders LocalAI's models into LiteLLM's model_list while
+        # the profile is on and copies their key into its env file. A start of the localai
+        # profile does not touch LiteLLM, which reads both once at start.
+        recreate=("litellm",),
     ),
     ModuleDef(
         name="web-search",

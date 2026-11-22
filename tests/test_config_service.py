@@ -113,7 +113,7 @@ def health(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return state
 
 
-def _config(tmp_path: Path, profiles: str = "nginx,librechat") -> str:
+def _config(tmp_path: Path, profiles: str = "nginx,librechat,litellm") -> str:
     config = tmp_path / "config"
     config.mkdir(parents=True, exist_ok=True)
     (config / ".env").write_text(f"COMPOSE_PROFILES={profiles}\n", encoding="utf-8")
@@ -170,7 +170,7 @@ def _seed(config: str, data: bytes = OLD, key: str = "librechat") -> None:
 # -- modules -----------------------------------------------------------------------------------
 
 
-def test_switching_localai_on_stores_the_choice_and_then_starts_it(
+def test_switching_localai_on_starts_it_and_then_recreates_litellm(
     tmp_path: Path, run: _Run, health: dict[str, Any]
 ) -> None:
     config = _config(tmp_path)
@@ -184,6 +184,8 @@ def test_switching_localai_on_stores_the_choice_and_then_starts_it(
     assert run.steps == [
         ("setup", ModuleSetup("localai", True, "intel")),
         ("start", ["--profiles=localai"]),
+        ("stop", ["--clean-up", "--profiles=litellm"]),
+        ("start", ["--profiles=litellm"]),
     ]
     [entry] = _audit(config)
     assert (entry["action"], entry["target"], entry["result"]) == (
@@ -338,6 +340,108 @@ def test_what_the_purge_printed_is_in_the_log(tmp_path: Path, run: _Run) -> None
     config = _config(tmp_path, "nginx,localai")
     _go(_off(config, scope="data"), ctx)
     assert "removed volume papaia_x" in _log(ctx)
+
+
+# -- modules: LocalAI and the models LiteLLM lists for it --------------------------------------
+
+
+@pytest.mark.parametrize("scope", modules.SCOPES)
+def test_switching_localai_off_recreates_litellm_before_any_purge(
+    tmp_path: Path, run: _Run, scope: str
+) -> None:
+    config = _config(tmp_path, "nginx,librechat,litellm,localai")
+    _go(_off(config, scope=scope), _context(tmp_path))
+    deletes = scope != modules.SCOPE_KEEP
+    volumes = ["--volumes"] if deletes else []
+    purge = [("purge", ("localai", True, scope == modules.SCOPE_ALL))] if deletes else []
+    assert run.steps == [
+        ("stop", ["--clean-up", *volumes, "--profiles=localai"]),
+        ("setup", ModuleSetup("localai", False)),
+        ("stop", ["--clean-up", "--profiles=litellm"]),
+        ("start", ["--profiles=litellm"]),
+        *purge,
+    ]
+
+
+def test_another_localai_variant_recreates_litellm_both_ways(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    # The tab changes the variant by switching LocalAI off and on again with the other one.
+    # The recorder stores no profile, so the second job gets the state the first one leaves.
+    config = _config(tmp_path, "nginx,librechat,litellm,localai")
+    _go(_off(config), _context(tmp_path))
+    config = _config(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="localai",
+            variant="nvidia-cuda-13",
+            user="admin",
+            workspace_dir="/w",
+            config_dir=config,
+        ),
+        _context(tmp_path),
+    )
+    assert run.steps == [
+        ("stop", ["--clean-up", "--profiles=localai"]),
+        ("setup", ModuleSetup("localai", False)),
+        ("stop", ["--clean-up", "--profiles=litellm"]),
+        ("start", ["--profiles=litellm"]),
+        ("setup", ModuleSetup("localai", True, "nvidia-cuda-13")),
+        ("start", ["--profiles=localai"]),
+        ("stop", ["--clean-up", "--profiles=litellm"]),
+        ("start", ["--profiles=litellm"]),
+    ]
+
+
+def test_switching_localai_on_leaves_a_litellm_that_is_not_switched_on_alone(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    config = _config(tmp_path, "nginx,librechat")
+    ctx = _context(tmp_path)
+    _go(
+        svc.enable_callback(
+            module="localai", variant="cpu", user="admin", workspace_dir="/w", config_dir=config
+        ),
+        ctx,
+    )
+    assert run.names() == ["setup", "start"]
+    assert "litellm is not switched on" in _log(ctx)
+
+
+def test_switching_localai_off_leaves_a_litellm_that_is_not_switched_on_alone(
+    tmp_path: Path, run: _Run
+) -> None:
+    config = _config(tmp_path, "nginx,librechat,localai")
+    ctx = _context(tmp_path)
+    _go(_off(config), ctx)
+    assert run.names() == ["stop", "setup"]
+    assert "litellm is not switched on" in _log(ctx)
+
+
+def test_a_failed_litellm_recreate_ends_switching_localai_on_as_partial(
+    tmp_path: Path, run: _Run, health: dict[str, Any]
+) -> None:
+    run.fail["stop"] = 1  # switching on stops nothing but LiteLLM
+    config = _config(tmp_path)
+    with pytest.raises(svc.StepFailedError, match="papaia-ctl stop"):
+        _go(
+            svc.enable_callback(
+                module="localai", variant="cpu", user="admin", workspace_dir="/w", config_dir=config
+            ),
+            _context(tmp_path),
+        )
+    assert run.names() == ["setup", "start", "stop"]
+    assert [e["result"] for e in _audit(config)] == ["partial"]
+
+
+def test_a_failed_litellm_recreate_keeps_the_localai_data_that_was_to_go(
+    tmp_path: Path, run: _Run
+) -> None:
+    run.fail["start"] = 1  # switching off starts nothing but LiteLLM
+    config = _config(tmp_path, "nginx,librechat,litellm,localai")
+    with pytest.raises(svc.StepFailedError, match="papaia-ctl start"):
+        _go(_off(config, scope="data"), _context(tmp_path))
+    assert "purge" not in run.names()
 
 
 # -- modules: the knowledge map and its operator files -----------------------------------------
