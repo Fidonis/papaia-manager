@@ -81,12 +81,17 @@ class ExpectedService:
     back from there is enabled by definition. It is kept because a profile is
     the only granularity `papaia-ctl start` and `stop` accept, which makes it
     the unit the services page can offer control over.
+
+    `restart` is the declared restart policy (empty when none is declared). The services
+    page reads a clean exit of a service meant to keep running as an outage, and the
+    gate it reads Docker through does not hand out a container's host configuration.
     """
 
     service: str
     module: str
     role: str
     profiles: frozenset[str] = frozenset()
+    restart: str = ""
 
 
 def profiles_in(env: Mapping[str, str]) -> set[str]:
@@ -191,7 +196,16 @@ def _expected(service: str, body: dict[str, Any], *, fallback_module: str) -> Ex
         module=module_display_name(module) if module else fallback_module,
         role=labels.get("de.fidonis.role", ""),
         profiles=frozenset(_profiles(body)),
+        restart=_restart(body),
     )
+
+
+def _restart(body: dict[str, Any]) -> str:
+    """The declared restart policy. `restart: no` unquoted is YAML's false."""
+    value = body.get("restart")
+    if value is False:
+        return "no"
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _load_yaml(path: Path) -> dict[str, Any] | None:

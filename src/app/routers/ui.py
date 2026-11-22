@@ -631,6 +631,7 @@ async def partial_services(
             node_sections=modules_by_node(snapshot) if snapshot.nodes else [],
             link_profile=LINK_PROFILE,
             unreachable_nodes=snapshot.unreachable_nodes,
+            docker_problem=snapshot.docker_problem,
             total=len(snapshot.core) + len(snapshot.addons),
             cnt_running=counts[ServiceHealth.HEALTHY] + counts[ServiceHealth.COMPLETED],
             cnt_degraded=counts[ServiceHealth.UNHEALTHY] + counts[ServiceHealth.STARTING],
@@ -1732,7 +1733,8 @@ async def legacy_partial_restore_status() -> RedirectResponse:
 async def _load_stack_snapshot(settings: Settings) -> StackSnapshot:
     """Core, add-ons and running projects in one reading.
 
-    Blocking (`docker ps` plus a YAML scan of the Compose files), so off-thread.
+    Blocking (the gate's container list plus a YAML scan of the Compose files), so
+    off-thread.
     Cheap to call more than once per request: `load_snapshot` caches for five
     seconds, which is what lets the add-on views share this reading instead of
     running a second query.

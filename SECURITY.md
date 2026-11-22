@@ -46,11 +46,18 @@ Please include:
 
 ## Security design considerations
 
-**docker.sock access:** The manager container mounts the Docker socket at
-`/var/run/docker.sock`, which grants root-equivalent access to the host
-daemon. This is required for Compose operations and is intentional; the
-`manager` Compose profile is disabled by default. Only enable it where
-a web control plane is explicitly desired and access is gated by Keycloak.
+**Docker access:** The manager container mounts no Docker socket. Access to the
+socket is root-equivalent on the host, so the manager reaches Docker only through
+the core's `papaia-docker-gate` over an internal network that holds the gate and the
+manager alone. The gate allows the status of the containers of the installation's
+own compose project and `start` / `stop` of those containers; `exec`, creating
+containers (with or without host mounts), other projects and every other Docker
+call are refused with 403 and an audit row in the gate. The manager checks a
+container reference and the stop timeout before it sends them, and forwards the
+correlation id of the request. Running the manager without the gate, or with the
+socket mounted, is not supported: with the socket the manager would again be
+equivalent to root on the host. The `manager` Compose profile is disabled by
+default.
 
 **Subprocess isolation:** All calls to `papaia-ctl` are routed through
 `app/core/ctl.py`, which validates the operation verb against an allowlist

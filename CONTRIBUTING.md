@@ -117,7 +117,7 @@ cp .env.example .env
 uv run uvicorn app.main:create_app --factory --reload --port 8120
 ```
 
-The application expects a running Keycloak instance with a configured `papaia-manager` client. The compose file under `docker/` builds and runs the manager only, with the Docker socket and the workspace, config and backup directories mounted; it brings no Keycloak and does not join the stack's Docker network, so addresses such as `QDRANT_URL` and `QDRANT_INGEST_URL` have to be set to something it can reach.
+The application expects a running Keycloak instance with a configured `papaia-manager` client. The compose file under `docker/` builds and runs the manager only, with the workspace, config and backup directories mounted and no Docker socket; it brings no Keycloak and does not join the stack's Docker networks, so addresses such as `QDRANT_URL`, `QDRANT_INGEST_URL` and `DOCKER_GATE_URL` have to be set to something it can reach.
 
 ## Add or update a language
 

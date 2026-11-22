@@ -20,6 +20,13 @@ In a distributed installation a group action names the node that owns each group
 it the core's `start` pushes to every node and brings up each link gateway first, so one
 node that does not answer would stop an action that has nothing to do with it.
 
+On a single host a group action goes through `papaia-docker-gate`, the manager's only way to
+Docker: it stops the group's running containers and starts its stopped ones, one container at a
+time, and the gate decides each call. What the gate does not allow is refused here before
+anything is queued: `clean_up` removes containers, and a service without a container needs one
+created; both are `papaia-ctl` on the host. A gate that does not answer is a 503 that says
+running without it is not supported.
+
 Add-ons are deliberately untouched by everything here. `papaia-ctl stop` would
 take them along given `--addons`, and that flag is never passed -- an add-on is
 started and stopped one at a time from `/api/v1/addons`.
@@ -36,7 +43,7 @@ from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
 from app.auth.oidc import OIDCClaims
 from app.config import Settings, get_settings
-from app.core import nodes, runner, services
+from app.core import docker_gate, nodes, runner, services
 from app.core.audit import write_audit_entry
 from app.core.ctl import profiles_flag, run_core_verb
 from app.core.inventory import active_profiles, core_groups
@@ -141,6 +148,74 @@ def _refuse_while_locked(action: str, settings: Settings) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Service groups through papaia-docker-gate
+# ---------------------------------------------------------------------------
+
+
+class GroupTargets(BaseModel):
+    """The containers of the selected groups, as the gate showed them when the action was
+    asked for. The gate decides each call again when the job runs."""
+
+    running: list[str] = []
+    stopped: list[str] = []
+    # Declared services with no container: only `papaia-ctl start` on the host creates one.
+    missing: list[str] = []
+
+
+async def _gate_targets(groups: list[str], settings: Settings) -> GroupTargets:
+    """Read the stack through the gate and pick the containers of `groups`; 503 when the
+    gate gives no reading."""
+    services.invalidate_snapshot()
+    snapshot = await asyncio.to_thread(
+        services.load_snapshot, settings.papaia_config_dir, settings.papaia_workspace_dir
+    )
+    if snapshot.docker_problem:
+        raise HTTPException(status_code=503, detail=snapshot.docker_problem)
+    selected = set(groups)
+    targets = GroupTargets()
+    for module in snapshot.core:
+        if not selected.intersection(module.profiles):
+            continue
+        for container in module.containers:
+            if not container.name:
+                targets.missing.append(container.service)
+            elif container.state in ("running", "restarting"):
+                targets.running.append(container.name)
+            else:
+                targets.stopped.append(container.name)
+    return targets
+
+
+async def _gate_group_run(ctx: JobContext, action: str, targets: GroupTargets) -> None:
+    """Stop, start or restart the group's containers through the gate, in name order."""
+    client = docker_gate.default_client()
+    if action in ("stop", "restart"):
+        for name in sorted(targets.running):
+            ctx.log(f"[gate] stop {name}")
+            changed = await asyncio.to_thread(client.stop_container, name)
+            ctx.log(f"[gate] {name}: {'stopped' if changed else 'was not running'}")
+    if action in ("start", "restart"):
+        to_start = targets.stopped + (targets.running if action == "restart" else [])
+        for name in sorted(to_start):
+            ctx.log(f"[gate] start {name}")
+            changed = await asyncio.to_thread(client.start_container, name)
+            ctx.log(f"[gate] {name}: {'started' if changed else 'was running'}")
+        if targets.missing:
+            raise docker_gate.GateError(_(
+                "no container for %(services)s, and papaia-docker-gate creates none: "
+                "run `papaia-ctl start` on the host"
+            ) % {"services": ", ".join(sorted(targets.missing))})
+
+
+def _refuse_clean_up_through_gate(clean_up: bool) -> None:
+    if clean_up:
+        raise HTTPException(status_code=409, detail=_(
+            "clean_up removes containers, which papaia-docker-gate does not allow: run "
+            "`papaia-ctl stop --clean-up` on the host"
+        ))
+
+
+# ---------------------------------------------------------------------------
 # Service groups -- queued jobs
 # ---------------------------------------------------------------------------
 
@@ -163,13 +238,46 @@ async def group_action(
 
     allowed = await _known_groups(settings)
     _flag(body.groups, allowed)
-    runs = await _runs(body.groups, allowed, settings)
     queue = _queue()
     _username = _user_id(user)
     _clean = body.clean_up
     _target = ",".join(sorted(set(body.groups)))
     _workspace = settings.papaia_workspace_dir
     _config = settings.papaia_config_dir
+
+    if not nodes.is_distributed(_config):
+        _refuse_clean_up_through_gate(body.clean_up)
+        targets = await _gate_targets(body.groups, settings)
+
+        async def _gate_callback(ctx: JobContext) -> None:
+            try:
+                await _gate_group_run(ctx, action, targets)
+            except Exception as exc:
+                # Every outcome is one audit row, a failure of any kind included.
+                ctx.log(f"[error] {exc}")
+                write_audit_entry(
+                    _config, user=_username, action=f"group-{action}", target=_target,
+                    params={"clean_up": False}, job_id=ctx.job.id, result="failed",
+                )
+                raise
+            finally:
+                services.invalidate_snapshot()
+            write_audit_entry(
+                _config, user=_username, action=f"group-{action}", target=_target,
+                params={"clean_up": False}, job_id=ctx.job.id,
+            )
+            ctx.log("[info] done")
+
+        job = await queue.enqueue(
+            action=f"group-{action}",
+            target=_target,
+            user=_username,
+            params={"clean_up": False},
+            callback=_gate_callback,
+        )
+        return {"job_id": job.id, "status": "queued"}
+
+    runs = await _runs(body.groups, allowed, settings)
 
     async def _run(ctx: JobContext, verb: str, *extra: str) -> None:
         for selection in runs:

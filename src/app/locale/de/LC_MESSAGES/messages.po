@@ -8763,8 +8763,8 @@ msgstr "gestoppt"
 msgid "No containers found"
 msgstr "Keine Container gefunden"
 
-msgid "Either the Docker socket is not reachable from this container, or this deployment has nothing configured."
-msgstr "Entweder ist der Docker-Socket aus diesem Container nicht erreichbar, oder in dieser Installation ist nichts konfiguriert."
+msgid "Either papaia-docker-gate shows no container of this installation, or this deployment has nothing configured."
+msgstr "Entweder zeigt papaia-docker-gate keinen Container dieser Installation, oder in dieser Installation ist nichts konfiguriert."
 
 msgid "Degraded"
 msgstr "Beeinträchtigt"
@@ -10832,3 +10832,24 @@ msgstr "Kontakt"
 
 msgid "My area"
 msgstr "Mein Bereich"
+
+#, python-format
+msgid "papaia-docker-gate does not answer at %(url)s. The manager reaches Docker only through papaia-docker-gate; running it without the gate is not supported."
+msgstr "papaia-docker-gate antwortet unter %(url)s nicht. Der Manager erreicht Docker nur über papaia-docker-gate; der Betrieb ohne papaia-docker-gate wird nicht unterstützt."
+
+#, python-format
+msgid "papaia-docker-gate refused the request (%(status)s %(code)s)"
+msgstr "papaia-docker-gate hat die Anfrage abgelehnt (%(status)s %(code)s)"
+
+msgid "papaia-docker-gate sent an unreadable answer"
+msgstr "papaia-docker-gate hat eine unlesbare Antwort gesendet"
+
+msgid "not visible through papaia-docker-gate"
+msgstr "über papaia-docker-gate nicht sichtbar"
+
+#, python-format
+msgid "no container for %(services)s, and papaia-docker-gate creates none: run `papaia-ctl start` on the host"
+msgstr "kein Container für %(services)s, und papaia-docker-gate legt keinen an: führen Sie `papaia-ctl start` auf dem Host aus"
+
+msgid "clean_up removes containers, which papaia-docker-gate does not allow: run `papaia-ctl stop --clean-up` on the host"
+msgstr "clean_up entfernt Container, was papaia-docker-gate nicht erlaubt: führen Sie `papaia-ctl stop --clean-up` auf dem Host aus"

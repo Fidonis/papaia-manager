@@ -34,8 +34,9 @@ This builds the image from `docker/Dockerfile` and publishes the UI on
 `127.0.0.1:8120`, with a `/health` health check. Every variable is documented
 in [`docker/.env.example`](docker/.env.example).
 
-The manager mounts `/var/run/docker.sock` plus the papAIa workspace, config
-and backup directories **at their host paths** (path parity — required so that
+The manager mounts **no Docker socket**. It reaches Docker only through the
+core's `papaia-docker-gate` (see *Docker access* below). It mounts the papAIa
+workspace, config and backup directories **at their host paths** (path parity — required so that
 bind-mount sources in add-on compose files resolve identically whether
 `docker compose` is invoked by the manager or by an operator on the host
 directly). Because of this, the `manager` profile is **Linux-only**;
@@ -480,15 +481,32 @@ files tab that says so, the manager's own checks, no way to delete runs (deletin
 job leaves them in its history), and no stored credentials. `qdrant-ingest` 1.0.0 reports
 all five; 0.3.0 has none of them.
 
+**Docker access.** Whoever can talk to the Docker socket is root on the host, so the
+manager does not mount it. It talks HTTP to `papaia-docker-gate`, the core's socket
+broker, which runs with the `manager` profile on an internal network that holds the
+gate and the manager only (`DOCKER_GATE_URL`, default `http://papaia-docker-gate:2375`).
+The gate allows the status of the containers of the installation's own compose project
+and `start` / `stop` of those containers; it refuses everything else (`exec`, creating
+containers, other projects, images, volumes) with 403 and writes an audit row for every
+start, stop and refusal. The manager sends the correlation id of the request or job
+along (`X-Papaia-Correlation-Id`), so the gate's rows and the manager's share it.
+
+Running the manager without the gate is **not supported**: the services page then says
+that the gate does not answer and that running without it is not supported, and the
+group actions answer 503. What needs more than the gate allows is `papaia-ctl` on the
+host: creating containers (a service that was never started, `--clean-up`), add-on
+projects, which the gate does not name, image clean-up and Docker's disk use.
+
 **Services.** An admin-only page at `/services` showing what this deployment is
-configured to run and how much of it is up. Containers are read from `docker ps`
-and grouped by the `de.fidonis.module` label the Compose files put on every
-service, so each module lists its own containers with their role, uptime,
-healthcheck result and published ports; the module in the worst state sorts to
-the top. A container without a healthcheck counts as healthy while it runs, and
-a one-shot container that has finished its work is reported as completed rather
-than dragging its module down — recognised by its restart policy, so a service
-that was shut down still reads as stopped even though it exited just as cleanly.
+configured to run and how much of it is up. Containers are read through
+`papaia-docker-gate` and grouped by the `de.fidonis.module` label the Compose files
+put on every service, so each module lists its own containers with their role, uptime
+and healthcheck result (the gate does not hand out published ports); the module in the
+worst state sorts to the top. A container without a healthcheck counts as healthy while
+it runs, and a one-shot container that has finished its work is reported as completed
+rather than dragging its module down — recognised by the restart policy its Compose
+file declares, so a service that was shut down still reads as stopped even though it
+exited just as cleanly.
 
 Live containers alone cannot say what is *missing*, so the page reads the
 declared state next to them. For the core stack that is the Compose fragments
@@ -499,12 +517,14 @@ and their own Compose files. A declared service with no container renders as
 configured but was never started" from "this deployment has no LocalAI". A
 torn-down stack therefore reports every module rather than an empty page —
 `papaia-ctl down` removes containers, it does not stop them. An unreachable
-Docker socket still reports nothing at all: not knowing is not the same as
-knowing it is gone.
+gate still reports nothing at all: not knowing is not the same as
+knowing it is gone; the page shows why there is no reading.
 
 Add-ons appear in their own section below the core stack. They run in a separate
 Compose project each, but use the same labels, so they group into modules exactly
-like core services do. Bear in mind that few add-ons define healthchecks, so a
+like core services do. The gate shows only the projects it names (the installation's
+own); an add-on project with no container in its answer reads as *not visible through
+papaia-docker-gate*, not as missing. Bear in mind that few add-ons define healthchecks, so a
 green add-on module says only that its containers are running.
 
 **Service groups.** The page is also where the stack is started and stopped. The
@@ -514,12 +534,18 @@ header carries its profile and a checkbox, and ticking one module ticks every
 module the same profile brings up: `librechat-websearch` alone covers Firecrawl,
 SearXNG, Jina and the Firecrawl MCP server, and stopping one without the others
 is not something Compose can do. Several groups can be selected and started,
-stopped or restarted in one run. Restart is a stop followed by a start, so it
-picks up a changed configuration.
+stopped or restarted in one run. On a single host this goes through
+`papaia-docker-gate`, one container at a time: a stop stops the group's running
+containers, a start starts its stopped ones, a restart does both. A service of the
+group without a container cannot be created through the gate; the job says so and
+names `papaia-ctl start` on the host. In a distributed installation the groups still go
+through `papaia-ctl` with the node that owns them.
 
 Stopping leaves the containers in place. Every confirmation dialog that stops
 something — a stop, and the stop half of a restart — offers to remove them as
 well (`--clean-up`, i.e. `docker compose down` instead of `docker compose stop`).
+The gate does not remove containers, so on a single host the API answers that with
+409 and points to `papaia-ctl stop --clean-up` on the host.
 Volumes and `$PAPAIA_CONFIG_DIR` are untouched in either case. After a stop with
 it the modules read as *not deployed* rather than *stopped*, because a removed
 container is indistinguishable from one that was never created; after a restart

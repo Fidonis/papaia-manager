@@ -3,25 +3,31 @@
 The Compose files label every container with `de.fidonis.module` (which service
 bundle it belongs to) and `de.fidonis.role` (what it does inside that bundle),
 and most of them define a healthcheck. That is enough to reconstruct the shape
-of the running stack from a single `docker ps` -- no papaia-ctl call.
+of the running stack from a single container list -- no papaia-ctl call.
 
-What `docker ps` cannot answer is what is *not* there: a service whose profile
+The list comes from `papaia-docker-gate` (`app.core.docker_gate`), the manager's only way
+to Docker: the manager mounts no socket. The gate shows the containers of the
+installation's own compose project, cut to name, state, status text and labels; no
+ports, no host configuration.
+
+What the list cannot answer is what is *not* there: a service whose profile
 was never enabled and one whose container `papaia-ctl down` removed both show up
 as nothing at all. `inventory.py` supplies that half, and `merge_expected` folds
 it in, so the page reports the target state against the live one.
 
 Five decisions here are load-bearing:
 
-* `docker ps -a`, not `docker ps`. A stopped Keycloak has to read as *down*,
-  and without `-a` its container is simply absent, which is indistinguishable
-  from a service that was never deployed.
-* No `--filter` at all, and partitioning by the `com.docker.compose.project`
-  label in Python. Add-ons run in their own Compose project (one per add-on
-  directory), so a project filter excludes them; filtering on
-  `label=de.fidonis.module` instead would drop every container that carries no
-  module label, which is exactly the case the `other` bucket exists for. One
-  unfiltered call answers both, and several papAIa environments on one host stay
-  separated because everything outside the known projects is discarded.
+* `all=1`. A stopped Keycloak has to read as *down*, and without it its container
+  is simply absent, which is indistinguishable from a service that was never
+  deployed.
+* No filter at all, and partitioning by the `com.docker.compose.project` label in
+  Python. Filtering on `label=de.fidonis.module` would drop every container that
+  carries no module label, which is exactly the case the `other` bucket exists
+  for, and several papAIa environments on one host stay separated because
+  everything outside the known projects is discarded. Add-ons run in their own
+  Compose project (one per add-on directory), which the gate shows only if it
+  names it; an add-on project with no container in the list is *not visible*,
+  not missing.
 * A container with no healthcheck counts as healthy while it runs. Most of the
   stack defines one, but treating its absence as a problem would paint half a
   working deployment yellow. This weighs heavier for add-ons, which rarely
@@ -31,15 +37,17 @@ Five decisions here are load-bearing:
   finishing its work, so the exit code has to be read together with the
   container's restart policy: `unless-stopped` / `always` marks something that
   was meant to keep running, and its exit is an outage no matter how clean.
-  That policy is not part of `docker ps` output, hence the second, narrowly
-  scoped `docker inspect` below.
-* An unreachable Docker socket yields an empty snapshot, never a stack full of
-  missing services. Not knowing is not the same as knowing it is gone.
+  The gate does not hand out host configuration, so the policy is the one the
+  Compose file declares for the service.
+* An unreachable gate yields an empty snapshot with the reason, never a stack
+  full of missing services. Not knowing is not the same as knowing it is gone.
 
 Reading is all this module does. Acting on what it reports happens elsewhere:
 core services are started and stopped one Compose profile at a time through
 `app.core.ctl`, stack-wide through `app.core.runner`, and add-ons through the
-`/api/v1/addons` verbs. What this module contributes to that is `ServiceGroup`
+`/api/v1/addons` verbs. On a single host a group is started and stopped through the
+gate, one container at a time (`app.routers.api_stack`). What this module
+contributes to that is `ServiceGroup`
 -- the profile, its modules and their aggregated health -- because a profile is
 the only granularity `papaia-ctl` accepts.
 """
@@ -51,12 +59,13 @@ import re
 import subprocess
 import threading
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from app.core import docker_gate
 from app.core.envfile import load_env_file
 from app.core.inventory import (
     LINK_PROFILE,
@@ -72,38 +81,24 @@ from app.i18n import N_, gettext, ngettext
 
 logger = logging.getLogger(__name__)
 
-# Fields requested from `docker ps`, tab-separated. Tab rather than a printable
-# separator because no field below can contain one -- names, labels and states
-# are all constrained, and `.Status` / `.Ports` are generated text.
-_PS_FORMAT = "\t".join(
-    (
-        "{{.Names}}",
-        "{{.State}}",
-        "{{.Status}}",
-        '{{.Label "com.docker.compose.project"}}',
-        '{{.Label "com.docker.compose.service"}}',
-        '{{.Label "de.fidonis.module"}}',
-        '{{.Label "de.fidonis.role"}}',
-        "{{.Ports}}",
-    )
-)
-
+# One container per line, tab-separated, in this order: name, state, status text,
+# compose project, compose service, module, role, published ports. The gate's list
+# is rendered into it (`gate_ps_output`), so the parser below stays one code path.
 _PS_FIELD_COUNT = 8
-
-_PS_TIMEOUT_SECONDS = 5
-
-# Restart policy plus container name, for the exited containers whose exit code
-# leaves their meaning open. `.Name` comes back with a leading slash.
-_INSPECT_FORMAT = "\t".join(("{{.Name}}", "{{.HostConfig.RestartPolicy.Name}}"))
-
-_INSPECT_TIMEOUT_SECONDS = 5
+_PS_LABELS = (
+    "com.docker.compose.project",
+    "com.docker.compose.service",
+    "de.fidonis.module",
+    "de.fidonis.role",
+)
+_LINE_BREAKS_RE = re.compile(r"[\t\r\n]+")
 
 # Restart policies of a container that was meant to keep running. Everything
 # else -- `no`, `on-failure`, or no policy at all -- describes a job that is
 # allowed to finish.
 _SERVICE_RESTART_POLICIES = frozenset({"always", "unless-stopped"})
 
-# How long a `docker ps` result is reused. The sidebar status row renders on every page
+# How long a container list is reused. The sidebar status row renders on every page
 # and polls, and `/addons` reads the same snapshot, so without this a single page
 # load would fork several subprocesses; five seconds is short enough that the
 # polled views still feel live.
@@ -125,6 +120,9 @@ _HOST_PORT_RE = re.compile(r":(\d+)->")
 # What a declared-but-absent service reports instead of Docker's status text.
 _MISSING_STATE = "missing"
 _MISSING_STATUS_TEXT = N_("not deployed")
+# What a declared service of a project the gate does not show reports.
+_INVISIBLE_STATE = "invisible"
+_INVISIBLE_STATUS_TEXT = N_("not visible through papaia-docker-gate")
 
 
 class ServiceHealth(StrEnum):
@@ -184,7 +182,11 @@ class ServiceContainer:
     def status_display(self) -> str:
         """What the page shows: Docker's own text, except for a container that does not exist,
         whose text is ours and so is translated."""
-        return gettext(_MISSING_STATUS_TEXT) if self.state == _MISSING_STATE else self.status_text
+        if self.state == _MISSING_STATE:
+            return gettext(_MISSING_STATUS_TEXT)
+        if self.state == _INVISIBLE_STATE:
+            return gettext(_INVISIBLE_STATUS_TEXT)
+        return self.status_text
 
 
 @dataclass
@@ -282,6 +284,8 @@ class StackSnapshot:
     groups: list[ServiceGroup] = field(default_factory=list)
     # Every node of a distributed installation, in the core's order; empty on a single host.
     nodes: list[NodeHealth] = field(default_factory=list)
+    # Why there is no reading, for the operator: the gate does not answer or refused.
+    docker_problem: str = ""
 
     @property
     def unreachable_nodes(self) -> list[NodeHealth]:
@@ -428,8 +432,12 @@ def merge_expected(
     expected: Iterable[ExpectedService],
     *,
     addon: str = "",
+    invisible: bool = False,
 ) -> list[ServiceModule]:
     """Add a placeholder for every declared service Docker did not report.
+
+    `invisible` says the reading could not have shown the project at all: the gate names
+    only the installation's own project. Its placeholders read as unknown, not missing.
 
     Matching is by Compose service name, which is unique inside a project --
     that is why this works per project and not across the host: `paperless` and
@@ -461,9 +469,9 @@ def merge_expected(
                 name="",
                 service=item.service,
                 role=item.role,
-                state=_MISSING_STATE,
-                status_text=_MISSING_STATUS_TEXT,
-                health=ServiceHealth.MISSING,
+                state=_INVISIBLE_STATE if invisible else _MISSING_STATE,
+                status_text=_INVISIBLE_STATUS_TEXT if invisible else _MISSING_STATUS_TEXT,
+                health=ServiceHealth.UNKNOWN if invisible else ServiceHealth.MISSING,
             )
         )
 
@@ -502,26 +510,6 @@ def build_groups(modules: Iterable[ServiceModule]) -> list[ServiceGroup]:
         for profile, found in members.items()
     ]
     return sorted(groups, key=lambda g: (_SEVERITY[g.health], g.name))
-
-
-def parse_inspect_output(output: str) -> dict[str, str]:
-    """Map container name to restart policy from `docker inspect` output.
-
-    Docker reports the name with a leading slash; the rest of this module
-    works with the bare name `docker ps` prints.
-    """
-    policies: dict[str, str] = {}
-    for line in output.splitlines():
-        if not line.strip():
-            continue
-        parts = line.split("\t")
-        if len(parts) != 2:
-            logger.debug("skipping unparseable docker inspect line %r", line)
-            continue
-        name, policy = (p.strip() for p in parts)
-        if name:
-            policies[name.removeprefix("/")] = policy
-    return policies
 
 
 def apply_restart_policies(
@@ -590,62 +578,53 @@ def compose_project(config_dir: str) -> str:
     return env.get("COMPOSE_PROJECT_NAME") or "papaia"
 
 
+def _field(value: str) -> str:
+    """One field of a line: Docker's text with any tab or line break folded to a space, so a
+    label value cannot shift the fields after it or start a line of its own."""
+    return _LINE_BREAKS_RE.sub(" ", value).strip()
+
+
+def gate_ps_output(containers: Iterable[docker_gate.GateContainer]) -> str:
+    """The gate's list as the lines `parse_ps_output` reads. The gate does not hand out
+    published ports, so that field is empty."""
+    lines = []
+    for container in containers:
+        labels = [container.labels.get(key, "") for key in _PS_LABELS]
+        fields = (container.name, container.state, container.status, *labels, "")
+        lines.append("\t".join(_field(f) for f in fields))
+    return "\n".join(lines)
+
+
 def query_containers(node: str | None = None) -> str | None:
-    """Raw `docker ps -a` output for the whole host, or None on failure.
+    """Every container the gate shows, as `parse_ps_output` lines.
 
-    Unfiltered on purpose -- see the module docstring. An unreachable Docker
-    socket is a normal state here (unit tests, a host mid-restore), so it is
-    logged at debug level and surfaces as "unknown" rather than as an error.
+    Raises `docker_gate.GateError` when the gate does not answer or refuses: the caller
+    reports why, instead of a stack that looks empty for no reason. Blocking.
 
-    A node's containers are in the core's merged `status`, not here: `node` has no raw
-    `docker` to reach and reads as "unknown".
+    A node's containers are in the core's merged `status`, not here: `node` has no gate
+    to reach and reads as "unknown" (None).
     """
     if node is not None:
-        logger.debug("no docker ps for node %s", node)
+        logger.debug("no container list for node %s", node)
         return None
-    try:
-        result = subprocess.run(
-            ["docker", "ps", "-a", "--format", _PS_FORMAT],
-            capture_output=True,
-            text=True,
-            timeout=_PS_TIMEOUT_SECONDS,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
-        logger.debug("could not reach Docker socket: %s", exc)
-        return None
-
-    if result.returncode != 0:
-        logger.debug("docker ps failed: %s", result.stderr)
-        return None
-    return result.stdout
+    return gate_ps_output(docker_gate.default_client().list_containers())
 
 
-def query_restart_policies(names: list[str]) -> dict[str, str]:
-    """Restart policy per container name, empty on failure.
+def declared_restart_policies(
+    modules: Sequence[ServiceModule], expected: Iterable[ExpectedService]
+) -> dict[str, str]:
+    """Restart policy per container name, as the Compose file declares it for its service.
 
-    Asked only about the containers whose state is ambiguous, so in a healthy
-    deployment this is one lookup for `localai-model-init` and nothing else.
+    The gate does not hand out a container's host configuration, so the declaration is the
+    source. A service declaring none has none, which Compose reads as `no`.
     """
-    if not names:
-        return {}
-
-    try:
-        result = subprocess.run(
-            ["docker", "inspect", "--type", "container", "--format", _INSPECT_FORMAT, *names],
-            capture_output=True,
-            text=True,
-            timeout=_INSPECT_TIMEOUT_SECONDS,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
-        logger.debug("could not reach Docker socket: %s", exc)
-        return {}
-
-    # A container removed between `ps` and `inspect` makes Docker exit non-zero
-    # while still reporting the ones it did find, so stdout is worth parsing
-    # either way.
-    if result.returncode != 0:
-        logger.debug("docker inspect reported an error: %s", result.stderr)
-    return parse_inspect_output(result.stdout)
+    by_service = {item.service: item.restart for item in expected}
+    return {
+        c.name: by_service[c.service]
+        for m in modules
+        for c in m.containers
+        if c.name and c.service in by_service
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -680,10 +659,10 @@ def addon_projects(config_dir: str, workspace_dir: str) -> dict[str, list[Expect
 
 
 def build_snapshot(config_dir: str, workspace_dir: str, output: str) -> StackSnapshot:
-    """Turn one `docker ps` reading plus the declared state into a snapshot.
+    """Turn one container list plus the declared state into a snapshot.
 
     Split out from `load_snapshot` so the whole merge is testable without a
-    Docker daemon -- which is also the state CI runs in.
+    gate -- which is also the state CI runs in.
     """
     by_project = parse_ps_output(output)
     running = {
@@ -696,10 +675,13 @@ def build_snapshot(config_dir: str, workspace_dir: str, output: str) -> StackSna
     core_project = compose_project(config_dir)
     expected_core = core_inventory(workspace_dir, active_profiles(config_dir))
     core = merge_expected(by_project.get(core_project, []), expected_core)
+    core = apply_restart_policies(core, declared_restart_policies(core, expected_core))
 
     addons: list[ServiceModule] = []
     for project, expected in sorted(addon_projects(config_dir, workspace_dir).items()):
-        addons.extend(merge_expected(by_project.get(project, []), expected, addon=project))
+        live = by_project.get(project, [])
+        merged = merge_expected(live, expected, addon=project, invisible=not live)
+        addons.extend(apply_restart_policies(merged, declared_restart_policies(merged, expected)))
 
     return StackSnapshot(
         core=core, addons=addons, running_projects=running, groups=build_groups(core)
@@ -896,29 +878,23 @@ def load_snapshot(config_dir: str, workspace_dir: str) -> StackSnapshot:
     if nodes.is_distributed(config_dir):
         return _load_distributed(config_dir, workspace_dir)
 
-    output = query_containers()
     # A failed query keeps no cache entry: the next request should retry rather
     # than pin "unknown" in place for the TTL. It also returns *nothing* rather
     # than the declared state -- reporting every service as missing because the
-    # socket was unreachable would invent an outage out of ignorance.
+    # gate was unreachable would invent an outage out of ignorance.
+    try:
+        output = query_containers()
+    except docker_gate.GateError as exc:
+        logger.info("no container list: %s", exc.message)
+        return StackSnapshot(docker_problem=exc.message)
+    except ValueError as exc:
+        # DOCKER_GATE_URL is not an address the manager accepts.
+        logger.warning("no container list: %s", exc)
+        return StackSnapshot(docker_problem=str(exc))
     if output is None:
         return StackSnapshot()
 
     snapshot = build_snapshot(config_dir, workspace_dir, output)
-    completed = [
-        c.name
-        for section in (snapshot.core, snapshot.addons)
-        for m in section
-        for c in m.containers
-        if c.health is ServiceHealth.COMPLETED
-    ]
-    policies = query_restart_policies(completed)
-    snapshot.core = apply_restart_policies(snapshot.core, policies)
-    snapshot.addons = apply_restart_policies(snapshot.addons, policies)
-    # A container that just turned from completed to stopped changes its group's
-    # health, so the groups are rebuilt from the corrected modules.
-    snapshot.groups = build_groups(snapshot.core)
-
     _CACHE = (now, snapshot)
     return snapshot
 

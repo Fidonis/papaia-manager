@@ -16,9 +16,12 @@ services:
         required: false
     ports:
       - "127.0.0.1:8120:8000"
+    # No Docker socket: the manager reaches Docker only through papaia-docker-gate,
+    # which holds the socket and allows the status of the installation's containers
+    # and start/stop of them (see README.md). This compose file does not join the
+    # gate's network; set DOCKER_GATE_URL in docker/.env to an address of the gate
+    # the container can reach.
     volumes:
-      # docker.sock: required for papaia-ctl compose operations
-      - /var/run/docker.sock:/var/run/docker.sock
       # Workspace and config: mounted at identical host paths (path-parity requirement)
       - ${PAPAIA_WORKSPACE_DIR}:${PAPAIA_WORKSPACE_DIR}
       - ${PAPAIA_CONFIG_DIR}:${PAPAIA_CONFIG_DIR}
@@ -28,13 +31,6 @@ services:
       - ${PAPAIA_BACKUP_DIR}:${PAPAIA_BACKUP_DIR}
       # CA certificate for internal TLS (optional)
       - ${PAPAIA_CONFIG_DIR}/certs:/certs:ro
-    # The container runs as the non-root 'app' user (see Dockerfile), which has
-    # no membership in whatever group owns docker.sock on the host. Without this
-    # every papaia-ctl call that shells out to `docker` fails with
-    # "permission denied while trying to connect to the docker API". Set
-    # DOCKER_GID to the docker.sock owning group (see docker/.env.example).
-    group_add:
-      - "${DOCKER_GID}"
     restart: unless-stopped
     healthcheck:
       test:

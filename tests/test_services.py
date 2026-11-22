@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from app.core import services
+from app.core.docker_gate import GateUnavailableError
 from app.core.inventory import ExpectedService
 from app.core.services import (
     ServiceHealth,
@@ -18,10 +19,10 @@ from app.core.services import (
     build_groups,
     build_snapshot,
     count_by_health,
+    declared_restart_policies,
     derive_health,
     merge_expected,
     overall_health,
-    parse_inspect_output,
     parse_ps_line,
     parse_ps_output,
     worst,
@@ -469,13 +470,16 @@ def test_running_projects_ignores_projects_with_no_running_container(deployment:
     assert snapshot.running_projects == {"something-else"}
 
 
-def test_an_unreachable_docker_socket_reports_nothing_not_everything_missing(
+def test_an_unreachable_gate_reports_nothing_not_everything_missing(
     deployment: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The declared state alone would say "26 services down". Not knowing is not
     # the same as knowing it is gone, so the page falls back to its empty state.
+    def unreachable() -> str:
+        raise GateUnavailableError("http://papaia-docker-gate:2375")
+
     monkeypatch.setattr(services, "_CACHE", None)
-    monkeypatch.setattr(services, "query_containers", lambda: None)
+    monkeypatch.setattr(services, "query_containers", unreachable)
     snapshot = services.load_snapshot(str(deployment), str(deployment))
 
     assert snapshot.core == []
@@ -498,7 +502,6 @@ def test_a_papaia_ctl_run_drops_the_cached_reading(
 
     monkeypatch.setattr(services, "_CACHE", None)
     monkeypatch.setattr(services, "query_containers", fake_query)
-    monkeypatch.setattr(services, "query_restart_policies", lambda names: {})
 
     services.load_snapshot(str(deployment), str(deployment))
     services.load_snapshot(str(deployment), str(deployment))
@@ -525,20 +528,25 @@ def test_an_unreadable_workspace_leaves_the_live_view_intact(tmp_path: Path) -> 
 # ---------------------------------------------------------------------------
 
 
-def _inspect(*pairs: tuple[str, str]) -> str:
-    """`docker inspect` output; the leading slash is how Docker reports names."""
-    return "\n".join(f"/{name}\t{policy}" for name, policy in pairs)
-
-
-def test_parses_name_and_policy_without_the_leading_slash() -> None:
-    assert parse_inspect_output(_inspect(("li-init", "no"), ("lc", "unless-stopped"))) == {
+def test_the_policy_of_a_container_is_the_one_its_service_declares() -> None:
+    modules = _modules(
+        "\n".join(
+            (
+                _line("li-init", "exited", "Exited (0) 1 hour ago", service="init"),
+                _line("lc", "running", "Up 1 day", service="librechat"),
+                _line("stray", "running", "Up 1 day", service="undeclared"),
+            )
+        )
+    )
+    expected = [
+        ExpectedService(service="init", module="librechat", role="", restart="no"),
+        ExpectedService(service="librechat", module="librechat", role="",
+                        restart="unless-stopped"),
+    ]
+    assert declared_restart_policies(modules, expected) == {
         "li-init": "no",
         "lc": "unless-stopped",
     }
-
-
-def test_blank_and_short_inspect_lines_are_skipped() -> None:
-    assert parse_inspect_output("\n\nlc\n") == {}
 
 
 def _completed_module(name: str = "lc") -> list[ServiceModule]:
