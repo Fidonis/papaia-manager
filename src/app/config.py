@@ -79,6 +79,20 @@ class Settings(BaseSettings):
     # TLS (optional — path to custom CA bundle)
     ssl_cert_file: str | None = None
 
+    # papaia.audit/1 rows (governance GV-01). Every write is recorded in a SQLite outbox
+    # (default `$PAPAIA_CONFIG_DIR/manager/audit/outbox.sqlite3`) and delivered to the core's
+    # `papaia-audit` over mutual TLS with a client certificate of the platform PKI. Without
+    # the three files the rows stay in the outbox until they are mounted. Only https.
+    audit_outbox_path: str | None = Field(default=None, max_length=4096)
+    audit_ingest_url: str = Field(
+        default="https://papaia-audit:8443/v1/ingest", min_length=1, max_length=2048
+    )
+    audit_tls_ca_file: str = Field(default="/run/papaia/audit-tls/ca.pem", max_length=4096)
+    audit_tls_cert_file: str = Field(
+        default="/run/papaia/audit-tls/client.pem", max_length=4096
+    )
+    audit_tls_key_file: str = Field(default="/run/papaia/audit-tls/client.key", max_length=4096)
+
     # Logging
     log_level: str = "INFO"
 
@@ -86,6 +100,20 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/")
+
+    @field_validator("audit_ingest_url")
+    @classmethod
+    def _https_only(cls, v: str) -> str:
+        if not v.startswith("https://"):
+            raise ValueError("AUDIT_INGEST_URL must be an https URL")
+        return v
+
+    @field_validator("audit_outbox_path")
+    @classmethod
+    def _absolute_outbox(cls, v: str | None) -> str | None:
+        if v is not None and not v.startswith("/"):
+            raise ValueError("AUDIT_OUTBOX_PATH must be an absolute path")
+        return v
 
     @property
     def oidc_redirect_uri(self) -> str:

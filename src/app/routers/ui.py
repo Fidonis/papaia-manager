@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.auth.csrf import get_csrf_token
 from app.auth.deps import AdminUser, AnyUser
 from app.auth.oidc import OIDCClaims
-from app.auth.roles import is_admin
+from app.auth.roles import is_admin, is_identity_admin
 from app.config import Settings, get_settings
 from app.core import (
     backups,
@@ -44,6 +44,7 @@ from app.core.ingest.errors import IngestError, InvalidRequest, NotFound
 from app.core.ingest.uploads import new_store as new_upload_store
 from app.core.inventory import LINK_PROFILE, SELF_PROFILE
 from app.core.jobs import Job, JobQueue
+from app.core.module_catalog import module_json, read_catalog
 from app.core.rag import documents_dir, with_rag_tiles
 from app.core.rag_collections import CollectionStore
 from app.core.resolve import resolve_catalog_addons, update_available
@@ -192,6 +193,28 @@ async def addons_page(
     user: AdminUser,
 ) -> HTMLResponse:
     return _templates.TemplateResponse(request, "addons.html", _ctx(request, user))
+
+
+@router.get("/modules", response_class=HTMLResponse)
+async def modules_page(
+    request: Request,
+    user: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """The module catalog; for an identity administrator also the delegations per module."""
+    view = read_catalog(settings.papaia_workspace_dir, settings.papaia_config_dir)
+    return _templates.TemplateResponse(
+        request,
+        "modules.html",
+        _ctx(
+            request,
+            user,
+            bom=view.bom,
+            catalog_error=view.catalog_error,
+            modules=[module_json(m) for m in view.modules],
+            show_delegations=settings.is_internal_keycloak and is_identity_admin(user, settings),
+        ),
+    )
 
 
 @router.get("/addons/{name}/upgrade", response_class=HTMLResponse)

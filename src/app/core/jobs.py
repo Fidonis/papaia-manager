@@ -12,6 +12,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from app.core import kit_audit
 from app.core.audit import write_audit_entry
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,10 @@ class JobQueue:
         self._config_dir = config_dir
         self._jobs: dict[str, Job] = {}
         self._callbacks: dict[str, JobCallback] = {}
+        # Who queued each job and under which correlation id: the job's audit rows name that
+        # person and that request, not the worker (app.core.kit_audit). Only the audit binding
+        # travels; the request's language does not, job logs stay in English.
+        self._bindings: dict[str, kit_audit.Binding] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._lock = asyncio.Lock()
         self._worker_task: asyncio.Task[None] | None = None
@@ -114,6 +119,7 @@ class JobQueue:
         )
         self._jobs[job.id] = job
         self._callbacks[job.id] = callback
+        self._bindings[job.id] = kit_audit.current_binding()
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self._append_index(job)
         await self._queue.put(job.id)
@@ -170,42 +176,44 @@ class JobQueue:
             job_id = await self._queue.get()
             job = self._jobs.get(job_id)
             callback = self._callbacks.pop(job_id, None)
+            binding = self._bindings.pop(job_id, None) or kit_audit.current_binding()
             if job is None or callback is None:
                 self._queue.task_done()
                 continue
 
             async with self._lock:
-                job.status = JobStatus.RUNNING
-                job.started_at = datetime.now(tz=UTC)
-                self._append_index(job)
-
-                log_path = self.jobs_dir / f"{job_id}.log"
-                ctx = JobContext(job=job, log_path=log_path)
-                try:
-                    await callback(ctx)
-                    job.status = JobStatus.SUCCEEDED
-                    job.exit_code = 0
-                except Exception as exc:
-                    logger.exception("job %s failed", job_id)
-                    ctx.log(f"--- ERROR: {exc} ---")
-                    job.status = JobStatus.FAILED
-                    job.exit_code = 1
-                    # One place for every job failure, rather than a change to each
-                    # of the callbacks above -- which otherwise only ever write an
-                    # entry on success.
-                    write_audit_entry(
-                        self._config_dir,
-                        user=job.user,
-                        action=job.action,
-                        target=job.target,
-                        job_id=job.id,
-                        result="error",
-                        # The job's own params too: which action, which version.
-                        params={**job.params, "error": type(exc).__name__},
-                    )
-                finally:
-                    job.finished_at = datetime.now(tz=UTC)
+                with kit_audit.rebound(binding):
+                    job.status = JobStatus.RUNNING
+                    job.started_at = datetime.now(tz=UTC)
                     self._append_index(job)
+
+                    log_path = self.jobs_dir / f"{job_id}.log"
+                    ctx = JobContext(job=job, log_path=log_path)
+                    try:
+                        await callback(ctx)
+                        job.status = JobStatus.SUCCEEDED
+                        job.exit_code = 0
+                    except Exception as exc:
+                        logger.exception("job %s failed", job_id)
+                        ctx.log(f"--- ERROR: {exc} ---")
+                        job.status = JobStatus.FAILED
+                        job.exit_code = 1
+                        # One place for every job failure, rather than a change to each
+                        # of the callbacks above -- which otherwise only ever write an
+                        # entry on success.
+                        write_audit_entry(
+                            self._config_dir,
+                            user=job.user,
+                            action=job.action,
+                            target=job.target,
+                            job_id=job.id,
+                            result="error",
+                            # The job's own params too: which action, which version.
+                            params={**job.params, "error": type(exc).__name__},
+                        )
+                    finally:
+                        job.finished_at = datetime.now(tz=UTC)
+                        self._append_index(job)
 
             # After the lock is released and `finished_at` is set: the listener sees the job
             # as `JobQueue.get_job` would show it.

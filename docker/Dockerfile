@@ -15,6 +15,9 @@ WORKDIR /build
 # Copy only the dependency manifests first so this layer stays cached when
 # application code changes but dependencies do not.
 COPY src/pyproject.toml src/uv.lock ./
+# The platform kit has no package index yet: uv.lock binds the vendored wheel by path and
+# SHA-256 (src/kit.lock).
+COPY src/vendor ./vendor
 
 RUN uv sync --frozen --no-dev
 
@@ -88,6 +91,9 @@ RUN cat tailwind.brand.css tailwind.app.css > tailwind.input.css \
 
 # ---- runtime: minimal image with Docker CLI, git, and the venv ----
 FROM python:3.12-slim AS runtime
+
+# Version of the vendored platform kit in this image (src/kit.lock).
+LABEL de.fidonis.platform-kit="0.1.3"
 
 # Install Docker CE CLI + Compose plugin and runtime system deps. `openssl` is
 # for the core's `doctor`, which reads certificate expiry with the CLI; it is

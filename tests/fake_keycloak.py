@@ -51,6 +51,14 @@ class FakeKeycloak:
             "default-roles-papaia": ["offline_access", "uma_authorization"],
         }
         self.sessions: dict[str, list[dict[str, Any]]] = {}
+        # Clients by clientId, with their internal ids; offline sessions (delegations) per
+        # clientId, as Keycloak lists them under /clients/<id>/offline-sessions.
+        self.clients: dict[str, str] = {
+            "papaia-manager": str(uuid.uuid4()),
+            "flow-engine": str(uuid.uuid4()),
+            "assist-gate": str(uuid.uuid4()),
+        }
+        self.offline: dict[str, list[dict[str, Any]]] = {}
         # What reached Keycloak, for assertions: (method, path relative to the realm).
         self.calls: list[tuple[str, str]] = []
         self.bodies: list[Any] = []
@@ -141,6 +149,22 @@ class FakeKeycloak:
         )
         return session_id
 
+    def add_offline_session(self, user_id: str, client_id: str) -> str:
+        session_id = secrets.token_urlsafe(18)
+        self.offline.setdefault(client_id, []).append(
+            {
+                "id": session_id,
+                "username": self.users[user_id]["username"],
+                "userId": user_id,
+                "ipAddress": "10.0.0.7",
+                "start": 1_760_000_000_000,
+                "lastAccess": 1_760_000_600_000,
+                "clients": {self.clients[client_id]: client_id},
+                "transientUser": False,
+            }
+        )
+        return session_id
+
     def by_name(self, username: str) -> dict[str, Any]:
         return next(u for u in self.users.values() if u["username"] == username)
 
@@ -205,6 +229,25 @@ class FakeKeycloak:
         match = re.fullmatch(r"/roles(?:/([^/]+)(/composites|/users)?)?", path)
         if match:
             return self._role_route(method, match[1], match[2] or "", params, body)
+
+        if path == "/clients" and method == "GET":
+            wanted = params.get("clientId", "")
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": internal, "clientId": name, "secret": "**********"}
+                    for name, internal in self.clients.items()
+                    if name == wanted
+                ],
+            )
+        match = re.fullmatch(r"/clients/([^/]+)/offline-sessions", path)
+        if match and method == "GET":
+            name = next((n for n, i in self.clients.items() if i == match[1]), None)
+            if name is None:
+                return _err(404, "Could not find client")
+            rows = self.offline.get(name, [])
+            first, limit = int(params.get("first", 0)), int(params.get("max", 100))
+            return httpx.Response(200, json=rows[first : first + limit])
 
         match = re.fullmatch(r"/sessions/([^/]+)", path)
         if match and method == "DELETE":
@@ -343,6 +386,14 @@ class FakeKeycloak:
             )
         if rest == "/sessions" and method == "GET":
             return httpx.Response(200, json=self.sessions.get(user_id, []))
+        match = re.fullmatch(r"/consents/([^/]+)", rest)
+        if match and method == "DELETE":
+            rows = self.offline.get(match[1], [])
+            kept = [r for r in rows if r["userId"] != user_id]
+            if len(kept) == len(rows):
+                return _err(404, "Consent nor offline token not found")
+            self.offline[match[1]] = kept
+            return httpx.Response(204)
         if rest == "/logout" and method == "POST":
             self.sessions[user_id] = []
             self.logged_out.append(user_id)

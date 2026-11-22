@@ -361,6 +361,39 @@ class KeycloakUsers:
     async def delete_session(self, session_id: str) -> None:
         await self._request("DELETE", f"/sessions/{quote(session_id, safe='')}")
 
+    # -- delegations: offline sessions of a holder's client -------------------------------
+
+    async def client_internal_id(self, client_id: str) -> str | None:
+        """Keycloak's own id of the client with this `clientId`, or None if there is none."""
+        body = self._json(await self._request("GET", "/clients", params={"clientId": client_id}))
+        for client in body if isinstance(body, list) else []:
+            if (
+                isinstance(client, dict)
+                and client.get("clientId") == client_id
+                and isinstance(client.get("id"), str)
+            ):
+                return str(client["id"])
+        return None
+
+    async def offline_sessions(
+        self, internal_id: str, *, first: int, limit: int
+    ) -> list[dict[str, Any]]:
+        """One page of the offline sessions (delegations) held at a client."""
+        body = self._json(
+            await self._request(
+                "GET",
+                f"/clients/{quote(internal_id, safe='')}/offline-sessions",
+                params={"first": str(first), "max": str(limit)},
+            )
+        )
+        return [s for s in body if isinstance(s, dict)] if isinstance(body, list) else []
+
+    async def revoke_consent(self, user_id: str, client_id: str) -> None:
+        """End every delegation of the person at this client (consent and offline tokens)."""
+        await self._request(
+            "DELETE", f"{self._user_path(user_id)}/consents/{quote(client_id, safe='')}"
+        )
+
     async def logout_user(self, user_id: str) -> None:
         """End every session of the user."""
         await self._request("POST", f"{self._user_path(user_id)}/logout")

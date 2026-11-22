@@ -7,12 +7,13 @@ import os
 import re
 import shutil
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.core import kit_audit
 from app.i18n import gettext
 
 logger = logging.getLogger(__name__)
@@ -49,12 +50,18 @@ def write_audit_entry(
     params: dict[str, Any] | None = None,
     job_id: str | None = None,
     result: str = "ok",
+    event: str = "operation",
+    object_ref: Mapping[str, str] | None = None,
+    context: Mapping[str, str] | None = None,
 ) -> None:
-    """Append one entry to the audit log.
+    """Append one entry to the audit log and one ``papaia.audit/1`` row to the outbox.
 
     The log lives at ``$PAPAIA_CONFIG_DIR/manager/audit.log`` and is
     append-only. Sensitive values (tokens, secrets) must be redacted by
-    the caller before passing them in ``params``.
+    the caller before passing them in ``params``. The row (``app.core.kit_audit``)
+    carries the action, the result and who acted, never ``target`` or ``params``;
+    ``event``, ``object_ref`` and ``context`` are for rows that are not a plain
+    operation, such as a revoked delegation.
     """
     path = audit_path(config_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,6 +80,14 @@ def write_audit_entry(
 
     with _LOCK, path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
+    kit_audit.record(
+        config_dir,
+        action=action,
+        result=result,
+        event=event,
+        object_ref=object_ref,
+        context=context,
+    )
 
 
 def redact_params(value: Any) -> Any:

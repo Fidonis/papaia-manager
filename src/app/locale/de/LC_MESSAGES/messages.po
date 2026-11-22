@@ -10897,3 +10897,78 @@ msgstr "Lässt sich nicht rückgängig machen: Ihr Bearbeitungsverlauf und die d
 
 msgid "LibreChat is recreated without the tools of the map, and the AI map page is hidden while the module is off."
 msgstr "LibreChat wird ohne die Werkzeuge der Landkarte neu erstellt, und die Seite „KI-Landkarte“ ist ausgeblendet, solange das Modul aus ist."
+
+msgid "This module holds no delegations."
+msgstr "Dieses Modul hält keine Vollmachten."
+
+msgid "This person has no delegation at this module."
+msgstr "Diese Person hat bei diesem Modul keine Vollmacht."
+
+msgid "Module catalog"
+msgstr "Modulkatalog"
+
+msgid "Module catalog — %(branding)s"
+msgstr "Modulkatalog — %(branding)s"
+
+msgid "The modules of this suite, in the version of its bill of materials"
+msgstr "Die Module dieser Suite in der Version ihrer Stückliste"
+
+msgid "The core checkout has no bill of materials for its version, so no module can be offered."
+msgstr "Der Kern hat für seine Version keine Stückliste, daher kann kein Modul angeboten werden."
+
+msgid "The bill of materials does not carry a valid signature of the release key. It is not used."
+msgstr "Die Stückliste trägt keine gültige Signatur des Release-Schlüssels. Sie wird nicht verwendet."
+
+msgid "The bill of materials cannot be read. It is not used."
+msgstr "Die Stückliste ist nicht lesbar. Sie wird nicht verwendet."
+
+msgid "Suite %(suite)s"
+msgstr "Suite %(suite)s"
+
+msgid "signature verified"
+msgstr "Signatur geprüft"
+
+msgid "signature not verified: no release key is pinned"
+msgstr "Signatur nicht geprüft: kein Release-Schlüssel hinterlegt"
+
+msgid "The platform catalog is invalid; the last valid version is shown."
+msgstr "Der Plattformkatalog ist ungültig; angezeigt wird der letzte gültige Stand."
+
+msgid "Module name"
+msgstr "Modulname"
+
+msgid "State"
+msgstr "Zustand"
+
+msgid "installed: %(installed)s"
+msgstr "installiert: %(installed)s"
+
+msgid "Open console"
+msgstr "Konsole öffnen"
+
+msgid "Delegations"
+msgstr "Vollmachten"
+
+msgid "How many delegations each person has granted to a module. Contents, purposes and tokens are not shown."
+msgstr "Wie viele Vollmachten jede Person einem Modul erteilt hat. Inhalte, Zwecke und Token werden nicht angezeigt."
+
+msgid "This module is not installed."
+msgstr "Dieses Modul ist nicht installiert."
+
+msgid "Only the first delegations are counted."
+msgstr "Gezählt werden nur die ersten Vollmachten."
+
+msgid "Person"
+msgstr "Person"
+
+msgid "Revoke"
+msgstr "Entziehen"
+
+msgid "End every delegation of {person} at {module}?"
+msgstr "Alle Vollmachten von {person} bei {module} beenden?"
+
+msgid "The delegations of {person} at {module} are revoked."
+msgstr "Die Vollmachten von {person} bei {module} sind entzogen."
+
+msgid "The overview could not be loaded: {detail}"
+msgstr "Die Übersicht konnte nicht geladen werden: {detail}"

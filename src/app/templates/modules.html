@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}{% trans branding=branding().name %}Module catalog — {{ branding }}{% endtrans %}{% endblock %}
+
+{% block page_title %}{% trans %}Module catalog{% endtrans %}{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}The modules of this suite, in the version of its bill of materials{% endtrans %}</p>{% endblock %}
+
+{% block page_actions %}
+<a href="/addons" class="btn btn-outline btn-sm">{% trans %}Add-Ons{% endtrans %}</a>
+{% endblock %}
+
+{% block content %}
+{# Server-rendered on purpose: both sources are local files, read with size limits and
+   checked (the bill of materials against the pinned release key, the platform catalog with
+   the kit's reader), so there is nothing to wait for. #}
+<section class="mb-8">
+  {% if bom.error == "missing" %}
+  <div role="alert" class="alert alert-warning mb-4 text-sm">{% trans %}The core checkout has no bill of materials for its version, so no module can be offered.{% endtrans %}</div>
+  {% elif bom.error == "signature" %}
+  <div role="alert" class="alert alert-error mb-4 text-sm">{% trans %}The bill of materials does not carry a valid signature of the release key. It is not used.{% endtrans %}</div>
+  {% elif bom.error == "invalid" %}
+  <div role="alert" class="alert alert-error mb-4 text-sm">{% trans %}The bill of materials cannot be read. It is not used.{% endtrans %}</div>
+  {% else %}
+  <p class="mb-4 text-sm opacity-70">
+    {% trans suite=bom.suite %}Suite {{ suite }}{% endtrans %}
+    {% if bom.verified %}
+    <span class="badge badge-success badge-sm ml-2">{% trans %}signature verified{% endtrans %}</span>
+    {% else %}
+    <span class="badge badge-warning badge-sm ml-2">{% trans %}signature not verified: no release key is pinned{% endtrans %}</span>
+    {% endif %}
+  </p>
+  {% endif %}
+  {% if catalog_error %}
+  <div role="alert" class="alert alert-warning mb-4 text-sm">{% trans %}The platform catalog is invalid; the last valid version is shown.{% endtrans %}</div>
+  {% endif %}
+
+  {% if modules %}
+  <div class="overflow-x-auto">
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>{% trans %}Module name{% endtrans %}</th>
+          <th>{% trans %}Version{% endtrans %}</th>
+          <th>{% trans %}State{% endtrans %}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in modules %}
+        <tr>
+          <td>
+            <div class="font-medium">{{ m.title }}</div>
+            {% if m.description %}<div class="text-xs opacity-60">{{ m.description }}</div>{% endif %}
+          </td>
+          <td>
+            <span class="font-mono">{{ m.version }}</span>
+            {% if m.installed_version and m.installed_version != m.version %}
+            <div class="text-xs opacity-60">{% trans installed=m.installed_version %}installed: {{ installed }}{% endtrans %}</div>
+            {% endif %}
+          </td>
+          <td>
+            {% if m.state == "running" %}
+            <span class="badge badge-success badge-sm">{% trans %}running{% endtrans %}</span>
+            {% elif m.state == "stopped" %}
+            <span class="badge badge-error badge-sm">{% trans %}not reachable{% endtrans %}</span>
+            {% elif m.state == "installed" %}
+            <span class="badge badge-ghost badge-sm">{% trans %}installed{% endtrans %}</span>
+            {% else %}
+            <span class="badge badge-outline badge-sm">{% trans %}available{% endtrans %}</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            {% if m.url %}
+            <a href="{{ m.url }}" class="btn btn-ghost btn-xs" rel="noopener">{% trans %}Open console{% endtrans %}</a>
+            {% elif m.state == "available" %}
+            <code class="text-xs opacity-70">papaia-ctl addon install {{ m.name }}</code>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+{% if show_delegations %}
+<section x-data="delegationOverview()" x-init="load()">
+  <h2 class="mb-1 text-lg font-semibold">{% trans %}Delegations{% endtrans %}</h2>
+  <p class="mb-4 text-sm opacity-60">{% trans %}How many delegations each person has granted to a module. Contents, purposes and tokens are not shown.{% endtrans %}</p>
+  <template x-if="error"><div role="alert" class="alert alert-warning text-sm" x-text="error"></div></template>
+  <template x-for="m in modules" :key="m.module">
+    <div class="mb-6">
+      <h3 class="font-medium">
+        <span x-text="m.title"></span>
+        <span class="badge badge-sm ml-2" x-text="m.total"></span>
+      </h3>
+      <p x-show="!m.available" class="text-sm opacity-60">{% trans %}This module is not installed.{% endtrans %}</p>
+      <p x-show="m.truncated" class="text-sm opacity-60">{% trans %}Only the first delegations are counted.{% endtrans %}</p>
+      <table class="table table-sm" x-show="m.persons.length">
+        <thead><tr><th>{% trans %}Person{% endtrans %}</th><th>{% trans %}Delegations{% endtrans %}</th><th></th></tr></thead>
+        <tbody>
+          <template x-for="p in m.persons" :key="p.user_id">
+            <tr>
+              <td x-text="p.username || p.user_id"></td>
+              <td x-text="p.count"></td>
+              <td class="text-right">
+                <button type="button" class="btn btn-ghost btn-xs text-error"
+                        @click="revoke(m, p)">{% trans %}Revoke{% endtrans %}</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </template>
+</section>
+
+<script>
+  function delegationOverview() {
+    const T = {
+      confirm: {{ _("End every delegation of {person} at {module}?")|tojson|forceescape }},
+      revoked: {{ _("The delegations of {person} at {module} are revoked.")|tojson|forceescape }},
+      failed: {{ _("The overview could not be loaded: {detail}")|tojson|forceescape }},
+    };
+    return {
+      modules: [],
+      error: "",
+      load() {
+        return fetch("/api/v1/delegations")
+          .then(r => {
+            if (_authGuard(r)) return null;
+            return r.json().then(body => (r.ok ? body : Promise.reject(body.detail || r.status)));
+          })
+          .then(body => { if (body) { this.modules = body.modules; this.error = ""; } })
+          .catch(detail => { this.error = fmt(T.failed, { detail: String(detail) }); });
+      },
+      revoke(m, p) {
+        const values = { person: p.username || p.user_id, module: m.title };
+        if (!window.confirm(fmt(T.confirm, values))) return;
+        fetch("/api/v1/delegations/" + encodeURIComponent(m.module) + "/persons/" + encodeURIComponent(p.user_id), {
+          method: "DELETE",
+          headers: { "X-CSRF-Token": document.querySelector("meta[name=csrf]").content },
+        }).then(r => {
+          if (_authGuard(r)) return;
+          if (r.ok) {
+            showToast("success", fmtHtml(T.revoked, values));
+          } else {
+            r.json().then(body => showToast("error", fmtHtml(I18N.requestRefused, { detail: body.detail || r.status })));
+          }
+          this.load();
+        });
+      },
+    };
+  }
+</script>
+{% endif %}
+{% endblock %}

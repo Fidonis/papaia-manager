@@ -53,6 +53,38 @@ it chooses, follows the browser's language and falls back to the installation's 
 `src/app/locale/` and needs no change to the code; see [CONTRIBUTING.md](CONTRIBUTING.md). Log
 lines, the audit log, job logs and the emails and webhooks of notifications stay in English.
 
+**Module catalog.** **Add-Ons → Module catalog** (`/modules`) lists the modules of the
+suite (Studio, Data, Flow, Assistant) with the version of the suite bill of materials of the
+core checkout (`compat/suite-<VERSION>.yaml`, repos with role `module`) and their state here:
+*available* (not installed; install it from the catalog with `papaia-ctl addon install
+<name>`, nothing has to be copied out of a module repository), *running* with a link to its
+console, *not reachable* (installed but stopped) or *installed*. The state comes from the
+platform catalog `$PAPAIA_CONFIG_DIR/platform/services.json`, read with the platform kit's
+reader: a broken file keeps the last valid state and the page says so. When the core pins a
+release key (`compat/release-key.pub`) the bill of materials must carry a valid signature
+(`suite-<VERSION>.yaml.sig`) or it is not used; without a pinned key the versions are marked
+as not verified. The page only reads.
+
+**Delegations.** For an account with the `MANAGER_IDENTITY_ADMIN_ROLE`, the module catalog
+also shows the delegations (offline sessions at `flow-engine` for Flow and `assist-gate` for
+Assistant): how many each person has granted per module, and nothing else (no session,
+address, time, purpose or token). **Revoke** ends every delegation of that person at that
+module by removing the person's consent at the module's client. The calls use the
+administrator's own Keycloak token, so Keycloak decides: listing reads the clients and their
+offline sessions, revoking changes the user's consents. A refusal by Keycloak is shown as such.
+
+**Audit rows.** Besides the local audit log, every write, send and delete of the manager
+leaves one `papaia.audit/1` row: who acted (the signed-in person, or the manager's own service
+identity for scheduled work), the operation, its result and the request's
+`X-Papaia-Correlation-Id` (a missing, oversized or token-shaped value is replaced with a new
+one; the response carries the id back). A row never carries a target, a parameter or a name.
+Rows are written with the platform kit's outbox writer to `AUDIT_OUTBOX_PATH` (default
+`$PAPAIA_CONFIG_DIR/manager/audit/outbox.sqlite3`, mode 0600) and delivered to
+`AUDIT_INGEST_URL` over mutual TLS with the client certificate in `AUDIT_TLS_CERT_FILE` /
+`AUDIT_TLS_KEY_FILE`, checked against `AUDIT_TLS_CA_FILE`. A row leaves the outbox only once
+papaia-audit acknowledged it; while papaia-audit is unreachable, or the certificate files are
+not mounted, the rows wait and the manager keeps working.
+
 **Settings and branding.** Administrators open **Settings** to change the
 name and second line shown at the top of the sidebar (defaults: "papAIa
 manager" / "by Fidonis") and to upload their own logo (PNG, JPEG, WebP or SVG,
@@ -772,6 +804,10 @@ Long-running operations return `202` with a job id. The RAG routes
 
 ```
 GET  /health                              # unauthenticated
+
+GET    /api/v1/modules                    # module catalog: {bom, catalog_error, modules}; admin, read-only
+GET    /api/v1/delegations                # counts per module and person; identity admin
+DELETE /api/v1/delegations/{module}/persons/{user_id}   # revoke; module flow|assistant
 
 GET    /api/v1/catalogs
 POST   /api/v1/catalogs                   # {name, type, url|path, ref?, auth?}

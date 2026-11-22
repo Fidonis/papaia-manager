@@ -14,6 +14,7 @@ from app.auth import roles
 from app.auth.csrf import get_csrf_token
 from app.auth.oidc import OIDCClaims
 from app.config import get_settings
+from app.core import kit_audit
 from app.core.ingest.watcher import IngestWatcher
 from app.core.jobs import JobQueue
 from app.core.notifications.service import NotificationService
@@ -38,6 +39,7 @@ from app.routers import (
     api_mail,
     api_maintenance,
     api_models,
+    api_modules,
     api_nodes,
     api_notifications,
     api_roles,
@@ -64,6 +66,7 @@ _job_queue: JobQueue | None = None
 _backup_scheduler: BackupScheduler | None = None
 _ingest_watcher: IngestWatcher | None = None
 _notification_service: NotificationService | None = None
+_audit_delivery: kit_audit.Delivery | None = None
 
 
 def create_app() -> FastAPI:
@@ -81,6 +84,11 @@ def create_app() -> FastAPI:
     # Registered before the session middleware, so it runs inside it: the language of a request
     # comes from the account in the session, and the exception handlers below run inside it too.
     app.add_middleware(LocaleMiddleware)
+    # Inside the session middleware as well: every papaia.audit/1 row of the request names the
+    # signed-in person and the request's correlation id (app.core.kit_audit).
+    app.add_middleware(
+        kit_audit.AuditContextMiddleware, azp=lambda: settings.manager_oidc_client_id
+    )
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.manager_session_secret,
@@ -116,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(api_mail.router)
     app.include_router(api_maintenance.router)
     app.include_router(api_models.router)
+    app.include_router(api_modules.router)
     app.include_router(api_nodes.router)
     app.include_router(api_notifications.router)
     app.include_router(api_roles.router)
@@ -172,8 +181,18 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def _startup() -> None:
         global _job_queue, _backup_scheduler, _ingest_watcher, _notification_service  # noqa: PLW0603
+        global _audit_delivery  # noqa: PLW0603
 
         logger = logging.getLogger(__name__)
+
+        # Rows wait in the outbox until papaia-audit acknowledges them; without the client
+        # certificate of the platform PKI they wait until it is mounted.
+        kit_audit.configure(settings)
+        transport = kit_audit.ingest_transport(settings)
+        if transport is None:
+            logger.info("papaia-audit delivery is off: no client certificate; rows stay queued")
+        else:
+            _audit_delivery = kit_audit.start_delivery(settings.papaia_config_dir, transport)
 
         try:
             bootstrap(settings.papaia_workspace_dir)
@@ -240,6 +259,8 @@ def create_app() -> FastAPI:
             _backup_scheduler.shutdown()
         if _job_queue is not None:
             _job_queue.stop()
+        if _audit_delivery is not None:
+            _audit_delivery.stop()
 
     return app
 
