@@ -1029,6 +1029,15 @@ below collects the reports. A response with a policy of its own keeps it (the lo
   and the standard build of the same version otherwise. The macros `strict_marker` and
   `alpine_build` of `templates/partials/_csp.html` write the marker and the build; a converted
   template has no row of findings in the baseline.
+- A page module that registers Alpine components (`Alpine.data` on `alpine:init`) is loaded
+  in the block `page_modules` of `base.html`, after `js/core/main.js` and before Alpine; module
+  and deferred scripts run in document order, so its components exist when Alpine starts.
+  Expressions call plain methods of the component: no arrow function, template literal,
+  `window`, `document`, `Math` or `JSON`. A sentence whose translation carries markup of its
+  own is built with `fillMarked` of `js/core/marked.js` (its tags as elements, every value as
+  text) instead of `x-html`. An element shown by `x-show` starts hidden with `x-cloak`
+  (stylesheet rule) instead of `style="display:none"`; a size computed per render is a
+  `data-*` attribute the module sets as a style property.
 - htmx evaluates nothing (`<meta name="htmx-config">` with `allowEval: false`) and injects no
   style (`includeIndicatorStyles: false`; the indicator rules are in the stylesheet). A poll
   that should pause while the tab is hidden carries `data-poll-visible` and the trigger
@@ -1138,6 +1147,19 @@ file, a list that cannot be loaded) against the fake ingester of the page tests
 (`tests/design_serve.py --with-ingest`) and fails on any report of the policy, refused Alpine
 expression or script error. The job editor (`ingest_job_edit.html`) and the credentials page
 are not converted yet.
+
+Embedding (`embedding.html` with the body, tree, uploads and run strip partials), Collections
+(`collections.html` with `partials/collection_list.html`) and Models & Usage (`models.html` with
+`partials/models_body.html`) run `js/pages/embedding.js`, `js/pages/collections.js` and
+`js/pages/models.js`. Their sentences come from the islands `embed-texts` and
+`collections-texts`, the state of the Embedding body from the island `embed-state`; the run
+strip announces whether its run works as `papaia-embed-run` (`data-announce`); the chart's
+tooltips are its `data-tips` attribute and the bar geometry its `data-pct-*` attributes
+(`tests/test_rag_page_scripts.py`). `tests/test_rag_browser.py` walks the three pages in
+Chromium in both colour schemes (create and delete a collection, replace a collection with
+another embedding model and abort the run, read the chart by pointer and keyboard) against the
+stand-in RAG system of `tests/rag_serve.py` and fails on any report of the policy, refused
+Alpine expression or script error.
 
 **Ratchet.** `tests/test_csp_ratchet.py` counts per template the executable inline scripts,
 `on*` attributes, Alpine attributes the CSP build rejects, `<style>` blocks and `style`

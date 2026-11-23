@@ -7,7 +7,9 @@
    place, and a view can be bookmarked or sent to someone.
 
    The bars are boxes with a height in percent rather than an SVG scaled to the width: their
-   labels keep the size of the page's text on every screen. The colours are the theme's chart
+   labels keep the size of the page's text on every screen. Heights, offsets, widths and the
+   sparkline's colour are `data-pct-*` and `data-chart-stroke` attributes, which
+   static/js/pages/models.js sets as style properties (no inline `style` attribute, T-UI-03). The colours are the theme's chart
    slots (`.chart-s0` .. `.chart-s6`, `.chart-so` for "Other" in docker/tailwind.app.css), the
    same slot for the same model in every window. A chart is never the only way to read a number:
    the legend, the tooltip (reachable by keyboard) and the table of days say the same.
@@ -21,11 +23,13 @@
 
 {# One chart: gridlines, stacked day columns, a tooltip per day. `i` is the day under the pointer
    or the keyboard (arrow keys while the chart has focus); a visually hidden line repeats it for
-   a screen reader. Tooltip text is set with x-text, never as markup. #}
+   a screen reader. Tooltip text is set with x-text, never as markup. The component is
+   `usageChart` of static/js/pages/models.js; the tooltips reach it as `data-tips`. #}
 {% macro bars(chart, tips, caption, empty_text) %}
 <div class="rounded-xl border border-base-300 bg-base-100 p-4"
-     x-data="{ i: -1, tips: {{ tips | tojson | forceescape }} }"
-     @keydown.escape="i = -1">
+     x-data="usageChart"
+     data-tips="{{ tips | tojson | forceescape }}"
+     @keydown.escape="leave()">
   <p class="text-sm font-semibold">{{ caption }}</p>
   {% if chart.empty %}
   <div class="flex h-48 items-center justify-center text-sm text-pk-text-muted">{{ empty_text }}</div>
@@ -33,53 +37,53 @@
   <div class="mt-4 flex gap-2">
     <div class="relative h-48 w-12 shrink-0" aria-hidden="true">
       {% for tick in chart.ticks %}
-      <span class="absolute right-0 translate-y-1/2 text-[11px] leading-none tabular-nums text-pk-text-muted" style="bottom: {{ '%.1f' | format(tick.pct) }}%">{{ tick.label }}</span>
+      <span class="absolute right-0 translate-y-1/2 text-[11px] leading-none tabular-nums text-pk-text-muted" data-pct-bottom="{{ '%.1f' | format(tick.pct) }}">{{ tick.label }}</span>
       {% endfor %}
     </div>
     <div class="min-w-0 grow">
       <div class="relative h-48 rounded-sm"
            tabindex="0" role="group" aria-label="{{ caption }}"
-           @focus="if (i < 0) i = tips.length - 1"
-           @blur="i = -1"
-           @mouseleave="i = -1"
-           @keydown.left.prevent="i = Math.max(0, i - 1)"
-           @keydown.right.prevent="i = Math.min(tips.length - 1, i + 1)">
+           @focus="focusChart()"
+           @blur="leave()"
+           @mouseleave="leave()"
+           @keydown.left.prevent="previous()"
+           @keydown.right.prevent="next()">
         {% for tick in chart.ticks %}
-        <div class="absolute inset-x-0 border-t border-base-300" style="bottom: {{ '%.1f' | format(tick.pct) }}%"></div>
+        <div class="absolute inset-x-0 border-t border-base-300" data-pct-bottom="{{ '%.1f' | format(tick.pct) }}"></div>
         {% endfor %}
         <div class="absolute inset-x-0 bottom-0 border-t border-base-content/30"></div>
         <div class="absolute inset-0 flex gap-px">
           {% for column in chart.columns %}
           <div class="flex h-full min-w-0 flex-1 items-end justify-center rounded-sm"
-               :class="i === {{ loop.index0 }} ? 'bg-base-200' : ''"
-               @mouseenter="i = {{ loop.index0 }}">
+               :class="columnClass({{ loop.index0 }})"
+               @mouseenter="show({{ loop.index0 }})">
             <div class="flex h-full w-full max-w-6 flex-col-reverse justify-start">
               {% for segment in column.segments %}
               <div class="chart-seg shrink-0 {{ 'chart-so' if segment.slot is none else 'chart-s' ~ segment.slot }}{{ ' chart-muted' if segment.muted }}"
-                   style="height: {{ '%.2f' | format(segment.pct) }}%"></div>
+                   data-pct-height="{{ '%.2f' | format(segment.pct) }}"></div>
               {% endfor %}
             </div>
           </div>
           {% endfor %}
         </div>
-        <div x-show="i >= 0" style="display: none"
+        <div x-show="i >= 0" x-cloak
              class="pointer-events-none absolute top-2 z-10 w-56 rounded-lg border border-base-300 bg-base-100 p-2.5 text-xs shadow-lg"
-             :style="i < tips.length / 2 ? `left: calc(${(i + 1) / tips.length * 100}% + 6px)` : `right: calc(${(tips.length - i) / tips.length * 100}% + 6px)`">
-          <p class="font-semibold" x-text="tips[i]?.title"></p>
-          <template x-for="row in (tips[i]?.rows || [])" :key="row.name">
+             :style="tipPosition()">
+          <p class="font-semibold" x-text="tipTitle()"></p>
+          <template x-for="row in tipRows()" :key="row.name">
             <p class="mt-1 flex items-center gap-2">
               <span class="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
-                    :class="(row.slot < 0 ? 'chart-so' : 'chart-s' + row.slot) + (row.muted ? ' chart-muted' : '')"></span>
+                    :class="rowClass(row)"></span>
               <span class="min-w-0 grow truncate" x-text="row.name"></span>
               <span class="tabular-nums" x-text="row.value"></span>
             </p>
           </template>
           <p class="mt-1.5 flex justify-between gap-2 border-t border-base-300 pt-1.5 font-semibold">
             <span>{% trans %}Total{% endtrans %}</span>
-            <span class="tabular-nums" x-text="tips[i]?.total"></span>
+            <span class="tabular-nums" x-text="tipTotal()"></span>
           </p>
         </div>
-        <p class="sr-only" aria-live="polite" x-text="i >= 0 ? tips[i].title + ': ' + tips[i].total : ''"></p>
+        <p class="sr-only" aria-live="polite" x-text="announcement()"></p>
       </div>
       <div class="mt-1 flex gap-px" aria-hidden="true">
         {% for column in chart.columns %}
@@ -293,7 +297,7 @@
           {% if r.spark %}
           <svg viewBox="0 0 72 20" class="h-5 w-[72px]" aria-hidden="true">
             <polyline points="{{ r.spark }}" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"
-                      style="stroke: var(--chart-{{ 'other' if u.slot is none else u.slot }})"/>
+                      data-chart-stroke="{{ 'other' if u.slot is none else u.slot }}"/>
           </svg>
           {% elif u.used %}
           <span class="text-xs text-pk-text-muted">{% trans %}no tokens{% endtrans %}</span>
@@ -329,7 +333,7 @@
     {{ swatch(s.slot) }}
     <a {{ s.link.attrs | xmlattr }} class="link link-hover min-w-0 grow truncate text-sm font-medium">{{ s.name }}</a>
     <div class="hidden h-1.5 w-40 overflow-hidden rounded bg-base-200 sm:block" aria-hidden="true">
-      <div class="h-1.5 rounded {{ 'chart-so' if s.slot is none else 'chart-s' ~ s.slot }}" style="width: {{ '%.1f' | format(s.pct) }}%"></div>
+      <div class="h-1.5 rounded {{ 'chart-so' if s.slot is none else 'chart-s' ~ s.slot }}" data-pct-width="{{ '%.1f' | format(s.pct) }}"></div>
     </div>
     <span class="text-sm tabular-nums">{{ s.value }}</span>
     <span class="w-12 text-right text-xs tabular-nums text-pk-text-muted">{{ '<1 %' if s.pct < 1 else ('%.0f' | format(s.pct) ~ ' %') }}</span>

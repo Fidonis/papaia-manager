@@ -42,6 +42,7 @@ CORE_MODULES = (
     "jobs.js",
     "legacy.js",
     "main.js",
+    "marked.js",
     "menus.js",
     "page.js",
     "poll.js",

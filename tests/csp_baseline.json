@@ -11,8 +11,10 @@
     "audit.html",
     "backup.html",
     "catalogs.html",
+    "collections.html",
     "connections.html",
     "dashboard.html",
+    "embedding.html",
     "error.html",
     "help.html",
     "host.html",
@@ -29,6 +31,7 @@
     "knowledge_map.html",
     "mail.html",
     "me.html",
+    "models.html",
     "modules.html",
     "node_detail.html",
     "nodes.html",
@@ -44,20 +47,6 @@
     "users.html"
   ],
   "templates": {
-    "collections.html": {
-      "inline_scripts": 1,
-      "on_attributes": 3,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "embedding.html": {
-      "inline_scripts": 1,
-      "on_attributes": 3,
-      "alpine_unsupported": 4,
-      "style_blocks": 0,
-      "style_attributes": 8
-    },
     "ingest_job_edit.html": {
       "inline_scripts": 1,
       "on_attributes": 1,
@@ -79,47 +68,12 @@
       "style_blocks": 0,
       "style_attributes": 3
     },
-    "partials/collection_list.html": {
-      "inline_scripts": 0,
-      "on_attributes": 1,
-      "alpine_unsupported": 3,
-      "style_blocks": 0,
-      "style_attributes": 6
-    },
-    "partials/embedding_body.html": {
-      "inline_scripts": 0,
-      "on_attributes": 1,
-      "alpine_unsupported": 2,
-      "style_blocks": 0,
-      "style_attributes": 12
-    },
-    "partials/embedding_status.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/embedding_tree.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 1
-    },
     "partials/ingest_secret_list.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
       "alpine_unsupported": 1,
       "style_blocks": 0,
       "style_attributes": 2
-    },
-    "partials/models_body.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 7,
-      "style_blocks": 0,
-      "style_attributes": 6
     },
     "partials/tile_editor.html": {
       "inline_scripts": 0,
@@ -130,10 +84,10 @@
     }
   },
   "totals": {
-    "inline_scripts": 6,
-    "on_attributes": 11,
-    "alpine_unsupported": 18,
+    "inline_scripts": 3,
+    "on_attributes": 3,
+    "alpine_unsupported": 2,
     "style_blocks": 0,
-    "style_attributes": 91
+    "style_attributes": 58
   }
 }

@@ -391,7 +391,9 @@ def test_discarding_asks_in_a_dialog_of_the_page_and_not_in_the_browser(
     page = _admin(client).get("/embedding").text
     uploads = _admin(client).get("/partials/embedding/uploads").text
 
-    script = page[page.index("function embedPage()") :]
+    script = (
+        Path(__file__).resolve().parents[1] / "src/app/static/js/pages/embedding.js"
+    ).read_text(encoding="utf-8")
     assert "confirm(" not in script and "alert(" not in script
     assert 'id="embed-discard"' in page and "confirmDiscard()" in page
     assert "Cancel" in page[page.index('id="embed-discard"') :]
@@ -707,10 +709,11 @@ def test_the_ingesters_token_is_in_no_response_audit_entry_or_log_line(
 
 
 def _init(html: str) -> dict[str, object]:
-    """The state the body hands to the page's Alpine scope."""
-    match = re.search(r"x-init='loaded\((.*?)\)'", html, re.S)
+    """The state the body hands to the page's Alpine scope (its data island `embed-state`)."""
+    island = r'<script type="application/json" id="embed-state">(.*?)</script>'
+    match = re.search(island, html, re.S)
     assert match, "the body does not tell the page what it loaded"
-    return json.loads(match.group(1).replace("\\u0027", "'"))  # type: ignore[no-any-return]
+    return json.loads(match.group(1))  # type: ignore[no-any-return]
 
 
 # ---------------------------------------------------------------------------
@@ -1006,7 +1009,7 @@ def test_a_working_run_polls_and_shows_the_chunks_so_far(
     assert 'hx-trigger="every 2s"' in html
     assert "Running" in html and "<b>1</b> chunk written so far" in html
     assert "Abort" in html
-    assert 'active: true' in html
+    assert 'data-announce="papaia-embed-run" data-active="true"' in " ".join(html.split())
 
 
 def test_a_finished_run_stops_polling_shows_its_counts_and_cleans_up(
@@ -1022,7 +1025,7 @@ def test_a_finished_run_stops_polling_shows_its_counts_and_cleans_up(
     assert "hx-trigger" not in html, "a finished run is not polled"
     assert "Finished" in html and "<b>4</b>" in html
     assert "The upload this run read has been deleted" in html
-    assert 'active: false' in html
+    assert 'data-announce="papaia-embed-run" data-active="false"' in " ".join(html.split())
     assert not folder.exists(), "the status pass that sees the end removes the upload"
 
 

@@ -3,8 +3,9 @@
 
    It is rendered inside the page's Alpine scope, which holds the selection, so every
    control here talks to that scope (`selected`, `batch`, `mode`, `model`, ...). The scope is
-   told about this render by `loaded()`, called from the first element: a new collection
-   starts from a clean selection.
+   told about this render by `loaded()`, called from the first element, which reads the data
+   island `embed-state` (static/js/pages/embedding.js): a new collection starts from a clean
+   selection.
 
    What cannot be done is a state, not an error: an ingester without a token, a documents
    folder the manager cannot reach, a Qdrant that is down each say so and disable what
@@ -12,6 +13,7 @@
 
    Classes are spelled out per branch rather than assembled from a variable: app.css is
    built by scanning these templates. #}
+{% from "partials/_csp.html" import data_island %}
 {% set supports_add = state.supports_add is not sameas false %}
 {% set docs_ok = state.documents.path is not none %}
 {% set can_upload = docs_ok and state.documents.writable %}
@@ -24,7 +26,8 @@
     "otherJobs": other_jobs,
     "activeRun": active.run_id if active else "",
 } %}
-<div hidden x-init='loaded({{ init | tojson }})'></div>
+{{ data_island("embed-state", init) }}
+<div hidden x-init="loaded()"></div>
 
 {% if not view.available %}
 <div class="flex flex-col items-center py-24 gap-4 text-pk-text-muted text-center">
@@ -70,7 +73,7 @@
       <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide">{% trans %}Collection{% endtrans %}</p>
       <div class="flex flex-wrap items-center gap-3">
         <select class="select select-bordered select-sm font-mono" aria-label="{{ _('Collection') }}"
-                onchange="reloadEmbedding(this.value)">
+                @change="pickCollection($event.target.value)">
           {% for c in view.collections %}
           <option value="{{ c.name }}"{% if chosen and c.name == chosen.name %} selected{% endif %}>{{ c.name }}</option>
           {% endfor %}
@@ -100,30 +103,30 @@
       </div>
 
       <!-- Upload -->
-      <div x-show="tab === 'upload'" style="display:none" class="flex flex-col gap-3">
+      <div x-show="tab === 'upload'" x-cloak class="flex flex-col gap-3">
         <p class="text-sm text-pk-text-muted">
           {% trans %}Uploaded files are kept in a private folder of their own and <b>deleted after a successful run</b>. One that is left over (a failed run, a forgotten upload) is deleted after {{ ttl_hours }} hours. A file with the same path as one embedded earlier replaces it in the collection. Up to {{ max_upload_mb }} MiB per file and {{ max_batch_mb }} MiB per upload.{% endtrans %}
         </p>
 
         <div class="flex flex-wrap items-center gap-2">
           <input type="file" multiple class="hidden" x-ref="files"
-                 @change="uploadFiles($event.target.files); $event.target.value = ''">
+                 @change="uploadPicked($event.target)">
           <input type="file" webkitdirectory class="hidden" x-ref="folder"
-                 @change="uploadFiles($event.target.files); $event.target.value = ''">
+                 @change="uploadPicked($event.target)">
           <button type="button" class="btn btn-outline btn-sm" @click="$refs.files.click()"
                   :disabled="{{ 'true' if not can_upload else 'false' }} || uploading || runActive">{% trans %}Add files{% endtrans %}</button>
           <button type="button" class="btn btn-outline btn-sm" @click="$refs.folder.click()"
                   :disabled="{{ 'true' if not can_upload else 'false' }} || uploading || runActive">{% trans %}Add folder{% endtrans %}</button>
-          <button type="button" class="btn btn-ghost btn-sm" style="display:none" x-show="batch"
+          <button type="button" class="btn btn-ghost btn-sm" x-cloak x-show="batch"
                   @click="newUpload()">{% trans %}Start a new upload{% endtrans %}</button>
-          <span style="display:none" x-show="uploading" class="flex items-center gap-2 text-sm">
+          <span x-cloak x-show="uploading" class="flex items-center gap-2 text-sm">
             <span class="loading loading-spinner loading-xs"></span><span x-text="progress"></span>
           </span>
         </div>
-        <p class="text-xs text-pk-text-muted" style="display:none" x-show="batch">
+        <p class="text-xs text-pk-text-muted" x-cloak x-show="batch">
           {% trans %}New files are added to the upload that is selected. Start a new upload to keep them apart.{% endtrans %}
         </p>
-        <div style="display:none" x-show="uploadErrors.length" class="alert alert-error text-sm" role="alert">
+        <div x-cloak x-show="uploadErrors.length" class="alert alert-error text-sm" role="alert">
           <ul class="list-disc pl-4">
             <template x-for="message in uploadErrors" :key="message"><li x-text="message"></li></template>
           </ul>
@@ -131,7 +134,7 @@
 
         {% include "partials/embedding_uploads.html" %}
 
-        <div style="display:none" x-show="batch" class="rounded-lg border border-base-300 p-3">
+        <div x-cloak x-show="batch" class="rounded-lg border border-base-300 p-3">
           <label class="flex items-center gap-2 text-sm font-semibold">
             <input type="checkbox" class="checkbox checkbox-sm"
                    :checked="isOn('')" @change="toggle('', $event.target.checked)">
@@ -143,7 +146,7 @@
       </div>
 
       <!-- Documents folder -->
-      <div x-show="tab === 'folder'" style="display:none" class="flex flex-col gap-3">
+      <div x-show="tab === 'folder'" x-cloak class="flex flex-col gap-3">
         <p class="text-sm text-pk-text-muted">
           {% trans %}Files that are already in the documents folder of the ingester. They belong to whoever put them there and are never deleted.{% endtrans %}
         </p>
@@ -203,18 +206,18 @@
         <input type="text" class="input input-bordered input-sm font-mono" x-model="model" maxlength="255"
                :readonly="mode === 'add' && recorded !== ''" placeholder="{{ _('nomic-embed-text') }}">
         <p class="mt-1 text-xs text-pk-text-muted">
-          <span x-show="mode === 'add' && recorded !== ''" style="display:none">{% trans %}The collection records this model. Use Replace to change it.{% endtrans %}</span>
-          <span x-show="!(mode === 'add' && recorded !== '')" style="display:none">{% trans %}The model the ingester embeds with, as LiteLLM names it. It is recorded for the collection.{% endtrans %}</span>
+          <span x-show="mode === 'add' && recorded !== ''" x-cloak>{% trans %}The collection records this model. Use Replace to change it.{% endtrans %}</span>
+          <span x-show="!(mode === 'add' && recorded !== '')" x-cloak>{% trans %}The model the ingester embeds with, as LiteLLM names it. It is recorded for the collection.{% endtrans %}</span>
         </p>
       </div>
 
-      <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="text-sm text-error" x-text="error"></p>
       <div class="flex items-center gap-3">
         <button type="button" class="btn btn-primary btn-sm" :disabled="!canStart()" @click="start()">
-          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
           {% trans %}Start embedding{% endtrans %}
         </button>
-        <span style="display:none" x-show="runActive" class="text-xs text-pk-text-muted">{% trans %}A run is working on this collection.{% endtrans %}</span>
+        <span x-cloak x-show="runActive" class="text-xs text-pk-text-muted">{% trans %}A run is working on this collection.{% endtrans %}</span>
       </div>
     </div>
   </div>

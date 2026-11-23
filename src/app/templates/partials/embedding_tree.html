@@ -41,7 +41,7 @@
       </label>
     </div>
     {% if e.is_dir %}
-    <ul class="embed-children ml-3 border-l border-base-300 pl-2" style="display:none" x-show="open"></ul>
+    <ul class="embed-children ml-3 border-l border-base-300 pl-2" x-cloak x-show="open"></ul>
     {% endif %}
   </li>
   {% endfor %}

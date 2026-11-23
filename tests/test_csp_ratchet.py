@@ -182,9 +182,7 @@ def test_the_ratchet_passes_on_the_measured_baseline() -> None:
 
 # Pages without a finding of their own that still render partials with findings through htmx
 # (static includes are followed by the test below). They are converted with those partials.
-_LOADS_PARTIALS_WITH_FINDINGS = {
-    "models.html": "partials/models_body.html (/partials/models/...)",
-}
+_LOADS_PARTIALS_WITH_FINDINGS: dict[str, str] = {}
 _STATIC_USE = re.compile(r'\{%-?\s*(?:include|import|from|extends)\s+"([^"]+)"')
 
 

@@ -90,7 +90,7 @@
     <span>
       {% trans operator_role=view.operator_role %}<span class="font-mono">{{ operator_role }}</span> has no global grant in the ACL collection yet, so the MCP server does not give it access to every collection.{% endtrans %}
     </span>
-    <button type="button" class="btn btn-sm" onclick="createOperatorGrant(this)">{% trans %}Create grant{% endtrans %}</button>
+    <button type="button" class="btn btn-sm" data-collection-grant>{% trans %}Create grant{% endtrans %}</button>
   </div>
   {% endif %}
 
@@ -191,11 +191,11 @@
         </p>
       </div>
       {{ roles_editor(view.operator_role) }}
-      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
+        <button type="button" class="btn btn-ghost" @click="close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-primary" :disabled="busy">
-          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
           {% trans %}Create{% endtrans %}
         </button>
       </div>
@@ -208,14 +208,14 @@
 <dialog id="roles-modal" class="modal" x-data="editRoles()"
         @collection-roles.window="open($event.detail)">
   <div class="modal-box max-w-xl">
-    <h3 class="mb-4 text-lg font-bold"><span x-html="fmtHtml({{ _('Roles of <span class="font-mono">{name}</span>')|tojson|forceescape }}, { name: name })"></span></h3>
+    <h3 class="mb-4 text-lg font-bold"><span x-effect="markTitle($el)"></span></h3>
     <form @submit.prevent="submit()">
       {{ roles_editor(view.operator_role) }}
-      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
+        <button type="button" class="btn btn-ghost" @click="close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-primary" :disabled="busy">
-          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
           {% trans %}Save{% endtrans %}
         </button>
       </div>
@@ -228,9 +228,9 @@
 <dialog id="delete-collection-modal" class="modal" x-data="deleteCollection()"
         @collection-delete.window="open($event.detail)">
   <div class="modal-box">
-    <h3 class="mb-2 text-lg font-bold"><span x-html="fmtHtml({{ _('Delete <span class="font-mono">{name}</span>?')|tojson|forceescape }}, { name: name })"></span></h3>
+    <h3 class="mb-2 text-lg font-bold"><span x-effect="markTitle($el)"></span></h3>
     <p class="mb-3 text-sm">
-      {% trans %}This deletes the collection{% endtrans %}<span x-show="points !== null" style="display:none"> <span x-html="fmtHtml({{ _('with its {points} points')|tojson|forceescape }}, { points: points })"></span></span>{% trans %}, its record in the meta collection and all roles listed for it. It cannot be undone.{% endtrans %}
+      {% trans %}This deletes the collection{% endtrans %}<span x-show="points !== null" x-cloak> <span x-effect="markPoints($el)"></span></span>{% trans %}, its record in the meta collection and all roles listed for it. It cannot be undone.{% endtrans %}
     </p>
     <form @submit.prevent="submit()">
       <div class="form-control mb-3">
@@ -238,9 +238,9 @@
         <input type="text" class="input input-bordered font-mono" x-model="typed"
                autocomplete="off" :placeholder="name">
       </div>
-      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
+        <button type="button" class="btn btn-ghost" @click="close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-error" :disabled="busy || typed !== name">{% trans %}Delete{% endtrans %}</button>
       </div>
     </form>

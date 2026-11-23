@@ -138,7 +138,7 @@ def _text(html: str) -> str:
 
 def _tips(html: str) -> list[dict[str, Any]]:
     """The tooltips of the first chart, as the page hands them to the browser."""
-    raw = re.search(r'x-data="\{ i: -1, tips: (.*?) \}"', html, flags=re.S)
+    raw = re.search(r'data-tips="(.*?)"', html, flags=re.S)
     assert raw, "the chart has no tooltips"
     tips: list[dict[str, Any]] = json.loads(unescape(raw.group(1)))
     return tips

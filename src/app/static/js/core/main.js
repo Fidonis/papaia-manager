@@ -17,9 +17,7 @@ import { actions, report, showToast, texts } from "./runtime.js";
 import { installSessionGuard } from "./session.js";
 
 installLegacy(window, {
-  _authGuard: actions.authGuard,
   _ragDetail: ragDetail,
-  _ragError: actions.ragError,
   _ragEscape: escapeHtml,
   _ragRequest: actions.ragRequest,
   csrfToken: () => csrfToken(document),

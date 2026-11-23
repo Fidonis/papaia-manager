@@ -13,6 +13,10 @@
 {% endif %}
 {% endblock %}
 
+{% block page_modules %}
+<script type="module" src="{{ asset_url('js/pages/models.js') }}"></script>
+{% endblock %}
+
 {% block content %}
 {# The body is fetched from the same query string the page was asked with, so a window
    or a model in the address bar survives a reload. The links inside it swap this element

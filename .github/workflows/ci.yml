@@ -113,7 +113,7 @@ jobs:
         run: |
           scripts/design-tools.sh
           sudo node .pk/node_modules/playwright-core/cli.js install-deps chromium
-      - name: The check fails on seeded pages; toasts, the settings paths, overlay, mail, the dashboard editor, the backup page, the ingest lists and the upgrade pages in a browser
+      - name: The check fails on seeded pages; toasts, settings, overlay, mail, dashboard, backup, ingest, upgrade and RAG paths in a browser
         working-directory: src
         run: >-
           uv run --frozen pytest -q -rs ../tests/test_csp_browser.py ../tests/test_toast_browser.py
@@ -123,6 +123,7 @@ jobs:
           ../tests/test_ingest_browser.py
           ../tests/test_upgrade_scripts.py
           ../tests/test_addons_services_scripts.py
+          ../tests/test_rag_browser.py
       - name: Every page of the manager
         run: >-
           scripts/csp-check.sh 57882 "${RUNNER_TEMP}/csp-report.json" "${GITHUB_STEP_SUMMARY}"

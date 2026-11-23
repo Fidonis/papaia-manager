@@ -197,16 +197,16 @@ groups:
       - W1 src/app/templates/models.html:11 LLM
       - W1 src/app/templates/models.html:4 LLM
       - W1 src/app/templates/partials/_group_controls.html:111 LLM
-      - W1 src/app/templates/partials/embedding_body.html:207 LLM
-      - W1 src/app/templates/partials/models_body.html:171 LLM
-      - W1 src/app/templates/partials/models_body.html:210 LLM
-      - W1 src/app/templates/partials/models_body.html:219 LLM
-      - W1 src/app/templates/partials/models_body.html:224 LLM
-      - W1 src/app/templates/partials/models_body.html:248 LLM
-      - W1 src/app/templates/partials/models_body.html:250 LLM
-      - W1 src/app/templates/partials/models_body.html:279 LLM
-      - W1 src/app/templates/partials/models_body.html:306 LLM
-      - W1 src/app/templates/partials/models_body.html:344 LLM
+      - W1 src/app/templates/partials/embedding_body.html:210 LLM
+      - W1 src/app/templates/partials/models_body.html:175 LLM
+      - W1 src/app/templates/partials/models_body.html:214 LLM
+      - W1 src/app/templates/partials/models_body.html:223 LLM
+      - W1 src/app/templates/partials/models_body.html:228 LLM
+      - W1 src/app/templates/partials/models_body.html:252 LLM
+      - W1 src/app/templates/partials/models_body.html:254 LLM
+      - W1 src/app/templates/partials/models_body.html:283 LLM
+      - W1 src/app/templates/partials/models_body.html:310 LLM
+      - W1 src/app/templates/partials/models_body.html:348 LLM
       - W1 src/app/templates/settings_modules.html:181 LLM
   - ticket: MGR-014
     reason: login in operator texts (sign-in names for Keycloak, the mail relay and SSH); reworded
@@ -306,7 +306,7 @@ groups:
       - W1 src/app/templates/notifications.html:155 updates
       - W1 src/app/templates/notifications.html:204 updates
       - W1 src/app/templates/partials/_ingest_dialogs.html:30 update
-      - W1 src/app/templates/partials/embedding_body.html:180 update
+      - W1 src/app/templates/partials/embedding_body.html:183 update
       - W1 src/app/templates/partials/upgrade_status.html:155 Update
   - ticket: MGR-014
     reason: Tool / Werkzeug in the texts of the AI Map and the MCP pages; aligned with the vocabulary

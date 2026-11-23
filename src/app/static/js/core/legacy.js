@@ -5,9 +5,7 @@
 // templates still use.
 
 export const LEGACY_NAMES = Object.freeze([
-  "_authGuard",
   "_ragDetail",
-  "_ragError",
   "_ragEscape",
   "_ragRequest",
   "csrfToken",

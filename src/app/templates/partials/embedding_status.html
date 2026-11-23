@@ -2,9 +2,9 @@
    latest runs of the collection.
 
    It polls only while a run works. A run that has ended is rendered without a trigger, so
-   the polling stops by itself, and the strip announces the state to the page
-   (`embed-run-state`) so the page can drop the upload the run read. The same technique as
-   the backup strip: an inline script in a swapped partial.
+   the polling stops by itself. The strip announces whether its run works as
+   `papaia-embed-run` (`data-announce` and `data-active`, static/js/core/announce.js), so the
+   page can drop the upload the run read.
 
    The ingester reports its counters only when a run ends, so while it works the strip
    shows the points written so far, counted in Qdrant. That number is a hint: it is absent
@@ -15,6 +15,8 @@
      hx-trigger="every 2s"
      hx-swap="outerHTML"
      {% endif %}
+     data-announce="papaia-embed-run"
+     data-active="{{ 'true' if view and view.active else 'false' }}"
      class="flex flex-col gap-3">
 
   {% if problem %}
@@ -111,11 +113,4 @@
     </div>
   </div>
   {% endif %}
-
-  <script>
-    window.dispatchEvent(new CustomEvent("embed-run-state", { detail: {
-      active: {{ "true" if view and view.active else "false" }},
-      runId: {{ (view.run_id | tojson) if view else "null" }},
-    }}));
-  </script>
 </div>
