@@ -232,6 +232,13 @@ pages:
     needs_neighbours: true
     person: anna
   - module: manager
+    path: /inventory
+    title_key: manager.inventory
+    nav_group: manager.review
+    kinds: [tabelle, formular, zustand]
+    needs_neighbours: true
+    person: emil
+  - module: manager
     path: /settings
     title_key: manager.settings
     nav_group: manager.system
@@ -291,3 +298,6 @@ leitweg:
   - name: read_the_audit_log
     steps:
       - {step: 1, action: „Audit-Log“ in der Navigation öffnen, path: /audit}
+  - name: export_the_inventory
+    steps:
+      - {step: 1, action: "„Bestand“ in der Navigation öffnen, filtern und exportieren", path: /inventory}

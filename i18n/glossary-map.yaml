@@ -37,3 +37,4 @@ map:
     - text.e8155acc89e5ee3c  # Refresh catalogs
   pruefen:
     - text.6293da9979b07171  # Review upgrade
+    - nav.group.review  # navigation group of auditors (inventory)

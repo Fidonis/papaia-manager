@@ -11037,3 +11037,111 @@ msgstr "Ansprechstelle nicht hinterlegt"
 
 msgid "Installation"
 msgstr "Installation"
+
+msgid "Inventory"
+msgstr "Bestand"
+
+msgid "Review"
+msgstr "Prüfung"
+
+msgid "the %(role)s role is required"
+msgstr "die Rolle %(role)s ist erforderlich"
+
+msgid "invalid filter: %(name)s"
+msgstr "ungültiger Filter: %(name)s"
+
+msgid "format must be csv or json"
+msgstr "das Format muss csv oder json sein"
+
+msgid "Apps, workflows, metrics, dashboards and event reminders of all modules, asked on every visit"
+msgstr "Apps, Abläufe, Kennzahlen, Dashboards und Anlass-Erinnerungen aller Module, bei jedem Aufruf abgefragt"
+
+msgid "Export (CSV)"
+msgstr "Exportieren (CSV)"
+
+msgid "Export (JSON)"
+msgstr "Exportieren (JSON)"
+
+msgid "App"
+msgstr "App"
+
+msgid "Workflow"
+msgstr "Ablauf"
+
+msgid "Metric"
+msgstr "Kennzahl"
+
+msgid "Event rule"
+msgstr "Anlassregel"
+
+msgid "Event reminder"
+msgstr "Erinnerung mit Anlass"
+
+msgid "Owner no longer active"
+msgstr "Eigentümerin nicht mehr aktiv"
+
+msgid "Deputy missing"
+msgstr "Vertretung fehlt"
+
+msgid "Unused for 180 days"
+msgstr "Seit 180 Tagen ungenutzt"
+
+msgid "Confirmation due"
+msgstr "Bestätigung fällig"
+
+msgid "Class above the role"
+msgstr "Klasse über der Rolle"
+
+msgid "write"
+msgstr "schreiben"
+
+msgid "send"
+msgstr "senden"
+
+msgid "delete"
+msgstr "löschen"
+
+msgid "check"
+msgstr "prüfen"
+
+msgid "The inventory is incomplete: %(module)s does not answer. Objects from %(module)s are missing from this list and from the export. Check the state under “Operations” and reload the page afterwards."
+msgstr "Der Bestand ist unvollständig: %(module)s antwortet nicht. Objekte aus %(module)s fehlen in dieser Liste und im Export. Prüfen Sie den Zustand unter „Betrieb“ und laden Sie die Seite danach neu."
+
+msgid "Flag"
+msgstr "Kennzeichen"
+
+msgid "From module"
+msgstr "Modul"
+
+msgid "Class"
+msgstr "Klasse"
+
+msgid "Effect"
+msgstr "Wirkung"
+
+msgid "Person (account id)"
+msgstr "Person (Konto-ID)"
+
+msgid "No apps, workflows, metrics or event reminders yet."
+msgstr "Noch keine Apps, Abläufe, Kennzahlen oder Anlass-Erinnerungen vorhanden."
+
+msgid "No object matches the filters."
+msgstr "Kein Objekt passt zu den Filtern."
+
+msgid "Owned by"
+msgstr "Eigentümerin"
+
+msgid "Deputy"
+msgstr "Vertretung"
+
+msgid "last used"
+msgstr "zuletzt genutzt"
+
+msgid "Flags"
+msgstr "Kennzeichen"
+
+msgid "Dashboard"
+msgstr "Dashboard"
+
+msgid "Checksum"
+msgstr "Prüfsumme"

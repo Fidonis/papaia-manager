@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{#
+  The inventory ("Bestand", GV-16, GV-17, GV-21) for auditors, built from the kit's patterns
+  (pk/components.html of papaia-kit 0.2.2): filter form, table, badges, alert and empty state.
+  `pk_lang` comes from the route; nothing inline, the kit's stylesheet styles every part.
+#}
+{% import "pk/components.html" as kit with context %}
+
+{% block page_title %}{% trans %}Inventory{% endtrans %}{% endblock %}
+{% block page_subtitle %}{{ kit.lead(_("Apps, workflows, metrics, dashboards and event reminders of all modules, asked on every visit")) }}{% endblock %}
+
+{% block page_actions %}
+{% call kit.cluster() %}
+{{ kit.button(_("Export (CSV)"), href="/api/v1/inventory/export?format=csv" ~ export_query, symbol="download", id="inventory-export-csv") }}
+{{ kit.button(_("Export (JSON)"), href="/api/v1/inventory/export?format=json" ~ export_query, symbol="download", id="inventory-export-json") }}
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+{# Account ids are long; the cell shows the start and filters by the whole id. #}
+{% macro person(sub) -%}
+<a class="pk-link" href="/inventory?person={{ sub | urlencode }}" title="{{ sub }}"><code>{{ sub[:8] }}{% if sub | length > 8 %}…{% endif %}</code></a>
+{%- endmacro %}
+{% call kit.stack() %}
+{% for module in unreachable %}
+{{ kit.alert(_("The inventory is incomplete: %(module)s does not answer. Objects from %(module)s are missing from this list and from the export. Check the state under “Operations” and reload the page afterwards.", module=module), tone="warning") }}
+{% endfor %}
+
+{% call kit.form(action="/inventory", method="get") %}
+{% call kit.cluster() %}
+{{ kit.field("select", "flag", _("Flag"), id="inventory-filter-flag", value=filters.flag or "",
+    options=options.flag) }}
+{{ kit.field("select", "module", _("From module"), id="inventory-filter-module", value=filters.module or "",
+    options=options.module) }}
+{{ kit.field("select", "data_class", _("Class"), id="inventory-filter-class", value=filters.data_class or "",
+    options=options.data_class) }}
+{{ kit.field("select", "effect", _("Effect"), id="inventory-filter-effect", value=filters.effect or "",
+    options=options.effect) }}
+{{ kit.field("search", "person", _("Person (account id)"), id="inventory-filter-person", value=filters.person or "") }}
+{% endcall %}
+<div class="pk-form-actions">{{ kit.button(_("Filter"), type="submit", id="inventory-filter-submit") }}</div>
+{% endcall %}
+
+{% if total == 0 and not unreachable %}
+<div id="inventory-empty">{{ kit.empty(_("No apps, workflows, metrics or event reminders yet.")) }}</div>
+{% elif not items %}
+<div id="inventory-no-match">{{ kit.empty(_("No object matches the filters."), symbol="search", compact=true) }}</div>
+{% else %}
+{% call kit.table(_("Inventory"), columns=[
+  {"label": _("Title")}, {"label": _("Kind")}, {"label": _("From module")}, {"label": _("Owned by")},
+  {"label": _("Deputy")}, {"label": _("State")}, {"label": _("Class")}, {"label": _("Effect")},
+  {"label": _("last used")}, {"label": _("Flags")},
+]) %}
+{% for item in items %}
+<tr>
+  <td>
+    {% if item.title %}<strong>{{ item.title }}</strong>{% else %}{{ item.purpose }}{% endif %}
+    <br><code>{{ item.id }}</code>
+  </td>
+  <td>{{ titles.kind.get(item.kind, item.kind) }}</td>
+  <td>{{ titles.module.get(item.module, item.module) }}</td>
+  <td>{{ person(item.owner_sub) }}</td>
+  <td>{% if item.deputy_sub %}{{ person(item.deputy_sub) }}{% else %}–{% endif %}</td>
+  <td>{{ item.state }}</td>
+  <td>{{ titles.data_class.get(item.max_data_class, item.max_data_class) }}</td>
+  <td>{% for e in item.effects %}{{ kit.badge(titles.effect[e]) }} {% endfor %}</td>
+  <td>{{ item.last_used_at or "–" }}</td>
+  <td>{% for f in item.flags %}{{ kit.badge(titles.flag[f], tone="warning") }} {% endfor %}</td>
+</tr>
+{% endfor %}
+{% endcall %}
+<p id="inventory-checksum" class="break-all">{% trans %}Checksum{% endtrans %}: <code>{{ checksum }}</code></p>
+{% endif %}
+{% endcall %}
+{% endblock %}

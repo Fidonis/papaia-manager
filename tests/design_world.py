@@ -1,11 +1,12 @@
 """The stand-in installation the page tests and the design check render the manager in.
 
 One configuration directory with the RAG profile on and a distributed topology, so every
-page of `ui/pages.yaml` is reachable, a signed session cookie for Anna, an administrator of
-the platform, and the simulated Keycloak of the tests for the Users and Roles pages.
-Nothing here talks to a real service: pages that would ask Docker, LiteLLM or Qdrant show
-their own "unreachable" state. Used by tests/test_kit_design.py and tests/design_serve.py,
-so the design check sees the pages the tests see.
+page of `ui/pages.yaml` is reachable, signed session cookies for the test persons of the list
+(Anna, an administrator of the platform; Emil, the auditor of the inventory, who is no
+administrator: separation of duties), and the simulated Keycloak of the tests for the Users
+and Roles pages. Nothing here talks to a real service: pages that would ask Docker, LiteLLM
+or Qdrant show their own "unreachable" state. Used by tests/test_kit_design.py and
+tests/design_serve.py, so the design check sees the pages the tests see.
 """
 
 from __future__ import annotations
@@ -24,6 +25,12 @@ SESSION_COOKIE = "papaia_manager_session"
 # The roles of Anna: manager administrator, dashboard user and platform administrator (the
 # Users page needs the identity role of the bundled Keycloak).
 ROLES = ("admin", "user", "papaia-admin")
+# The test persons of ui/pages.yaml (column `person`) with their realm roles. Emil holds
+# `papaia-auditor` (KE-13) and nothing of the administration, so the inventory is his page.
+PERSONS: dict[str, tuple[str, ...]] = {
+    "anna": ROLES,
+    "emil": ("user", "papaia-auditor"),
+}
 CSRF = "design-check-csrf-token-0001"
 # Values for the placeholders of ui/pages.yaml. The pages behind them render the state of
 # an id the manager does not know, which is a page of the module as well.
@@ -76,12 +83,14 @@ def environment(config: Path, workspace: Path, *, host: str, secret: str) -> dic
     }
 
 
-def session_cookie(secret: str, roles: tuple[str, ...] = ROLES, **extra: Any) -> str:
-    """The signed session of Anna with `roles`, as the manager's session middleware reads it."""
+def session_cookie(
+    secret: str, roles: tuple[str, ...] = ROLES, person: str = "anna", **extra: Any
+) -> str:
+    """The signed session of `person` (Anna by default) with `roles`, as the manager reads it."""
     session: dict[str, Any] = {
         "user": {
-            "sub": "u-anna",
-            "preferred_username": "anna",
+            "sub": f"u-{person}",
+            "preferred_username": person,
             "roles": list(roles),
             "exp": int(time.time()) + 3600,
         },

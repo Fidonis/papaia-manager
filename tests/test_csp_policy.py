@@ -55,9 +55,10 @@ POLICY = (
 TEMPLATES = REPO / "src" / "app" / "templates"
 
 
-def _page_paths() -> list[str]:
+def _page_rows() -> list[tuple[str, str]]:
+    """(path, person) of every page with a path: the test person who sees the page."""
     doc = yaml.safe_load((REPO / "ui" / "pages.yaml").read_text(encoding="utf-8"))
-    return [row["path"] for row in doc["pages"] if "path" in row]
+    return [(row["path"], row["person"]) for row in doc["pages"] if "path" in row]
 
 
 @pytest.fixture
@@ -96,8 +97,18 @@ def test_the_policy_is_exactly_the_target_policy() -> None:
         assert "unsafe-eval" not in value, name
 
 
-@pytest.mark.parametrize("pattern", _page_paths())
-def test_every_page_carries_the_report_only_policy(client: TestClient, pattern: str) -> None:
+@pytest.mark.parametrize(("pattern", "person"), _page_rows())
+def test_every_page_carries_the_report_only_policy(
+    client: TestClient, pattern: str, person: str
+) -> None:
+    client.cookies.set(
+        design_world.SESSION_COOKIE,
+        design_world.session_cookie(
+            get_settings().manager_session_secret,
+            roles=design_world.PERSONS[person],
+            person=person,
+        ),
+    )
     response = client.get(design_world.sample_path(pattern))
     assert response.status_code == 200, pattern
     assert response.headers[HEADER] == POLICY

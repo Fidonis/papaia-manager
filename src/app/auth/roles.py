@@ -34,11 +34,25 @@ def is_identity_admin(claims: OIDCClaims, settings: Settings) -> bool:
     return settings.manager_identity_admin_role in claims.roles
 
 
+def is_auditor(claims: OIDCClaims, settings: Settings) -> bool:
+    """True if the account holds the auditors' role (`papaia-auditor`).
+
+    Kept apart from the admin role on purpose (separation of duties): an administrator does
+    not see the inventory through being one, and an auditor administers nothing.
+    """
+    return settings.manager_auditor_role in claims.roles
+
+
 def has_manager_access(claims: OIDCClaims, settings: Settings) -> bool:
     """True if the account may use the manager at all.
 
     Admins are a superset of users -- they reach every surface a user
-    reaches -- so this is an OR rather than a separate user-only tier.
-    An account holding neither role has no business getting a session.
+    reaches -- so this is an OR rather than a separate user-only tier. An auditor
+    reaches the surfaces of a user too, plus the inventory, which names the role
+    itself. An account holding none of them has no business getting a session.
     """
-    return is_admin(claims, settings) or is_user(claims, settings)
+    return (
+        is_admin(claims, settings)
+        or is_user(claims, settings)
+        or is_auditor(claims, settings)
+    )

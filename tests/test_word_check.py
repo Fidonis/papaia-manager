@@ -51,6 +51,29 @@ def test_template_kinds_follow_the_element_around_the_text() -> None:
     }
 
 
+def test_labels_of_the_kit_button_macro_are_buttons() -> None:
+    """A page built from the kit's macros (pk/components.html) names its buttons in calls."""
+    source = (
+        '{% import "pk/components.html" as kit with context %}'
+        '{{ kit.button(_("Export (CSV)"), href="/x", symbol="download") }}'
+        '{{ kit.field("select", "flag", _("Flag"), options=o) }}'
+        '<p>{{ kit.lead(_("A lead.")) }}</p>'
+    )
+    assert export.template_kinds(source) == {
+        "Export (CSV)": "button",
+        "Flag": "text",
+        "A lead.": "text",
+    }
+
+
+def test_the_review_group_of_auditors_has_named_navigation_keys() -> None:
+    en, de = _export("en"), _export("de")
+    assert en["nav.group.review"] == {"key": "nav.group.review", "text": "Review", "kind": "nav"}
+    assert de["nav.group.review"]["text"] == "Prüfung"
+    assert en["nav.inventory"] == {"key": "nav.inventory", "text": "Inventory", "kind": "nav"}
+    assert de["nav.inventory"]["text"] == "Bestand"
+
+
 def test_navigation_rows_and_page_titles_have_named_keys() -> None:
     en, de = _export("en"), _export("de")
     assert en["nav.modules"] == {"key": "nav.modules", "text": "Modules", "kind": "nav"}

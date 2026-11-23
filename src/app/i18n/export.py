@@ -54,6 +54,9 @@ _JINJA = re.compile(r"\{#.*?#\}|\{%.*?%\}|\{\{.*?\}\}", re.DOTALL)
 _VAR = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 _PAGE_TITLE = re.compile(r"\{%-?\s*block\s+page_title\s*-?%\}(.*?)\{%-?\s*endblock", re.DOTALL)
 _MARK = re.compile(r"\x01(\d+)\x02")
+# A call of the kit's button macro (`{{ kit.button(_("Label"), ...) }}`, pk/components.html):
+# its first text is the label of a button the macro draws.
+_KIT_BUTTON = re.compile(r"\{\{-?\s*[A-Za-z_][A-Za-z0-9_]*\.button\(")
 _SLUG = re.compile(r"[^a-z0-9]+")
 
 
@@ -114,10 +117,14 @@ def template_kinds(source: str) -> dict[str, str]:
         for m in _TRANS.finditer(block.group(1))
     }
     marked = _TRANS.sub(lambda m: mark(_msgid(m.group(1))), source)
-    marked = _JINJA.sub(
-        lambda m: "".join(mark(c.group(1) or c.group(2) or "") for c in _CALL.finditer(m.group(0))),
-        marked,
-    )
+
+    def expression(m: re.Match[str]) -> str:
+        marks = [mark(c.group(1) or c.group(2) or "") for c in _CALL.finditer(m.group(0))]
+        if marks and _KIT_BUTTON.match(m.group(0)):
+            marks[0] = f"<button>{marks[0]}</button>"
+        return "".join(marks)
+
+    marked = _JINJA.sub(expression, marked)
     parser = _Kinds()
     parser.feed(marked)
     parser.close()
@@ -137,7 +144,9 @@ def named() -> dict[str, tuple[str, str]]:
     """English text -> (key, kind) for the navigation, titles and tabs."""
     out: dict[str, tuple[str, str]] = {}
     groups = shell.nav_groups(
-        shell.NavFlags(admin=True, rag=True, knowledge_map=True, users=True, nodes=True),
+        shell.NavFlags(
+            admin=True, rag=True, knowledge_map=True, users=True, nodes=True, auditor=True
+        ),
         lambda text: text,
     )
     for heading, rows in groups:

@@ -44,6 +44,8 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.10",
     "types-pyyaml>=6.0",
+    "beautifulsoup4==4.13.4",
+    "soupsieve==2.7",
 ]
 
 [tool.uv]

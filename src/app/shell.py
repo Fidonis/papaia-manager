@@ -72,6 +72,7 @@ class NavFlags:
     knowledge_map: bool = False
     users: bool = False
     nodes: bool = False
+    auditor: bool = False
 
 
 def own_module() -> dict[str, Any]:
@@ -132,11 +133,15 @@ def nav_groups(flags: NavFlags, gettext: Callable[[str], str]) -> list[tuple[str
     them, and what concerns the deployment as a whole (System). The terms are the glossary's
     (`i18n/glossary-map.yaml`); the manager's places of the kit's administration map
     (`contract/admin-map.yaml`: /modules, /backup, /users, /settings, /audit) are rows here. An
-    account without the admin role sees the overview only.
+    account without the admin role sees the overview only, and an auditor the review group with
+    the inventory (Bestand) as well.
     """
     _ = gettext
+    review: list[tuple[str, list[NavRow]]] = []
+    if flags.auditor:
+        review = [(_("Review"), [NavRow("/inventory", _("Inventory"), ("/inventory",))])]
     if not flags.admin:
-        return []
+        return review
     groups: list[tuple[str, list[NavRow]]] = [
         (
             _("Monitor"),
@@ -188,7 +193,7 @@ def nav_groups(flags: NavFlags, gettext: Callable[[str], str]) -> list[tuple[str
         NavRow("/settings", _("Settings"), ("/settings",)),
     ]
     groups.append((_("System"), system))
-    return groups
+    return groups + review
 
 
 def current_row(path: str, groups: Sequence[tuple[str, Sequence[NavRow]]]) -> str:

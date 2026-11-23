@@ -8,70 +8,77 @@
 
 /* ── Element defaults inside the content ─────────────────────────────────── */
 
-:where(#pk-main) *,
-:where(#pk-main) ::before,
-:where(#pk-main) ::after {
+/* They skip every element of a kit component (a class `pk-...` inside #pk-main,
+   pk/components.html of papaia-kit) and everything inside one: unlayered, they would beat
+   the kit's layered stylesheet and strip its buttons, fields, tables and links. The
+   exemption starts inside #pk-main on purpose: the kit frame wraps #pk-main itself in
+   pk-... elements (body.pk-body > .pk-shell > .pk-content), and a bare `[class^="pk-"] *`
+   would exempt every page. */
+
+:where(#pk-main) *:not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)),
+:where(#pk-main) *:not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *))::before,
+:where(#pk-main) *:not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *))::after {
   box-sizing: border-box;
   border-width: 0;
   border-style: solid;
   border-color: theme("borderColor.DEFAULT", currentColor);
 }
 
-:where(#pk-main) :where(h1, h2, h3, h4, h5, h6, p, blockquote, figure, dl, dd, pre, hr) {
+:where(#pk-main) :where(h1, h2, h3, h4, h5, h6, p, blockquote, figure, dl, dd, pre, hr):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   margin: 0;
 }
 
-:where(#pk-main) :where(h1, h2, h3, h4, h5, h6) {
+:where(#pk-main) :where(h1, h2, h3, h4, h5, h6):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   font-family: theme("fontFamily.brand");
   font-size: inherit;
   font-weight: inherit;
 }
 
-:where(#pk-main) :where(ol, ul, menu) {
+:where(#pk-main) :where(ol, ul, menu):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-:where(#pk-main) :where(a) {
+:where(#pk-main) :where(a):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   color: inherit;
   text-decoration: inherit;
 }
 
-:where(#pk-main) :where(b, strong) {
+:where(#pk-main) :where(b, strong):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   font-weight: bolder;
 }
 
-:where(#pk-main) :where(code, kbd, samp, pre) {
+:where(#pk-main) :where(code, kbd, samp, pre):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   font-family: theme("fontFamily.mono");
   font-size: 1em;
 }
 
-:where(#pk-main) :where(button, input, optgroup, select, textarea) {
+:where(#pk-main) :where(button, input, optgroup, select, textarea):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   font: inherit;
   color: inherit;
   margin: 0;
   padding: 0;
 }
 
-:where(#pk-main) :where(button, [type="button"], [type="reset"], [type="submit"]) {
+:where(#pk-main) :where(button, [type="button"], [type="reset"], [type="submit"]):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   background-color: transparent;
   background-image: none;
   cursor: pointer;
 }
 
-:where(#pk-main) :where(table) {
+:where(#pk-main) :where(table):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   border-collapse: collapse;
   border-color: inherit;
   text-indent: 0;
 }
 
-:where(#pk-main) :where(img, svg, video, canvas, audio, iframe, embed, object) {
+:where(#pk-main) :where(img, svg, video, canvas, audio, iframe, embed, object):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   display: block;
   vertical-align: middle;
 }
 
-:where(#pk-main) :where(img, video) {
+:where(#pk-main) :where(img, video):not(:where(#pk-main [class^="pk-"], #pk-main [class*=" pk-"], #pk-main [class^="pk-"] *, #pk-main [class*=" pk-"] *)) {
   max-width: 100%;
   height: auto;
 }

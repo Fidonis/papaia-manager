@@ -144,6 +144,28 @@ module by removing the person's consent at the module's client. The calls use th
 administrator's own Keycloak token, so Keycloak decides: listing reads the clients and their
 offline sessions, revoking changes the user's consents. A refusal by Keycloak is shown as such.
 
+**Inventory.** The page **Inventory** (`/inventory`, German "Bestand") lists the work objects
+built in the modules: apps and dashboards (Studio), workflows (Flow), metrics and dashboards
+(Data), event rules and event reminders (Assistant), with owner, deputy, state, highest data
+class, the effects of their bindings, last use and flags (`owner_inactive`, `deputy_missing`,
+`unused_180d`, `confirmation_due`, `class_above_role`). Only the realm role
+`MANAGER_AUDITOR_ROLE` (default `papaia-auditor`) sees it; the admin role does not include
+it. The manager asks every module at `GET /internal/inventory` on each visit, over mutual
+TLS with the client certificate of `AUDIT_TLS_CERT_FILE`, at the addresses in
+`INVENTORY_SOURCES`, and keeps no copy. An answer counts only when it is a valid
+`papaia.inventory/1` document of the platform kit's schema with objects of that module alone
+and a correct checksum; a module that does not answer that way, or an installed module
+without an address, is listed as `nicht erreichbar` and the page says that the list is
+incomplete. Filters: flag, module, data class, effect, person (account id; owner, deputy or
+approver). **Export (CSV)** and **Export (JSON)** hand out the filtered list; the JSON form is
+the `papaia.inventory/1` document, the CSV form has one row per object and one row per module
+that did not answer (`state` = `nicht erreichbar`), with formula-like cells quoted. Every
+export, a refused one too, is one entry in the audit log and one `inventory_exported` row
+with the checksum of what was handed out. The inventory never carries content: no rows, no
+conditions, no reminder text. The page is drawn with the platform kit's patterns (table, badge,
+alert, select field, empty state) and is listed in `ui/pages.yaml` as the page of the
+auditor; the design check signs in as the list's test person of each page.
+
 **Audit rows.** Besides the local audit log, every write, send and delete of the manager
 leaves one `papaia.audit/1` row: who acted (the signed-in person, or the manager's own service
 identity for scheduled work), the operation, its result and the request's
@@ -1021,6 +1043,8 @@ GET  /health                              # unauthenticated
 GET    /api/v1/modules                    # modules: {bom, catalog_error, modules}; admin, read-only
 GET    /api/v1/delegations                # counts per module and person; identity admin
 DELETE /api/v1/delegations/{module}/persons/{user_id}   # revoke; module flow|assistant
+GET    /api/v1/inventory                  # papaia.inventory/1, ?flag=&module=&data_class=&effect=&person=; auditor
+GET    /api/v1/inventory/export?format=csv|json   # same filters; inventory_exported row; auditor
 
 GET    /api/v1/catalogs
 POST   /api/v1/catalogs                   # {name, type, url|path, ref?, auth?}

@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import soupsieve
+from bs4 import BeautifulSoup
 
 _CONFIG_DIR = tempfile.mkdtemp(prefix="papaia-shell-config-")
 _WORKSPACE_DIR = tempfile.mkdtemp(prefix="papaia-shell-workspace-")
@@ -571,3 +573,64 @@ def test_no_caption_in_the_content_is_dimmed_with_opacity() -> None:
     for path in templates.rglob("*.html"):
         for classes in re.findall(r"""["']([^"'\n]*\buppercase\b[^"'\n]*)["']""", path.read_text()):
             assert not re.search(r"\bopacity-\d+\b", classes), (path.name, classes)
+
+
+def _reset_selectors() -> list[str]:
+    """The selectors of the content's element defaults, without their pseudo-elements."""
+    css = (REPO / "docker" / "tailwind.app.css").read_text(encoding="utf-8")
+    section = css[css.index("Element defaults inside the content") : css.index("── Focus")]
+    section = re.sub(r"/\*.*?\*/", "", section.split("*/", 1)[1], flags=re.DOTALL)
+    selectors: list[str] = []
+    for rule in re.findall(r"([^{}]+)\{[^{}]*\}", section):
+        # Commas between selectors, not the ones inside :where(...) or :not(...).
+        for selector in re.split(r",(?![^()]*\))\s*", rule.strip()):
+            selectors.append(re.sub(r"::(before|after)$", "", selector))
+    return selectors
+
+
+def _in_kit_component(element: Any, main: Any) -> bool:
+    """Whether the element, or one of its ancestors inside #pk-main, has a class pk-...."""
+    for node in [element, *element.find_parents()]:
+        if node is main:
+            return False
+        if any(c.startswith("pk-") for c in node.get("class") or []):
+            return True
+    raise AssertionError("not inside #pk-main")
+
+
+def _content_and_resets(body: str) -> tuple[list[Any], Any, set[int]]:
+    """The elements of #pk-main, #pk-main itself and the ids of the elements a content
+    default (other than `[hidden]`) applies to."""
+    soup = BeautifulSoup(body, "html.parser")
+    main = soup.find("main", id="pk-main")
+    assert main is not None
+    hits = {
+        id(element)
+        for selector in _reset_selectors()
+        if "[hidden]" not in selector
+        for element in soupsieve.select(selector, soup)
+    }
+    return main.find_all(True), main, hits
+
+
+def test_the_content_reset_applies_to_a_legacy_page_in_the_kit_frame(client: TestClient) -> None:
+    """The kit frame wraps #pk-main in pk-... elements (body.pk-body > .pk-shell >
+    .pk-content); that must not exempt the content: every element of a page not yet built
+    from the kit keeps its reset."""
+    elements, main, hits = _content_and_resets(_as(client, "admin").get("/").text)
+    assert main.find_parent(class_=re.compile(r"^pk-")) is not None
+    plain = [e for e in elements if not _in_kit_component(e, main)]
+    assert len(plain) > 10
+    missed = [str(e)[:80] for e in plain if id(e) not in hits]
+    assert missed == []
+
+
+def test_the_content_reset_leaves_the_kit_components_alone(client: TestClient) -> None:
+    """The element defaults are unlayered and beat the kit's layered stylesheet, so they skip
+    every element of a kit component (class `pk-...` inside #pk-main) and everything inside
+    one: the specimen, built from kit components only, gets none of them."""
+    elements, main, hits = _content_and_resets(_as(client, "admin").get("/_kit/specimen").text)
+    inside = [e for e in elements if _in_kit_component(e, main)]
+    assert len(inside) > 50
+    reset = [str(e)[:80] for e in inside if id(e) in hits]
+    assert reset == []

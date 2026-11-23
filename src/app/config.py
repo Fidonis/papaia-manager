@@ -10,6 +10,38 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 _DOMAIN = re.compile(rf"(?=.{{1,253}}$){_LABEL}(?:\.{_LABEL})*")
+INVENTORY_MODULES = ("studio", "flow", "data", "assist")
+_HOST_PORT = re.compile(r"\A[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?(:[0-9]{1,5})?\Z")
+
+
+def parse_inventory_sources(value: str) -> dict[str, str]:
+    """`INVENTORY_SOURCES` as {module: base URL}; raises ValueError naming what is wrong.
+
+    Only the four modules with work objects, each once, each an https origin without user,
+    path, query or fragment: the path `/internal/inventory` is added by the caller.
+    """
+    found: dict[str, str] = {}
+    for part in (p.strip() for p in value.split(",")):
+        if not part:
+            continue
+        module, sep, url = part.partition("=")
+        module, url = module.strip(), url.strip()
+        if not sep or module not in INVENTORY_MODULES:
+            raise ValueError("INVENTORY_SOURCES: each entry is <studio|flow|data|assist>=<url>")
+        if module in found:
+            raise ValueError(f"INVENTORY_SOURCES: {module} is named twice")
+        parts = urlsplit(url)
+        if (
+            parts.scheme != "https"
+            or not _HOST_PORT.match(parts.netloc)
+            or parts.path not in ("", "/")
+            or parts.query
+            or parts.fragment
+            or parts.port == 0
+        ):
+            raise ValueError(f"INVENTORY_SOURCES: {module} needs an https origin, nothing more")
+        found[module] = f"https://{parts.netloc}"
+    return dict(sorted(found.items()))
 
 
 class Settings(BaseSettings):
@@ -32,6 +64,11 @@ class Settings(BaseSettings):
     # signed-in user, so this role is also the one that has to carry Keycloak's own
     # user-administration rights (`realm-management`: manage-users and friends).
     manager_identity_admin_role: str = "papaia-admin"
+    # Realm role of the auditors: the only role that sees the inventory of work objects
+    # ("Bestand", governance GV-21). It is not part of the admin role: like the user role it
+    # signs in and reaches the surfaces of every user (overview, account, personal settings,
+    # widgets, kit specimen), and on top of them the inventory; no administration page.
+    manager_auditor_role: str = "papaia-auditor"
     manager_host: str
     manager_oidc_client_id: str = "papaia-manager"
     manager_oidc_client_secret: str
@@ -109,6 +146,13 @@ class Settings(BaseSettings):
     )
     audit_tls_key_file: str = Field(default="/run/papaia/audit-tls/client.key", max_length=4096)
 
+    # The inventory of work objects (governance GV-17): where this process reaches each
+    # module's `GET /internal/inventory`, as `module=https://host:port` pairs separated by
+    # commas (modules: studio, flow, data, assist). The call uses the client certificate of
+    # the platform PKI configured above for papaia-audit (mutual TLS). An installed module
+    # without an address is listed as not reachable, never left out.
+    inventory_sources: str = Field(default="", max_length=4096)
+
     # Logging
     log_level: str = "INFO"
 
@@ -153,6 +197,16 @@ class Settings(BaseSettings):
         if v is not None and not v.startswith("/"):
             raise ValueError("AUDIT_OUTBOX_PATH must be an absolute path")
         return v
+
+    @field_validator("inventory_sources")
+    @classmethod
+    def _inventory_sources(cls, v: str) -> str:
+        parse_inventory_sources(v)
+        return v
+
+    @property
+    def inventory_source_map(self) -> dict[str, str]:
+        return parse_inventory_sources(self.inventory_sources)
 
     @property
     def oidc_redirect_uri(self) -> str:

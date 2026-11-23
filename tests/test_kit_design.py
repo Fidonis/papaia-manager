@@ -79,6 +79,11 @@ def page_paths() -> list[str]:
     return [row["path"] for row in _pages()["pages"] if "path" in row]
 
 
+def page_rows() -> list[tuple[str, str]]:
+    """(path, person) of every page with a path: the person who sees it in the stand-in world."""
+    return [(row["path"], row["person"]) for row in _pages()["pages"] if "path" in row]
+
+
 # -- fixtures ------------------------------------------------------------------------------
 
 
@@ -145,7 +150,7 @@ def test_the_page_list_names_every_full_page_template() -> None:
         "users.html", "roles.html", "notifications.html", "mail.html", "nodes.html",
         "node_detail.html", "audit.html", "settings.html", "settings_installation.html",
         "settings_modules.html", "settings_overlay.html", "help.html", "me.html",
-        "kit_specimen.html",
+        "kit_specimen.html", "inventory.html",
     }  # fmt: skip
     assert full == rendered
 
@@ -158,10 +163,31 @@ def test_every_placeholder_of_the_list_has_a_sample_value() -> None:
 # -- every page carries the kit ------------------------------------------------------------
 
 
-@pytest.mark.parametrize("pattern", page_paths())
+def test_every_person_of_the_list_is_a_person_of_the_stand_in_world() -> None:
+    for path, person in page_rows():
+        assert person in design_world.PERSONS, (path, person)
+
+
+def test_the_inventory_is_a_page_of_the_auditor_only() -> None:
+    """Separation of duties: the administrator Anna does not see it, the auditor Emil does."""
+    assert ("/inventory", "emil") in page_rows()
+    assert "papaia-auditor" in design_world.PERSONS["emil"]
+    assert "papaia-auditor" not in design_world.PERSONS["anna"]
+    assert not {"admin", "papaia-admin"} & set(design_world.PERSONS["emil"])
+
+
+@pytest.mark.parametrize(("pattern", "person"), page_rows())
 def test_every_page_carries_the_kit_version_and_stylesheet(
-    client: TestClient, pattern: str
+    client: TestClient, pattern: str, person: str
 ) -> None:
+    client.cookies.set(
+        design_world.SESSION_COOKIE,
+        design_world.session_cookie(
+            get_settings().manager_session_secret,
+            roles=design_world.PERSONS[person],
+            person=person,
+        ),
+    )
     response = client.get(design_world.sample_path(pattern))
     assert response.status_code == 200, pattern
     body = response.text
@@ -340,6 +366,13 @@ def test_design_known_list_is_well_formed() -> None:
 
 def test_the_design_check_covers_every_page_of_the_list() -> None:
     assert design_serve.design_pages() == [design_world.sample_path(p) for p in page_paths()]
+    by_person = [
+        page for person in design_serve.design_persons()
+        for page in design_serve.design_pages(person=person)
+    ]  # fmt: skip
+    assert sorted(by_person) == sorted(design_serve.design_pages())
+    assert design_serve.design_persons() == ["anna", "emil"]
+    assert design_serve.design_pages(person="emil") == ["/inventory"]
 
 
 GOOD = """\
@@ -554,6 +587,26 @@ def test_design_serve_writes_a_signed_in_storage_state(tmp_path: Path) -> None:
     )
     assert session["user"]["preferred_username"] == "anna"
     assert session["user"]["roles"] == list(design_world.ROLES)
+
+
+def test_design_serve_writes_the_session_of_each_person(tmp_path: Path) -> None:
+    state = tmp_path / "emil.json"
+    design_serve.write_storage_state(
+        state, port=57880, secret="design-secret-value-0001", person="emil"
+    )
+    [cookie] = json.loads(state.read_text(encoding="utf-8"))["cookies"]
+    session = json.loads(
+        base64.b64decode(TimestampSigner("design-secret-value-0001").unsign(cookie["value"]))
+    )
+    assert session["user"]["preferred_username"] == "emil"
+    assert session["user"]["roles"] == list(design_world.PERSONS["emil"])
+
+
+@pytest.mark.parametrize("value", ["zoe=s.json", "=s.json", "emil="])
+def test_design_serve_refuses_an_unknown_person(value: str) -> None:
+    with pytest.raises(SystemExit) as stop:
+        design_serve.main(["--port", "57880", "--storage-state", value])
+    assert stop.value.code == 2
 
 
 @pytest.mark.parametrize("port", ["80", "1023", "65536", "abc", "-1"])
