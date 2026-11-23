@@ -7,8 +7,8 @@
    something this feature invented, so it needs a branch from day one. #}
 {#- The filter choices of the log, for the selects of the page (static/js/pages/audit.js reads
     them after each swap; T-UI-03, no inline script). #}
-{% from "partials/_csp.html" import data_island %}
-{{ data_island("audit-facets", facets) }}
+{% from "partials/_csp.html" import swapped_island %}
+{{ swapped_island("audit-facets", facets) }}
 
 {% if not entries and total == 0 %}
 <div class="rounded-xl border border-base-300 px-5 py-10 text-center">

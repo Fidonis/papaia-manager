@@ -3,10 +3,12 @@
 #
 # Serves the manager in the stand-in world of the tests on 127.0.0.1 (tests/design_serve.py),
 # opens every page of ui/pages.yaml in Chromium, signed in as the list's test person of that
-# page (Anna for the administration, Emil and Erika for the review pages), and runs
-# tests/csp_browser.mjs: a page whose template is converted (tests/csp_baseline.json) fails
-# on any report of the policy, refused Alpine expression or script error; for the others the
-# counts go to the report and, when given, to SUMMARY (the job summary in CI). Each
+# page (Anna for the administration, Emil and Erika for the review pages), in the light and
+# the dark colour scheme, and runs tests/csp_browser.mjs: a page fails on any violation of the
+# enforced policy, refused Alpine expression or script error, and when it answers without the
+# enforced policy. The counts go to the report and, when given, to SUMMARY (the job summary in
+# CI). Every full page of the template folder is a page of the list (tests/test_csp_policy.py,
+# test_the_pages_of_the_check_list_render_every_full_page_template). Each
 # CANDIDATE (LABEL=FILE, an Alpine build) adds the number of expressions per page that build
 # cannot evaluate (tests/csp_browser.mjs). Needs the tools of scripts/design-tools.sh.
 #
@@ -80,7 +82,7 @@ curl -fsS -o /dev/null "http://127.0.0.1:${port}/health" || {
   exit 2
 }
 
-# Exit 1 is findings on a converted page, 2 a usage error or a page that does not load; the
+# Exit 1 is findings on a page, 2 a usage error or a page that does not load; the
 # worst exit of all persons is the result.
 result=0
 for person in "${persons[@]}"; do

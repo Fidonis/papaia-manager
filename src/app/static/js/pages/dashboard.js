@@ -22,6 +22,9 @@ import { pageCore } from "../core/page.js";
 export const TEXTS_ISLAND = "dashboard-texts";
 export const EDITOR_ISLAND = "tiles-editor";
 const COUNT_MARK = '<span class="font-semibold">{count}</span>';
+// An icon the page may load under the enforced policy: the rule of check_icon in
+// app/core/tiles.py, which decides on save (the length cap is the server's alone).
+const LOADABLE_ICON = /^(\/(?![/\\])\S*|data:image\/[a-z0-9.+-]+[;,]\S*)$/i;
 
 // The text of a sentence that may carry markup of its own, for a text node.
 function plain(text) {
@@ -198,10 +201,14 @@ export function createTilesStore(deps) {
     },
 
     // The image a link tile shows: its own icon, else the one bundled for a default
-    // application of that name. The dashboard applies the same rule on the server.
+    // application of that name. The dashboard applies the same rule on the server. An own
+    // icon counts only where the enforced policy lets the page load it (img-src 'self'
+    // data:), a path on this site or a data image; anything else would be blocked, so the
+    // bundled icon or the badge stands in, and the dialog names the problem.
     iconFor(tile) {
       const name = (tile.name || "").trim().toLowerCase();
-      return tile.icon || this.defaultIcons[name] || "";
+      const own = tile.icon && LOADABLE_ICON.test(tile.icon) ? tile.icon : "";
+      return own || this.defaultIcons[name] || "";
     },
 
     // The letter of the badge a tile without an icon shows.
@@ -658,7 +665,7 @@ export function createTilesStore(deps) {
       const response = await fetchImpl("/api/v1/tiles/resolve", {
         method: "POST",
         headers: headers(),
-        body: JSON.stringify({ values: [dialog.tile.href, dialog.tile.icon || ""] }),
+        body: JSON.stringify({ values: [dialog.tile.href], icons: [dialog.tile.icon || ""] }),
       });
       if (authGuard(response)) return;
       if (!response.ok) return;

@@ -40,7 +40,6 @@ CORE_MODULES = (
     "format.js",
     "islands.js",
     "jobs.js",
-    "legacy.js",
     "main.js",
     "marked.js",
     "menus.js",
@@ -69,40 +68,27 @@ def test_the_module_layout() -> None:
     assert sorted(p.name for p in (JS / "core").glob("*.js")) == list(CORE_MODULES)
 
 
-def _legacy_names() -> list[str]:
-    source = (JS / "core" / "legacy.js").read_text(encoding="utf-8")
-    block = source[source.index("LEGACY_NAMES = Object.freeze([") :]
-    return re.findall(r'"([^"]+)",', block[: block.index("]);")])
+_ASSIGNED_GLOBAL = re.compile(r"\b(?:window|globalThis|self)\.(\w+)\s*=(?!=)")
 
 
-def _used(name: str) -> list[str]:
-    pattern = re.compile(r"(?<![\w$.])" + re.escape(name) + r"(?![\w$])")
-    # Page modules (js/pages/) import what they use; tests/test_settings_scripts.py checks it.
-    users = [
-        p
-        for p in [*TEMPLATES.rglob("*.html"), *JS.rglob("*.js")]
-        if p.parent != JS / "core" and not p.is_relative_to(JS / "pages")
-    ]
-    return [str(p.relative_to(REPO)) for p in users if pattern.search(p.read_text("utf-8"))]
+def test_the_transition_globals_are_gone() -> None:
+    """No former global of the page script is put on `window` any more (T-UI-03): core/legacy.js
+    is removed, and no module of the tree assigns one of the names."""
+    assert not (JS / "core" / "legacy.js").exists()
+    for path in JS.rglob("*.js"):
+        source = path.read_text(encoding="utf-8")
+        assert "installLegacy" not in source, path
+        assert "legacy.js" not in source, path
+        assigned = set(_ASSIGNED_GLOBAL.findall(source))
+        assert not assigned & FORMER_GLOBALS, (path, sorted(assigned & FORMER_GLOBALS))
 
 
-def test_the_legacy_names_are_exactly_the_former_globals_the_pages_still_use() -> None:
-    listed = _legacy_names()
-    assert listed == sorted(set(listed))
-    assert set(listed) <= FORMER_GLOBALS
-    used = {name for name in FORMER_GLOBALS if _used(name)}
-    assert set(listed) == used, (
-        f"listed but no page uses it: {sorted(set(listed) - used)}; "
-        f"used but not listed: {sorted(used - set(listed))}"
-    )
-
-
-def test_main_installs_every_legacy_name() -> None:
-    source = (JS / "core" / "main.js").read_text(encoding="utf-8")
-    block = source[source.index("installLegacy(window, {") :]
-    block = block[: block.index("\n});")]
-    assigned = re.findall(r"^  (\w+)(?::|,)", block, re.MULTILINE)
-    assert sorted(assigned) == _legacy_names()
+def test_the_templates_reach_no_former_global_outside_a_component() -> None:
+    """A template expression that names a former global (fmt, fmtPlural) runs in a component
+    that offers it as a member; base.html starts no component that would."""
+    base = (TEMPLATES / "base.html").read_text(encoding="utf-8")
+    for name in FORMER_GLOBALS:
+        assert not re.search(r"(?<![\w$.])" + re.escape(name) + r"\(", base), name
 
 
 def test_modules_import_only_relative_paths_of_the_tree() -> None:
@@ -115,12 +101,12 @@ def test_modules_import_only_relative_paths_of_the_tree() -> None:
             assert (path.parent / target).resolve().is_file(), (path, target)
 
 
-def test_page_modules_reach_no_legacy_global() -> None:
-    """A page module imports from core/ and never reads a name core/legacy.js puts on window."""
+def test_page_modules_reach_no_former_global() -> None:
+    """A page module imports from core/ and never reads a former global from window."""
     pages = sorted((JS / "pages").glob("*.js"))
     assert pages
     for path in pages:
         source = path.read_text(encoding="utf-8")
-        for name in _legacy_names():
+        for name in sorted(FORMER_GLOBALS):
             assert not re.search(r"\bwindow\." + re.escape(name) + r"\b", source), (path, name)
         assert "../core/main.js" not in source, f"{path.name} must not import main.js again"

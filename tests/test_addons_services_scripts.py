@@ -54,7 +54,6 @@ for _key, _value in design_world.environment(
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import csp  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.core import module_catalog, nodes  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -62,7 +61,9 @@ from app.templating import templates  # noqa: E402
 
 TEMPLATES = SRC / "app" / "templates"
 JS = SRC / "app" / "static" / "js"
-BASELINE = REPO / "tests" / "csp_baseline.json"
+# The names core/legacy.js put on `window` during the conversion; it is gone (T-UI-03), and no
+# page reaches them as globals any more.
+TRANSITION_NAMES = ("csrfToken", "fmt", "fmtPlural", "showToast")
 STRICT = '<meta name="papaia-csp" content="strict">'
 NODE = shutil.which("node")
 CSP_CHECK = REPO / "tests" / "csp_browser.mjs"
@@ -234,15 +235,6 @@ def _assert_clean_fragment(body: str) -> _Markup:
 def test_the_templates_of_the_group_have_nothing_the_policy_refuses(name: str) -> None:
     counts = csp_scan.count_markup((TEMPLATES / name).read_text(encoding="utf-8"))
     assert counts == dict.fromkeys(csp_scan.KINDS, 0)
-
-
-def test_the_group_has_no_row_in_the_baseline_and_its_pages_are_converted() -> None:
-    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
-    for name in GROUP:
-        assert name not in baseline["templates"], name
-    for name in CONVERTED:
-        assert name in baseline["converted"], name
-        assert name in csp.converted_templates(), name
 
 
 # -- the pages -----------------------------------------------------------------------------
@@ -576,9 +568,7 @@ def test_the_page_modules_import_what_they_use(module: str) -> None:
     assert imports, module
     for _, target in imports:
         assert target.startswith("../core/"), target
-    legacy = (JS / "core" / "legacy.js").read_text(encoding="utf-8")
-    block = legacy[legacy.index("LEGACY_NAMES") :]
-    names = re.findall(r'"([^"]+)",', block[: block.index("]);")])
+    names = TRANSITION_NAMES
     imported = {n.strip().split(" as ")[-1] for names_, _ in imports for n in names_.split(",")}
     body = _IMPORT.sub("", source)
     for name in names:
@@ -589,7 +579,9 @@ def test_the_page_modules_import_what_they_use(module: str) -> None:
 
 
 def test_the_shared_actions_of_this_group_are_no_globals_any_more() -> None:
-    legacy = (JS / "core" / "legacy.js").read_text(encoding="utf-8")
+    # The transition module that put names on `window` is gone; no module assigns one.
+    assert not (JS / "core" / "legacy.js").exists()
+    sources = "\n".join(path.read_text(encoding="utf-8") for path in JS.rglob("*.js"))
     for name in (
         "_addonPost",
         "_stackBody",
@@ -604,7 +596,7 @@ def test_the_shared_actions_of_this_group_are_no_globals_any_more() -> None:
         "stackAction",
         "stackGroupAction",
     ):
-        assert f'"{name}"' not in legacy, name
+        assert not re.search(r"\bwindow\." + re.escape(name) + r"\s*=", sources), name
 
 
 # -- browser check -------------------------------------------------------------------------
@@ -776,7 +768,12 @@ def test_the_browser_sees_no_report_and_no_alpine_error(
     )
     assert done.returncode == 0, done.stderr
     results = json.loads(report.read_text(encoding="utf-8"))["results"]
-    assert sorted(r["page"] for r in results) == sorted(_BROWSER_PAGES)
+    # Every page in the light and the dark colour scheme.
+    assert sorted((r["page"], r["scheme"]) for r in results) == sorted(
+        (page, scheme) for page in _BROWSER_PAGES for scheme in ("light", "dark")
+    )
+    for result in results:
+        assert result["policy"].startswith("default-src 'self'"), result
     for result in results:
         assert result["status"] == 200, result
         assert result["converted"] is True, result

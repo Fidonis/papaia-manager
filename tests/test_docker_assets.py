@@ -1,6 +1,6 @@
 """The browser libraries of the image: pinned by version and checked against a SHA-256.
 
-docker/Dockerfile downloads the standard and the CSP build of Alpine, htmx and Sortable and
+docker/Dockerfile downloads the CSP build of Alpine, htmx and Sortable and
 hands each file to docker/verify-sha256.sh with the digest written in the Dockerfile; a
 file that does not match fails the image build. The design and CSP checks install the same
 versions from scripts/design/package.json, so the browser runs see the bytes the image ships.
@@ -25,7 +25,6 @@ BASH = shutil.which("bash")
 # Build argument prefix -> (npm package, file in the package, file in the image).
 ASSETS = {
     "HTMX": ("htmx.org", "dist/htmx.min.js", "htmx.min.js"),
-    "ALPINE": ("alpinejs", "dist/cdn.min.js", "alpine.min.js"),
     "ALPINE_CSP": ("@alpinejs/csp", "dist/cdn.min.js", "alpine-csp.min.js"),
     "SORTABLE": ("sortablejs", "Sortable.min.js", "sortable.min.js"),
 }
@@ -38,9 +37,7 @@ def _args() -> dict[str, str]:
 
 def _verify(*argv: str) -> subprocess.CompletedProcess[str]:
     assert BASH is not None
-    return subprocess.run(
-        [BASH, str(VERIFY), *argv], capture_output=True, text=True, check=False
-    )
+    return subprocess.run([BASH, str(VERIFY), *argv], capture_output=True, text=True, check=False)
 
 
 # -- the check -----------------------------------------------------------------------------
@@ -51,7 +48,7 @@ needs_bash = pytest.mark.skipif(BASH is None, reason="bash is not available")
 
 @needs_bash
 def test_a_matching_file_passes(tmp_path: Path) -> None:
-    asset = tmp_path / "alpine.min.js"
+    asset = tmp_path / "alpine-csp.min.js"
     asset.write_bytes(b"/* build */\n")
     done = _verify(str(asset), hashlib.sha256(b"/* build */\n").hexdigest())
     assert done.returncode == 0, done.stderr
@@ -59,13 +56,13 @@ def test_a_matching_file_passes(tmp_path: Path) -> None:
 
 @needs_bash
 def test_a_changed_checksum_fails(tmp_path: Path) -> None:
-    asset = tmp_path / "alpine.min.js"
+    asset = tmp_path / "alpine-csp.min.js"
     asset.write_bytes(b"/* build */\n")
     digest = hashlib.sha256(b"/* build */\n").hexdigest()
     changed = ("0" if digest[0] != "0" else "1") + digest[1:]
     done = _verify(str(asset), changed)
     assert done.returncode == 1
-    assert "alpine.min.js" in done.stderr
+    assert "alpine-csp.min.js" in done.stderr
     assert "does not match" in done.stderr
 
 
@@ -114,9 +111,20 @@ def test_every_library_is_pinned_and_checked() -> None:
         assert f'verify-sha256 /static/{target} "${{{prefix}_SHA256}}"' in text, target
 
 
-def test_both_alpine_builds_share_one_version() -> None:
+def test_the_image_ships_the_csp_build_of_alpine_only() -> None:
+    """The standard build evaluates expressions with `eval`, which the enforced policy refuses
+    (T-UI-03); it is neither downloaded nor installed for the browser checks."""
     args = _args()
-    assert args["ALPINE_VERSION"] == args["ALPINE_CSP_VERSION"]
+    assert "ALPINE_VERSION" not in args
+    assert "ALPINE_SHA256" not in args
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert "unpkg.com/alpinejs@" not in text
+    assert "/static/alpine.min.js" not in text
+    package = json.loads((REPO / "scripts" / "design" / "package.json").read_text("utf-8"))
+    lock = json.loads((REPO / "scripts" / "design" / "package-lock.json").read_text("utf-8"))
+    assert "alpinejs" not in package["dependencies"]
+    assert "alpinejs" not in lock["packages"][""]["dependencies"]
+    assert "node_modules/alpinejs" not in lock["packages"]
 
 
 def test_the_browser_checks_install_the_versions_of_the_image() -> None:

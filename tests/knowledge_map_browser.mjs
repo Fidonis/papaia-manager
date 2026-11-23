@@ -2,7 +2,7 @@
 // tests/test_knowledge_map_browser.py.
 //
 // Opens /knowledge-map in Chromium (playwright-core of .pk/) once per theme and records what
-// the report-only policy reports, the expressions Alpine refuses and uncaught script errors,
+// the enforced policy reports, the expressions Alpine refuses and uncaught script errors,
 // as tests/csp_browser.mjs does. On the page it walks the browser path of the ticket: the map
 // renders, "View as" dims what a role does not see, the search of the entries filters, a box
 // opens its detail by click and by keyboard, and every tab renders. --shots DIR also writes

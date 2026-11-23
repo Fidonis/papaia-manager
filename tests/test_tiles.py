@@ -12,6 +12,7 @@ from app.core.tiles import (
     TileGroup,
     TilesConfig,
     TilesFileError,
+    check_icon,
     check_value,
     default_icon,
     link_placeholder_keys,
@@ -195,15 +196,15 @@ def test_resolution_is_applied_to_hrefs_and_icons() -> None:
         _config(
             TileGroup(
                 name="G",
-                tiles=[Tile(name="T", href="{{H}}:80", icon="{{H}}/logo.png")],
+                tiles=[Tile(name="T", href="{{H}}:80", icon="{{P}}/logo.png")],
             )
         ),
         is_admin=False,
-        env={"H": "https://h.test"},
+        env={"H": "https://h.test", "P": "/static/own"},
     )
     tile = groups[0].tiles[0]
     assert tile.href == "https://h.test:80"
-    assert tile.icon == "https://h.test/logo.png"
+    assert tile.icon == "/static/own/logo.png"
 
 
 # ---------------------------------------------------------------------------
@@ -285,13 +286,13 @@ def test_an_icon_the_operator_set_wins_over_the_bundled_one() -> None:
         _config(
             TileGroup(
                 name="G",
-                tiles=[Tile(name="Keycloak", href="https://k.test", icon="https://k.test/i.svg")],
+                tiles=[Tile(name="Keycloak", href="https://k.test", icon="/static/own/k.svg")],
             )
         ),
         is_admin=True,
     )
 
-    assert groups[0].tiles[0].icon == "https://k.test/i.svg"
+    assert groups[0].tiles[0].icon == "/static/own/k.svg"
 
 
 def test_any_other_tile_stays_without_an_icon() -> None:
@@ -499,6 +500,108 @@ def test_a_tile_problem_carries_the_position_it_belongs_to() -> None:
         {},
     )
     assert [(p.group, p.tile, p.field) for p in problems] == [(1, 1, "href")]
+
+
+# ---------------------------------------------------------------------------
+# check_icon: an icon is an image the enforced policy lets the page load
+# (img-src 'self' data:), so it is a path on the manager's own site or a data
+# image -- never an address on another site.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "icon",
+    [
+        "/static/icons/librechat.svg",
+        "/brand/own-icon.png?v=2",
+        "data:image/png;base64,iVBORw0KGgo=",
+        "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E",
+        "DATA:IMAGE/WEBP;base64,UklGRg==",
+    ],
+)
+def test_check_icon_accepts_a_path_on_this_site_or_a_data_image(icon: str) -> None:
+    resolved, problem = check_icon(icon, {})
+    assert problem is None
+    assert resolved == icon
+
+
+@pytest.mark.parametrize(
+    "icon",
+    [
+        "https://example.com/icon.svg",
+        "http://icons.example.test/a.png",
+        "//cdn.example.test/a.svg",
+        "/\\cdn.example.test/a.svg",
+        "data:text/html,<script>alert(1)</script>",
+        "data:image",
+        "javascript:alert(1)",
+        "icon.svg",
+        "/static/icons/a b.svg",
+    ],
+)
+def test_check_icon_refuses_an_address_the_policy_would_block(icon: str) -> None:
+    _, problem = check_icon(icon, {})
+    assert problem is not None
+    assert "this site" in problem
+
+
+def test_check_icon_refuses_a_placeholder_that_resolves_to_another_site() -> None:
+    resolved, problem = check_icon("{{H}}/logo.png", {"H": "https://h.test"})
+    assert resolved == "https://h.test/logo.png"
+    assert problem is not None
+
+
+def test_check_icon_names_the_placeholder_it_could_not_resolve() -> None:
+    _, problem = check_icon("{{MISSING}}/logo.png", {})
+    assert problem is not None
+    assert "{{MISSING}}" in problem
+
+
+def test_check_icon_refuses_an_oversized_data_image() -> None:
+    _, problem = check_icon("data:image/png;base64," + "A" * 70_000, {})
+    assert problem is not None
+
+
+def test_an_icon_on_another_site_is_refused_on_save() -> None:
+    problems = validate_config(
+        _config(
+            TileGroup(
+                name="G",
+                tiles=[Tile(name="T", href="https://t.test", icon="https://example.com/icon.svg")],
+            )
+        ),
+        {},
+    )
+    assert [(p.field, "this site" in p.message) for p in problems] == [("icon", True)]
+
+
+def test_a_stored_icon_on_another_site_falls_back_to_the_bundled_one() -> None:
+    """A tiles.yaml written before the policy was enforced keeps rendering, without the
+    image the browser would block: a default application gets its bundled icon."""
+    groups = visible_groups(
+        _config(
+            TileGroup(
+                name="G",
+                tiles=[Tile(name="Keycloak", href="https://k.test", icon="https://k.test/i.svg")],
+            )
+        ),
+        is_admin=True,
+    )
+    assert groups[0].tiles[0].icon == DEFAULT_ICONS["keycloak"]
+
+
+def test_a_stored_icon_on_another_site_falls_back_to_the_badge() -> None:
+    groups = visible_groups(
+        _config(
+            TileGroup(
+                name="G",
+                tiles=[Tile(name="Wiki", href="https://w.test", icon="https://w.test/i.svg")],
+            )
+        ),
+        is_admin=True,
+    )
+    assert groups[0].tiles[0].name == "Wiki"
+    assert groups[0].tiles[0].icon is None
 
 
 def test_an_unsafe_icon_is_reported_separately_from_the_link() -> None:

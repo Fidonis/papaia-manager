@@ -710,7 +710,8 @@ def test_the_ingesters_token_is_in_no_response_audit_entry_or_log_line(
 
 def _init(html: str) -> dict[str, object]:
     """The state the body hands to the page's Alpine scope (its data island `embed-state`)."""
-    island = r'<script type="application/json" id="embed-state">(.*?)</script>'
+    # A template island: the body is swapped in by htmx, which drops script elements.
+    island = r'<template id="embed-state" data-island="application/json">(.*?)</template>'
     match = re.search(island, html, re.S)
     assert match, "the body does not tell the page what it loaded"
     return json.loads(match.group(1))  # type: ignore[no-any-return]

@@ -14,7 +14,7 @@
 // fill come from --fixtures (rendered from the real templates by the test) and the API calls
 // are answered by routes in the browser; the add-on page is the server's own, with the island
 // saying that this core can upgrade add-ons. Every page records the reports of the
-// report-only policy, refused Alpine expressions and uncaught script errors. --shots DIR also
+// enforced policy, refused Alpine expressions and uncaught script errors. --shots DIR also
 // writes screenshots at 1440 and 390 px per theme.
 //
 // Usage: node tests/upgrade_browser.mjs --base-url URL --storage-state FILE --fixtures DIR
@@ -49,7 +49,7 @@ function parseArgs(argv) {
   return args;
 }
 
-// Runs in the page before its scripts: collects the reports of the report-only policy.
+// Runs in the page before its scripts: collects the reports of the enforced policy.
 function collectReports() {
   window.__papaiaCsp = [];
   document.addEventListener("securitypolicyviolation", (event) => {

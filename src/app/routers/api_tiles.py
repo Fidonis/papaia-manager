@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.csrf import verify_csrf
 from app.auth.deps import AdminUser
@@ -27,6 +27,7 @@ from app.core.envfile import load_env_file
 from app.core.tiles import (
     TilesConfig,
     TilesFileError,
+    check_icon,
     check_value,
     config_from_json,
     config_to_json,
@@ -87,7 +88,12 @@ class RawBody(BaseModel):
 
 
 class ResolveBody(BaseModel):
+    """Links to resolve (`values`) and icons (`icons`), each checked by its own rule."""
+
+    model_config = ConfigDict(extra="forbid")
+
     values: list[str] = Field(default_factory=list)
+    icons: list[str] = Field(default_factory=list)
 
 
 @router.get("")
@@ -197,9 +203,14 @@ async def resolve_links(
     verify_csrf(request)
     env = _env(settings)
 
+    # Links first, then icons, in one list: an icon goes into an image, so it is held to the
+    # rule of the enforced policy (check_icon), which the save applies too.
+    checks = [(value, check_value) for value in body.values] + [
+        (value, check_icon) for value in body.icons
+    ]
     results: list[dict[str, Any]] = []
-    for value in body.values[:_MAX_RESOLVE_VALUES]:
-        resolved, problem = check_value(value, env)
+    for value, check in checks[:_MAX_RESOLVE_VALUES]:
+        resolved, problem = check(value, env)
         results.append(
             {"input": value, "resolved": resolved, "ok": problem is None, "reason": problem}
         )

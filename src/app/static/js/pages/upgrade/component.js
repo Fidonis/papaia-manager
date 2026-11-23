@@ -4,6 +4,7 @@
 // Everything a browser global used to give is injected, so the module runs under node --test.
 import { csrfToken } from "../../core/csrf.js";
 import { escapeHtml, fmt, fmtPlural } from "../../core/format.js";
+import { islandValue } from "../../core/islands.js";
 
 // A sentence from the catalogue as DOM nodes. The only markup the sentences of this page carry
 // is `<span class="font-mono">…</span>`; it becomes a span whose text is set with textContent,
@@ -271,7 +272,7 @@ export function createUpgradePage(T, { doc, fetchImpl, htmx, toast, authGuard, r
     if (!root || typeof root.querySelectorAll !== 'function') return;
     const inside = (selector) => (root.matches(selector) ? [root] : [...root.querySelectorAll(selector)]);
     for (const island of inside('#upgrade-state')) {
-      win.dispatchEvent(new win.CustomEvent('papaia-upgrade-state', { detail: JSON.parse(island.textContent) }));
+      win.dispatchEvent(new win.CustomEvent('papaia-upgrade-state', { detail: islandValue(island) }));
     }
     for (const element of inside('#upgrade-runner[data-active]')) {
       win.dispatchEvent(new win.CustomEvent('papaia-upgrade-runner', { detail: {

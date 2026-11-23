@@ -7,7 +7,7 @@
 # Node refuses below node_modules, so the package is unpacked to .pk/package and its peers
 # playwright-core and axe-core (the versions of the kit's contract/specimen.yaml) go to
 # .pk/node_modules, locked in scripts/design/package-lock.json together with the builds
-# the image makes: Tailwind and daisyUI for app.css, htmx, both Alpine builds and Sortable,
+# the image makes: Tailwind and daisyUI for app.css, htmx, the CSP build of Alpine and Sortable,
 # whose files docker/Dockerfile pins by SHA-256 (tests/test_docker_assets.py). Then the
 # page assets are built into src/app/static/ as the image builds them (docker/Dockerfile),
 # and the Chromium build of that playwright-core is installed (skipped when present).
@@ -54,7 +54,6 @@ cp -R src/app/templates .pk/css/templates
 (cd .pk/css && node ../node_modules/tailwindcss/lib/cli.js -c tailwind.config.js \
   -i tailwind.input.css -o ../../src/app/static/app.css --minify)
 cp .pk/node_modules/htmx.org/dist/htmx.min.js src/app/static/htmx.min.js
-cp .pk/node_modules/alpinejs/dist/cdn.min.js src/app/static/alpine.min.js
 cp .pk/node_modules/@alpinejs/csp/dist/cdn.min.js src/app/static/alpine-csp.min.js
 cp .pk/node_modules/sortablejs/Sortable.min.js src/app/static/sortable.min.js
 

@@ -1,13 +1,13 @@
-"""Count what stands between a template and the strict content security policy (T-UI-03).
+"""Count what the enforced content security policy refuses in a template (T-UI-03).
 
-The ratchet of tests/test_csp_ratchet.py compares these counts per template of
-src/app/templates/ with tests/csp_baseline.json. Five kinds are counted:
+tests/test_csp_zero.py requires every count of every template of src/app/templates/ to be
+zero. Five kinds are counted:
 
 - `inline_scripts`: `<script>` elements without `src` whose type the browser executes (a data
   island, `type="application/json"`, is not executable and is not counted);
 - `on_attributes`: inline event handlers (`onclick`, `onchange`, ...);
-- `alpine_unsupported`: Alpine attributes the CSP build of Alpine (tests/csp_baseline.json)
-  rejects. The forms are those the browser measurement of that build found on the pages
+- `alpine_unsupported`: Alpine attributes the CSP build of Alpine (docker/Dockerfile) rejects.
+  The forms are those the browser measurement of that build found on the pages
   (tests/csp_browser.mjs --candidate): every `x-html`; an arrow function; a template literal;
   a reach for a global object (`window`, `document`, `Math`, `JSON`, `String`, ...); more
   than one statement (`;`), `return`, `if`, `new`, `typeof`, `function`, optional chaining;
@@ -21,7 +21,7 @@ markup is parsed, so a value the server fills in never looks like markup. A test
 part of the image.
 
 Usage (from the repository root):
-  python3 tests/csp_scan.py            print the counts of every template as JSON
+  python3 tests/csp_scan.py            print the templates with a finding as JSON; exit 1 if any
 """
 
 from __future__ import annotations
@@ -29,13 +29,11 @@ from __future__ import annotations
 import json
 import re
 import sys
-from collections.abc import Iterable
 from html.parser import HTMLParser
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 TEMPLATES = REPO / "src" / "app" / "templates"
-BASELINE = REPO / "tests" / "csp_baseline.json"
 
 KINDS = (
     "inline_scripts",
@@ -50,7 +48,7 @@ KINDS = (
 _DATA_TYPES = frozenset({"application/json", "application/ld+json", "text/template"})
 _JINJA_BLOCK = re.compile(r"\{%.*?%\}|\{#.*?#\}", re.DOTALL)
 _JINJA_VALUE = re.compile(r"\{\{.*?\}\}", re.DOTALL)
-# Global objects the expressions of a converted page cannot reach (the list of
+# Global objects the expressions of a page cannot reach (the list of
 # tests/csp_browser.mjs).
 _GLOBAL_NAMES = (
     "window", "document", "globalThis", "self", "Math", "JSON", "console", "localStorage",
@@ -144,51 +142,21 @@ def scan(templates: Path = TEMPLATES) -> dict[str, dict[str, int]]:
     return result
 
 
-def totals(counts: Iterable[dict[str, int]]) -> dict[str, int]:
-    total = dict.fromkeys(KINDS, 0)
-    for row in counts:
-        for kind in KINDS:
-            total[kind] += row.get(kind, 0)
-    return total
-
-
-def compare(baseline: dict[str, dict[str, int]], measured: dict[str, dict[str, int]]) -> list[str]:
-    """Every difference between baseline and measurement; empty when they are equal.
-
-    A count above the baseline is a new finding. A count below it is progress that has to be
-    written into the baseline in the same change, so the baseline only ever shrinks.
-    """
-    problems: list[str] = []
-    for template in sorted(set(baseline) | set(measured)):
-        was = baseline.get(template, {})
-        now = measured.get(template, {})
-        for kind in KINDS:
-            before, after = was.get(kind, 0), now.get(kind, 0)
-            if after > before:
-                problems.append(f"{template}: {kind} rose from {before} to {after}")
-            elif after < before:
-                problems.append(
-                    f"{template}: {kind} fell from {before} to {after}; "
-                    "lower tests/csp_baseline.json in the same change"
-                )
-    return problems
-
-
-def load_baseline(path: Path = BASELINE) -> dict[str, object]:
-    doc: dict[str, object] = json.loads(path.read_text(encoding="utf-8"))
-    return doc
+def findings(templates: Path = TEMPLATES) -> list[str]:
+    """Every count above zero, as `<template>: <kind> <count>`; empty when all are zero."""
+    return [
+        f"{template}: {kind} {count}"
+        for template, counts in scan(templates).items()
+        for kind, count in counts.items()
+        if count
+    ]
 
 
 def main() -> int:
     measured = scan()
-    json.dump(
-        {"templates": measured, "totals": totals(measured.values())},
-        sys.stdout,
-        indent=2,
-        sort_keys=True,
-    )
+    json.dump({"templates": measured}, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
-    return 0
+    return 1 if measured else 0
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@
    Classes are spelled out per branch rather than assembled from a variable:
    app.css is built by scanning these templates. #}
 {% from "partials/_actions.html" import row_actions, overflow_menu %}
-{% from "partials/_csp.html" import data_island %}
+{% from "partials/_csp.html" import swapped_island %}
 
 {% set can_write = state.writable and not state.structural_error %}
 
@@ -170,7 +170,7 @@
 
 {% if can_write %}
 
-{{ data_island("mgr-connection-types", types) }}
+{{ swapped_island("mgr-connection-types", types) }}
 
 <!-- New and edit -->
 <dialog id="connection-modal" class="modal" x-data="connectionDialog"

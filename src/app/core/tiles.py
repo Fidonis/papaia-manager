@@ -60,6 +60,15 @@ _PLACEHOLDER_RE = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 # file cannot turn a dashboard link into script execution in a user's browser.
 _SAFE_HREF_RE = re.compile(r"^(https?://|/)")
 
+# An icon is an image the manager's enforced content security policy lets the page load
+# (`img-src 'self' data:`, app/csp.py): a path on the manager's own site or a data image.
+# A second slash or a backslash after the first would make a browser read the path as an
+# address on another host, so neither may follow it; whitespace is never part of one.
+_SITE_PATH_RE = re.compile(r"^/(?![/\\])\S*\Z")
+_DATA_IMAGE_RE = re.compile(r"^data:image/[a-z0-9.+-]+[;,]\S*\Z", re.IGNORECASE)
+# A data image sits in tiles.yaml and in every dashboard response; 64 KiB holds any icon.
+MAX_ICON_LENGTH = 65536
+
 # Placeholder keys the tile editor offers as one-click inserts. The core .env
 # holds every stack secret, so the editor is shown the small slice of key names
 # that can plausibly appear in a link -- never the values, and never the rest
@@ -346,6 +355,32 @@ def check_value(value: str, env: Mapping[str, str]) -> tuple[str, str | None]:
     return resolved, None
 
 
+def check_icon(value: str, env: Mapping[str, str]) -> tuple[str, str | None]:
+    """Resolve an icon and say why it would not be shown, if it would not be.
+
+    Stricter than a link: the dashboard puts an icon into an image, and the enforced
+    policy loads images from the manager's own site and from data images only. An address
+    on another site would be blocked by the browser, so it is refused here instead -- on
+    save, in the editor's live check and when the dashboard renders a stored tile.
+    """
+    resolved = resolve_placeholders(value, env)
+
+    unresolved = _PLACEHOLDER_RE.search(resolved)
+    if unresolved is not None:
+        return resolved, gettext("%(name)s has no value in the stack environment") % {
+            "name": unresolved.group(0)
+        }
+
+    if len(resolved) > MAX_ICON_LENGTH or not (
+        _SITE_PATH_RE.match(resolved) or _DATA_IMAGE_RE.match(resolved)
+    ):
+        return resolved, gettext(
+            "must be a path on this site (starting with /) or a data:image/ value"
+        )
+
+    return resolved, None
+
+
 def link_placeholder_keys(env: Mapping[str, str]) -> list[str]:
     """Env keys the editor may offer as placeholder inserts.
 
@@ -445,7 +480,7 @@ def validate_config(
                     problems.append(Problem(gi, ti, "href", problem))
 
             if tile.icon:
-                _, problem = check_value(tile.icon, env)
+                _, problem = check_icon(tile.icon, env)
                 if problem is not None:
                     problems.append(Problem(gi, ti, "icon", problem))
 
@@ -482,15 +517,20 @@ def _resolve_tile(tile: Tile, env: Mapping[str, str]) -> Tile | None:
         logger.warning("dropping dashboard tile %r: %s (%r)", tile.name, problem, href)
         return None
 
+    # An icon the save would refuse -- an address on another site in a tiles.yaml written
+    # before the policy was enforced, say -- is not rendered: the browser would block it.
+    # The tile shows what it would show without one, the bundled icon of a default
+    # application or the lettered badge. The file itself is left as it is.
     icon: str | None = None
-    stored = tile.icon or default_icon(tile.name)
-    if stored:
-        icon, icon_problem = check_value(stored, env)
+    if tile.icon:
+        icon, icon_problem = check_icon(tile.icon, env)
         if icon_problem is not None:
             logger.warning(
                 "ignoring icon for dashboard tile %r: %s (%r)", tile.name, icon_problem, icon
             )
             icon = None
+    if icon is None:
+        icon = default_icon(tile.name)
 
     return Tile(
         name=tile.name,

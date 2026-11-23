@@ -88,8 +88,7 @@ def asset_url(name: str) -> str:
 
 templates.env.globals["asset_url"] = asset_url
 
-# The page policy (app/csp.py): which Alpine build a page loads, and the ids of data islands.
-templates.env.globals["strict_page"] = csp.strict_page
+# The page policy (app/csp.py): the ids of data islands and sentences with bound values.
 templates.env.globals["island_id"] = csp.island_id
 templates.env.globals["bound"] = csp.bound_sentence
 templates.env.globals["core_error_texts"] = client_texts.core_error_texts

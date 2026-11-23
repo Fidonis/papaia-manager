@@ -42,6 +42,12 @@ PERSONS: dict[str, tuple[str, ...]] = {
 CSRF = "design-check-csrf-token-0001"
 # Values for the placeholders of ui/pages.yaml. The pages behind them render the state of
 # an id the manager does not know, which is a page of the module as well.
+# A value that is markup and script at once (tests/csp_hostile_browser.mjs): every page has to
+# show it as text. Short enough for the name of a notification recipient (60 characters).
+HOSTILE = '<img src=x onerror="alert(1)"><script>alert(2)</script>'
+# An icon address on another site, as a tiles.yaml written before the enforced policy may hold
+# one (img-src 'self' data:). The dashboard and the tile editor must not put it into an image.
+OFFSITE_ICON = "https://icons.example.test/app.svg"
 SAMPLES = {
     "job_id": "0b5c4a1e-job",
     "name": "papaia-sample",
@@ -177,13 +183,20 @@ def environment(config: Path, workspace: Path, *, host: str, secret: str) -> dic
 
 
 def session_cookie(
-    secret: str, roles: tuple[str, ...] = ROLES, person: str = "anna", **extra: Any
+    secret: str,
+    roles: tuple[str, ...] = ROLES,
+    person: str = "anna",
+    *,
+    username: str | None = None,
+    **extra: Any,
 ) -> str:
-    """The signed session of `person` (Anna by default) with `roles`, as the manager reads it."""
+    """The signed session of `person` (Anna by default) with `roles`, as the manager reads it.
+
+    `username` replaces the name the frame shows (the person's id by default)."""
     session: dict[str, Any] = {
         "user": {
             "sub": f"u-{person}",
-            "preferred_username": person,
+            "preferred_username": person if username is None else username,
             "roles": list(roles),
             "exp": int(time.time()) + 3600,
         },

@@ -28,12 +28,10 @@ FROM python:3.12-slim AS assets
 # are vendored into the image rather than declared as package dependencies),
 # together with scripts/design/package.json, so the browser checks see the same
 # files. Each file is checked against its SHA-256 here: a file that changed under
-# its version fails the build. Both Alpine builds share one version; they differ
-# only in how they evaluate expressions (the CSP build needs no `eval`, T-UI-03).
+# its version fails the build. Alpine is its CSP build only: it needs no `eval`, which
+# the enforced content security policy refuses (T-UI-03).
 ARG HTMX_VERSION=2.0.4
 ARG HTMX_SHA256=e209dda5c8235479f3166defc7750e1dbcd5a5c1808b7792fc2e6733768fb447
-ARG ALPINE_VERSION=3.17.5
-ARG ALPINE_SHA256=b4036e9e9ac22fa6f6ae1ba292e015e1f3e9c85d0d79e73e4c8eb9bb139b522e
 ARG ALPINE_CSP_VERSION=3.17.5
 ARG ALPINE_CSP_SHA256=48c170c92032e527cbae71b8ce75cf1f96ca06fa869a6120ef0fe438d8e92c36
 ARG SORTABLE_VERSION=1.15.6
@@ -49,10 +47,6 @@ RUN mkdir -p /static \
         "https://unpkg.com/htmx.org@${HTMX_VERSION}/dist/htmx.min.js" \
         -o /static/htmx.min.js \
     && verify-sha256 /static/htmx.min.js "${HTMX_SHA256}" \
-    && curl -fsSL \
-        "https://unpkg.com/alpinejs@${ALPINE_VERSION}/dist/cdn.min.js" \
-        -o /static/alpine.min.js \
-    && verify-sha256 /static/alpine.min.js "${ALPINE_SHA256}" \
     && curl -fsSL \
         "https://unpkg.com/@alpinejs/csp@${ALPINE_CSP_VERSION}/dist/cdn.min.js" \
         -o /static/alpine-csp.min.js \
@@ -139,9 +133,6 @@ WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
 COPY src/app/ /app/app/
-# The ratchet file of the content security policy: its `converted` list decides which pages
-# load the CSP build of Alpine (app/csp.py).
-COPY tests/csp_baseline.json /app/app/csp_baseline.json
 COPY --from=assets /static/ /app/app/static/
 COPY --from=css-builder /static/app.css /app/app/static/app.css
 

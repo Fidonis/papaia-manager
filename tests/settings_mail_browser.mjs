@@ -10,7 +10,7 @@
 // saved and followed to the reload. The core is not there, so its answers (overlay files,
 // preview, writes, jobs, probe, test mail) are routed in the browser; the pages, the job
 // strips on load, the CSRF token and the scripts are the manager's own. Every page must stay
-// free of policy reports (report-only header), refused Alpine expressions and script errors.
+// free of policy reports (enforced header), refused Alpine expressions and script errors.
 //
 // Usage: node tests/settings_mail_browser.mjs --base-url URL --storage-state FILE [--shots DIR]
 // Prints a JSON report; exit 0 when every check holds, 1 otherwise, 2 on usage errors.

@@ -63,12 +63,15 @@ def design_persons(pages_file: Path = PAGES_FILE) -> list[str]:
     return list(dict.fromkeys(row["person"] for row in _rows(pages_file)))
 
 
-def write_storage_state(path: Path, *, port: int, secret: str, person: str = "anna") -> None:
-    """A Playwright storage state with the session cookie of `person` for 127.0.0.1:<port>."""
+def write_storage_state(
+    path: Path, *, port: int, secret: str, person: str = "anna", username: str | None = None
+) -> None:
+    """A Playwright storage state with the session cookie of `person` for 127.0.0.1:<port>;
+    `username` is the name the frame shows (design_world.session_cookie)."""
     cookie = {
         "name": design_world.SESSION_COOKIE,
         "value": design_world.session_cookie(
-            secret, roles=design_world.PERSONS[person], person=person
+            secret, roles=design_world.PERSONS[person], person=person, username=username
         ),
         "domain": "127.0.0.1",
         "path": "/",

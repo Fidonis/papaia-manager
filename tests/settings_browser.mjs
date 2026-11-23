@@ -10,7 +10,7 @@
 // answers and follows the job, and switching off asks in the dialog, which Escape cancels.
 // Writes to the core that the stand-in world does not have are answered by routes in the
 // browser. Both pages are also opened in the dark theme. Every page records the reports of
-// the report-only policy and uncaught script errors.
+// the enforced policy and uncaught script errors.
 //
 // Usage: node tests/settings_browser.mjs --base-url URL --storage-state FILE
 // Prints a JSON report; exit 0 when every check holds, 1 otherwise, 2 on usage errors.
@@ -43,7 +43,7 @@ function parseArgs(argv) {
   return args;
 }
 
-// Runs in the page before its scripts: collects the reports of the report-only policy.
+// Runs in the page before its scripts: collects the reports of the enforced policy.
 function collectReports() {
   window.__papaiaCsp = [];
   document.addEventListener("securitypolicyviolation", (event) => {

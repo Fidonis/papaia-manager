@@ -1056,6 +1056,9 @@ msgstr "%(name)s hat in der Stack-Umgebung keinen Wert"
 msgid "must start with https://, http:// or /"
 msgstr "muss mit https://, http:// oder / beginnen"
 
+msgid "must be a path on this site (starting with /) or a data:image/ value"
+msgstr "muss ein Pfad auf dieser Seite (beginnend mit /) oder ein data:image/-Wert sein"
+
 msgid "group name must not be empty"
 msgstr "Der Gruppenname darf nicht leer sein"
 
@@ -8959,11 +8962,14 @@ msgstr "Symbol-URL"
 msgid "optional"
 msgstr "optional"
 
-msgid "https://example.com/icon.svg"
-msgstr "https://example.com/icon.svg"
+msgid "/… or data:image/…"
+msgstr "/… oder data:image/…"
 
 msgid "Left empty, a default application shows its bundled icon and any other tile a lettered badge."
 msgstr "Bleibt es leer, zeigt eine Standardanwendung ihr mitgeliefertes Symbol und jede andere Kachel ein Buchstaben-Abzeichen."
+
+msgid "An icon is a path on this site or a data:image/ value; images from other sites are not loaded."
+msgstr "Ein Symbol ist ein Pfad auf dieser Seite oder ein data:image/-Wert; Bilder von anderen Seiten werden nicht geladen."
 
 msgid "Who can see this tile"
 msgstr "Wer diese Kachel sehen kann"

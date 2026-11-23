@@ -85,8 +85,9 @@ def test_the_entry_names_every_change_of_the_release() -> None:
         # MGR-012 kit 0.2.2 and the design check
         "0.2.2",
         "/_kit/specimen",
-        # MGR-003 content security policy in report-only mode
-        "Content-Security-Policy-Report-Only",
+        # MGR-003 and MGR-028 content security policy, enforced
+        "Content-Security-Policy",
+        "Content security policy, enforced",
     ):
         assert needle in entry, needle
 

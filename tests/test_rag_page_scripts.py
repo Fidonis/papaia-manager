@@ -62,7 +62,6 @@ from tests.fake_qdrant import API_KEY, FakeQdrant, Fleet  # noqa: E402
 
 TEMPLATES = REPO / "src" / "app" / "templates"
 PAGES = REPO / "src" / "app" / "static" / "js" / "pages"
-BASELINE = REPO / "tests" / "csp_baseline.json"
 CONVERTED = ("collections.html", "embedding.html", "models.html")
 GROUP = (
     "embedding.html",
@@ -76,8 +75,8 @@ GROUP = (
     "partials/collection_list.html",
 )
 SCRIPT_KINDS = ("inline_scripts", "on_attributes", "alpine_unsupported")
-# What the templates of this group called as globals: the names of the transition
-# (core/legacy.js) and the page functions of their former inline scripts.
+# What the templates of this group called as globals: the names of the transition (the
+# removed core/legacy.js) and the page functions of their former inline scripts.
 FORMER_GLOBALS = (
     "_authGuard", "_ragDetail", "_ragError", "_ragEscape", "_ragRequest", "csrfToken", "fmt",
     "fmtHtml", "fmtPlural", "showToast", "reloadEmbedding", "_embedConn", "_embedUrl",
@@ -107,15 +106,6 @@ _CSRF = "test-csrf-token-value"
 def test_the_templates_of_the_group_carry_no_script_the_policy_refuses(name: str) -> None:
     counts = csp_scan.count_markup((TEMPLATES / name).read_text(encoding="utf-8"))
     assert {kind: counts[kind] for kind in SCRIPT_KINDS} == dict.fromkeys(SCRIPT_KINDS, 0)
-
-
-def test_the_pages_are_converted_and_their_rows_are_gone() -> None:
-    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
-    for name in CONVERTED:
-        assert name in baseline["converted"], name
-    rows = baseline["templates"]
-    for name in GROUP:
-        assert name not in rows, name
 
 
 def test_the_chart_geometry_is_no_style_attribute() -> None:
@@ -160,10 +150,14 @@ class _Markup(HTMLParser):
             if a.get("type") == "application/json" and a.get("id"):
                 self._island = str(a["id"])
                 self.islands[self._island] = ""
+        elif tag == "template" and a.get("data-island") == "application/json" and a.get("id"):
+            # The island of a partial htmx swaps in (partials/_csp.html, swapped_island).
+            self._island = str(a["id"])
+            self.islands[self._island] = ""
         self.attributes.extend((name, value or "") for name, value in attrs)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "script":
+        if tag in ("script", "template"):
             self._island = None
 
     def handle_data(self, data: str) -> None:

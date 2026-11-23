@@ -8,7 +8,7 @@
 // Notifications (/mail): a recipient needs a name, is added as a webhook, gets an event ticked
 // in the matrix, is edited, gets a test that a webhook on the loopback receives, and is deleted
 // after the question in its dialog; the event settings are saved. Both pages are also opened
-// in the dark theme. Every page records the reports of the report-only policy and uncaught
+// in the dark theme. Every page records the reports of the enforced policy and uncaught
 // script errors.
 //
 // Usage: node tests/connections_notifications_browser.mjs --base-url URL --storage-state FILE
@@ -38,7 +38,7 @@ function parseArgs(argv) {
   return args;
 }
 
-// Runs in the page before its scripts: collects the reports of the report-only policy.
+// Runs in the page before its scripts: collects the reports of the enforced policy.
 function collectReports() {
   window.__papaiaCsp = [];
   document.addEventListener("securitypolicyviolation", (event) => {

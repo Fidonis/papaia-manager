@@ -6,10 +6,8 @@
 .github
 .dockerignore
 
-# Tests and documentation are not part of the server image; the page list of the content
-# security policy is (app/csp.py).
+# Tests and documentation are not part of the server image.
 tests
-!tests/csp_baseline.json
 *.md
 
 # Exclude docker/ orchestration files, but keep files the Dockerfile COPYs.

@@ -87,10 +87,10 @@ jobs:
         run: scripts/design-check.sh 57880 "${RUNNER_TEMP}/design-report.json"
 
   csp:
-    # Browser check of the content security policy (T-UI-03): the check itself on seeded
-    # pages, then every page of ui/pages.yaml with the report-only policy. A converted page
-    # fails on any report, refused Alpine expression or script error; for the others the
-    # counts, and what the shipped CSP build of Alpine still refuses, go to the job summary.
+    # Browser check of the enforced content security policy (T-UI-03): the check itself on
+    # seeded pages, hostile values in names and texts, then every page of ui/pages.yaml in
+    # both colour schemes. A page fails on any violation, refused Alpine expression or script
+    # error; the counts, and what the shipped CSP build of Alpine refuses, go to the summary.
     name: Content security policy (browser check)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -113,10 +113,11 @@ jobs:
         run: |
           scripts/design-tools.sh
           sudo node .pk/node_modules/playwright-core/cli.js install-deps chromium
-      - name: The check fails on seeded pages; toasts, settings, overlay, mail, dashboard, backup, ingest, upgrade and RAG paths in a browser
+      - name: The check fails on seeded pages; hostile values, toasts, settings, overlay, mail, dashboard, backup, ingest, upgrade and RAG paths in a browser
         working-directory: src
         run: >-
-          uv run --frozen pytest -q -rs ../tests/test_csp_browser.py ../tests/test_toast_browser.py
+          uv run --frozen pytest -q -rs ../tests/test_csp_browser.py
+          ../tests/test_csp_hostile_browser.py ../tests/test_toast_browser.py
           ../tests/test_settings_scripts.py ../tests/test_settings_mail_browser.py
           ../tests/test_dashboard_browser.py ../tests/test_backup_browser.py
           ../tests/test_connections_notifications_scripts.py

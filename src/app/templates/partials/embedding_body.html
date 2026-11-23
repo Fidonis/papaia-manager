@@ -13,7 +13,7 @@
 
    Classes are spelled out per branch rather than assembled from a variable: app.css is
    built by scanning these templates. #}
-{% from "partials/_csp.html" import data_island %}
+{% from "partials/_csp.html" import swapped_island %}
 {% set supports_add = state.supports_add is not sameas false %}
 {% set docs_ok = state.documents.path is not none %}
 {% set can_upload = docs_ok and state.documents.writable %}
@@ -26,7 +26,7 @@
     "otherJobs": other_jobs,
     "activeRun": active.run_id if active else "",
 } %}
-{{ data_island("embed-state", init) }}
+{{ swapped_island("embed-state", init) }}
 <div hidden x-init="loaded()"></div>
 
 {% if not view.available %}

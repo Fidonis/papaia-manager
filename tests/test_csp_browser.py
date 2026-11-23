@@ -1,9 +1,11 @@
 """The browser check of the policy (tests/csp_browser.mjs) on seeded pages.
 
-A small server on 127.0.0.1 answers with the manager's report-only policy: a page marked
-converted with an inline script must fail the check, the same page unmarked is only counted,
-and a clean converted page passes. Needs the browser tools of scripts/design-tools.sh; the
-CI job `csp` installs them and runs this file before checking the manager's pages.
+A small server on 127.0.0.1 answers with the manager's enforced policy. The check opens every
+page in the light and the dark colour scheme and fails on any `securitypolicyviolation` event:
+a page with an inline script or a `style` attribute fails, marked or not, and so does a page
+that answers without the enforced policy; a clean page passes. Needs the browser tools of
+scripts/design-tools.sh; the CI job `csp` installs them and runs this file before checking the
+manager's pages.
 """
 
 from __future__ import annotations
@@ -45,11 +47,17 @@ PAGES = {
     '<p style="color: red">styled</p></body></html>',
 }
 SCRIPTS = {"/clean.js": "document.body.dataset.ran = '1';"}
+# Pages served with the policy only reported, not enforced.
+REPORT_ONLY = {"/report-only": PAGES["/clean"]}
 
 
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 -- the name http.server calls
-        if self.path in PAGES:
+        header = "Content-Security-Policy"
+        if self.path in REPORT_ONLY:
+            body, kind = REPORT_ONLY[self.path].encode(), "text/html; charset=utf-8"
+            header = "Content-Security-Policy-Report-Only"
+        elif self.path in PAGES:
             body, kind = PAGES[self.path].encode(), "text/html; charset=utf-8"
         elif self.path in SCRIPTS:
             body, kind = SCRIPTS[self.path].encode(), "text/javascript"
@@ -58,7 +66,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self.send_response(200)
         self.send_header("Content-Type", kind)
-        self.send_header("Content-Security-Policy-Report-Only", POLICY)
+        self.send_header(header, POLICY)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -83,36 +91,56 @@ def _check(base_url: str, tmp_path: Path, *pages: str) -> tuple[int, dict[str, o
     argv = [NODE, str(CHECK), "--base-url", base_url, "--report", str(report)]
     for page in pages:
         argv += ["--page", page]
-    done = subprocess.run(
-        argv, cwd=REPO, capture_output=True, text=True, check=False, timeout=180
-    )
+    done = subprocess.run(argv, cwd=REPO, capture_output=True, text=True, check=False, timeout=180)
     doc = json.loads(report.read_text(encoding="utf-8")) if report.is_file() else {}
     return done.returncode, doc, done.stderr
 
 
-def test_a_converted_page_with_an_inline_script_fails(base_url: str, tmp_path: Path) -> None:
+def _by_scheme(doc: dict[str, object], path: str) -> dict[str, dict[str, object]]:
+    results = doc["results"]
+    assert isinstance(results, list)
+    return {r["scheme"]: r for r in results if r["page"] == path}
+
+
+def test_a_page_with_an_inline_script_fails_in_both_schemes(base_url: str, tmp_path: Path) -> None:
     code, doc, stderr = _check(base_url, tmp_path, "/seeded", "/clean")
     assert code == 1, stderr
-    seeded, clean = doc["results"]  # type: ignore[index]
-    assert seeded["converted"] is True
-    assert [v["directive"] for v in seeded["violations"]] == ["script-src-elem"]
-    assert clean["violations"] == []
-    assert "converted page /seeded is not clean" in stderr
+    seeded, clean = _by_scheme(doc, "/seeded"), _by_scheme(doc, "/clean")
+    assert set(seeded) == set(clean) == {"light", "dark"}
+    for scheme in ("light", "dark"):
+        assert seeded[scheme]["policy"] == POLICY
+        assert [v["directive"] for v in seeded[scheme]["violations"]] == ["script-src-elem"]
+        assert clean[scheme]["violations"] == []
+        assert f"page /seeded ({scheme}) is not clean" in stderr
 
 
-def test_a_converted_page_with_a_style_attribute_fails(base_url: str, tmp_path: Path) -> None:
+def test_a_page_with_a_style_attribute_fails(base_url: str, tmp_path: Path) -> None:
     code, doc, _ = _check(base_url, tmp_path, "/styled")
     assert code == 1
-    (styled,) = doc["results"]  # type: ignore[index]
-    assert [v["directive"] for v in styled["violations"]] == ["style-src-attr"]
+    for result in _by_scheme(doc, "/styled").values():
+        assert [v["directive"] for v in result["violations"]] == ["style-src-attr"]
 
 
-def test_a_page_not_converted_is_only_counted(base_url: str, tmp_path: Path) -> None:
+def test_an_unmarked_page_fails_as_well(base_url: str, tmp_path: Path) -> None:
     code, doc, stderr = _check(base_url, tmp_path, "/seeded-unmarked", "/clean")
+    assert code == 1, stderr
+    for result in _by_scheme(doc, "/seeded-unmarked").values():
+        assert result["converted"] is False
+        assert len(result["violations"]) == 1
+
+
+def test_a_page_without_the_enforced_policy_fails(base_url: str, tmp_path: Path) -> None:
+    code, doc, stderr = _check(base_url, tmp_path, "/report-only")
+    assert code == 1, stderr
+    for result in _by_scheme(doc, "/report-only").values():
+        assert result["policy"] == ""
+    assert "answered without the enforced policy" in stderr
+
+
+def test_a_clean_page_passes(base_url: str, tmp_path: Path) -> None:
+    code, doc, stderr = _check(base_url, tmp_path, "/clean")
     assert code == 0, stderr
-    unmarked, _ = doc["results"]  # type: ignore[index]
-    assert unmarked["converted"] is False
-    assert len(unmarked["violations"]) == 1
+    assert set(_by_scheme(doc, "/clean")) == {"light", "dark"}
 
 
 def test_a_page_that_does_not_load_is_an_error(base_url: str, tmp_path: Path) -> None:

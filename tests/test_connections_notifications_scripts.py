@@ -51,7 +51,6 @@ for _key, _value in design_world.environment(
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import csp  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.core import module_catalog  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -59,7 +58,9 @@ from app.main import create_app  # noqa: E402
 TEMPLATES = SRC / "app" / "templates"
 JS = SRC / "app" / "static" / "js"
 PAGES_JS = JS / "pages"
-BASELINE = REPO / "tests" / "csp_baseline.json"
+# The names core/legacy.js put on `window` during the conversion; it is gone (T-UI-03), and no
+# page reaches them as globals any more.
+TRANSITION_NAMES = ("csrfToken", "fmt", "fmtPlural", "showToast")
 STRICT = '<meta name="papaia-csp" content="strict">'
 NODE = shutil.which("node")
 CSP_CHECK = REPO / "tests" / "csp_browser.mjs"
@@ -124,9 +125,12 @@ class _Markup(HTMLParser):
         if tag == "script":
             self._script = dict(attrs)
             self.scripts.append(self._script)
+        elif tag == "template" and dict(attrs).get("data-island") == "application/json":
+            # The island of a partial htmx swaps in (partials/_csp.html, swapped_island).
+            self._script = {"type": "application/json", "id": dict(attrs).get("id")}
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "script":
+        if tag in ("script", "template"):
             self._script = None
 
     def handle_data(self, data: str) -> None:
@@ -187,21 +191,12 @@ def test_the_templates_of_the_group_have_nothing_the_policy_refuses(name: str) -
     assert counts == dict.fromkeys(csp_scan.KINDS, 0)
 
 
-def test_the_group_has_no_row_in_the_baseline_and_its_pages_are_converted() -> None:
-    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
-    for name in GROUP:
-        assert name not in baseline["templates"], name
-    for template, _ in PAGES.values():
-        assert template in baseline["converted"]
-        assert template in csp.converted_templates()
-
-
 @pytest.mark.parametrize("name", ["connections.html", "notifications.html"])
 def test_no_template_of_the_group_calls_a_transitional_global(name: str) -> None:
     source = (TEMPLATES / name).read_text(encoding="utf-8")
     if name == "connections.html":
         source += (TEMPLATES / "partials" / "connection_list.html").read_text(encoding="utf-8")
-    for global_name in _legacy_names():
+    for global_name in TRANSITION_NAMES:
         # `fmt(...)` in an expression is the method of the component, which the module gives
         # every component of the group; no other transitional name may appear.
         if global_name == "fmt":
@@ -308,12 +303,6 @@ def test_the_notifications_page_hands_its_values_over_in_an_island(client: TestC
 _IMPORT = re.compile(r'^import\s+\{([^}]*)\}\s+from\s+"([^"]+)";', re.MULTILINE)
 
 
-def _legacy_names() -> list[str]:
-    legacy = (JS / "core" / "legacy.js").read_text(encoding="utf-8")
-    block = legacy[legacy.index("LEGACY_NAMES") :]
-    return re.findall(r'"([^"]+)",', block[: block.index("]);")])
-
-
 @pytest.mark.parametrize("module", ["connections.js", "notifications.js"])
 def test_the_page_modules_import_what_they_use(module: str) -> None:
     source = (PAGES_JS / module).read_text(encoding="utf-8")
@@ -323,7 +312,7 @@ def test_the_page_modules_import_what_they_use(module: str) -> None:
         assert target.startswith("../core/"), target
     imported = {n.strip().split(" as ")[-1] for names_, _ in imports for n in names_.split(",")}
     body = _IMPORT.sub("", source)
-    for name in _legacy_names():
+    for name in TRANSITION_NAMES:
         if re.search(r"(?<![\w$.])" + re.escape(name) + r"(?![\w$])", body):
             assert name in imported, f"{module} uses the global {name}"
     # Registered on alpine:init, before Alpine starts.
@@ -413,7 +402,12 @@ def test_the_browser_sees_no_report_and_no_alpine_error(
     )
     assert done.returncode == 0, done.stderr
     results = json.loads(report.read_text(encoding="utf-8"))["results"]
-    assert sorted(r["page"] for r in results) == sorted(PAGES)
+    # Every page in the light and the dark colour scheme.
+    assert sorted((r["page"], r["scheme"]) for r in results) == sorted(
+        (page, scheme) for page in PAGES for scheme in ("light", "dark")
+    )
+    for result in results:
+        assert result["policy"].startswith("default-src 'self'"), result
     for result in results:
         assert result["status"] == 200, result
         assert result["converted"] is True, result

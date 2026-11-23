@@ -23,17 +23,14 @@
 {% set page_subtitle = self.page_subtitle() | trim %}
 {% call shell(pk) %}
 <link rel="stylesheet" href="{{ asset_url('app.css') }}">
-{#- The page policy (app/csp.py, T-UI-03). A page whose template tests/csp_baseline.json lists
-    as converted runs on the CSP build of Alpine, every other page on the standard build of
-    the same version: exactly one of them per page. htmx evaluates nothing and injects no
-    style (its indicator styles are in app.css); it reads this meta element when it starts.
-    The core modules (static/js/core/) are ES modules served as they are. #}
-{% set strict = strict_page() %}
-{{ strict_marker(strict) }}
-<meta name="htmx-config" content="{&quot;allowEval&quot;:false,&quot;includeIndicatorStyles&quot;:false}">
+{#- The page policy (app/csp.py, T-UI-03) is enforced: the page runs on the CSP build of
+    Alpine. htmx evaluates nothing, runs no script of a swapped fragment and injects no style
+    (its indicator styles are in app.css); it reads this meta element when it starts. The core
+    modules (static/js/core/) are ES modules served as they are. #}
+{{ strict_marker() }}
+<meta name="htmx-config" content="{&quot;allowEval&quot;:false,&quot;allowScriptTags&quot;:false,&quot;includeIndicatorStyles&quot;:false}">
 {#- The shared page script lives in static/js/core/ (T-UI-04): main.js loads before htmx and
-    Alpine, so the names of core/legacy.js exist before Alpine evaluates the first expression.
-    Its texts come from the data island below, in the language of the page: whole sentences,
+    Alpine and puts no name on `window`; page modules import what they need from it. Its texts come from the data island below, in the language of the page: whole sentences,
     `{name}` marks a value. `errors` are the kit's three-part texts per error class
     (app/client_texts.py). #}
 {{ data_island("mgr-core", {
@@ -62,7 +59,7 @@
     `alpine:init`. #}
 {% block page_modules %}{% endblock %}
 <script src="{{ asset_url('htmx.min.js') }}" defer></script>
-{{ alpine_build(strict) }}
+{{ alpine_build() }}
 <div class="mgr-page" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}' x-data>
   {# The status row, on every page for every role: the aggregate stack status, and for an
      administrator the hints that used to be dots on navigation rows (host, jobs, add-on

@@ -110,7 +110,7 @@ def create_app() -> FastAPI:
     )
     # Outermost, so every HTML answer gets the page policy, the error pages of the
     # middleware above included (app/csp.py).
-    app.add_middleware(csp.ReportOnlyPolicyMiddleware)
+    app.add_middleware(csp.PolicyMiddleware)
 
     app.include_router(health.router)
     app.include_router(auth.router)

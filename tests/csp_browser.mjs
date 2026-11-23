@@ -1,16 +1,17 @@
 // Browser check of the content security policy (T-UI-03), run by scripts/csp-check.sh.
 //
 // Opens every page in Chromium (playwright-core of .pk/, the version of the kit's
-// contract/specimen.yaml) and records per page what the report-only policy reports
-// (`securitypolicyviolation` events), the expressions Alpine refuses ("Alpine Expression
-// Error") and uncaught script errors. A page marked converted (<meta name="papaia-csp"
-// content="strict">, written by base.html for the templates of tests/csp_baseline.json) fails
-// the check with any of them; for the other pages the counts are reported only.
+// contract/specimen.yaml), in the light and the dark colour scheme, and records per page what
+// the enforced policy refuses (`securitypolicyviolation` events), the expressions Alpine
+// refuses ("Alpine Expression Error") and uncaught script errors. Any of them fails the check,
+// and so does a page that answers without an enforced `Content-Security-Policy` header.
+// `converted` in the report says whether the page carries the marker of base.html
+// (<meta name="papaia-csp" content="strict">).
 //
 // --candidate LABEL=FILE measures an Alpine build: every Alpine expression of every page
 // (attributes of the rendered page and of its <template> elements) is evaluated by that build
 // in a separate blank page, in a scope where every plain name exists but the browser's global
-// objects (window, document, Math, JSON, ...) do not, as on a converted page. An expression
+// objects (window, document, Math, JSON, ...) do not, as on every page. An expression
 // the build cannot evaluate there -- a refusal, a parse error, a name it reads as a path --
 // is one rewrite that page needs on that build. Used for the choice of the CSP build and, in
 // CI, to show what is left on the shipped one.
@@ -18,14 +19,15 @@
 // Usage (from the repository root):
 //   node tests/csp_browser.mjs --base-url URL --page PATH [--page PATH ...]
 //     [--storage-state FILE] [--candidate LABEL=FILE ...] [--report FILE] [--summary FILE]
-// Exit: 0 clean, 1 findings on a converted page, 2 usage or a page that does not load.
+// Exit: 0 clean, 1 findings on a page, 2 usage or a page that does not load.
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SETTLE_MS = 400;
-// Global objects a converted page's expressions cannot reach: the component has to offer
+const SCHEMES = ["light", "dark"];
+// Global objects a page's expressions cannot reach: the component has to offer
 // what it needs from them.
 const GLOBALS = [
   "window", "document", "globalThis", "self", "Math", "JSON", "console", "localStorage",
@@ -171,7 +173,7 @@ function expressionOf(text) {
   return match ? match[1] : text.split("\n")[0];
 }
 
-async function checkPage(context, baseUrl, path) {
+async function checkPage(context, baseUrl, path, scheme) {
   const page = await context.newPage();
   const alpine = new Set();
   const errors = [];
@@ -184,9 +186,13 @@ async function checkPage(context, baseUrl, path) {
   page.on("pageerror", (error) => errors.push(String(error.message).split("\n")[0]));
   const response = await page.goto(new URL(path, baseUrl).href, { waitUntil: "networkidle" });
   await page.waitForTimeout(SETTLE_MS);
+  const headers = response ? await response.allHeaders() : {};
   const result = {
     page: path,
+    scheme,
     status: response ? response.status() : 0,
+    // The enforced policy of the answer, "" without one (a report-only header does not count).
+    policy: headers["content-security-policy"] || "",
     converted: await page.evaluate(
       () => document.querySelector('meta[name="papaia-csp"]')?.getAttribute("content") === "strict",
     ),
@@ -205,20 +211,20 @@ async function checkPage(context, baseUrl, path) {
 function summary(results, candidates) {
   const labels = candidates.map((c) => c.label);
   const lines = [
-    "### Content security policy (report-only)",
+    "### Content security policy (enforced)",
     "",
-    `| Page | Converted | Policy reports | Alpine refusals | Script errors |${labels.map((l) => ` Rewrites on ${l} |`).join("")}`,
-    `|---|---|---:|---:|---:|${labels.map(() => "---:|").join("")}`,
+    `| Page | Scheme | Enforced | Policy reports | Alpine refusals | Script errors |${labels.map((l) => ` Rewrites on ${l} |`).join("")}`,
+    `|---|---|---|---:|---:|---:|${labels.map(() => "---:|").join("")}`,
   ];
   for (const r of results) {
-    const mark = r.converted ? "yes" : "no";
+    const mark = r.policy ? "yes" : "no";
     const counts = labels.map((l) => ` ${r.candidates[l].length} |`).join("");
-    lines.push(`| \`${r.page}\` | ${mark} | ${r.violations.length} | ${r.alpine.length} | ${r.errors.length} |${counts}`);
+    lines.push(`| \`${r.page}\` | ${r.scheme} | ${mark} | ${r.violations.length} | ${r.alpine.length} | ${r.errors.length} |${counts}`);
   }
   const sum = (pick) => results.reduce((n, r) => n + pick(r).length, 0);
   const totals = labels.map((l) => ` ${sum((r) => r.candidates[l])} |`).join("");
   lines.push(
-    `| **Total** | | ${sum((r) => r.violations)} | ${sum((r) => r.alpine)} | ${sum((r) => r.errors)} |${totals}`,
+    `| **Total** | | | ${sum((r) => r.violations)} | ${sum((r) => r.alpine)} | ${sum((r) => r.errors)} |${totals}`,
   );
   for (const l of labels) {
     const distinct = new Set(results.flatMap((r) => r.candidates[l].map((x) => x.expression)));
@@ -234,12 +240,15 @@ async function main() {
   const browser = await chromium.launch();
   const results = [];
   try {
-    const context = await browser.newContext(
-      args.storage_state ? { storageState: args.storage_state } : {},
-    );
-    await context.addInitScript(collectViolations);
-    for (const path of args.pages) results.push(await checkPage(context, args.base_url, path));
-    await context.close();
+    for (const scheme of SCHEMES) {
+      const context = await browser.newContext({
+        ...(args.storage_state ? { storageState: args.storage_state } : {}),
+        colorScheme: scheme,
+      });
+      await context.addInitScript(collectViolations);
+      for (const path of args.pages) results.push(await checkPage(context, args.base_url, path, scheme));
+      await context.close();
+    }
     for (const candidate of args.candidates) {
       const all = results.flatMap((r) => r.expressions);
       const problems = await measure(browser, candidate, all);
@@ -262,16 +271,18 @@ async function main() {
   const broken = results.filter((r) => r.status !== 200);
   for (const r of broken) process.stderr.write(`csp-check: ${r.page} answered ${r.status}\n`);
   if (broken.length) return 2;
-  const failed = results.filter(
-    (r) => r.converted && (r.violations.length || r.alpine.length || r.errors.length),
-  );
+  const unenforced = results.filter((r) => !r.policy);
+  for (const r of unenforced) {
+    process.stderr.write(`csp-check: page ${r.page} (${r.scheme}) answered without the enforced policy\n`);
+  }
+  const failed = results.filter((r) => r.violations.length || r.alpine.length || r.errors.length);
   for (const r of failed) {
-    process.stderr.write(`csp-check: converted page ${r.page} is not clean:\n`);
+    process.stderr.write(`csp-check: page ${r.page} (${r.scheme}) is not clean:\n`);
     for (const v of r.violations) process.stderr.write(`  policy: ${v.directive} ${v.blocked} ${v.sample || ""}\n`);
     for (const a of r.alpine) process.stderr.write(`  alpine: ${a}\n`);
     for (const e of r.errors) process.stderr.write(`  error: ${e}\n`);
   }
-  return failed.length ? 1 : 0;
+  return failed.length || unenforced.length ? 1 : 0;
 }
 
 main().then(

@@ -1280,8 +1280,6 @@ groups:
       - W5 i18n/export/de.json#text.5a5e5f242ebfebed delete_vanished
       - W5 i18n/export/de.json#text.5b006429b596f953 QI_CONNECTIONS_SECRET
       - W5 i18n/export/de.json#text.5d85a73f3681c89c QI_CONNECTIONS_SECRET
-      - W5 i18n/export/de.json#text.5ec7946661eab043 example.com
-      - W5 i18n/export/de.json#text.5ec7946661eab043 icon.svg
       - W5 i18n/export/de.json#text.622861566e096d50 notifications.yaml
       - W5 i18n/export/de.json#text.62fed26c7891f632 jobs.yaml
       - W5 i18n/export/de.json#text.630ed1ac9dc6fbfc jobs.yaml
@@ -1449,8 +1447,6 @@ groups:
       - W5 i18n/export/en.json#text.5a5e5f242ebfebed delete_vanished
       - W5 i18n/export/en.json#text.5b006429b596f953 QI_CONNECTIONS_SECRET
       - W5 i18n/export/en.json#text.5d85a73f3681c89c QI_CONNECTIONS_SECRET
-      - W5 i18n/export/en.json#text.5ec7946661eab043 example.com
-      - W5 i18n/export/en.json#text.5ec7946661eab043 icon.svg
       - W5 i18n/export/en.json#text.622861566e096d50 notifications.yaml
       - W5 i18n/export/en.json#text.62fed26c7891f632 jobs.yaml
       - W5 i18n/export/en.json#text.630ed1ac9dc6fbfc jobs.yaml
@@ -1666,7 +1662,6 @@ groups:
       - W5 i18n/export/de.json#text.519e4a9259dfa705 http://
       - W5 i18n/export/de.json#text.519e4a9259dfa705 https://
       - W5 i18n/export/de.json#text.58550b62613229b4  /data
-      - W5 i18n/export/de.json#text.5ec7946661eab043 https://
       - W5 i18n/export/de.json#text.69baddde4d5828ba https://
       - W5 i18n/export/de.json#text.6a591a4cc4cb70ef http://
       - W5 i18n/export/de.json#text.6a591a4cc4cb70ef https://
@@ -1686,7 +1681,6 @@ groups:
       - W5 i18n/export/en.json#text.519e4a9259dfa705 http://
       - W5 i18n/export/en.json#text.519e4a9259dfa705 https://
       - W5 i18n/export/en.json#text.58550b62613229b4  /data
-      - W5 i18n/export/en.json#text.5ec7946661eab043 https://
       - W5 i18n/export/en.json#text.69baddde4d5828ba https://
       - W5 i18n/export/en.json#text.6a591a4cc4cb70ef http://
       - W5 i18n/export/en.json#text.6a591a4cc4cb70ef https://

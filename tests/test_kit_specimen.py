@@ -191,13 +191,7 @@ def test_the_specimen_is_rendered_inside_the_shell(client: TestClient) -> None:
     assert "data-pk-specimen" in main
 
 
-# -- converted from the start (tests/csp_baseline.json, app/csp.py) ------------------------
-
-
-def test_the_specimen_is_listed_as_converted() -> None:
-    baseline = json.loads((REPO / "tests" / "csp_baseline.json").read_text(encoding="utf-8"))
-    assert TEMPLATE in baseline["converted"]
-    assert TEMPLATE in csp.converted_templates()
+# -- under the enforced policy (app/csp.py) -------------------------------------------------
 
 
 def test_the_specimen_carries_the_strict_marker_once(client: TestClient) -> None:
@@ -213,7 +207,8 @@ def test_the_specimen_runs_the_csp_build_of_alpine_only(client: TestClient) -> N
 
 def test_the_specimen_has_nothing_the_target_policy_refuses(client: TestClient) -> None:
     response = client.get(PATH)
-    assert response.headers["content-security-policy-report-only"] == csp.POLICY
+    assert response.headers.get_list("content-security-policy") == [csp.POLICY]
+    assert "content-security-policy-report-only" not in response.headers
     markup = _markup(response.text)
     assert markup.inline_bodies == []
     assert markup.handlers == []
@@ -319,11 +314,14 @@ def test_the_browser_sees_no_report_and_no_alpine_error(
         timeout=180,
     )
     assert done.returncode == 0, done.stderr
-    (result,) = json.loads(report.read_text(encoding="utf-8"))["results"]
-    assert result["status"] == 200
-    assert result["converted"] is True
-    assert result["violations"] == []
-    assert result["alpine"] == []
-    assert result["errors"] == []
-    # Alpine started under the policy: the CSP build needs no `eval` to boot.
-    assert isinstance(result["alpine_version"], str) and result["alpine_version"]
+    results = json.loads(report.read_text(encoding="utf-8"))["results"]
+    assert [r["scheme"] for r in results] == ["light", "dark"]
+    for result in results:
+        assert result["status"] == 200
+        assert result["converted"] is True
+        assert result["policy"].startswith("default-src 'self'")
+        assert result["violations"] == []
+        assert result["alpine"] == []
+        assert result["errors"] == []
+        # Alpine started under the policy: the CSP build needs no `eval` to boot.
+        assert isinstance(result["alpine_version"], str) and result["alpine_version"]

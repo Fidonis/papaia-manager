@@ -11,16 +11,26 @@
 {%- endmacro %}
 
 {#
-  The page policy of a full page (app/csp.py, T-UI-03). `strict` is `strict_page()` of the
-  page's top-level template: a template tests/csp_baseline.json lists as converted carries
-  the marker the browser check reads (scripts/csp-check.sh) and runs on the CSP build of
-  Alpine; every other page runs on the standard build of the same version. Exactly one build
-  per page. base.html and the kit's specimen page (kit_specimen.html) use both macros.
+  swapped_island(id, value) is the island of a partial htmx swaps into a page. htmx drops every
+  script element of a swapped fragment (base.html, `allowScriptTags: false`), so the value goes
+  into a template element instead, which the browser neither renders nor runs and htmx keeps.
+  `tojson` leaves no `<`, `>`, `&` or `'` in it, so the content is a single text node;
+  readIsland() reads both kinds.
 #}
-{% macro strict_marker(strict) -%}
-{% if strict %}<meta name="papaia-csp" content="strict">{% endif %}
+{% macro swapped_island(id, value) -%}
+<template id="{{ island_id(id) }}" data-island="application/json">{{ value|tojson }}</template>
 {%- endmacro %}
 
-{% macro alpine_build(strict) -%}
-<script src="{{ asset_url('alpine-csp.min.js' if strict else 'alpine.min.js') }}" defer></script>
+{#
+  The page policy of a full page (app/csp.py, T-UI-03), enforced on every page. The marker
+  tells the browser check (scripts/csp-check.sh) that the page is one of the manager's; the
+  page runs the CSP build of Alpine, the only build the image ships. base.html and the kit's
+  specimen page (kit_specimen.html) use both macros.
+#}
+{% macro strict_marker() -%}
+<meta name="papaia-csp" content="strict">
+{%- endmacro %}
+
+{% macro alpine_build() -%}
+<script src="{{ asset_url('alpine-csp.min.js') }}" defer></script>
 {%- endmacro %}

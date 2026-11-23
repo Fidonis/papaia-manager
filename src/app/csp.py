@@ -1,25 +1,19 @@
-"""The strict content security policy of the manager, in report-only mode (T-UI-03).
+"""The content security policy of the manager, enforced (T-UI-03, oberfl 3.3, P4).
 
-Every HTML response carries the target policy as `Content-Security-Policy-Report-Only`. The
-browser reports what the pages still do against it -- inline scripts, inline event handlers,
-Alpine expressions that need `eval`, inline styles -- without blocking anything; the pages
-are converted group by group and the policy is enforced once they all are. No report
-endpoint: the browser check (scripts/csp-check.sh) collects the reports, so the policy adds no
-input surface. A response that brings a policy of its own (the logo route) keeps it.
-
-Which pages run on the CSP build of Alpine is the `converted` list of tests/csp_baseline.json,
-the file the ratchet of the tests keeps; the image carries a copy next to this module.
+Every HTML response carries `Content-Security-Policy`: scripts and styles only from the
+manager's own files, no `unsafe-inline` and no `unsafe-eval` in any directive, and
+`frame-ancestors` only the manager's own host. The pages have no inline script, no inline event
+handler, no `<style>` block and no `style` attribute (tests/test_csp_zero.py), and run the CSP
+build of Alpine, which evaluates no expression as code. htmx evaluates nothing and runs no
+script of a swapped fragment (the `htmx-config` meta element of base.html). No report endpoint:
+the browser check (scripts/csp-check.sh) collects violations, so the policy adds no input
+surface. A response that brings an enforced policy of its own (the logo route) keeps it.
 """
 
 from __future__ import annotations
 
-import json
 import re
-from functools import cache
-from pathlib import Path
 
-from jinja2 import pass_context
-from jinja2.runtime import Context
 from markupsafe import Markup, escape
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -36,12 +30,8 @@ POLICY = "; ".join(
         "frame-ancestors 'self'",
     )
 )
-HEADER = b"content-security-policy-report-only"
-_OWN_POLICY = frozenset({b"content-security-policy", HEADER})
+HEADER = b"content-security-policy"
 
-_HERE = Path(__file__).resolve().parent
-# The copy the image carries (docker/Dockerfile), then the file of a source checkout.
-_BASELINE_PATHS = (_HERE / "csp_baseline.json", _HERE.parents[1] / "tests" / "csp_baseline.json")
 _ISLAND_ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,79}")
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 # What a bound value may name: a property path of the component, or one of its methods called
@@ -49,8 +39,8 @@ _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 _BOUND_EXPRESSION = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\(\))?")
 
 
-class ReportOnlyPolicyMiddleware:
-    """Add the report-only policy to every HTML response that has no policy of its own."""
+class PolicyMiddleware:
+    """Enforce the policy on every HTML response that has no enforced policy of its own."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -67,31 +57,12 @@ class ReportOnlyPolicyMiddleware:
                 content_type = next(
                     (value for name, value in headers if name.lower() == b"content-type"), b""
                 )
-                if content_type.lower().startswith(b"text/html") and not names & _OWN_POLICY:
+                if content_type.lower().startswith(b"text/html") and HEADER not in names:
                     headers.append((HEADER, POLICY.encode("ascii")))
                     message = {**message, "headers": headers}
             await send(message)
 
         await self.app(scope, receive, send_with_policy)
-
-
-@cache
-def converted_templates() -> frozenset[str]:
-    """The templates that run on the CSP build of Alpine."""
-    for path in _BASELINE_PATHS:
-        if path.is_file():
-            doc = json.loads(path.read_text(encoding="utf-8"))
-            names = doc.get("converted")
-            if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
-                raise ValueError(f"{path}: `converted` must be a list of template names")
-            return frozenset(names)
-    raise FileNotFoundError("csp_baseline.json is missing next to app/csp.py and in tests/")
-
-
-@pass_context
-def strict_page(context: Context) -> bool:
-    """Whether the page being rendered is converted (its top-level template is listed)."""
-    return context.name in converted_templates()
 
 
 def island_id(value: object) -> str:

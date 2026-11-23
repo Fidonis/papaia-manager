@@ -50,14 +50,15 @@ for _key, _value in design_world.environment(
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import csp  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.core import module_catalog  # noqa: E402
 from app.main import create_app  # noqa: E402
 
 TEMPLATES = SRC / "app" / "templates"
 PAGES_JS = SRC / "app" / "static" / "js" / "pages"
-BASELINE = REPO / "tests" / "csp_baseline.json"
+# The names core/legacy.js put on `window` during the conversion; it is gone (T-UI-03), and no
+# page reaches them as globals any more.
+TRANSITION_NAMES = ("csrfToken", "fmt", "fmtPlural", "showToast")
 STRICT = '<meta name="papaia-csp" content="strict">'
 NODE = shutil.which("node")
 CSP_CHECK = REPO / "tests" / "csp_browser.mjs"
@@ -156,15 +157,6 @@ def test_the_templates_of_the_group_have_nothing_the_policy_refuses(name: str) -
     assert refused == dict.fromkeys(refused, 0)
 
 
-def test_the_group_has_no_row_in_the_baseline_and_its_pages_are_converted() -> None:
-    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
-    for name in GROUP:
-        assert name not in baseline["templates"], name
-    for template, _ in PAGES.values():
-        assert template in baseline["converted"]
-        assert template in csp.converted_templates()
-
-
 @pytest.mark.parametrize("path", sorted(PAGES))
 def test_the_page_runs_its_module_on_the_csp_build(client: TestClient, path: str) -> None:
     response = client.get(path)
@@ -240,10 +232,8 @@ def test_the_page_modules_import_what_they_use(module: str) -> None:
     assert imports, module
     for _, target in imports:
         assert target.startswith("../core/"), target
-    # No transitional global of core/legacy.js: the names are imports.
-    legacy = (SRC / "app" / "static" / "js" / "core" / "legacy.js").read_text(encoding="utf-8")
-    block = legacy[legacy.index("LEGACY_NAMES") :]
-    names = re.findall(r'"([^"]+)",', block[: block.index("]);")])
+    # No former transitional global: the names are imports.
+    names = TRANSITION_NAMES
     imported = {n.strip().split(" as ")[-1] for names_, _ in imports for n in names_.split(",")}
     body = _IMPORT.sub("", source)
     for name in names:
@@ -333,7 +323,12 @@ def test_the_browser_sees_no_report_and_no_alpine_error(
     )
     assert done.returncode == 0, done.stderr
     results = json.loads(report.read_text(encoding="utf-8"))["results"]
-    assert sorted(r["page"] for r in results) == sorted(PAGES)
+    # Every page in the light and the dark colour scheme.
+    assert sorted((r["page"], r["scheme"]) for r in results) == sorted(
+        (page, scheme) for page in PAGES for scheme in ("light", "dark")
+    )
+    for result in results:
+        assert result["policy"].startswith("default-src 'self'"), result
     for result in results:
         assert result["status"] == 200, result
         assert result["converted"] is True, result

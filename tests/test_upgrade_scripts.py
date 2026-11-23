@@ -56,7 +56,6 @@ for _key, _value in design_world.environment(
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import csp  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.core import images, module_catalog, runner  # noqa: E402
 from app.core.upgrade import (  # noqa: E402
@@ -72,8 +71,10 @@ from app.templating import templates  # noqa: E402
 
 TEMPLATES = SRC / "app" / "templates"
 JS = SRC / "app" / "static" / "js"
+# The names core/legacy.js put on `window` during the conversion; it is gone (T-UI-03), and no
+# page reaches them as globals any more.
+TRANSITION_NAMES = ("csrfToken", "fmt", "fmtPlural", "showToast")
 PAGES_JS = JS / "pages"
-BASELINE = REPO / "tests" / "csp_baseline.json"
 STRICT = '<meta name="papaia-csp" content="strict">'
 NODE = shutil.which("node")
 CSP_CHECK = REPO / "tests" / "csp_browser.mjs"
@@ -143,9 +144,12 @@ class _Markup(HTMLParser):
         if tag == "script":
             self._script = dict(attrs)
             self.scripts.append(self._script)
+        elif tag == "template" and dict(attrs).get("data-island") == "application/json":
+            # The island of a partial htmx swaps in (partials/_csp.html, swapped_island).
+            self._script = {"type": "application/json", "id": dict(attrs).get("id")}
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "script":
+        if tag in ("script", "template"):
             self._script = None
 
     def handle_data(self, data: str) -> None:
@@ -262,15 +266,6 @@ def test_the_templates_of_the_group_have_nothing_the_policy_refuses(name: str) -
     # Style attributes included: a converted page has no row in the baseline at all.
     counts = csp_scan.count_markup((TEMPLATES / name).read_text(encoding="utf-8"))
     assert counts == dict.fromkeys(csp_scan.KINDS, 0)
-
-
-def test_the_group_has_no_row_in_the_baseline_and_its_pages_are_converted() -> None:
-    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
-    for name in GROUP:
-        assert name not in baseline["templates"], name
-    for template, _ in PAGES.values():
-        assert template in baseline["converted"]
-        assert template in csp.converted_templates()
 
 
 def test_x_cloak_hides_what_alpine_shows_until_it_starts() -> None:
@@ -436,10 +431,8 @@ def test_the_page_modules_import_what_they_use(module: str) -> None:
     imports = _IMPORT.findall(source)
     for _, target in imports:
         assert target.startswith(("../core/", "../../core/", "./")), target
-    # No transitional global of core/legacy.js: the names are imports.
-    legacy = (JS / "core" / "legacy.js").read_text(encoding="utf-8")
-    block = legacy[legacy.index("LEGACY_NAMES") :]
-    names = re.findall(r'"([^"]+)",', block[: block.index("]);")])
+    # No former transitional global: the names are imports.
+    names = TRANSITION_NAMES
     imported = {n.strip().split(" as ")[-1] for names_, _ in imports for n in names_.split(",")}
     body = _IMPORT.sub("", source)
     for name in names:
@@ -589,7 +582,12 @@ def test_the_browser_sees_no_report_and_no_alpine_error(
     )
     assert done.returncode == 0, done.stderr
     results = json.loads(report.read_text(encoding="utf-8"))["results"]
-    assert sorted(r["page"] for r in results) == sorted(PAGES)
+    # Every page in the light and the dark colour scheme.
+    assert sorted((r["page"], r["scheme"]) for r in results) == sorted(
+        (page, scheme) for page in PAGES for scheme in ("light", "dark")
+    )
+    for result in results:
+        assert result["policy"].startswith("default-src 'self'"), result
     for result in results:
         assert result["status"] == 200, result
         assert result["converted"] is True, result

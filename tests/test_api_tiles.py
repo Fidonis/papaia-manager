@@ -571,7 +571,7 @@ def test_an_installation_written_before_the_icons_gets_them_too(
                         {
                             "name": "Keycloak",
                             "href": "https://kc.test",
-                            "icon": "https://kc.test/own.svg",
+                            "icon": "/static/own/kc.svg",
                         },
                     ],
                 }
@@ -584,9 +584,109 @@ def test_an_installation_written_before_the_icons_gets_them_too(
     body = _admin(client).get("/partials/tiles").text
 
     assert 'src="/static/icons/librechat.svg"' in body
-    assert 'src="https://kc.test/own.svg"' in body
+    assert 'src="/static/own/kc.svg"' in body
     assert "/static/icons/keycloak.svg" not in body, "an icon the operator set wins"
     assert path.read_text(encoding="utf-8") == text, "rendering must not rewrite the file"
+
+
+def test_a_stored_icon_on_another_site_is_not_shown_and_the_file_stays(
+    client: TestClient, config_dir: Path
+) -> None:
+    """The enforced policy loads images from this site only (img-src 'self' data:). A
+    tiles.yaml written before it may name an icon elsewhere: the dashboard falls back to the
+    bundled icon or the lettered badge instead of an image the browser would block."""
+    text = yaml.dump(
+        {
+            "version": 1,
+            "groups": [
+                {
+                    "name": "Mine",
+                    "tiles": [
+                        {
+                            "name": "Keycloak",
+                            "href": "https://kc.test",
+                            "icon": "https://kc.test/own.svg",
+                        },
+                        {
+                            "name": "Wiki",
+                            "href": "https://wiki.test",
+                            "icon": "https://example.com/icon.svg",
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+    path = config_dir / "manager" / "tiles.yaml"
+    path.write_text(text, encoding="utf-8")
+
+    body = _admin(client).get("/partials/tiles").text
+
+    assert "kc.test/own.svg" not in body
+    assert "example.com/icon.svg" not in body
+    assert 'src="/static/icons/keycloak.svg"' in body
+    assert "Wiki" in body
+    assert path.read_text(encoding="utf-8") == text, "rendering must not rewrite the file"
+
+
+def test_an_icon_on_another_site_is_refused_on_save(client: TestClient) -> None:
+    revision = _tiles(client)["revision"]
+
+    response = _admin(client).put(
+        "/api/v1/tiles",
+        headers=_headers(),
+        json=_draft(
+            revision,
+            _group("Tools", _tile("Wiki", "https://wiki.test", icon="https://example.com/i.svg")),
+        ),
+    )
+
+    assert response.status_code == 422
+    [problem] = response.json()["detail"]
+    assert problem["field"] == "icon"
+    assert "this site" in problem["message"]
+
+
+def test_an_icon_on_this_site_or_a_data_image_is_saved(client: TestClient) -> None:
+    revision = _tiles(client)["revision"]
+
+    response = _admin(client).put(
+        "/api/v1/tiles",
+        headers=_headers(),
+        json=_draft(
+            revision,
+            _group(
+                "Tools",
+                _tile("Wiki", "https://wiki.test", icon="/static/own/wiki.svg"),
+                _tile("Docs", "https://docs.test", icon="data:image/png;base64,iVBORw0KGgo="),
+            ),
+        ),
+    )
+
+    assert response.status_code == 200
+
+
+def test_resolution_checks_icons_by_the_icon_rule(client: TestClient) -> None:
+    """The editor's live check of the icon field gives the verdict the save gives."""
+    response = _admin(client).post(
+        "/api/v1/tiles/resolve",
+        headers=_headers(),
+        json={"values": ["https://wiki.test"], "icons": ["https://example.com/i.svg", "/i.svg"]},
+    )
+
+    results = response.json()
+    assert [result["ok"] for result in results] == [True, False, True]
+    assert "this site" in results[1]["reason"]
+
+
+def test_resolution_refuses_an_unknown_field(client: TestClient) -> None:
+    response = _admin(client).post(
+        "/api/v1/tiles/resolve",
+        headers=_headers(),
+        json={"values": [], "colour": "red"},
+    )
+
+    assert response.status_code == 422
 
 
 def test_the_editor_is_handed_the_bundled_icons(client: TestClient) -> None:

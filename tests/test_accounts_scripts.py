@@ -93,6 +93,12 @@ def _island(html: str, island_id: str) -> Any:
         if re.search(rf'\bid="{re.escape(island_id)}"', attrs)
         and 'type="application/json"' in attrs
     ]
+    # The island of a partial htmx swaps in is a template (partials/_csp.html, swapped_island).
+    found += re.findall(
+        rf'<template id="{re.escape(island_id)}" data-island="application/json">(.*?)</template>',
+        html,
+        re.S,
+    )
     assert len(found) == 1, f"{island_id}: {len(found)} islands"
     return json.loads(found[0])
 

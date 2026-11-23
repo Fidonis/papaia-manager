@@ -259,6 +259,14 @@ test("labels, counts and classes come from the store", () => {
   assert.equal(store.initial(""), "?");
   assert.equal(store.initial("Keycloak"), "K");
   assert.equal(store.iconFor(store.groups[0].tiles[0]), "/l.svg");
+  // The enforced policy loads images from this site only: an icon elsewhere is never put
+  // into an <img>; the bundled icon or the badge stands in, as on the dashboard.
+  assert.equal(store.iconFor({ name: "LibreChat", icon: "https://example.com/icon.svg" }), "/l.svg");
+  assert.equal(store.iconFor({ name: "Wiki", icon: "https://example.com/icon.svg" }), "");
+  assert.equal(store.iconFor({ name: "Wiki", icon: "//cdn.example.test/i.svg" }), "");
+  assert.equal(store.iconFor({ name: "Wiki", icon: "/own/w.svg" }), "/own/w.svg");
+  assert.equal(store.iconFor({ name: "Wiki", icon: "data:image/png;base64,AA==" }), "data:image/png;base64,AA==");
+  assert.equal(store.iconFor({ name: "Wiki", icon: "data:text/html,x" }), "");
   assert.equal(store.widgetTileIcon(store.groups[1].tiles[0]), "M1");
   assert.equal(store.widgetDescription(store.groups[1].tiles[0]), "Containers");
   assert.equal(store.widgetDescription({ widget: "nope" }), "No widget with this id exists.");
@@ -316,7 +324,7 @@ test("the tile dialog checks the name and applies to the draft", async () => {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls.fetch[0].url, "/api/v1/tiles/resolve");
   assert.equal(calls.fetch[0].options.headers["X-CSRF-Token"], "csrf-1");
-  assert.deepEqual(JSON.parse(calls.fetch[0].options.body), { values: ["{{PAPAIA_HOST}}/x", ""] });
+  assert.deepEqual(JSON.parse(calls.fetch[0].options.body), { values: ["{{PAPAIA_HOST}}/x"], icons: [""] });
   assert.equal(store.dialog.resolved, "https://papaia.example.test/x");
   store.setTileVisibility("admin");
   store.applyTile();

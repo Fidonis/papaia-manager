@@ -61,12 +61,15 @@ only through the core's `papaia-docker-gate`.
   of the kit's administration map is a navigation row.
 - A design check (CI job `design`) runs the kit's conformance check over every page in light and
   dark.
-- Content security policy, report-only. Every HTML response carries the strict target policy as
-  `Content-Security-Policy-Report-Only` (`script-src 'self'`, `style-src 'self'`, no
-  `unsafe-inline`, no `unsafe-eval`, no report endpoint). It blocks nothing yet: the pages are
-  converted to static ES modules and JSON data islands group by group, the CI job `csp` checks
-  the reports in a browser against `tests/csp_baseline.json`, and the policy is enforced once
-  every page is converted.
+- Content security policy, enforced. Every HTML response carries `Content-Security-Policy`
+  (`script-src 'self'`, `style-src 'self'`, `frame-ancestors 'self'`, no `unsafe-inline`, no
+  `unsafe-eval`, no report endpoint), so a script that gets into a page through a value is not
+  run. The pages moved to static ES modules and JSON data islands group by group; every page runs
+  the CSP build of Alpine (the standard build is no longer in the image), htmx evaluates nothing
+  and runs no script of a swapped fragment, and no global names are left on `window`.
+  `tests/test_csp_zero.py` keeps every template free of inline scripts, `on*` attributes,
+  unsupported Alpine expressions, `<style>` blocks and `style` attributes, and the CI job `csp`
+  fails on any violation on any page in both colour schemes.
 - Inventory page at `/inventory` (`GET /api/v1/inventory`, `GET /api/v1/inventory/export`) for
   the realm role `MANAGER_AUDITOR_ROLE` (default `papaia-auditor`) alone: the work objects of
   Studio, Flow, Data and Assistant, collected from each module's `GET /internal/inventory` over
@@ -136,6 +139,13 @@ What happens to the manager's own data (`$PAPAIA_CONFIG_DIR/manager/`):
   the platform has no Mein Bereich. With Mein Bereich, the account's language and appearance are
   the ones kept there; the manager's file is not read and not copied.
 - The audit outbox `manager/audit/outbox.sqlite3` is new and starts empty.
+- Dashboard tile icons (`manager/tiles.yaml`): the enforced content security policy loads images
+  from the manager's own site and from `data:` only (`img-src 'self' data:`). An `icon` is now a
+  path on the manager's site (`/…`) or a `data:image/` value of at most 64 KiB. A stored icon on
+  another site (`https://…`) is no longer shown: the tile shows its bundled icon (default
+  applications) or the lettered badge instead, and the file is not rewritten. The editor marks
+  such an icon, and a save (editor or raw file) is refused until it is cleared or replaced, for
+  example by the image as a `data:image/` value.
 
 **Rollback:** `papaia-ctl rollback` returns the whole installation, including manager 1.6.0 or
 1.7.0 and its data, to the restore point the upgrade took. Manager 1.7.0 and earlier ignore

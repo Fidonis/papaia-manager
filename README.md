@@ -359,7 +359,12 @@ the host is detected and refused rather than overwritten. The raw file is also
 editable from the editor's overflow menu. The default tiles (LibreChat, LiteLLM,
 Keycloak, NGINX Proxy Manager and Qdrant) show an icon that ships with the
 manager; a tile of an older `tiles.yaml` without an icon gets it by its name, and
-an `icon` set on the tile always wins. The files, their sources and licences are
+an `icon` set on the tile wins. An `icon` is a path on the manager's own site
+(`/…`) or a `data:image/` value of at most 64 KiB, because the enforced content
+security policy loads images from nowhere else (`img-src 'self' data:`); an
+address on another site is refused on save, and a stored one (from a file
+written before 1.8.0) is not shown: the tile falls back to its bundled icon or
+the lettered badge, and the file stays as it is. The files, their sources and licences are
 listed in `src/app/static/icons/NOTICE.txt`; the logos stay the property of their
 owners (see [TRADEMARK.md](TRADEMARK.md)). `{{KEY}}` placeholders in tile links
 resolve against the core `.env`, and each tile's `visibility: all | admin` is
@@ -1015,21 +1020,40 @@ dry-run preview; the prune itself is recorded as its own audit entry.
 
 ## Content security policy
 
-Every HTML response carries the strict target policy in **report-only** mode:
+Every HTML response carries this policy, **enforced**:
 
 ```
-Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; style-src 'self';
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self';
   img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self';
   form-action 'self'; frame-ancestors 'self'
 ```
 
-No directive allows `unsafe-inline` or `unsafe-eval`. The browser reports what a page still
-does against the policy and blocks nothing; enforcing it follows once every page is converted.
-There is no report endpoint, so the policy adds no input to the server; the browser check
-below collects the reports. A response with a policy of its own keeps it (the logo at
-`/_kit/brand/logo`). The middleware is `src/app/csp.py`.
+No directive allows `unsafe-inline`, `unsafe-eval` or `unsafe-hashes`, and there is no
+exception for `style` attributes: the browser runs only the manager's own script files, applies
+only its own stylesheets, and lets only the manager's own host frame a page. A script that gets
+into a page by way of a value (a display name, a collection name, the text of a notification)
+is not run. There is no report endpoint, so the policy adds no input to the server. A
+response with an enforced policy of its own keeps it (the logo at `/_kit/brand/logo`). The
+middleware is `src/app/csp.py`. Images load from the manager's own site and from `data:` only,
+so a dashboard tile's `icon` is held to the same rule (see **Dashboard and access tiers**).
 
-**Converting a page.** A converted page has no inline script, no inline event handler
+**How to check it.**
+
+- In a browser: open any page, then the developer tools. The response headers of the page show
+  `Content-Security-Policy` as above (not `-Report-Only`), and the console shows no
+  "Refused to ..." message.
+- From the command line: `curl -sI -b 'papaia_manager_session=<cookie>' https://<manager>/ |
+  grep -i content-security-policy` prints the policy line.
+- In the repository: `tests/test_csp_policy.py` checks the header on every page of
+  `ui/pages.yaml`, the no-access page and the partials; `tests/test_csp_zero.py` checks that
+  no template has anything the policy refuses; `scripts/csp-check.sh` (below) opens every page
+  in a browser in both colour schemes and fails on any violation; and
+  `tests/test_csp_hostile_browser.py` puts markup and script into a display name, a collection
+  name and a notification and checks that each is shown as text, with no dialog and no
+  violation; it also opens the dashboard and the tile editor with tiles whose stored icon is on
+  another site and checks that no such image is built.
+
+**Rules for every page.** A page has no inline script, no inline event handler
 (`onclick`, ...), no inline style and no Alpine expression that needs `eval`:
 
 - Page code is an ES module under `src/app/static/js/pages/<group>.js`, shared helpers are
@@ -1041,7 +1065,7 @@ below collects the reports. A response with a policy of its own keeps it (the lo
   what it uses (`fmt`, `csrfToken`, `readIsland`, ...) instead of reaching for the transition
   globals; the page's toaster, failure report and actions are the one instance of
   `js/core/page.js` (`pageCore()`), which `main.js` uses as well through `js/core/runtime.js`. `main.js` is never imported
-  again, and a page module reads no name of `js/core/legacy.js`.
+  again, and it puts no name on `window`: the transition globals are gone.
 - Global functions become methods of an Alpine store or of an `Alpine.data` component the
   module registers; `on*` attributes become Alpine event bindings. An expression is a plain
   call or property (no arrow function, template literal, several statements, `window`,
@@ -1052,12 +1076,13 @@ below collects the reports. A response with a policy of its own keeps it (the lo
 - Server values reach a module as a JSON data island, never inside a script: the macro
   `data_island(id, value)` of `templates/partials/_csp.html` writes
   `<script type="application/json">` (escaped with `tojson`, so `<`, `>`, `&` and `'` never end
-  it) and `readIsland(id)` of `js/core/islands.js` reads it.
-- Alpine runs in its CSP build on a converted page: `base.html` loads exactly one build per
-  page, the CSP build for the templates listed under `converted` in `tests/csp_baseline.json`
-  and the standard build of the same version otherwise. The macros `strict_marker` and
-  `alpine_build` of `templates/partials/_csp.html` write the marker and the build; a converted
-  template has no row of findings in the baseline.
+  it) and `readIsland(id)` of `js/core/islands.js` reads it. A partial that htmx swaps into a
+  page uses `swapped_island(id, value)` instead, which writes
+  `<template data-island="application/json">`: htmx drops every script element of a swapped
+  fragment, data islands included, but keeps a template. `readIsland(id)` reads both.
+- Alpine runs in its CSP build on every page, the only build the image ships: the macros
+  `strict_marker` and `alpine_build` of `templates/partials/_csp.html` write the marker the
+  browser check reads and the build.
 - A page module that registers Alpine components (`Alpine.data` on `alpine:init`) is loaded
   in the block `page_modules` of `base.html`, after `js/core/main.js` and before Alpine; module
   and deferred scripts run in document order, so its components exist when Alpine starts.
@@ -1067,8 +1092,8 @@ below collects the reports. A response with a policy of its own keeps it (the lo
   text) instead of `x-html`. An element shown by `x-show` starts hidden with `x-cloak`
   (stylesheet rule) instead of `style="display:none"`; a size computed per render is a
   `data-*` attribute the module sets as a style property.
-- htmx evaluates nothing (`<meta name="htmx-config">` with `allowEval: false`) and injects no
-  style (`includeIndicatorStyles: false`; the indicator rules are in the stylesheet). A poll
+- htmx evaluates nothing (`<meta name="htmx-config">` with `allowEval: false`), runs no
+  script of a swapped fragment (`allowScriptTags: false`) and injects no style (`includeIndicatorStyles: false`; the indicator rules are in the stylesheet). A poll
   that should pause while the tab is hidden carries `data-poll-visible` and the trigger
   `visibilitychange from:document` instead of an htmx trigger filter; `js/core/poll.js`
   cancels its requests while the page is hidden.
@@ -1091,9 +1116,8 @@ below collects the reports. A response with a policy of its own keeps it (the lo
 `tile_editor.html`): the editor is `js/pages/dashboard.js`, loaded for administrators only
 together with Sortable. Its texts come from the island `dashboard-texts`, and the draft from
 the island `tiles-editor` of the editor partial, which the component `tileEditor` hands to the
-store `tiles` as the partial comes in. The editor partial still carries inline `style`
-attributes, which the policy reports under `style-src`; they move into classes before the
-policy is enforced. `tests/test_dashboard_scripts.py` checks the templates and the islands, and
+store `tiles` as the partial comes in. What the editor hides until Alpine starts carries
+`x-cloak`. `tests/test_dashboard_scripts.py` checks the templates and the islands, and
 `tests/test_dashboard_browser.py` the browser path in both colour schemes: the tiles load and
 refresh, the editor adds, moves and removes a tile, the layout is saved.
 
@@ -1102,7 +1126,7 @@ with `partials/audit_list.html`; modules `js/pages/users.js`, `roles.js`, `audit
 audit list hands its filter choices to the page in the island `audit-facets`;
 `tests/test_accounts_browser.py` walks the three pages in a real browser on the CSP build.
 
-`kit_specimen.html` (`/_kit/specimen`), converted from the start. It
+`kit_specimen.html` (`/_kit/specimen`), on the strict policy from the start. It
 renders the kit's reference content only, so it loads neither `app.css`, htmx nor
 `js/core/main.js`; it loads the CSP build of Alpine, and the browser check confirms that the
 build starts on it without a report, refused expression or script error
@@ -1202,19 +1226,22 @@ another embedding model and abort the run, read the chart by pointer and keyboar
 stand-in RAG system of `tests/rag_serve.py` and fails on any report of the policy, refused
 Alpine expression or script error.
 
-**Ratchet.** `tests/test_csp_ratchet.py` counts per template the executable inline scripts,
+**Zero rule.** `tests/test_csp_zero.py` counts per template the executable inline scripts,
 `on*` attributes, Alpine attributes the CSP build rejects, `<style>` blocks and `style`
-attributes (`tests/csp_scan.py`) and compares them with `tests/csp_baseline.json`. A count
-above the baseline fails; a count below it fails too until the baseline is lowered in the same
-change, so it only shrinks. `python3 tests/csp_scan.py` prints the current counts. Measured
-when the ratchet was introduced: 46 inline scripts, 123 `on*` attributes, 109 Alpine
-attributes the CSP build rejects, 1 `<style>` block and 253 `style` attributes.
+attributes (`tests/csp_scan.py`); every count of every template must be zero.
+`python3 tests/csp_scan.py` prints the templates with a finding and exits 1 if there is one.
+It replaced the ratchet of the conversion, which started from 46 inline scripts, 123 `on*`
+attributes, 109 Alpine attributes the CSP build rejects, 1 `<style>` block and 253 `style`
+attributes.
 
 **Browser check.** `scripts/csp-check.sh PORT REPORT [SUMMARY [LABEL=FILE ...]]` (CI job
 `csp`, after `scripts/design-tools.sh`) serves the manager in the stand-in world of the tests,
-signed in as a test administrator, and opens every page of `ui/pages.yaml` in Chromium. A
-converted page fails on any report of the policy, refused Alpine expression or script error;
-for the others the counts are written to the summary. Each `LABEL=FILE` is an Alpine build:
+signed in as the test person of each page, and opens every page of `ui/pages.yaml` in
+Chromium, in the light and the dark colour scheme. A page fails on any violation of the
+policy (`securitypolicyviolation`), refused Alpine expression or script error, and when it
+answers without the enforced policy; the counts are written to the summary. The pages of the
+list render every full page of the template folder (`tests/test_csp_policy.py`). Each
+`LABEL=FILE` is an Alpine build:
 every Alpine expression of every page is evaluated by that build in a blank page, and the
 expressions it cannot evaluate are counted per page.
 
@@ -1226,7 +1253,8 @@ over the pages), the CSP build of the release the manager used before, 3.14.9, n
 method names only, so every comparison, assignment, call with arguments and object literal
 would have to move into a component; 3.17.5 parses expressions and refuses `x-html`, arrow
 functions, template literals, global objects, statement sequences, `new`, `typeof`, optional
-chaining and methods inside `x-data` objects. Both builds of the image are therefore 3.17.5.
+chaining and methods inside `x-data` objects. The image therefore ships `@alpinejs/csp`
+3.17.5; the standard build left the image when the policy was enforced.
 The forms `tests/csp_scan.py` counts are the ones the 3.17.5 build refused; over all 1,909
 attributes of the templates the scanner and the build agree on all but one, an index the
 measurement's stand-in values cannot resolve.
@@ -1267,15 +1295,12 @@ actions); `main.js` and the page modules import it from there, so a page module 
 `showToast` or `actions.ragRequest` as imports, never as globals. A fragment htmx swaps in
 announces its state without inline script: it names a window event in `data-announce`
 (`papaia-...`) and its state in `data-active`, and `announce.js` dispatches the event with
-`{active}` after every settle. During the transition
-`core/legacy.js` assigns the names page templates still call as globals (`showToast`,
-`addonAction`, `fmt`, ...) to `window`, listed by name; `tests/test_js_core.py` keeps the list
-equal to the names the templates use, and a page that moves into a module drops its names.
-The core modules load before htmx and Alpine, so these names exist before Alpine evaluates an
-expression; an inline page script that needs one while the page is still being parsed waits
-for `alpine:init`.
+`{active}` after every settle. The core modules put no name on `window`: the transition
+module `core/legacy.js`, which did while the pages moved into modules, is gone, and
+`tests/test_js_core.py` checks that no module assigns one of its former names. A template
+expression that formats a sentence (`fmt`, `fmtPlural`) calls a method of its component.
 
-**Page modules.** A converted page puts its module into the block `page_modules` of
+**Page modules.** A page puts its module into the block `page_modules` of
 `base.html` (`<script type="module" src="...">`). It loads after `core/main.js` and before
 htmx and Alpine, so a component it registers with `Alpine.data` on `alpine:init` exists when
 Alpine starts. The module takes the page's toaster and actions from `core/runtime.js`, or from
@@ -1636,11 +1661,11 @@ papaia-manager/
 │       │                   # api_nodes, ui_nodes (a distributed installation),
 │       │                   # stack_guard (the refusals the configuration routes share)
 │       ├── templates/      # Jinja2 pages + HTMX partials
-│       └── static/         # htmx.min.js, alpine.min.js, alpine-csp.min.js, sortable.min.js,
+│       └── static/         # htmx.min.js, alpine-csp.min.js, sortable.min.js,
 │                           # app.css (Tailwind build), icons/ (the default tiles' logos, with
 │                           # NOTICE.txt), js/core/ and js/pages/ (ES modules, no bundler)
-├── tests/                  # pytest suite (sibling to src/); csp_baseline.json is the ratchet
-│                           # of the content security policy
+├── tests/                  # pytest suite (sibling to src/); test_csp_zero.py keeps every
+│                           # template free of what the content security policy refuses
 └── docker/
     ├── Dockerfile          # multi-stage build; installs Docker CLI + compose plugin and an SSH client
     ├── entrypoint.sh       # names the host's user id for OpenSSH, then runs the command

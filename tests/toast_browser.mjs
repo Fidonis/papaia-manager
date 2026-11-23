@@ -82,7 +82,11 @@ async function main() {
       before);
 
     // Success: status region, at least 6 s, longer while the pointer rests on it.
-    await page.evaluate(() => window.showToast("success", "The catalog was saved."));
+    // showToast is no global: the page's own instance comes from core/runtime.js.
+    await page.evaluate(async () => {
+      const { showToast } = await import("/static/js/core/runtime.js");
+      showToast("success", "The catalog was saved.");
+    });
     let now = await page.evaluate(regions);
     check("a success toast lands in the status region",
       now.status.length === 1 && now.status[0].tone === "success" && now.alert.length === 0, now);
@@ -149,7 +153,9 @@ async function main() {
 
     // axe waits on timers of its own: the page's time flows again.
     await page.clock.resume();
-    await page.addScriptTag({ content: axeSource });
+    // The page enforces its policy, which refuses an inline script tag; the source is evaluated
+    // through the browser's debugging protocol instead, which the policy does not govern.
+    await page.evaluate(axeSource);
     const axe = await page.evaluate(async () => {
       const result = await window.axe.run("#pk-toasts", { resultTypes: ["violations"] });
       return result.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length }));

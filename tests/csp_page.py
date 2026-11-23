@@ -1,6 +1,6 @@
-"""Checks of a rendered page that runs on the CSP build of Alpine (T-UI-03), for page tests.
+"""Checks of a rendered page under the enforced policy (T-UI-03), for page tests.
 
-A converted page carries the strict marker, loads the CSP build of Alpine and no other, has no
+Every page carries the strict marker, loads the CSP build of Alpine and no other, has no
 executable inline script and no inline event handler, and loads its page module
 (static/js/pages/<group>.js) as an ES module after the shared main.js and before Alpine, so
 the module registers its components before Alpine starts. Server values reach the module only
@@ -23,7 +23,7 @@ def _scripts(html: str) -> list[tuple[str, str]]:
 
 
 def assert_converted_page(html: str, module: str) -> None:
-    """`html` is a converted page that loads `module` (a path under static/js/pages/)."""
+    """`html` is a page under the policy that loads `module` (a path under static/js/pages/)."""
     assert html.count('<meta name="papaia-csp" content="strict">') == 1
     scripts = _scripts(html)
     inline = [

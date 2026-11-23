@@ -11,7 +11,7 @@
 // or containers, so the partials htmx loads are the manager's own templates rendered with
 // sample data by the test (--fragments DIR) and the API's answers are routed in the browser;
 // the pages, the CSRF token and the scripts are the manager's own. Every page must stay free
-// of policy reports (report-only header), refused Alpine expressions and script errors.
+// of policy reports (enforced header), refused Alpine expressions and script errors.
 //
 // Usage: node tests/addons_services_browser.mjs --base-url URL --storage-state FILE
 //          --fragments DIR [--shots DIR]

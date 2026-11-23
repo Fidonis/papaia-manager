@@ -2,7 +2,7 @@
 
 Serves the manager on 127.0.0.1 with the map of tests/test_knowledge_map.py (the map server
 is the fake of that file) and runs tests/knowledge_map_browser.mjs in Chromium, in the light
-and the dark theme: no report of the report-only policy, no refused Alpine expression and no
+and the dark theme: no report of the enforced policy, no refused Alpine expression and no
 script error; the map renders, the view-as filter and the entry search work, a node opens its
 detail by click and by keyboard, and every tab whose expressions were rewritten renders. Then
 tests/csp_browser.mjs measures every Alpine expression of the page against the shipped CSP
@@ -199,12 +199,8 @@ def test_the_page_works_in_both_themes_without_a_report(
     assert [r["theme"] for r in results] == ["light", "dark"]
     for result in results:
         assert result["converted"] is True
-        assert (
-            result["alpine_version"]
-            == json.loads((REPO / "tests" / "csp_baseline.json").read_text(encoding="utf-8"))[
-                "alpine"
-            ]["version"]
-        )
+        dockerfile = (REPO / "docker" / "Dockerfile").read_text(encoding="utf-8")
+        assert f"ARG ALPINE_CSP_VERSION={result['alpine_version']}\n" in dockerfile
         assert result["violations"] == []
         assert result["alpine"] == []
         assert result["errors"] == []
@@ -242,7 +238,10 @@ def test_every_expression_of_the_page_evaluates_on_the_csp_build(
         timeout=300,
     )
     assert done.returncode == 0, done.stdout + done.stderr
-    (result,) = json.loads(report.read_text(encoding="utf-8"))["results"]
-    assert result["converted"] is True
-    assert result["expressions"], "no Alpine expression found on the page"
-    assert result["candidates"]["csp"] == []
+    results = json.loads(report.read_text(encoding="utf-8"))["results"]
+    # The check opens the page in the light and the dark colour scheme.
+    assert [r["scheme"] for r in results] == ["light", "dark"]
+    for result in results:
+        assert result["converted"] is True
+        assert result["expressions"], "no Alpine expression found on the page"
+        assert result["candidates"]["csp"] == []

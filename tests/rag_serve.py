@@ -7,8 +7,16 @@ administrator. Qdrant, the ingester and LiteLLM are the in-memory fakes of the t
 `httpx.MockTransport`, so the Embedding, Collections and Models & Usage pages have something
 to show and to change; nothing talks to a real service. A test tool, never part of the image.
 
+With --hostile the world carries the value design_world.HOSTILE, which is markup and script
+at once, in the places the browser check of the enforced policy reads it from
+(tests/csp_hostile_browser.mjs): the name the frame shows for the signed-in administrator, the
+display name of an account in the simulated Keycloak, the name of a collection in the fake
+Qdrant and the name of a notification recipient. The dashboard then also holds a group of tiles
+whose icon is on another site (design_world.OFFSITE_ICON), written as a tiles.yaml of an older
+release would be, past the editor's check.
+
 Usage (from the repository root):
-  uv run --project src python tests/rag_serve.py --port PORT --storage-state FILE
+  uv run --project src python tests/rag_serve.py --port PORT --storage-state FILE [--hostile]
 """
 
 from __future__ import annotations
@@ -30,6 +38,7 @@ sys.path.insert(0, str(REPO))
 
 import design_serve  # noqa: E402
 import design_world  # noqa: E402
+from fake_keycloak import FakeKeycloak  # noqa: E402
 
 MODEL = "nomic-embed-text"
 
@@ -66,8 +75,9 @@ def make_rag_world(root: Path) -> tuple[Path, Path]:
     return config, workspace
 
 
-def stand_ins(app: object, config: Path) -> None:
-    """Answer Qdrant, the ingester and LiteLLM from the fakes of the tests."""
+def stand_ins(app: object, config: Path, *, hostile: bool = False) -> None:
+    """Answer Qdrant, the ingester and LiteLLM from the fakes of the tests; with `hostile` the
+    fake Qdrant also holds a collection named design_world.HOSTILE."""
     from fastapi import FastAPI
 
     from app.config import get_settings
@@ -88,6 +98,8 @@ def stand_ins(app: object, config: Path) -> None:
         meta_point_id("kb"),
         {"collection": "kb", "embedding_model": MODEL, "vector_dimension": 4},
     )
+    if hostile:
+        qdrant.add(design_world.HOSTILE, size=4)
     fleet = Fleet()
     fleet.add("qdrant.test", qdrant)
     fleet.add("qdrant-ingest", FakeIngest(config))
@@ -113,10 +125,45 @@ def stand_ins(app: object, config: Path) -> None:
     app.dependency_overrides[get_litellm_transport] = lambda: litellm.transport
 
 
+def seed_hostile(config: Path, keycloak: FakeKeycloak) -> None:
+    """An account whose display name and a notification recipient whose name is HOSTILE, and
+    tiles whose icon is on another site."""
+    from app.core.notifications import store
+    from app.core.tiles import Tile, TileGroup, load_tiles, save_tiles
+
+    tiles = load_tiles(str(config))
+    tiles.groups.append(
+        TileGroup(
+            name="Elsewhere",
+            tiles=[
+                Tile(name="Wiki", href="https://wiki.example.test", icon=design_world.OFFSITE_ICON),
+                Tile(
+                    name="Keycloak", href="https://sso.example.test", icon=design_world.OFFSITE_ICON
+                ),
+            ],
+        )
+    )
+    save_tiles(str(config), tiles)
+
+    keycloak.add_user("hostile", email="hostile@example.test", first=design_world.HOSTILE)
+    store.add_recipient(
+        str(config),
+        store.load_config(str(config)).revision,
+        name=design_world.HOSTILE,
+        kind="webhook",
+        target="https://hooks.example.test/papaia",
+        enabled=True,
+        events=[],
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--port", type=_port, required=True)
     parser.add_argument("--storage-state", type=Path, required=True)
+    parser.add_argument(
+        "--hostile", action="store_true", help="put markup and script into names and texts"
+    )
     args = parser.parse_args(argv)
 
     root = Path(tempfile.mkdtemp(prefix="papaia-manager-rag-"))
@@ -135,9 +182,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     from app.main import create_app
 
     app = create_app()
-    design_world.stand_ins(app)
-    stand_ins(app, config)
-    design_serve.write_storage_state(args.storage_state, port=args.port, secret=secret)
+    keycloak = design_world.stand_ins(app)
+    stand_ins(app, config, hostile=args.hostile)
+    if args.hostile:
+        seed_hostile(config, keycloak)
+    design_serve.write_storage_state(
+        args.storage_state,
+        port=args.port,
+        secret=secret,
+        username=design_world.HOSTILE if args.hostile else None,
+    )
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
     return 0
 

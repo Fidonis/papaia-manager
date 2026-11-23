@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { readIsland } from "../../src/app/static/js/core/islands.js";
+import { islandValue, readIsland } from "../../src/app/static/js/core/islands.js";
 import { installPollGuard, shouldSkipPoll } from "../../src/app/static/js/core/poll.js";
 
 function island(attrs, text) {
@@ -47,6 +47,32 @@ test("only a JSON script element is an island", () => {
   for (const id of ["code", "module", "div"]) {
     assert.throws(() => readIsland(id, doc), /not a data island/);
   }
+});
+
+function templateIsland(attrs, text) {
+  return {
+    tagName: "TEMPLATE",
+    textContent: "",
+    content: { textContent: text },
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+    },
+  };
+}
+
+test("a template island, which htmx keeps in a swap, yields its value", () => {
+  const value = { name: "</template><script>alert(1)</script>", n: 2 };
+  const doc = documentWith({
+    state: templateIsland({ "data-island": "application/json" }, JSON.stringify(value)),
+  });
+  assert.deepEqual(readIsland("state", doc), value);
+  assert.deepEqual(islandValue(doc.getElementById("state")), value);
+});
+
+test("a template without the island mark is no island", () => {
+  const doc = documentWith({ plain: templateIsland({}, "1") });
+  assert.throws(() => readIsland("plain", doc), /not a data island/);
+  assert.throws(() => islandValue(doc.getElementById("plain")), /not a data island/);
 });
 
 test("malformed island content is reported with its id", () => {

@@ -225,8 +225,8 @@
      The answer is a data island, never script: after every swap the page module
      (js/pages/upgrade/component.js) reads it and dispatches the window event
      `papaia-upgrade-state` the button listens for. #}
-  {%- from "partials/_csp.html" import data_island %}
-  {{ data_island("upgrade-state", {
+  {%- from "partials/_csp.html" import swapped_island %}
+  {{ swapped_island("upgrade-state", {
     "target": check.target if (check and not check.up_to_date) else none,
     "ready": true if (checkout.upgradable and check and not check.up_to_date
                       and (check.gate.passed or check.gate.forceable)) else false,

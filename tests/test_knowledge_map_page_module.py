@@ -27,7 +27,9 @@ JS = REPO / "src" / "app" / "static" / "js"
 ENTRY = JS / "pages" / "knowledge-map.js"
 COMPONENT = JS / "pages" / "knowledge-map" / "component.js"
 STYLESHEET = REPO / "docker" / "tailwind.app.css"
-BASELINE = REPO / "tests" / "csp_baseline.json"
+# The names core/legacy.js put on `window` during the conversion; it is gone (T-UI-03), and no
+# page reaches them as globals any more.
+TRANSITION_NAMES = ("csrfToken", "fmt", "fmtPlural", "showToast")
 
 
 def _page(client) -> str:  # noqa: ANN001, F811 -- the fixture of test_knowledge_map
@@ -66,12 +68,6 @@ def _scripts(markup: str) -> list[dict[str, str]]:
 
 
 # -- the template --------------------------------------------------------------------------
-
-
-def test_the_page_is_converted_and_has_no_row_in_the_baseline() -> None:
-    doc = json.loads(BASELINE.read_text(encoding="utf-8"))
-    assert "knowledge_map.html" in doc["converted"]
-    assert "knowledge_map.html" not in doc["templates"]
 
 
 def test_the_template_has_nothing_the_strict_policy_refuses() -> None:
@@ -138,10 +134,8 @@ def test_no_expression_needs_a_global_of_the_browser() -> None:
 
 
 def test_the_component_reads_no_global_of_the_page_script() -> None:
-    # A name of core/legacy.js the module uses is one it imports from the core modules.
-    legacy = (JS / "core" / "legacy.js").read_text(encoding="utf-8")
-    block = legacy[legacy.index("LEGACY_NAMES = Object.freeze([") :]
-    names = re.findall(r'"([^"]+)",', block[: block.index("]);")])
+    # A former transitional global the module uses is one it imports from the core modules.
+    names = TRANSITION_NAMES
     for path in (COMPONENT, ENTRY):
         source = path.read_text(encoding="utf-8")
         imported = {

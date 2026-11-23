@@ -104,10 +104,14 @@ class _Markup(HTMLParser):
             if a.get("type") == "application/json" and a.get("id"):
                 self._island = str(a["id"])
                 self.islands[self._island] = ""
+        elif tag == "template" and a.get("data-island") == "application/json" and a.get("id"):
+            # The island of a partial htmx swaps in (partials/_csp.html, swapped_island).
+            self._island = str(a["id"])
+            self.islands[self._island] = ""
         self.attributes.extend((name, value or "") for name, value in attrs)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "script":
+        if tag in ("script", "template"):
             self._island = None
 
     def handle_data(self, data: str) -> None:
@@ -144,15 +148,13 @@ def test_the_templates_of_the_group_carry_no_script_finding(name: str) -> None:
     assert {kind: counts[kind] for kind in SCRIPT_KINDS} == dict.fromkeys(SCRIPT_KINDS, 0)
 
 
-def test_the_dashboard_runs_on_the_csp_build() -> None:
-    doc = json.loads((REPO / "tests" / "csp_baseline.json").read_text(encoding="utf-8"))
-    assert "dashboard.html" in doc["converted"]
-    rows = doc["templates"]
-    assert "dashboard.html" not in rows
-    assert "partials/tile_gallery.html" not in rows
-    # Inline style attributes are left to the policy ticket; nothing else is.
-    editor = rows.get("partials/tile_editor.html", {})
-    assert {kind: editor.get(kind, 0) for kind in SCRIPT_KINDS} == dict.fromkeys(SCRIPT_KINDS, 0)
+@pytest.mark.parametrize(
+    "name", ["dashboard.html", "partials/tile_gallery.html", "partials/tile_editor.html"]
+)
+def test_the_dashboard_has_nothing_the_enforced_policy_refuses(name: str) -> None:
+    # Style attributes included: the tile editor hides with `x-cloak` until Alpine starts.
+    counts = csp_scan.count_markup((TEMPLATES / name).read_text(encoding="utf-8"))
+    assert counts == dict.fromkeys(csp_scan.KINDS, 0)
 
 
 @pytest.mark.parametrize("name", GROUP)

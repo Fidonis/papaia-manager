@@ -340,7 +340,13 @@ test("the partials announce their state to the header cluster", () => {
     }
   }
   const win = { CustomEvent: FakeEvent, dispatchEvent: (e) => events.push([e.type, e.detail]) };
-  const island = { textContent: '{"ready": true, "target": "1.2.0"}' };
+  // The status partial is swapped in by htmx, so its island is a template (partials/_csp.html).
+  const island = {
+    tagName: "TEMPLATE",
+    textContent: "",
+    content: { textContent: '{"ready": true, "target": "1.2.0"}' },
+    getAttribute: (name) => (name === "data-island" ? "application/json" : null),
+  };
   const runner = { dataset: { active: "true", running: "false", finished: "true" } };
   const root = {
     matches: () => false,
