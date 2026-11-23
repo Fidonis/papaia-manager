@@ -5,7 +5,8 @@
   manager keeps no frame, theme script, font or colour of its own.
 
   The frame's <head> is exactly the kit's, so everything the manager's own pages need
-  -- its stylesheet, htmx, Alpine and the helpers below -- is part of `main`. A
+  -- its stylesheet, htmx, Alpine and the shared modules of static/js/core/ -- is part
+  of `main`. Messages go to the frame's live regions `#pk-toasts` (core/toasts.js). A
   stylesheet link is allowed in the body; the frame is styled by the kit's stylesheet
   in <head> before any of it loads.
 
@@ -13,8 +14,11 @@
   <title>) and may set `breadcrumb` to a list of {label, href} at its top level.
 #}
 {% from "pk/shell.html" import shell %}
-{% from "partials/_csp.html" import alpine_build, strict_marker %}
+{% from "partials/_csp.html" import alpine_build, data_island, strict_marker %}
 {% set pk = pk_shell(self.page_title() | striptags | trim, breadcrumb | default([])) %}
+{#- The kit's component macros speak the frame's language. #}
+{% set pk_lang = pk.lang %}
+{% import "pk/components.html" as kit with context %}
 {% set page_actions = self.page_actions() | trim %}
 {% set page_subtitle = self.page_subtitle() | trim %}
 {% call shell(pk) %}
@@ -27,395 +31,34 @@
 {% set strict = strict_page() %}
 {{ strict_marker(strict) }}
 <meta name="htmx-config" content="{&quot;allowEval&quot;:false,&quot;includeIndicatorStyles&quot;:false}">
+{#- The shared page script lives in static/js/core/ (T-UI-04): main.js loads before htmx and
+    Alpine, so the names of core/legacy.js exist before Alpine evaluates the first expression.
+    Its texts come from the data island below, in the language of the page: whole sentences,
+    `{name}` marks a value. `errors` are the kit's three-part texts per error class
+    (app/client_texts.py). #}
+{{ data_island("mgr-core", {
+  "texts": {
+    "maintenanceActionFailed": _('The action "{action}" failed &mdash; <a class="underline" href="{href}">view log</a>'),
+    "maintenanceActionFinished": _('The action "{action}" finished &mdash; <a class="underline" href="{href}">view log</a>'),
+    "requestRefused": _("The request was refused: {detail}"),
+    "stackActionFailed": _('The stack action failed &mdash; <a class="underline" href="{href}">view log</a>'),
+    "stackActionFinished": _("The stack action finished."),
+    "stackActionStarted": _("The stack action has started — this panel may go down with it."),
+    "catalogRefreshed": _('Catalog "{name}" refreshed.'),
+    "catalogRefreshFailed": _('Catalog "{name}" refresh failed. <a href="{href}" class="link">View log</a>'),
+    "catalogUpdated": _('Catalog "{name}" updated.'),
+    "catalogDeleted": _('Catalog "{name}" deleted.'),
+    "justNow": _("just now"),
+  },
+  "errors": core_error_texts(),
+}) }}
+{#- One kit toast per tone; core/toasts.js copies one and puts the text in. #}
+{% for tone in ("success", "info", "warning", "error") %}
+<template id="mgr-toast-{{ tone }}">{{ kit.toast(text="…", tone=tone, region=true) }}</template>
+{% endfor %}
+<script type="module" src="{{ asset_url('js/core/main.js') }}"></script>
 <script src="{{ asset_url('htmx.min.js') }}" defer></script>
 {{ alpine_build(strict) }}
-<script type="module" src="{{ asset_url('js/core/main.js') }}"></script>
-<script>
-  // ── Texts ────────────────────────────────────────────────────────────
-  // The sentences the helpers below put on the page, in the language of the page. A whole
-  // sentence each, never pieces glued together: the order of the pieces differs between
-  // languages. `{name}` marks a value that fmt() fills in; fmtHtml() does the same for a
-  // sentence that carries markup and escapes the values.
-  var I18N = {
-    addonFailed: {{ _("The add-on action failed: {detail}")|tojson }},
-    maintenanceActionFailed: {{ _('The action "{action}" failed &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
-    maintenanceActionFinished: {{ _('The action "{action}" finished &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
-    requestRefused: {{ _("The request was refused: {detail}")|tojson }},
-    stackActionFailed: {{ _('The stack action failed &mdash; <a class="underline" href="{href}">view log</a>')|tojson }},
-    stackActionFinished: {{ _("The stack action finished.")|tojson }},
-    stackActionStarted: {{ _("The stack action has started — this panel may go down with it.")|tojson }},
-    catalogActionFailed: {{ _("The catalog action failed: {detail}")|tojson }},
-    catalogRefreshed: {{ _('Catalog "{name}" refreshed.')|tojson }},
-    catalogRefreshFailed: {{ _('Catalog "{name}" refresh failed. <a href="{href}" class="link">View log</a>')|tojson }},
-    updateFailed: {{ _("The update failed: {detail}")|tojson }},
-    catalogUpdated: {{ _('Catalog "{name}" updated.')|tojson }},
-    deleteFailed: {{ _("The deletion failed: {detail}")|tojson }},
-    catalogDeleted: {{ _('Catalog "{name}" deleted.')|tojson }},
-  };
-  function _escapeHtml(value) {
-    return String(value).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
-  }
-  function fmt(template, values) {
-    return template.replace(/\{(\w+)\}/g, function (m, k) {
-      return Object.prototype.hasOwnProperty.call(values, k) ? values[k] : m;
-    });
-  }
-  // fmtPlural(): picks between the two messages of a counted noun with the browser's plural rules
-  // for the page's language ("one" or everything else) and fills `{count}`. A language with more
-  // plural forms than that needs this extended, together with its catalogue.
-  function fmtPlural(count, one, other, values, html) {
-    var category = new Intl.PluralRules(document.documentElement.lang || undefined).select(count);
-    return (html ? fmtHtml : fmt)(category === "one" ? one : other, Object.assign({ count: count }, values || {}));
-  }
-  function fmtHtml(template, values) {
-    return template.replace(/\{(\w+)\}/g, function (m, k) {
-      return Object.prototype.hasOwnProperty.call(values, k) ? _escapeHtml(values[k]) : m;
-    });
-  }
-
-  // ── CSRF ─────────────────────────────────────────────────────────────
-  // The token of this session, read from the frame's own forms (every one of them carries
-  // it as `pk_csrf`), so the page needs no second copy of it in the markup.
-  function csrfToken() {
-    var field = document.querySelector("input[name=pk_csrf]");
-    return field ? field.value : "";
-  }
-
-  // ── Floating row menus ───────────────────────────────────────────────
-  // A menu marked `.dropdown-float` (overflow_menu(float=True), for the rows of
-  // a table that scrolls sideways) is `position: fixed`, so the scroll container
-  // neither clips it nor grows a scrollbar for it. It still opens on focus, like
-  // every daisyUI dropdown; here it is put next to its trigger, right-aligned,
-  // and above the trigger when there is no room below, because a fixed menu
-  // cannot be scrolled to. Scrolling or resizing closes it: it would stay behind.
-  function placeFloatMenu(dropdown) {
-    var trigger = dropdown.querySelector('[role="button"]');
-    var menu = dropdown.querySelector(".dropdown-content");
-    if (!trigger || !menu) return;
-    var t = trigger.getBoundingClientRect();
-    var w = menu.offsetWidth;
-    var h = menu.offsetHeight;
-    var gap = 4;
-    var edge = 8;
-    var top = t.bottom + gap;
-    if (top + h > window.innerHeight - edge) {
-      top = t.top - gap - h >= edge ? t.top - gap - h : Math.max(edge, window.innerHeight - h - edge);
-    }
-    var left = Math.max(edge, Math.min(t.right - w, window.innerWidth - w - edge));
-    menu.style.top = top + "px";
-    menu.style.left = left + "px";
-    menu.style.right = "auto";
-    menu.style.bottom = "auto";
-  }
-
-  function closeFloatMenu() {
-    var active = document.activeElement;
-    if (active && active.blur && active.closest && active.closest(".dropdown-float")) active.blur();
-  }
-
-  document.addEventListener("focusin", function (event) {
-    var dropdown = event.target.closest && event.target.closest(".dropdown-float");
-    if (dropdown) placeFloatMenu(dropdown);
-  });
-  window.addEventListener("scroll", closeFloatMenu, true);
-  window.addEventListener("resize", closeFloatMenu);
-
-  // ── Session expiry ───────────────────────────────────────────────────
-  // The server renews an expiring Keycloak token on its own; this path is
-  // only reached once the SSO session itself is over. An XHR cannot follow
-  // the cross-origin login redirect, so reload: that re-runs auth in the
-  // top-level context and the server sends it on to Keycloak, then back here.
-  function _reauth() {
-    window.location.reload();
-  }
-  function _authGuard(response) {
-    if (response && response.status === 401) {
-      _reauth();
-      return true;
-    }
-    return false;
-  }
-  document.addEventListener("htmx:responseError", (event) => {
-    if (event.detail && event.detail.xhr && event.detail.xhr.status === 401) {
-      _reauth();
-    }
-  });
-
-  // Shared helpers for addon lifecycle actions.
-  // _addonPost: sends the action request and returns a Promise<data|null>.
-  // _pollJob:   polls /api/v1/jobs/{id} every 2 s and calls onDone() on completion.
-  // addonAction:   reloads the detail panel after the job finishes.
-  // galleryAction: reloads the dashboard gallery after the job finishes.
-  function _addonPost(name, verb, body) {
-    return fetch("/api/v1/addons/" + name + "/" + verb, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-Token": csrfToken(),
-      },
-      body: JSON.stringify(body || {}),
-    }).then(async (r) => {
-      if (_authGuard(r)) return null;
-      if (!r.ok) {
-        let detail = r.status;
-        try {
-          const e = await r.json();
-          detail = e.detail || JSON.stringify(e);
-        } catch (_) {}
-        alert(fmt(I18N.addonFailed, { detail: detail }));
-        return null;
-      }
-      return r.json();
-    });
-  }
-
-  function _pollJob(jobId, onDone) {
-    fetch("/api/v1/jobs/" + jobId)
-      .then(r => {
-        if (_authGuard(r)) return null;
-        return r.json();
-      })
-      .then(job => {
-        if (!job) return;
-        if (job.status === "succeeded" || job.status === "failed") {
-          onDone(job);
-        } else {
-          setTimeout(() => _pollJob(jobId, onDone), 2000);
-        }
-      })
-      .catch(() => setTimeout(() => _pollJob(jobId, onDone), 2000));
-  }
-
-  function addonAction(name, verb, body) {
-    return _addonPost(name, verb, body).then(data => {
-      if (!data) return false;
-      _pollJob(data.job_id, () =>
-        htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" })
-      );
-      return true;
-    });
-  }
-
-  // addonMaintenanceAction: run an action the add-on declares, refresh the panel when the job
-  // ends and say how it went, with a link to the log: the output is often the point.
-  function addonMaintenanceAction(name, action) {
-    return _addonPost(name, "actions/" + action, {}).then(data => {
-      if (!data) return false;
-      _pollJob(data.job_id, job => {
-        htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" });
-        const values = { action: action, href: "/jobs/" + job.id };
-        if (job.status === "failed") {
-          showToast("error", fmtHtml(I18N.maintenanceActionFailed, values));
-        } else {
-          showToast("success", fmtHtml(I18N.maintenanceActionFinished, values));
-        }
-      });
-      return true;
-    });
-  }
-
-  function galleryAction(name, verb, body) {
-    return _addonPost(name, verb, body).then(data => {
-      if (!data) return false;
-      _pollJob(data.job_id, () => htmx.ajax("GET", "/partials/addons", { target: "#addon-gallery", swap: "innerHTML" }));
-      return true;
-    });
-  }
-
-  // serviceAddonAction: an addon verb driven from the services page. Same
-  // request as galleryAction, different thing to swap back in afterwards.
-  function serviceAddonAction(name, verb, body) {
-    return _addonPost(name, verb, body).then(data => {
-      if (!data) return false;
-      _pollJob(data.job_id, () => refreshServices());
-      return true;
-    });
-  }
-
-  // _stackBody: the request body for a stack or group verb.
-  //
-  // `clean_up` maps onto `papaia-ctl stop --clean-up`, so it rides along with
-  // anything that stops -- a restart included, where it turns the operation
-  // into a full recreate. A start has no such flag and the API rejects the
-  // field outright rather than ignoring it.
-  //
-  // It lives here rather than in an Alpine scope because both callers need it:
-  // the group selection in the content area and the whole-stack menu in the
-  // page header are separate components, and a copy per component would be a
-  // second place for this API contract to drift.
-  function _stackBody(action, cleanUp) {
-    return action === "start" ? {} : { clean_up: cleanUp };
-  }
-
-  // stackGroupAction: POST /api/v1/stack/groups/{action} for a set of Compose
-  // profiles, poll the job, then refresh the services list. Resolves false when
-  // the request was rejected, so the caller can release its busy flag —
-  // a resolved-true call leaves it set, because the swap that follows replaces
-  // the button anyway.
-  function stackGroupAction(action, groups, body) {
-    return _stackPost("/api/v1/stack/groups/" + action,
-                      Object.assign({ groups: groups }, body || {}), action)
-      .then(data => {
-        if (!data) return false;
-        _pollJob(data.job_id, job => {
-          refreshServices();
-          if (job.status === "failed") {
-            showToast("error", fmtHtml(I18N.stackActionFailed, { href: "/jobs/" + job.id }));
-          } else {
-            showToast("success", I18N.stackActionFinished);
-          }
-        });
-        return true;
-      });
-  }
-
-  // stackAction: the whole stack, including this container's own profile. The
-  // runner outlives us, so there is no job to poll — /partials/stack-runner
-  // picks the outcome back up, here and after a reload.
-  function stackAction(action, body) {
-    return _stackPost("/api/v1/stack/" + action, body || {}, action).then(data => {
-      if (!data) return false;
-      refreshStackRunner();
-      showToast("info", I18N.stackActionStarted);
-      return true;
-    });
-  }
-
-  function _stackPost(url, body, label) {
-    return fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-Token": csrfToken(),
-      },
-      body: JSON.stringify(body || {}),
-    }).then(async (r) => {
-      if (_authGuard(r)) return null;
-      if (!r.ok) {
-        let detail = r.status;
-        try {
-          const e = await r.json();
-          detail = e.detail || JSON.stringify(e);
-        } catch (_) {}
-        showToast("error", fmt(I18N.requestRefused, { detail: detail }));
-        return null;
-      }
-      return r.json();
-    });
-  }
-
-  function refreshServices() {
-    if (document.getElementById("service-list")) {
-      htmx.ajax("GET", "/partials/services", { target: "#service-list", swap: "innerHTML" });
-    }
-  }
-
-  function refreshStackRunner() {
-    if (document.getElementById("stack-runner")) {
-      htmx.ajax("GET", "/partials/stack-runner", { target: "#stack-runner", swap: "innerHTML" });
-    }
-  }
-
-  // showToast: appends a dismissable daisyUI alert into #toasts, auto-removed after 6s.
-  // `html` may contain markup (e.g. a "view log" link) — only ever called with
-  // server-validated catalog names / job ids (uuid4), never free-form user text.
-  function showToast(type, html) {
-    const box = document.getElementById("toasts");
-    const el = document.createElement("div");
-    el.className = "alert alert-" + type + " shadow-lg text-sm";
-    el.innerHTML = "<span>" + html + "</span>";
-    box.appendChild(el);
-    setTimeout(() => el.remove(), 6000);
-  }
-
-  // catalogAction: POST /api/v1/catalogs/{name}/{verb}, poll the returned job to
-  // completion, then refresh the catalog list and toast the outcome.
-  // onJobId (optional) is called as soon as the job id is known, so callers can
-  // show a "view log" link while the job is still running.
-  function catalogAction(name, verb, onJobId) {
-    return fetch("/api/v1/catalogs/" + name + "/" + verb, {
-      method: "POST",
-      headers: { "X-CSRF-Token": csrfToken() },
-    }).then(async (r) => {
-      if (_authGuard(r)) return false;
-      if (!r.ok) {
-        let detail = r.status;
-        try {
-          const e = await r.json();
-          detail = e.detail || JSON.stringify(e);
-        } catch (_) {}
-        showToast("error", fmt(I18N.catalogActionFailed, { detail: detail }));
-        return false;
-      }
-      const data = await r.json();
-      if (onJobId) onJobId(data.job_id);
-      return new Promise(resolve => {
-        _pollJob(data.job_id, (job) => {
-          htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
-          if (job.status === "succeeded") {
-            showToast("success", fmtHtml(I18N.catalogRefreshed, { name: name }));
-          } else {
-            showToast("error", fmtHtml(I18N.catalogRefreshFailed, { name: name, href: "/jobs/" + data.job_id }));
-          }
-          resolve(true);
-        });
-      });
-    });
-  }
-
-  // catalogUpdate: PUT /api/v1/catalogs/{name}. Synchronous (no job), so just
-  // refresh the list and toast on success — same rationale as catalogDelete.
-  function catalogUpdate(name, body) {
-    return fetch("/api/v1/catalogs/" + name, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-Token": csrfToken(),
-      },
-      body: JSON.stringify(body),
-    }).then(async (r) => {
-      if (_authGuard(r)) return false;
-      if (!r.ok) {
-        let detail = r.status;
-        try {
-          const e = await r.json();
-          detail = e.detail || JSON.stringify(e);
-        } catch (_) {}
-        showToast("error", fmt(I18N.updateFailed, { detail: detail }));
-        return false;
-      }
-      htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
-      showToast("success", fmtHtml(I18N.catalogUpdated, { name: name }));
-      return true;
-    });
-  }
-
-  // catalogDelete: DELETE /api/v1/catalogs/{name}. Synchronous (no job), so just
-  // refresh the list and toast on success — the endpoint returns 204, which htmx
-  // never swaps, so the caller must not rely on htmx to update the list.
-  function catalogDelete(name) {
-    return fetch("/api/v1/catalogs/" + name, {
-      method: "DELETE",
-      headers: { "X-CSRF-Token": csrfToken() },
-    }).then(async (r) => {
-      if (_authGuard(r)) return false;
-      if (!r.ok) {
-        let detail = r.status;
-        try {
-          const e = await r.json();
-          detail = e.detail || JSON.stringify(e);
-        } catch (_) {}
-        showToast("error", fmt(I18N.deleteFailed, { detail: detail }));
-        return false;
-      }
-      htmx.ajax("GET", "/partials/catalogs", { target: "#catalog-list", swap: "innerHTML" });
-      showToast("success", fmtHtml(I18N.catalogDeleted, { name: name }));
-      return true;
-    });
-  }
-</script>
 <div class="mgr-page" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}' x-data>
   {# The status row, on every page for every role: the aggregate stack status, and for an
      administrator the hints that used to be dots on navigation rows (host, jobs, add-on
@@ -443,9 +86,6 @@
     <div class="flex min-w-0 flex-wrap items-center gap-3">{{ page_actions }}</div>
   </div>
   {% endif %}
-
-  {# A long message (a path, a job id) wraps inside the window instead of running off it. #}
-  <div id="toasts" class="toast toast-top toast-end z-50 max-w-[calc(100vw-2rem)] whitespace-normal [overflow-wrap:anywhere]"></div>
 
   {% if is_admin %}{% set locked = nodes_lock() %}{% if locked %}
   <div class="alert alert-warning mb-6"><span>{{ locked }}</span></div>

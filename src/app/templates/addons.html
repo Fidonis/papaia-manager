@@ -39,30 +39,13 @@
 
 <script>
   // Fetches every git catalog again, then redraws the gallery: a version a catalog published
-  // since the last refresh only shows up as an upgrade after this.
+  // since the last refresh only shows up as an upgrade after this. catalogAction (core/actions.js)
+  // tells each outcome; a refusal in three parts with its reference.
   function refreshAllCatalogs() {
     return fetch("/api/v1/catalogs")
-      .then(r => (_authGuard(r) ? [] : r.json()))
+      .then(r => (_authGuard(r) || !r.ok ? [] : r.json()))
       .then(catalogs => Promise.all(
-        catalogs.filter(c => c.type === "git" && c.enabled).map(c =>
-          fetch("/api/v1/catalogs/" + encodeURIComponent(c.name) + "/refresh", {
-            method: "POST",
-            headers: { "X-CSRF-Token": csrfToken() },
-          }).then(r => (r.ok ? r.json() : null)).then(data => new Promise(resolve => {
-            if (!data) {
-              showToast("error", fmt(I18N.catalogActionFailed, { detail: c.name }));
-              return resolve();
-            }
-            _pollJob(data.job_id, job => {
-              showToast(
-                job.status === "succeeded" ? "success" : "error",
-                fmtHtml(job.status === "succeeded" ? I18N.catalogRefreshed : I18N.catalogRefreshFailed,
-                        { name: c.name, href: "/jobs/" + data.job_id })
-              );
-              resolve();
-            });
-          }))
-        )
+        catalogs.filter(c => c.type === "git" && c.enabled).map(c => catalogAction(c.name, "refresh"))
       ))
       .then(() => htmx.ajax("GET", "/partials/addons", { target: "#addon-gallery", swap: "innerHTML" }));
   }

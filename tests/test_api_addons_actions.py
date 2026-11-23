@@ -322,9 +322,13 @@ def test_the_page_runs_an_action_through_the_helper_that_reports_its_outcome() -
     )
     assert "addonMaintenanceAction('n8n', 'check')" in html
     assert templates.env.loader is not None
-    source = templates.env.loader.get_source(templates.env, "base.html")[0]
-    assert "function addonMaintenanceAction(" in source
-    assert "I18N.maintenanceActionFailed" in source
+    base = templates.env.loader.get_source(templates.env, "base.html")[0]
+    assert '"maintenanceActionFailed": _(' in base
+    core = Path(__file__).resolve().parents[1] / "src" / "app" / "static" / "js" / "core"
+    actions = (core / "actions.js").read_text(encoding="utf-8")
+    assert "function addonMaintenanceAction(" in actions
+    assert "texts.maintenanceActionFailed" in actions
+    assert '"addonMaintenanceAction",' in (core / "legacy.js").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(

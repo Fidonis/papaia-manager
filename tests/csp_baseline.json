@@ -5,7 +5,14 @@
     "version": "3.17.5"
   },
   "converted": [
-    "kit_specimen.html"
+    "error.html",
+    "help.html",
+    "inventory.html",
+    "job_log.html",
+    "jobs.html",
+    "kit_specimen.html",
+    "me.html",
+    "settings_installation.html"
   ],
   "templates": {
     "addon_upgrade.html": {
@@ -35,13 +42,6 @@
       "alpine_unsupported": 4,
       "style_blocks": 0,
       "style_attributes": 2
-    },
-    "base.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
     },
     "catalogs.html": {
       "inline_scripts": 1,
@@ -219,13 +219,6 @@
       "style_attributes": 25
     },
     "partials/_ingest_js.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/_rag_js.html": {
       "inline_scripts": 1,
       "on_attributes": 0,
       "alpine_unsupported": 0,
@@ -414,13 +407,6 @@
       "style_blocks": 0,
       "style_attributes": 0
     },
-    "partials/service_status_chip.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "partials/stack_runner.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
@@ -521,7 +507,7 @@
     }
   },
   "totals": {
-    "inline_scripts": 46,
+    "inline_scripts": 43,
     "on_attributes": 123,
     "alpine_unsupported": 109,
     "style_blocks": 1,

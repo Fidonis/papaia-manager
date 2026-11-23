@@ -4240,10 +4240,6 @@ msgid "Schedule removed."
 msgstr "Zeitplan entfernt."
 
 #, python-brace-format
-msgid "The add-on action failed: {detail}"
-msgstr "Die Add-on-Aktion ist fehlgeschlagen: {detail}"
-
-#, python-brace-format
 msgid "The request was refused: {detail}"
 msgstr "Die Anfrage wurde abgelehnt: {detail}"
 
@@ -4258,10 +4254,6 @@ msgid "The stack action has started — this panel may go down with it."
 msgstr "Die Stack-Aktion wurde gestartet — dieses Panel kann dabei ausfallen."
 
 #, python-brace-format
-msgid "The catalog action failed: {detail}"
-msgstr "Die Katalog-Aktion ist fehlgeschlagen: {detail}"
-
-#, python-brace-format
 msgid "Catalog \"{name}\" refreshed."
 msgstr "Katalog „{name}“ aktualisiert."
 
@@ -4270,16 +4262,8 @@ msgid "Catalog \"{name}\" refresh failed. <a href=\"{href}\" class=\"link\">View
 msgstr "Aktualisierung von Katalog „{name}“ fehlgeschlagen. <a href=\"{href}\" class=\"link\">Log ansehen</a>"
 
 #, python-brace-format
-msgid "The update failed: {detail}"
-msgstr "Die Aktualisierung ist fehlgeschlagen: {detail}"
-
-#, python-brace-format
 msgid "Catalog \"{name}\" updated."
 msgstr "Katalog „{name}“ aktualisiert."
-
-#, python-brace-format
-msgid "The deletion failed: {detail}"
-msgstr "Das Löschen ist fehlgeschlagen: {detail}"
 
 #, python-brace-format
 msgid "Catalog \"{name}\" deleted."

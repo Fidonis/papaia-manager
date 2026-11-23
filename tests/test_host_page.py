@@ -803,8 +803,12 @@ def test_the_status_row_opens_the_content_for_every_role_and_not_the_header(
 
         assert "/partials/service-status" not in header
         assert "/partials/service-status" not in _between(body, "<aside", "</aside>")
-        # Above the page's own content, so it is the first thing under the header.
-        assert main.index('hx-get="/partials/service-status"') < main.index('id="toasts"')
+        # Above the page's own content, so it is the first thing under the header: the first
+        # element of the content area. Messages go to the frame's #pk-toasts, outside it.
+        content = main[main.index('class="mgr-page"') :]
+        first = content[content.index("<", 1) : content.index("</div>")]
+        assert 'hx-get="/partials/service-status"' in first
+        assert 'id="toasts"' not in body
         assert ("/partials/nav/job-indicator" in main) == ("admin" in roles)
 
 

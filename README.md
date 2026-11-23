@@ -1059,6 +1059,33 @@ measurement's stand-in values cannot resolve.
 | 19 other pages | 0 | 0 |
 | **Total** | **637** | **53** |
 
+**Shared page script.** `base.html` carries no executable inline script. What every page
+shares lives in `src/app/static/js/core/`: `format.js` (filling and escaping sentences, plurals),
+`csrf.js`, `menus.js` (floating row menus), `session.js` (session end, refused htmx requests),
+`jobs.js` (job polling), `actions.js` (add-on, stack and catalog actions and the JSON request
+of the knowledge pages), `errors.js` (three-part error messages) and `toasts.js`. Their texts
+come from the data island `mgr-core` in the language of the page. During the transition
+`core/legacy.js` assigns the names page templates still call as globals (`showToast`,
+`addonAction`, `fmt`, ...) to `window`, listed by name; `tests/test_js_core.py` keeps the list
+equal to the names the templates use, and a page that moves into a module drops its names.
+The core modules load before htmx and Alpine, so these names exist before Alpine evaluates an
+expression; an inline page script that needs one while the page is still being parsed waits
+for `alpine:init`.
+
+**Messages.** Toasts go to the frame's live regions `#pk-toasts` (one `role="status"`, one
+`role="alert"`, both present before the first message) and are the kit's toasts. Success,
+info and warning messages stand at least 6 s and as long as the pointer rests on them or the
+focus is inside; error messages stay until closed with their labelled close button. A refused
+request is told in three parts in this order: what happened, what to do, and "Reference:
+<correlation id>". The texts are the kit's per error class, so "connection stopped" (no answer,
+502, 503, 504), "right missing" (403), "input invalid" (400, 422) and "session expired" (401)
+read the same in every module; a plain sentence of the server may stand as part 1 of an input
+or conflict refusal, never a status code, a stack trace or a key name. Every request of a page
+sends a correlation id of its own (`X-Papaia-Correlation-Id`), and the manager logs a refused
+request with that id (`request refused: METHOD PATH answered STATUS, correlation id ID`), so
+the reference leads to the log line. A session end shows one message whose "Sign in again"
+reloads the page. `tests/test_toast_browser.py` checks all of this in Chromium.
+
 **Pinned libraries.** `docker/Dockerfile` downloads htmx, both Alpine builds and Sortable
 pinned by version and checks each file against the SHA-256 written next to it
 (`docker/verify-sha256.sh`); a file that does not match fails the image build. The browser

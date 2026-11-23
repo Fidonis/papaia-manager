@@ -1,0 +1,60 @@
+{
+  "classes": {
+    "budget_exceeded": {
+      "consequence": "Nothing was carried out.",
+      "todo": "Ask your contact person.",
+      "what": "The quota for this period is used up."
+    },
+    "class_exceeded": {
+      "consequence": "Nothing was sent.",
+      "todo": "Choose a destination that is cleared for this data.",
+      "what": "This data is too confidential for this destination."
+    },
+    "conflict": {
+      "consequence": "Nothing was saved.",
+      "todo": "Reload the page.",
+      "what": "Someone else changed the content in the meantime."
+    },
+    "contract_mismatch": {
+      "consequence": "Nothing was carried out.",
+      "todo": "Ask your contact person.",
+      "what": "The versions of the modules involved do not match."
+    },
+    "forbidden_or_not_found": {
+      "consequence": "",
+      "todo": "Ask your contact person if you need access.",
+      "what": "The content does not exist or is not shared with you."
+    },
+    "identity_revoked": {
+      "consequence": "Nothing was carried out.",
+      "todo": "Ask your contact person.",
+      "what": "Your access is blocked."
+    },
+    "internal_error": {
+      "consequence": "",
+      "todo": "Try again later.",
+      "what": "Something went wrong unexpectedly."
+    },
+    "invalid_input": {
+      "consequence": "Nothing was saved.",
+      "todo": "Check your details and send them again.",
+      "what": "The details are incomplete or do not fit."
+    },
+    "rate_limited": {
+      "consequence": "Nothing was carried out.",
+      "todo": "Try again in one minute.",
+      "what": "Too many requests arrived in a short time."
+    },
+    "unauthenticated": {
+      "consequence": "Nothing was carried out.",
+      "todo": "Sign in again.",
+      "what": "You are no longer signed in."
+    },
+    "upstream_unavailable": {
+      "consequence": "Nothing was carried out.",
+      "todo": "Try again in a few minutes.",
+      "what": "A service involved is not reachable right now."
+    }
+  },
+  "reference_label": "Reference"
+}

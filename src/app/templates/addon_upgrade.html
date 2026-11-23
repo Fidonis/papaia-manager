@@ -281,7 +281,8 @@
     var UPGRADE_I18N = {
       upgradeTo: {{ _("Upgrade to {version}")|tojson }},
     };
-    Object.assign(I18N, UPGRADE_I18N);
+    // I18N comes from the shared modules, which run after this script and before Alpine.
+    document.addEventListener("alpine:init", function () { Object.assign(I18N, UPGRADE_I18N); });
 
     function addonUpgrade(name, supported) {
       var csrf = function () { return csrfToken(); };

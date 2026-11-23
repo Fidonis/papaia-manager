@@ -309,12 +309,43 @@ def start_delivery(
 # -- the request -------------------------------------------------------------------------
 
 
+_REFUSED = 400
+_FAILED = 500
+
+
+def _from_page(scope: Scope) -> bool:
+    path = str(scope.get("path", ""))
+    if path.startswith("/api/"):
+        return True
+    return any(name.lower() == b"hx-request" for name, _ in scope.get("headers", []))
+
+
+def log_refusal(scope: Scope, status: int, correlation_id: str) -> None:
+    """Log a refused request of a page with its correlation id (AuditContextMiddleware)."""
+    if status < _REFUSED or not _from_page(scope):
+        return
+    level = logging.WARNING if status >= _FAILED else logging.INFO
+    logger.log(
+        level,
+        "request refused: %s %s answered %d, correlation id %s",
+        scope.get("method", "GET"),
+        scope.get("path", ""),
+        status,
+        correlation_id,
+    )
+
+
 class AuditContextMiddleware:
     """Binds the session's person and the request's correlation id for every row it writes.
 
     It runs inside the session middleware, so the session is decoded. The correlation id is
     the caller's `X-Papaia-Correlation-Id` when it is valid, otherwise a new one (a value too
     long or shaped like a token is replaced, never shortened); the response carries it back.
+
+    A refused request of a page (an API call or an htmx request answered 4xx or 5xx) is logged
+    with its correlation id: the page tells the person that id as the reference of its error
+    message (static/js/core/errors.js), and this line is where it leads. The line names
+    method, path and status, never the query, a header value or the body.
     """
 
     def __init__(self, app: ASGIApp, *, azp: Callable[[], str]) -> None:
@@ -335,6 +366,7 @@ class AuditContextMiddleware:
                     *message.get("headers", []),
                     (CORRELATION_HEADER.lower().encode(), correlation_id.encode()),
                 ]
+                log_refusal(scope, int(message.get("status", 200)), correlation_id)
             await send(message)
 
         with bound(actor, correlation_id):

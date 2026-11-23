@@ -20,7 +20,6 @@
   </div>
 </div>
 
-{% include "partials/_rag_js.html" %}
 <script>
 function reloadOrphans() {
   htmx.ajax('GET', '/partials/ingest/orphans', { target: '#orphan-list', swap: 'innerHTML' });

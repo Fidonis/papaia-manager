@@ -1,6 +1,7 @@
 {# Helpers shared by the ingest pages: the verbs on a job (enable, disable, resume, reload,
    abort) and the dialogs that guard the destructive ones (run, delete, delete runs). The page includes
-   `_rag_js.html` first and this once, inside its own content block.
+   this once, inside its own content block; the request helpers (_ragRequest, ...) come from
+   static/js/core/actions.js.
 
    Every verb answers with a toast that says what happened *and* what did not: a change that is
    saved but not active, or saved without the ingester having been asked, is told apart from one

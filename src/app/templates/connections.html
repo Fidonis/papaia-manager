@@ -36,7 +36,6 @@
   </div>
 </div>
 
-{% include "partials/_rag_js.html" %}
 <script>
 function reloadConnections() {
   htmx.ajax('GET', '/partials/connections', { target: '#connection-list', swap: 'innerHTML' });

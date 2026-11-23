@@ -176,3 +176,59 @@ def test_the_ratchet_fails_on_a_lowered_count_until_the_baseline_follows() -> No
 def test_the_ratchet_passes_on_the_measured_baseline() -> None:
     measured = csp_scan.scan()
     assert csp_scan.compare(measured, measured) == []
+
+
+# -- the shared page script (T-UI-04) --------------------------------------------------------
+
+# Pages without a finding of their own that still render partials with findings through htmx
+# (static includes are followed by the test below). They are converted with those partials.
+_LOADS_PARTIALS_WITH_FINDINGS = {
+    "addon_detail.html": "partials/addon_detail_content.html (/partials/addons/{name})",
+    "host.html": "partials/host_list.html (/partials/host)",
+    "models.html": "partials/models_body.html (/partials/models/...)",
+}
+_STATIC_USE = re.compile(r'\{%-?\s*(?:include|import|from|extends)\s+"([^"]+)"')
+
+
+def _closure(name: str) -> set[str]:
+    seen: set[str] = set()
+    todo = [name]
+    while todo:
+        current = todo.pop()
+        if current in seen or current.startswith("pk/"):
+            continue
+        seen.add(current)
+        todo.extend(_STATIC_USE.findall((TEMPLATES / current).read_text(encoding="utf-8")))
+    return seen
+
+
+def test_the_shared_templates_carry_no_findings() -> None:
+    rows = _templates_of_baseline()
+    for shared in ("base.html", "partials/service_status_chip.html"):
+        assert shared not in rows, shared
+        counts = csp_scan.count_markup((TEMPLATES / shared).read_text(encoding="utf-8"))
+        assert counts == dict.fromkeys(csp_scan.KINDS, 0), shared
+    # The helpers of the knowledge pages moved into static/js/core/actions.js.
+    assert not (TEMPLATES / "partials" / "_rag_js.html").exists()
+    assert "partials/_rag_js.html" not in rows
+
+
+def test_every_page_without_findings_runs_on_the_csp_build() -> None:
+    rows = _templates_of_baseline()
+    converted = set(_baseline()["converted"])  # type: ignore[arg-type]
+    pages = sorted(
+        path.name
+        for path in TEMPLATES.glob("*.html")
+        if "base.html" in _closure(path.name) and path.name != "base.html"
+    )
+    clean = {name for name in pages if not (_closure(name) - {"base.html"}) & set(rows)}
+    # A page of its own frame (kit_specimen.html) is listed as well; it carries no finding.
+    assert clean - set(_LOADS_PARTIALS_WITH_FINDINGS) == converted & set(pages)
+    for name in converted - set(pages):
+        assert (TEMPLATES / name).is_file(), name
+        assert name not in rows, name
+    for name in _LOADS_PARTIALS_WITH_FINDINGS:
+        assert name in clean, f"{name} has findings again; drop it from the exception list"
+    # A converted page never has a finding, through an include either.
+    for name in converted:
+        assert not _closure(name) & set(rows), name
