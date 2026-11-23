@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/_users_tabs.html" import tabs %}
+{% from "partials/_csp.html" import data_island %}
 
 {% block page_title %}{% trans %}Users{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Who can sign in, with which roles, and from where{% endtrans %}</p>{% endblock %}
@@ -19,7 +20,7 @@
 </button>
 <button type="button"
         class="btn btn-primary btn-sm"
-        onclick="window.dispatchEvent(new CustomEvent('user-new'))">
+        @click="$dispatch('user-new')">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
   </svg>
@@ -37,8 +38,7 @@
       hx-get="/partials/users"
       hx-trigger="input changed delay:350ms from:#user-search, submit"
       hx-target="#user-list"
-      hx-swap="innerHTML"
-      onsubmit="return false">
+      hx-swap="innerHTML">
   <label class="input input-bordered input-sm flex w-full max-w-sm items-center gap-2" for="user-search">
     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-pk-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z"/>
@@ -96,11 +96,11 @@
         <p class="mb-2 text-xs text-pk-text-muted">
           {% trans %}What the account may use. The dashboard role lets it sign in to the manager; without a role it can sign in to Keycloak and nothing else.{% endtrans %}
         </p>
-        <div x-show="rolesLoading" style="display:none" class="flex justify-center py-4">
+        <div x-show="rolesLoading" x-cloak class="flex justify-center py-4">
           <span class="loading loading-spinner loading-sm text-primary"></span>
         </div>
-        <p style="display:none" x-show="rolesError" class="text-sm text-error" x-text="rolesError"></p>
-        <div x-show="!rolesLoading && !rolesError" style="display:none"
+        <p x-cloak x-show="rolesError" class="text-sm text-error" x-text="rolesError"></p>
+        <div x-show="!rolesLoading && !rolesError" x-cloak
              class="max-h-44 overflow-y-auto rounded-lg border border-base-300">
           <template x-for="role in roles" :key="role.name">
             <label class="flex cursor-pointer items-start gap-3 border-b border-base-300 px-3 py-2 last:border-b-0 hover:bg-base-200/60">
@@ -109,14 +109,14 @@
               <span class="min-w-0">
                 <span class="flex flex-wrap items-center gap-1.5">
                   <span class="font-mono text-sm" x-text="role.name"></span>
-                  <span class="badge badge-primary badge-outline badge-sm" style="display:none"
+                  <span class="badge badge-primary badge-outline badge-sm" x-cloak
                         x-show="role.default">{% trans %}dashboard{% endtrans %}</span>
                 </span>
-                <span class="block text-xs text-pk-text-muted" x-show="role.description" style="display:none" x-text="role.description"></span>
+                <span class="block text-xs text-pk-text-muted" x-show="role.description" x-cloak x-text="role.description"></span>
               </span>
             </label>
           </template>
-          <p x-show="roles.length === 0" style="display:none" class="px-3 py-4 text-center text-sm text-pk-text-muted">{% trans %}The realm has no roles to hand out.{% endtrans %}</p>
+          <p x-show="roles.length === 0" x-cloak class="px-3 py-4 text-center text-sm text-pk-text-muted">{% trans %}The realm has no roles to hand out.{% endtrans %}</p>
         </div>
       </fieldset>
 
@@ -139,7 +139,7 @@
             <span>
               <span class="block text-sm font-medium">{% trans %}Email a link{% endtrans %}</span>
               <span class="block text-xs text-pk-text-muted">{% trans %}Keycloak mails the user a link to set their own password.{% endtrans %}</span>
-              <span class="mt-1 block text-xs text-warning" style="display:none" x-show="!canMail()" x-text="mailBlocked()"></span>
+              <span class="mt-1 block text-xs text-warning" x-cloak x-show="!canMail()" x-text="mailBlocked()"></span>
             </span>
           </label>
           <label class="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
@@ -154,11 +154,11 @@
         </div>
       </fieldset>
 
-      <p style="display:none" x-show="error" class="mt-3 text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="mt-3 text-sm text-error" x-text="error"></p>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-primary" :disabled="busy">
-          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
           {% trans %}Create user{% endtrans %}
         </button>
       </div>
@@ -179,7 +179,7 @@
       </span>
       <div class="min-w-0">
         <h3 class="text-lg font-bold leading-tight" x-text="created ? {{ _('User created')|tojson|forceescape }} : {{ _('Temporary password')|tojson|forceescape }}"></h3>
-        <p class="truncate text-sm text-pk-text-muted"><span x-html="fmtHtml({{ _('for <span class="font-mono">{username}</span>')|tojson|forceescape }}, { username: username })"></span></p>
+        <p class="truncate text-sm text-pk-text-muted"><span>{{ bound(_('for <span class="font-mono">{username}</span>'), username='username') }}</span></p>
       </div>
     </div>
     <div class="join w-full">
@@ -203,15 +203,15 @@
 <dialog id="user-roles-modal" class="modal" x-data="editUserRoles()"
         @user-roles.window="open($event.detail)">
   <div class="modal-box max-w-lg">
-    <h3 class="text-lg font-bold"><span x-html="fmtHtml({{ _('Roles of <span class="font-mono">{username}</span>')|tojson|forceescape }}, { username: username })"></span></h3>
+    <h3 class="text-lg font-bold"><span>{{ bound(_('Roles of <span class="font-mono">{username}</span>'), username='username') }}</span></h3>
     <p class="mb-3 text-sm text-pk-text-muted">{% trans %}A role decides which services the account may use and how far.{% endtrans %}</p>
 
-    <div x-show="loading" style="display:none" class="flex justify-center py-10">
+    <div x-show="loading" x-cloak class="flex justify-center py-10">
       <span class="loading loading-spinner loading-md text-primary"></span>
     </div>
-    <p style="display:none" x-show="loadError" class="py-6 text-center text-sm text-error" x-text="loadError"></p>
+    <p x-cloak x-show="loadError" class="py-6 text-center text-sm text-error" x-text="loadError"></p>
 
-    <form @submit.prevent="submit()" x-show="!loading && !loadError" style="display:none">
+    <form @submit.prevent="submit()" x-show="!loading && !loadError" x-cloak>
       <div class="max-h-[50vh] overflow-y-auto rounded-lg border border-base-300">
         <template x-for="role in roles" :key="role.name">
           <label class="flex items-start gap-3 border-b border-base-300 px-3 py-2.5 last:border-b-0"
@@ -223,30 +223,30 @@
             <span class="min-w-0">
               <span class="flex flex-wrap items-center gap-1.5">
                 <span class="font-mono text-sm" x-text="role.name"></span>
-                <span class="badge badge-ghost badge-sm" style="display:none"
+                <span class="badge badge-ghost badge-sm" x-cloak
                       x-show="role.inherited && !role.direct">{% trans %}inherited{% endtrans %}</span>
-                <span class="badge badge-warning badge-outline badge-sm" style="display:none"
+                <span class="badge badge-warning badge-outline badge-sm" x-cloak
                       x-show="role.locked">{% trans %}your own role{% endtrans %}</span>
               </span>
-              <span class="block text-xs text-pk-text-muted" x-show="role.description" style="display:none" x-text="role.description"></span>
+              <span class="block text-xs text-pk-text-muted" x-show="role.description" x-cloak x-text="role.description"></span>
             </span>
           </label>
         </template>
-        <p x-show="roles.length === 0" style="display:none" class="px-3 py-6 text-center text-sm text-pk-text-muted">{% trans %}The realm has no roles to hand out.{% endtrans %}</p>
+        <p x-show="roles.length === 0" x-cloak class="px-3 py-6 text-center text-sm text-pk-text-muted">{% trans %}The realm has no roles to hand out.{% endtrans %}</p>
       </div>
       <p class="mt-2 text-xs text-pk-text-muted">
         {% trans %}A role marked <em>inherited</em> comes with another role the account holds and is taken away by changing that one. Services pick up a change at the next sign-in or token refresh.{% endtrans %}
       </p>
-      <p style="display:none" x-show="error" class="mt-2 text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="mt-2 text-sm text-error" x-text="error"></p>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-primary" :disabled="busy || !dirty()">
-          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
           {% trans %}Save roles{% endtrans %}
         </button>
       </div>
     </form>
-    <div class="modal-action" x-show="loadError" style="display:none">
+    <div class="modal-action" x-show="loadError" x-cloak>
       <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Close{% endtrans %}</button>
     </div>
   </div>
@@ -257,22 +257,22 @@
 <dialog id="user-sessions-modal" class="modal" x-data="userSessions()"
         @user-sessions.window="open($event.detail)">
   <div class="modal-box max-w-2xl">
-    <h3 class="text-lg font-bold"><span x-html="fmtHtml({{ _('Sessions of <span class="font-mono">{username}</span>')|tojson|forceescape }}, { username: username })"></span></h3>
+    <h3 class="text-lg font-bold"><span>{{ bound(_('Sessions of <span class="font-mono">{username}</span>'), username='username') }}</span></h3>
     <p class="mb-3 text-sm text-pk-text-muted">{% trans %}Where this account is signed in right now.{% endtrans %}</p>
 
-    <div x-show="loading" style="display:none" class="flex justify-center py-10">
+    <div x-show="loading" x-cloak class="flex justify-center py-10">
       <span class="loading loading-spinner loading-md text-primary"></span>
     </div>
-    <p style="display:none" x-show="loadError" class="py-6 text-center text-sm text-error" x-text="loadError"></p>
+    <p x-cloak x-show="loadError" class="py-6 text-center text-sm text-error" x-text="loadError"></p>
 
-    <div x-show="!loading && !loadError" style="display:none">
-      <div class="alert alert-info mb-3 text-sm" role="status" style="display:none" x-show="isSelf">
+    <div x-show="!loading && !loadError" x-cloak>
+      <div class="alert alert-info mb-3 text-sm" role="status" x-cloak x-show="isSelf">
         <span>{% trans %}These are your own sessions. Ending the one you are using now signs you out of this page too.{% endtrans %}</span>
       </div>
-      <p x-show="sessions.length === 0" style="display:none" class="rounded-xl border border-base-300 px-5 py-8 text-center text-sm text-pk-text-muted">
+      <p x-show="sessions.length === 0" x-cloak class="rounded-xl border border-base-300 px-5 py-8 text-center text-sm text-pk-text-muted">
         {% trans %}No active sessions.{% endtrans %}
       </p>
-      <div x-show="sessions.length > 0" style="display:none" class="overflow-x-auto rounded-xl border border-base-300">
+      <div x-show="sessions.length > 0" x-cloak class="overflow-x-auto rounded-xl border border-base-300">
         <table class="table table-sm">
           <thead>
             <tr><th>{% trans %}Signed in{% endtrans %}</th><th>{% trans %}Last activity{% endtrans %}</th><th>{% trans %}Address{% endtrans %}</th><th>{% trans %}Used for{% endtrans %}</th><th class="w-px"></th></tr>
@@ -287,7 +287,7 @@
                   <template x-for="c in s.clients" :key="c">
                     <span class="badge badge-outline badge-sm mr-1" x-text="c"></span>
                   </template>
-                  <span x-show="s.clients.length === 0" style="display:none" class="text-pk-text-muted">—</span>
+                  <span x-show="s.clients.length === 0" x-cloak class="text-pk-text-muted">—</span>
                 </td>
                 <td class="text-right">
                   <button type="button" class="btn btn-ghost btn-xs text-error" :disabled="busy"
@@ -301,11 +301,11 @@
       <p class="mt-2 text-xs text-pk-text-muted">
         {% trans %}A session that is ended stops working when its token is next renewed, which is within a few minutes.{% endtrans %}
       </p>
-      <p style="display:none" x-show="error" class="mt-2 text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="mt-2 text-sm text-error" x-text="error"></p>
     </div>
 
     <div class="modal-action">
-      <button type="button" class="btn btn-outline btn-error btn-sm" style="display:none"
+      <button type="button" class="btn btn-outline btn-error btn-sm" x-cloak
               x-show="!loading && !loadError && !isSelf && sessions.length > 1" :disabled="busy"
               @click="endAll()">{% trans %}End all sessions{% endtrans %}</button>
       <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Close{% endtrans %}</button>
@@ -318,7 +318,7 @@
 <dialog id="user-password-modal" class="modal" x-data="resetPassword()"
         @user-password.window="open($event.detail)">
   <div class="modal-box max-w-lg">
-    <h3 class="text-lg font-bold"><span x-html="fmtHtml({{ _('Reset the password of <span class="font-mono">{username}</span>')|tojson|forceescape }}, { username: username })"></span></h3>
+    <h3 class="text-lg font-bold"><span>{{ bound(_('Reset the password of <span class="font-mono">{username}</span>'), username='username') }}</span></h3>
     <p class="mb-4 text-sm text-pk-text-muted">{% trans %}The current password stops working once a new one is set.{% endtrans %}</p>
 
     <div class="flex flex-col gap-3">
@@ -334,13 +334,13 @@
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans %}Email a link{% endtrans %}</p>
           <p class="text-xs text-pk-text-muted">{% trans %}Keycloak mails the user a link to set a new password.{% endtrans %}</p>
-          <p class="mt-1 text-xs text-warning" style="display:none" x-show="!canMail()" x-text="mailBlocked()"></p>
+          <p class="mt-1 text-xs text-warning" x-cloak x-show="!canMail()" x-text="mailBlocked()"></p>
         </div>
         <button type="button" class="btn btn-outline btn-sm shrink-0" :disabled="busy || !canMail()" @click="email()">{% trans %}Send{% endtrans %}</button>
       </div>
     </div>
 
-    <p style="display:none" x-show="error" class="mt-3 text-sm text-error" x-text="error"></p>
+    <p x-cloak x-show="error" class="mt-3 text-sm text-error" x-text="error"></p>
     <div class="modal-action">
       <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Close{% endtrans %}</button>
     </div>
@@ -353,17 +353,17 @@
         @user-toggle.window="open($event.detail)">
   <div class="modal-box">
     <h3 class="mb-2 text-lg font-bold" x-text="enable ? {{ _('Enable the account?')|tojson|forceescape }} : {{ _('Disable the account?')|tojson|forceescape }}"></h3>
-    <p class="mb-3 text-sm" x-show="!enable" style="display:none">
-      <span x-html="fmtHtml({{ _('<span class="font-mono">{username}</span> can no longer sign in, and the sessions they have right now are ended. Nothing is deleted: the account, its roles and its data are still there, and enabling it again restores access.')|tojson|forceescape }}, { username: username })"></span>
+    <p class="mb-3 text-sm" x-show="!enable" x-cloak>
+      <span>{{ bound(_('<span class="font-mono">{username}</span> can no longer sign in, and the sessions they have right now are ended. Nothing is deleted: the account, its roles and its data are still there, and enabling it again restores access.'), username='username') }}</span>
     </p>
-    <p class="mb-3 text-sm" x-show="enable" style="display:none">
-      <span x-html="fmtHtml({{ _('<span class="font-mono">{username}</span> can sign in again with the password they had.')|tojson|forceescape }}, { username: username })"></span>
+    <p class="mb-3 text-sm" x-show="enable" x-cloak>
+      <span>{{ bound(_('<span class="font-mono">{username}</span> can sign in again with the password they had.'), username='username') }}</span>
     </p>
-    <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+    <p x-cloak x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
     <div class="modal-action">
       <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
       <button type="button" class="btn" :class="enable ? 'btn-primary' : 'btn-error'" :disabled="busy" @click="submit()">
-        <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+        <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
         <span x-text="enable ? {{ _('Enable')|tojson|forceescape }} : {{ _('Disable')|tojson|forceescape }}"></span>
       </button>
     </div>
@@ -371,309 +371,29 @@
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
-<script>
-const _USERS_API = '/api/v1/users';
+{#- The page's script is static/js/pages/users.js (T-UI-03): no inline script, no event
+    attribute. Its sentences come from this island, in the language of the page. #}
+{{ data_island("users-page", {
+  "texts": {
+    "listFailed": _('The list could not be loaded.'),
+    "listUnavailable": _('Users are not available'),
+    "reloadPage": _('Reload the page'),
+    "justNow": _('just now'),
+    "mailNoServer": _('The realm has no mail server configured, so Keycloak cannot send mail. An administrator can set one up on the Mail page.'),
+    "mailNoAddress": _('This account has no email address.'),
+    "userCreatedLinkSent": _('User <b>{username}</b> created. A link to set a password was sent.'),
+    "userCreatedMailFailed": _('User <b>{username}</b> was created, but the email was not sent:'),
+    "userCreated": _('User <b>{username}</b> created.'),
+    "rolesSaved": _('Roles of <b>{username}</b> saved.'),
+    "sessionEnded": _('Session ended.'),
+    "sessionsEnded": _('All sessions of <b>{username}</b> ended.'),
+    "linkSent": _('A link to set a new password was sent to <b>{username}</b>.'),
+    "accountEnabled": _('Account <b>{username}</b> enabled.'),
+    "accountDisabled": _('Account <b>{username}</b> disabled.'),
+  },
+}) }}
+{% endblock %}
 
-// What the list on screen says about the realm. The partial carries it in a marker element,
-// so the dialogs (which live outside the list) never need a request of their own for it.
-function _usersMarker() {
-  return document.querySelector('#user-list [data-users-marker]');
-}
-function _usersSmtp() {
-  const marker = _usersMarker();
-  return !!marker && marker.dataset.smtp === 'true';
-}
-
-function reloadUsers() {
-  const marker = _usersMarker();
-  const params = new URLSearchParams();
-  const search = document.getElementById('user-search').value.trim();
-  if (search) params.set('search', search);
-  if (marker && marker.dataset.first) params.set('first', marker.dataset.first);
-  htmx.ajax('GET', '/partials/users?' + params.toString(), { target: '#user-list', swap: 'innerHTML' });
-}
-
-// htmx does not swap a 4xx or 5xx answer, which would leave the page spinning. Say why
-// instead. A 401 is handled by the page itself.
-document.body.addEventListener('htmx:responseError', function (event) {
-  const detail = event.detail || {};
-  if (!detail.target || detail.target.id !== 'user-list') return;
-  if (detail.xhr && detail.xhr.status === 401) return;
-  let reason = {{ _('The list could not be loaded.')|tojson }};
-  try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
-  detail.target.innerHTML =
-    '<div class="flex flex-col items-center py-24 gap-3 text-pk-text-muted text-center">' +
-    '<p class="text-lg font-semibold">' + _ragEscape({{ _('Users are not available')|tojson }}) + '</p>' +
-    '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p>' +
-    '<a class="link" href="/users">' + _ragEscape({{ _('Reload the page')|tojson }}) + '</a></div>';
-});
-
-function _usersWhen(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
-
-function _usersAgo(iso) {
-  if (!iso) return '—';
-  const seconds = Math.round((new Date(iso).getTime() - Date.now()) / 1000);
-  const units = [['day', 86400], ['hour', 3600], ['minute', 60]];
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
-  for (const [unit, size] of units) {
-    if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
-  }
-  return {{ _('just now')|tojson }};
-}
-
-function _usersMailBlocked(smtp, email) {
-  if (!smtp) return {{ _('The realm has no mail server configured, so Keycloak cannot send mail. An administrator can set one up on the Mail page.')|tojson }};
-  if (!email) return {{ _('This account has no email address.')|tojson }};
-  return '';
-}
-
-function newUser() {
-  return {
-    username: '', email: '', firstName: '', lastName: '', credential: 'temporary',
-    roles: [], selected: {}, rolesLoading: false, rolesError: '',
-    smtp: false, busy: false, error: '',
-    async open() {
-      this.reset();
-      this.smtp = _usersSmtp();
-      this.$root.showModal();
-      this.rolesLoading = true;
-      const res = await _ragRequest('GET', _USERS_API + '/roles');
-      this.rolesLoading = false;
-      if (res.handled) return;
-      if (!res.ok) { this.rolesError = res.error; return; }
-      this.roles = res.data.roles;
-      // The dashboard role is what makes a new account usable, so it starts ticked.
-      const picked = {};
-      this.roles.forEach(function (role) { picked[role.name] = role.default; });
-      this.selected = picked;
-    },
-    reset() {
-      this.username = ''; this.email = ''; this.firstName = ''; this.lastName = '';
-      this.credential = 'temporary'; this.error = '';
-      this.roles = []; this.selected = {}; this.rolesError = '';
-    },
-    chosen() {
-      const self = this;
-      return this.roles.filter(function (r) { return self.selected[r.name]; })
-                       .map(function (r) { return r.name; });
-    },
-    canMail() { return this.smtp && this.email.trim() !== ''; },
-    mailBlocked() { return _usersMailBlocked(this.smtp, this.email.trim()); },
-    async submit() {
-      this.error = '';
-      if (this.credential === 'email' && !this.canMail()) this.credential = 'temporary';
-      this.busy = true;
-      const name = this.username.trim();
-      const res = await _ragRequest('POST', _USERS_API, {
-        username: name,
-        email: this.email.trim(),
-        first_name: this.firstName.trim(),
-        last_name: this.lastName.trim(),
-        credential: this.credential,
-        roles: this.chosen(),
-      });
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) {
-        this.error = res.error;
-        // A step after creating the account may have failed: the account is there.
-        reloadUsers();
-        return;
-      }
-      this.$root.close();
-      reloadUsers();
-      const made = res.data;
-      if (made.temporary_password) {
-        window.dispatchEvent(new CustomEvent('user-secret', {
-          detail: { username: made.username, password: made.temporary_password, created: true },
-        }));
-      } else if (made.email_sent) {
-        showToast('success', fmtHtml({{ _('User <b>{username}</b> created. A link to set a password was sent.')|tojson }}, { username: made.username }));
-      } else if (made.email_error) {
-        showToast('warning', fmtHtml({{ _('User <b>{username}</b> was created, but the email was not sent:')|tojson }}, { username: made.username }) + " " + _ragEscape(made.email_error));
-      } else {
-        showToast('success', fmtHtml({{ _('User <b>{username}</b> created.')|tojson }}, { username: made.username }));
-      }
-    },
-  };
-}
-
-function secretDialog() {
-  return {
-    username: '', password: '', created: false, copied: false,
-    open(detail) {
-      this.username = detail.username;
-      this.password = detail.password;
-      this.created = !!detail.created;
-      this.copied = false;
-      this.$root.showModal();
-    },
-    // The password is shown once: nothing of it stays in the page after the dialog closes.
-    clear() { this.password = ''; this.username = ''; this.copied = false; },
-    async copy() {
-      try {
-        await navigator.clipboard.writeText(this.password);
-      } catch (_) {
-        // No clipboard API outside a secure context: select it, the person can copy by hand.
-        const field = this.$root.querySelector('input[readonly]');
-        field.select();
-        try { document.execCommand('copy'); } catch (__) {}
-      }
-      this.copied = true;
-    },
-  };
-}
-
-function editUserRoles() {
-  return {
-    id: '', username: '', roles: [], selected: {}, initial: {},
-    loading: false, loadError: '', busy: false, error: '',
-    async open(detail) {
-      this.id = detail.id; this.username = detail.username;
-      this.roles = []; this.selected = {}; this.initial = {};
-      this.loading = true; this.loadError = ''; this.error = '';
-      this.$root.showModal();
-      const res = await _ragRequest('GET', _USERS_API + '/' + encodeURIComponent(this.id) + '/roles');
-      this.loading = false;
-      if (res.handled) return;
-      if (!res.ok) { this.loadError = res.error; return; }
-      this.roles = res.data.roles;
-      const picked = {};
-      this.roles.forEach(function (role) { picked[role.name] = role.direct; });
-      this.selected = Object.assign({}, picked);
-      this.initial = Object.assign({}, picked);
-    },
-    chosen() {
-      const self = this;
-      return this.roles.filter(function (r) { return self.selected[r.name]; }).map(function (r) { return r.name; });
-    },
-    dirty() {
-      const self = this;
-      return this.roles.some(function (r) { return !!self.selected[r.name] !== !!self.initial[r.name]; });
-    },
-    async submit() {
-      this.error = '';
-      this.busy = true;
-      const res = await _ragRequest('PUT', _USERS_API + '/' + encodeURIComponent(this.id) + '/roles',
-                                    { roles: this.chosen() });
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) { this.error = res.error; return; }
-      this.$root.close();
-      showToast('success', fmtHtml({{ _('Roles of <b>{username}</b> saved.')|tojson }}, { username: this.username }));
-      reloadUsers();
-    },
-  };
-}
-
-function userSessions() {
-  return {
-    id: '', username: '', isSelf: false, sessions: [],
-    loading: false, loadError: '', busy: false, error: '',
-    when: _usersWhen, ago: _usersAgo,
-    async open(detail) {
-      this.id = detail.id; this.username = detail.username;
-      this.sessions = []; this.isSelf = false;
-      this.loadError = ''; this.error = '';
-      this.$root.showModal();
-      await this.load();
-    },
-    async load() {
-      this.loading = true;
-      const res = await _ragRequest('GET', _USERS_API + '/' + encodeURIComponent(this.id) + '/sessions');
-      this.loading = false;
-      if (res.handled) return;
-      if (!res.ok) { this.loadError = res.error; return; }
-      this.sessions = res.data.sessions;
-      this.isSelf = res.data.is_self;
-    },
-    async end(sessionId) {
-      this.error = '';
-      this.busy = true;
-      const res = await _ragRequest(
-        'DELETE', _USERS_API + '/' + encodeURIComponent(this.id) + '/sessions/' + encodeURIComponent(sessionId));
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) { this.error = res.error; return; }
-      showToast('success', {{ _('Session ended.')|tojson }});
-      await this.load();
-    },
-    async endAll() {
-      this.error = '';
-      this.busy = true;
-      const res = await _ragRequest('DELETE', _USERS_API + '/' + encodeURIComponent(this.id) + '/sessions');
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) { this.error = res.error; return; }
-      showToast('success', fmtHtml({{ _('All sessions of <b>{username}</b> ended.')|tojson }}, { username: this.username }));
-      await this.load();
-    },
-  };
-}
-
-function resetPassword() {
-  return {
-    id: '', username: '', emailAddress: '', smtp: false, busy: false, error: '',
-    open(detail) {
-      this.id = detail.id; this.username = detail.username;
-      this.emailAddress = detail.email || ''; this.smtp = _usersSmtp();
-      this.error = '';
-      this.$root.showModal();
-    },
-    canMail() { return this.smtp && this.emailAddress !== ''; },
-    mailBlocked() { return _usersMailBlocked(this.smtp, this.emailAddress); },
-    async temporary() {
-      this.error = '';
-      this.busy = true;
-      const res = await _ragRequest('POST', _USERS_API + '/' + encodeURIComponent(this.id) + '/password/temporary');
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) { this.error = res.error; return; }
-      this.$root.close();
-      reloadUsers();
-      window.dispatchEvent(new CustomEvent('user-secret', {
-        detail: { username: res.data.username, password: res.data.temporary_password, created: false },
-      }));
-    },
-    async email() {
-      this.error = '';
-      this.busy = true;
-      const res = await _ragRequest('POST', _USERS_API + '/' + encodeURIComponent(this.id) + '/password/email');
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) { this.error = res.error; return; }
-      this.$root.close();
-      showToast('success', fmtHtml({{ _('A link to set a new password was sent to <b>{username}</b>.')|tojson }}, { username: this.username }));
-    },
-  };
-}
-
-function toggleUser() {
-  return {
-    id: '', username: '', enable: false, busy: false, error: '',
-    open(detail) {
-      this.id = detail.id; this.username = detail.username;
-      this.enable = !detail.enabled; this.error = '';
-      this.$root.showModal();
-    },
-    async submit() {
-      this.error = '';
-      this.busy = true;
-      const res = await _ragRequest('PUT', _USERS_API + '/' + encodeURIComponent(this.id) + '/enabled',
-                                    { enabled: this.enable });
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) { this.error = res.error; return; }
-      this.$root.close();
-      showToast('success', fmtHtml(this.enable
-        ? {{ _('Account <b>{username}</b> enabled.')|tojson }}
-        : {{ _('Account <b>{username}</b> disabled.')|tojson }}, { username: this.username }));
-      reloadUsers();
-    },
-  };
-}
-</script>
+{% block page_modules %}
+<script type="module" src="{{ asset_url('js/pages/users.js') }}"></script>
 {% endblock %}

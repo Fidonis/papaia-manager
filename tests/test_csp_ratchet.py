@@ -256,3 +256,26 @@ def test_the_backup_group_has_no_inline_script_handler_or_rejected_expression(na
 
 def test_the_backup_page_runs_on_the_csp_build() -> None:
     assert "backup.html" in _baseline()["converted"]  # type: ignore[operator]
+
+
+# -- users, roles and audit log on the CSP build (MGR-021) --------------------------------------
+
+# The pages and the partial htmx swaps into the audit log; the lists of users and roles
+# (partials/user_list.html, partials/role_list.html) carry no finding of their own.
+_ACCOUNTS_GROUP = ("audit.html", "partials/audit_list.html", "roles.html", "users.html")
+
+
+@pytest.mark.parametrize("name", _ACCOUNTS_GROUP)
+def test_the_accounts_group_has_no_inline_script_handler_or_rejected_expression(
+    name: str,
+) -> None:
+    counts = csp_scan.count_markup((TEMPLATES / name).read_text(encoding="utf-8"))
+    assert counts == dict.fromkeys(csp_scan.KINDS, 0), name
+    assert name not in _templates_of_baseline(), name
+
+
+def test_the_accounts_pages_run_on_the_csp_build() -> None:
+    converted = set(_baseline()["converted"])  # type: ignore[arg-type]
+    assert {"audit.html", "roles.html", "users.html"} <= converted
+    for name in ("partials/user_list.html", "partials/role_list.html"):
+        assert name not in _templates_of_baseline(), name

@@ -1016,6 +1016,14 @@ below collects the reports. A response with a policy of its own keeps it (the lo
   attribute (for example `data-backup-action`), and one listener of the page module on the
   document runs it, so a swapped row needs nothing run for it. The values of a row are
   `data-*` attributes. A dialog's cancel button names its dialog in `data-dialog-close`.
+- What a page module shares with the page script (texts, toaster, report, actions) it imports
+  from `js/core/runtime.js`.
+- A sentence that carries markup and a value is rendered by the server instead of `x-html`:
+  `bound(_('Roles of <span class="font-mono">{username}</span>'), username='username')`
+  (`src/app/csp.py`) writes each value as `<span x-text="...">`, so the browser fills it in as
+  text. The expression is a property path or a method call without arguments.
+- An element that `x-show` hides at the start carries `x-cloak` instead of
+  `style="display:none"`; the rule is in `docker/tailwind.app.css`.
 
 **Converted pages.** The dashboard (`dashboard.html` with the partials `tile_gallery.html` and
 `tile_editor.html`): the editor is `js/pages/dashboard.js`, loaded for administrators only
@@ -1026,6 +1034,11 @@ attributes, which the policy reports under `style-src`; they move into classes b
 policy is enforced. `tests/test_dashboard_scripts.py` checks the templates and the islands, and
 `tests/test_dashboard_browser.py` the browser path in both colour schemes: the tiles load and
 refresh, the editor adds, moves and removes a tile, the layout is saved.
+
+Users, Roles and Audit log (`users.html`, `roles.html`, `audit.html`
+with `partials/audit_list.html`; modules `js/pages/users.js`, `roles.js`, `audit.js`). The
+audit list hands its filter choices to the page in the island `audit-facets`;
+`tests/test_accounts_browser.py` walks the three pages in a real browser on the CSP build.
 
 `kit_specimen.html` (`/_kit/specimen`), converted from the start. It
 renders the kit's reference content only, so it loads neither `app.css`, htmx nor

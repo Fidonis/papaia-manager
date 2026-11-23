@@ -279,7 +279,7 @@ groups:
       - W1 i18n/export/en.json#text.f9ce993e6b2e0ebd Admin
       - W1 src/app/templates/partials/role_list.html:69 admin
       - W1 src/app/templates/partials/role_list.html:86 admin
-      - W1 src/app/templates/roles.html:54 Admin
+      - W1 src/app/templates/roles.html:55 Admin
   - ticket: MGR-014
     reason: Update in operator texts about release and package updates; reworded to Upgrade.
     findings:
@@ -373,7 +373,7 @@ groups:
       - W1 i18n/export/de.json#text.fa535fae58cb44af audit
       - W1 i18n/export/en.json#text.093cd3096c2dcfc2 audit
       - W1 i18n/export/en.json#text.fa535fae58cb44af audit
-      - W1 src/app/templates/partials/audit_list.html:18 audit
+      - W1 src/app/templates/partials/audit_list.html:19 audit
       - W1 src/app/templates/partials/notifications_log.html:42 audit
   - ticket: MGR-014
     reason: dir is the German abbreviation of directory in operator texts, not a form of address;
@@ -536,9 +536,6 @@ groups:
       - W5 i18n/export/de.json#text.3b98f2612664830b <
       - W5 i18n/export/de.json#text.3b98f2612664830b >
       - W5 i18n/export/de.json#text.3b98f2612664830b s="
-      - W5 i18n/export/de.json#text.3bf58679a05c727c <
-      - W5 i18n/export/de.json#text.3bf58679a05c727c >
-      - W5 i18n/export/de.json#text.3bf58679a05c727c s="
       - W5 i18n/export/de.json#text.3e2f8ad575bf64a7 <
       - W5 i18n/export/de.json#text.3e2f8ad575bf64a7 >
       - W5 i18n/export/de.json#text.3e2f8ad575bf64a7 s="
@@ -616,9 +613,6 @@ groups:
       - W5 i18n/export/de.json#text.6df2289809ea237a <
       - W5 i18n/export/de.json#text.6df2289809ea237a >
       - W5 i18n/export/de.json#text.6df2289809ea237a s="
-      - W5 i18n/export/de.json#text.6edef27543e70e27 <
-      - W5 i18n/export/de.json#text.6edef27543e70e27 >
-      - W5 i18n/export/de.json#text.6edef27543e70e27 s="
       - W5 i18n/export/de.json#text.7140a418403d2b85 <
       - W5 i18n/export/de.json#text.7140a418403d2b85 >
       - W5 i18n/export/de.json#text.7140a418403d2b85 s="
@@ -744,9 +738,6 @@ groups:
       - W5 i18n/export/de.json#text.bf6c9bf29c655356 s="
       - W5 i18n/export/de.json#text.c297f46828e9f8df <
       - W5 i18n/export/de.json#text.c297f46828e9f8df >
-      - W5 i18n/export/de.json#text.c2e3839bfd2f03a8 <
-      - W5 i18n/export/de.json#text.c2e3839bfd2f03a8 >
-      - W5 i18n/export/de.json#text.c2e3839bfd2f03a8 s="
       - W5 i18n/export/de.json#text.c43c93d2ed251f87 <
       - W5 i18n/export/de.json#text.c43c93d2ed251f87 >
       - W5 i18n/export/de.json#text.c43c93d2ed251f87 f="
@@ -809,9 +800,6 @@ groups:
       - W5 i18n/export/de.json#text.ef004b6c80ad746a <
       - W5 i18n/export/de.json#text.ef004b6c80ad746a >
       - W5 i18n/export/de.json#text.ef004b6c80ad746a s="
-      - W5 i18n/export/de.json#text.f172104cbbde178a <
-      - W5 i18n/export/de.json#text.f172104cbbde178a >
-      - W5 i18n/export/de.json#text.f172104cbbde178a s="
       - W5 i18n/export/de.json#text.f4f8468bdea31a09 <
       - W5 i18n/export/de.json#text.f4f8468bdea31a09 >
       - W5 i18n/export/de.json#text.f4f8468bdea31a09 s="
@@ -982,9 +970,6 @@ groups:
       - W5 i18n/export/en.json#text.3b98f2612664830b <
       - W5 i18n/export/en.json#text.3b98f2612664830b >
       - W5 i18n/export/en.json#text.3b98f2612664830b s="
-      - W5 i18n/export/en.json#text.3bf58679a05c727c <
-      - W5 i18n/export/en.json#text.3bf58679a05c727c >
-      - W5 i18n/export/en.json#text.3bf58679a05c727c s="
       - W5 i18n/export/en.json#text.3e2f8ad575bf64a7 <
       - W5 i18n/export/en.json#text.3e2f8ad575bf64a7 >
       - W5 i18n/export/en.json#text.3e2f8ad575bf64a7 s="
@@ -1062,9 +1047,6 @@ groups:
       - W5 i18n/export/en.json#text.6df2289809ea237a <
       - W5 i18n/export/en.json#text.6df2289809ea237a >
       - W5 i18n/export/en.json#text.6df2289809ea237a s="
-      - W5 i18n/export/en.json#text.6edef27543e70e27 <
-      - W5 i18n/export/en.json#text.6edef27543e70e27 >
-      - W5 i18n/export/en.json#text.6edef27543e70e27 s="
       - W5 i18n/export/en.json#text.7140a418403d2b85 <
       - W5 i18n/export/en.json#text.7140a418403d2b85 >
       - W5 i18n/export/en.json#text.7140a418403d2b85 s="
@@ -1190,9 +1172,6 @@ groups:
       - W5 i18n/export/en.json#text.bf6c9bf29c655356 s="
       - W5 i18n/export/en.json#text.c297f46828e9f8df <
       - W5 i18n/export/en.json#text.c297f46828e9f8df >
-      - W5 i18n/export/en.json#text.c2e3839bfd2f03a8 <
-      - W5 i18n/export/en.json#text.c2e3839bfd2f03a8 >
-      - W5 i18n/export/en.json#text.c2e3839bfd2f03a8 s="
       - W5 i18n/export/en.json#text.c43c93d2ed251f87 <
       - W5 i18n/export/en.json#text.c43c93d2ed251f87 >
       - W5 i18n/export/en.json#text.c43c93d2ed251f87 f="
@@ -1255,9 +1234,6 @@ groups:
       - W5 i18n/export/en.json#text.ef004b6c80ad746a <
       - W5 i18n/export/en.json#text.ef004b6c80ad746a >
       - W5 i18n/export/en.json#text.ef004b6c80ad746a s="
-      - W5 i18n/export/en.json#text.f172104cbbde178a <
-      - W5 i18n/export/en.json#text.f172104cbbde178a >
-      - W5 i18n/export/en.json#text.f172104cbbde178a s="
       - W5 i18n/export/en.json#text.f4f8468bdea31a09 <
       - W5 i18n/export/en.json#text.f4f8468bdea31a09 >
       - W5 i18n/export/en.json#text.f4f8468bdea31a09 s="

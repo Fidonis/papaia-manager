@@ -5,6 +5,7 @@
     "version": "3.17.5"
   },
   "converted": [
+    "audit.html",
     "backup.html",
     "dashboard.html",
     "error.html",
@@ -16,10 +17,12 @@
     "knowledge_map.html",
     "mail.html",
     "me.html",
+    "roles.html",
     "settings.html",
     "settings_installation.html",
     "settings_modules.html",
-    "settings_overlay.html"
+    "settings_overlay.html",
+    "users.html"
   ],
   "templates": {
     "addon_upgrade.html": {
@@ -35,13 +38,6 @@
       "alpine_unsupported": 1,
       "style_blocks": 0,
       "style_attributes": 1
-    },
-    "audit.html": {
-      "inline_scripts": 1,
-      "on_attributes": 6,
-      "alpine_unsupported": 1,
-      "style_blocks": 0,
-      "style_attributes": 0
     },
     "catalogs.html": {
       "inline_scripts": 1,
@@ -211,13 +207,6 @@
       "style_blocks": 0,
       "style_attributes": 1
     },
-    "partials/audit_list.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "partials/catalog_list.html": {
       "inline_scripts": 0,
       "on_attributes": 1,
@@ -365,13 +354,6 @@
       "style_blocks": 0,
       "style_attributes": 0
     },
-    "roles.html": {
-      "inline_scripts": 1,
-      "on_attributes": 1,
-      "alpine_unsupported": 3,
-      "style_blocks": 0,
-      "style_attributes": 22
-    },
     "services.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
@@ -385,20 +367,13 @@
       "alpine_unsupported": 8,
       "style_blocks": 0,
       "style_attributes": 5
-    },
-    "users.html": {
-      "inline_scripts": 1,
-      "on_attributes": 2,
-      "alpine_unsupported": 6,
-      "style_blocks": 0,
-      "style_attributes": 34
     }
   },
   "totals": {
-    "inline_scripts": 30,
-    "on_attributes": 77,
-    "alpine_unsupported": 85,
+    "inline_scripts": 26,
+    "on_attributes": 68,
+    "alpine_unsupported": 75,
     "style_blocks": 0,
-    "style_attributes": 237
+    "style_attributes": 181
   }
 }

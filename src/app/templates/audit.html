@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/_actions.html" import overflow_menu %}
+{% from "partials/_csp.html" import data_island %}
 
 {% block page_title %}{% trans %}Audit log{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Who did what, newest first{% endtrans %}</p>{% endblock %}
@@ -14,7 +15,7 @@
   <a id="audit-export-csv" href="/api/v1/audit/export?format=csv" class="btn btn-outline btn-sm">{% trans %}Export{% endtrans %}</a>
   {% call overflow_menu(label=_('More actions')) %}
   <li><a id="audit-export-jsonl" href="/api/v1/audit/export?format=jsonl">{% trans %}Export as JSONL{% endtrans %}</a></li>
-  <li><a class="text-error" @click="document.getElementById('audit-prune-modal').showModal(); auditPruneOpened()">{% trans %}Delete old entries…{% endtrans %}</a></li>
+  <li><a id="audit-prune-open" class="text-error">{% trans %}Delete old entries…{% endtrans %}</a></li>
   {% endcall %}
 </div>
 {% endblock %}
@@ -31,8 +32,7 @@
       hx-get="/partials/audit"
       hx-target="#audit-list"
       hx-swap="innerHTML"
-      hx-trigger="change, submit, keyup changed delay:400ms from:input[name='target']"
-      onsubmit="return false">
+      hx-trigger="change, submit, keyup changed delay:400ms from:input[name='target']">
   <div class="form-control">
     <label class="label py-1" for="audit-filter-user"><span class="label-text text-xs">{% trans %}User{% endtrans %}</span></label>
     <select id="audit-filter-user" name="user" class="select select-bordered select-sm">
@@ -66,7 +66,7 @@
     <input id="audit-filter-before" name="before" type="date" value="{{ filter_before[:10] }}"
            class="input input-bordered input-sm">
   </div>
-  <button type="button" class="btn btn-ghost btn-sm" onclick="window.location = '/audit'">{% trans %}Reset{% endtrans %}</button>
+  <button type="button" class="btn btn-ghost btn-sm" data-audit-reset>{% trans %}Reset{% endtrans %}</button>
 </form>
 
 <div
@@ -94,13 +94,12 @@
       <label class="label py-1" for="audit-prune-date">
         <span class="label-text text-sm">{% trans %}Delete entries before{% endtrans %}</span>
       </label>
-      <input id="audit-prune-date" type="date" class="input input-bordered input-sm w-48"
-             oninput="auditPrunePreview()">
+      <input id="audit-prune-date" type="date" class="input input-bordered input-sm w-48">
     </div>
 
     <div class="flex gap-1.5 mb-4">
       {% for days in (30, 90, 180, 365) %}
-      <button type="button" class="btn btn-ghost btn-xs" onclick="auditPrunePreset({{ days }})">{{ days }}d</button>
+      <button type="button" class="btn btn-ghost btn-xs" data-audit-prune-days="{{ days }}">{{ days }}d</button>
       {% endfor %}
     </div>
 
@@ -108,148 +107,30 @@
     <p id="audit-prune-export-link" class="text-sm mb-4"></p>
 
     <div class="modal-action mt-0">
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('audit-prune-modal').close()">{% trans %}Cancel{% endtrans %}</button>
-      <button id="audit-prune-go" class="btn btn-error btn-sm" disabled onclick="auditPruneConfirm()">{% trans %}Delete{% endtrans %}</button>
+      <button class="btn btn-ghost btn-sm" data-audit-prune-cancel>{% trans %}Cancel{% endtrans %}</button>
+      <button id="audit-prune-go" class="btn btn-error btn-sm" disabled>{% trans %}Delete{% endtrans %}</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
-<script>
-function _csrf() {
-  return csrfToken();
-}
+{#- The page's script is static/js/pages/audit.js (T-UI-03): no inline script, no event
+    attribute. This island carries the filters the page was opened with, which the first list
+    marks in the selects, and the sentences of the prune dialog in the language of the page. #}
+{{ data_island("audit-page", {
+  "filters": {"user": filter_user, "action": filter_action, "result": filter_result},
+  "texts": {
+    "previewFailed": _('Could not preview:'),
+    "noneOlder": _('No entries are older than this date.'),
+    "willDelete": _('{removed} of {total} entries (oldest {oldest}, newest {newest}) will be permanently deleted.'),
+    "exportFirst": _('<a class="link" href="/api/v1/audit/export?format=csv&before={before}">Export them first</a>'),
+    "deleteFailed": _('Delete failed:'),
+    "deletedOne": _('{count} entry deleted.'),
+    "deletedOther": _('{count} entries deleted.'),
+  },
+}) }}
+{% endblock %}
 
-async function _apiError(r) {
-  try {
-    const e = await r.json();
-    return e.detail || JSON.stringify(e);
-  } catch (_) {
-    return String(r.status);
-  }
-}
-
-// Filter selects have no options server-rendered into audit.html: the choices
-// come from the log itself (facets), which only the partial computes. The
-// first /partials/audit response fills them in and marks the value the page
-// shell was opened with as selected -- so a deep link's filter is visible in
-// the form, not only applied to the list.
-function auditFillFacets(facets) {
-  var current = {
-    user: document.getElementById('audit-filter-user').value || {{ filter_user | tojson }},
-    action: document.getElementById('audit-filter-action').value || {{ filter_action | tojson }},
-    result: document.getElementById('audit-filter-result').value || {{ filter_result | tojson }},
-  };
-  [['audit-filter-user', facets.user, current.user],
-   ['audit-filter-action', facets.action, current.action],
-   ['audit-filter-result', facets.result, current.result]].forEach(function (spec) {
-    var select = document.getElementById(spec[0]);
-    var values = spec[1] || [];
-    var selected = spec[2];
-    if (select.options.length > 1) return; // already filled once
-    values.forEach(function (value) {
-      var opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = value;
-      if (value === selected) opt.selected = true;
-      select.appendChild(opt);
-    });
-  });
-}
-
-function _auditFilterQuery(extra) {
-  var form = document.getElementById('audit-filters');
-  var params = new URLSearchParams(new FormData(form));
-  Object.keys(extra || {}).forEach(function (k) { params.set(k, extra[k]); });
-  // Empty fields are noise on a shared/export link.
-  Array.from(params.keys()).forEach(function (k) { if (!params.get(k)) params.delete(k); });
-  return params;
-}
-
-// Kept in sync with the filter form so Export always respects what is on
-// screen, not just what was true when the page loaded.
-function auditSyncExportLinks() {
-  var qs = _auditFilterQuery().toString();
-  document.getElementById('audit-export-csv').href =
-    '/api/v1/audit/export?format=csv' + (qs ? '&' + qs : '');
-  document.getElementById('audit-export-jsonl').href =
-    '/api/v1/audit/export?format=jsonl' + (qs ? '&' + qs : '');
-}
-document.getElementById('audit-filters').addEventListener('change', auditSyncExportLinks);
-auditSyncExportLinks();
-
-// ── Prune dialog ─────────────────────────────────────────────────────────
-
-function auditPruneOpened() {
-  document.getElementById('audit-prune-date').value = '';
-  document.getElementById('audit-prune-preview').textContent = '';
-  document.getElementById('audit-prune-export-link').textContent = '';
-  document.getElementById('audit-prune-go').disabled = true;
-}
-
-function auditPrunePreset(days) {
-  var d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  document.getElementById('audit-prune-date').value = d.toISOString().slice(0, 10);
-  auditPrunePreview();
-}
-
-function auditPrunePreview() {
-  var date = document.getElementById('audit-prune-date').value;
-  var preview = document.getElementById('audit-prune-preview');
-  var link = document.getElementById('audit-prune-export-link');
-  var go = document.getElementById('audit-prune-go');
-  if (!date) {
-    preview.textContent = '';
-    link.textContent = '';
-    go.disabled = true;
-    return;
-  }
-  fetch('/api/v1/audit/prune', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
-    body: JSON.stringify({ before: date, dry_run: true }),
-  }).then(async function (r) {
-    if (!r.ok) {
-      preview.textContent = {{ _('Could not preview:')|tojson }} + " " + (await _apiError(r));
-      go.disabled = true;
-      return;
-    }
-    var data = await r.json();
-    if (data.removed === 0) {
-      preview.textContent = {{ _('No entries are older than this date.')|tojson }};
-      link.textContent = '';
-      go.disabled = true;
-      return;
-    }
-    preview.textContent = fmt({{ _('{removed} of {total} entries (oldest {oldest}, newest {newest}) will be permanently deleted.')|tojson }},
-      { removed: data.removed, total: data.removed + data.kept, oldest: data.oldest_removed, newest: data.newest_removed });
-    link.innerHTML = fmtHtml({{ _('<a class="link" href="/api/v1/audit/export?format=csv&before={before}">Export them first</a>')|tojson }},
-      { before: encodeURIComponent(date) });
-    go.disabled = false;
-  });
-}
-
-function auditPruneConfirm() {
-  var date = document.getElementById('audit-prune-date').value;
-  var go = document.getElementById('audit-prune-go');
-  go.disabled = true;
-  fetch('/api/v1/audit/prune', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
-    body: JSON.stringify({ before: date, dry_run: false }),
-  }).then(async function (r) {
-    if (!r.ok) {
-      showToast('error', {{ _('Delete failed:')|tojson }} + " " + (await _apiError(r)));
-      go.disabled = false;
-      return;
-    }
-    var data = await r.json();
-    document.getElementById('audit-prune-modal').close();
-    showToast('success', fmtPlural(data.removed, {{ _('{count} entry deleted.')|tojson }}, {{ _('{count} entries deleted.')|tojson }}));
-    htmx.ajax('GET', '/partials/audit?' + _auditFilterQuery().toString(),
-              { target: '#audit-list', swap: 'innerHTML' });
-  });
-}
-</script>
+{% block page_modules %}
+<script type="module" src="{{ asset_url('js/pages/audit.js') }}"></script>
 {% endblock %}

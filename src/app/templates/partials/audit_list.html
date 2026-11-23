@@ -5,9 +5,10 @@
    variable would not survive the purge. `partial` is a real, pre-existing
    value (images-prune's outcome when some images failed to remove) -- not
    something this feature invented, so it needs a branch from day one. #}
-<script>
-  auditFillFacets({{ facets | tojson }});
-</script>
+{#- The filter choices of the log, for the selects of the page (static/js/pages/audit.js reads
+    them after each swap; T-UI-03, no inline script). #}
+{% from "partials/_csp.html" import data_island %}
+{{ data_island("audit-facets", facets) }}
 
 {% if not entries and total == 0 %}
 <div class="rounded-xl border border-base-300 px-5 py-10 text-center">

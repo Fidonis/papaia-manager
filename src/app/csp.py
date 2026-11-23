@@ -20,6 +20,7 @@ from pathlib import Path
 
 from jinja2 import pass_context
 from jinja2.runtime import Context
+from markupsafe import Markup, escape
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 POLICY = "; ".join(
@@ -42,6 +43,10 @@ _HERE = Path(__file__).resolve().parent
 # The copy the image carries (docker/Dockerfile), then the file of a source checkout.
 _BASELINE_PATHS = (_HERE / "csp_baseline.json", _HERE.parents[1] / "tests" / "csp_baseline.json")
 _ISLAND_ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,79}")
+_PLACEHOLDER = re.compile(r"\{(\w+)\}")
+# What a bound value may name: a property path of the component, or one of its methods called
+# without arguments -- nothing the CSP build of Alpine would have to evaluate as code.
+_BOUND_EXPRESSION = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\(\))?")
 
 
 class ReportOnlyPolicyMiddleware:
@@ -94,3 +99,28 @@ def island_id(value: object) -> str:
     if not isinstance(value, str) or not _ISLAND_ID.fullmatch(value):
         raise ValueError(f"island id must be a name of letters, digits, - and _: {value!r}")
     return value
+
+
+def bound_sentence(sentence: object, **expressions: str) -> Markup:
+    """A sentence of the catalogue whose `{name}` values Alpine fills in as text.
+
+    Replaces `x-html="fmtHtml(sentence, values)"`, which the CSP build of Alpine refuses: the
+    server renders the sentence with its markup, and each value becomes
+    `<span x-text="expression">`, which the browser fills as a text node, so a value never
+    turns into markup. `sentence` must be a translation of the catalogue (`_()` in a template
+    with autoescape returns Markup); a plain string is refused rather than trusted. A
+    placeholder without an expression stays as it is.
+    """
+    if not isinstance(sentence, Markup):
+        raise TypeError("bound_sentence takes a sentence of the catalogue (Markup)")
+    for name, expression in expressions.items():
+        if not isinstance(expression, str) or not _BOUND_EXPRESSION.fullmatch(expression):
+            raise ValueError(f"bound value {name!r} must be a property path: {expression!r}")
+
+    def fill(match: re.Match[str]) -> str:
+        expression = expressions.get(match.group(1))
+        if expression is None:
+            return match.group(0)
+        return f'<span x-text="{escape(expression)}"></span>'
+
+    return Markup(_PLACEHOLDER.sub(fill, str(sentence)))
