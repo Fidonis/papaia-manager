@@ -1,5 +1,7 @@
 {# Branding card. Expects: stored (ManagerSettings), default_name,
-   default_tagline, branding() global for what is currently in effect. #}
+   default_tagline, branding() global for what is currently in effect. Its script is part of
+   static/js/pages/settings.js. #}
+{% from "partials/_csp.html" import data_island %}
 {% set current = branding() %}
 <section class="card bg-base-100 border border-base-300">
   <div class="card-body gap-5">
@@ -8,7 +10,7 @@
       <p class="text-sm text-pk-text-muted">{% trans %}Name, second line and logo shown at the top of the sidebar.{% endtrans %}</p>
     </div>
 
-    <form id="branding-form" class="space-y-4" onsubmit="saveBranding(event)">
+    <form id="branding-form" class="space-y-4">
       <label class="form-control w-full">
         <span class="label-text mb-1 text-sm font-medium">{% trans %}Name{% endtrans %}</span>
         <input id="branding-name" type="text" maxlength="40" class="input input-bordered w-full"
@@ -34,7 +36,7 @@
 
       <div class="flex flex-wrap gap-2">
         <button type="submit" class="btn btn-primary btn-sm">{% trans %}Save{% endtrans %}</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="resetBranding()">{% trans %}Reset to defaults{% endtrans %}</button>
+        <button id="branding-reset" type="button" class="btn btn-ghost btn-sm">{% trans %}Reset to defaults{% endtrans %}</button>
       </div>
     </form>
 
@@ -61,10 +63,10 @@
           <label class="btn btn-sm btn-outline">
             {% trans %}Upload logo{% endtrans %}
             <input id="logo-file" type="file" class="hidden"
-                   accept="image/png,image/jpeg,image/webp,image/svg+xml" onchange="uploadLogo(this)">
+                   accept="image/png,image/jpeg,image/webp,image/svg+xml">
           </label>
           {% if current.logo_url %}
-          <button type="button" class="btn btn-sm btn-ghost" onclick="removeLogo()">{% trans %}Remove logo{% endtrans %}</button>
+          <button id="logo-remove" type="button" class="btn btn-sm btn-ghost">{% trans %}Remove logo{% endtrans %}</button>
           {% endif %}
         </div>
       </div>
@@ -82,57 +84,17 @@
       <form method="dialog">
         <button class="btn btn-ghost btn-sm">{% trans %}Cancel{% endtrans %}</button>
       </form>
-      <button id="reset-branding-confirm" type="button" class="btn btn-error btn-sm"
-              onclick="confirmResetBranding()">{% trans %}Reset to defaults{% endtrans %}</button>
+      <button id="reset-branding-confirm" type="button" class="btn btn-error btn-sm">{% trans %}Reset to defaults{% endtrans %}</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button aria-label="{{ _('Close') }}">{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
-<script>
-  async function saveBranding(event) {
-    event.preventDefault();
-    const hide = document.getElementById("branding-hide-tagline").checked;
-    const tagline = document.getElementById("branding-tagline").value.trim();
-    const data = await settingsRequest("/api/v1/settings/branding", {
-      method: "PUT",
-      json: {
-        revision: settingsRevision,
-        name: document.getElementById("branding-name").value,
-        // null keeps the built-in line; an empty string hides it.
-        tagline: hide ? "" : (tagline === "" ? null : tagline),
-      },
-    });
-    if (data) reloadAfter({{ _('Branding saved')|tojson }});
-  }
-
-  function resetBranding() {
-    document.getElementById("reset-branding-modal").showModal();
-  }
-
-  async function confirmResetBranding() {
-    const modal = document.getElementById("reset-branding-modal");
-    const button = document.getElementById("reset-branding-confirm");
-    button.disabled = true;
-    const data = await settingsRequest("/api/v1/settings/branding/reset", {
-      json: { revision: settingsRevision },
-    });
-    button.disabled = false;
-    modal.close();
-    if (data) reloadAfter({{ _('Branding reset')|tojson }});
-  }
-
-  async function uploadLogo(input) {
-    if (!input.files.length) return;
-    const form = new FormData();
-    form.append("file", input.files[0]);
-    const data = await settingsRequest("/api/v1/settings/branding/logo", { body: form });
-    input.value = "";
-    if (data) reloadAfter({{ _('Logo updated')|tojson }});
-  }
-
-  async function removeLogo() {
-    const data = await settingsRequest("/api/v1/settings/branding/logo", { method: "DELETE" });
-    if (data) reloadAfter({{ _('Logo removed')|tojson }});
-  }
-</script>
+{{ data_island("mgr-settings-branding", {
+  "texts": {
+    "saved": _('Branding saved'),
+    "reset": _('Branding reset'),
+    "logoUpdated": _('Logo updated'),
+    "logoRemoved": _('Logo removed'),
+  },
+}) }}

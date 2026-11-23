@@ -1157,7 +1157,9 @@ def test_settings_has_three_tabs_and_the_menu_has_no_new_entry(client: TestClien
 
 def test_the_modules_page_has_a_switch_for_the_five_optional_modules(client: TestClient) -> None:
     html = _admin(client).get("/settings/modules").text
-    assert html.count('onchange="moduleToggled(this)"') == 5
+    # The page module binds every toggle that is not disabled (static/js/pages/settings-modules.js).
+    toggles = re.findall(r'<input type="checkbox"[^>]*data-module="[^"]+"[^>]*>', html)
+    assert len([t for t in toggles if not re.search(r"\sdisabled\b", t)]) == 5
     assert "Optional core features" in html
     assert 'data-module="manager"' in html and 'data-module="rag"' in html
     assert 'data-module="voice"' in html and 'id="voice-variant"' in html

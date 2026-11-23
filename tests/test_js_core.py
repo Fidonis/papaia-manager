@@ -34,6 +34,7 @@ def test_the_core_modules_pass_their_unit_tests() -> None:
 
 CORE_MODULES = (
     "actions.js",
+    "announce.js",
     "csrf.js",
     "errors.js",
     "format.js",
@@ -43,6 +44,7 @@ CORE_MODULES = (
     "main.js",
     "menus.js",
     "poll.js",
+    "runtime.js",
     "session.js",
     "toasts.js",
 )
@@ -73,8 +75,11 @@ def _legacy_names() -> list[str]:
 
 def _used(name: str) -> list[str]:
     pattern = re.compile(r"(?<![\w$.])" + re.escape(name) + r"(?![\w$])")
+    # Page modules (js/pages/) import what they use; tests/test_settings_scripts.py checks it.
     users = [
-        p for p in [*TEMPLATES.rglob("*.html"), *JS.rglob("*.js")] if p.parent != JS / "core"
+        p
+        for p in [*TEMPLATES.rglob("*.html"), *JS.rglob("*.js")]
+        if p.parent != JS / "core" and not p.is_relative_to(JS / "pages")
     ]
     return [str(p.relative_to(REPO)) for p in users if pattern.search(p.read_text("utf-8"))]
 

@@ -1003,7 +1003,14 @@ below collects the reports. A response with a policy of its own keeps it (the lo
 renders the kit's reference content only, so it loads neither `app.css`, htmx nor
 `js/core/main.js`; it loads the CSP build of Alpine, and the browser check confirms that the
 build starts on it without a report, refused expression or script error
-(`tests/test_kit_specimen.py`).
+(`tests/test_kit_specimen.py`). The Manager and Core features tabs of the settings
+(`settings.html` with the branding and host partials, `settings_modules.html` with the job
+strip it swaps in) run `js/pages/settings.js` and `js/pages/settings-modules.js`; their values
+come from the islands `mgr-settings`, `mgr-settings-branding`, `mgr-settings-host` and
+`mgr-settings-modules` and from `data-*` attributes, and the modules add their listeners
+themselves (`tests/test_settings_scripts.py`, with the browser check of both pages and the
+paths of saving the host interval, the branding, a logo upload and its preview, and switching
+a module on and off in `tests/settings_browser.mjs`).
 
 **Ratchet.** `tests/test_csp_ratchet.py` counts per template the executable inline scripts,
 `on*` attributes, Alpine attributes the CSP build rejects, `<style>` blocks and `style`
@@ -1063,8 +1070,15 @@ measurement's stand-in values cannot resolve.
 shares lives in `src/app/static/js/core/`: `format.js` (filling and escaping sentences, plurals),
 `csrf.js`, `menus.js` (floating row menus), `session.js` (session end, refused htmx requests),
 `jobs.js` (job polling), `actions.js` (add-on, stack and catalog actions and the JSON request
-of the knowledge pages), `errors.js` (three-part error messages) and `toasts.js`. Their texts
-come from the data island `mgr-core` in the language of the page. During the transition
+of the knowledge pages), `errors.js` (three-part error messages), `toasts.js` and
+`announce.js`. Their texts come from the data island `mgr-core` in the language of the page.
+`runtime.js` builds what a page shares once (texts, toaster, the three-part report, the
+actions); `main.js` and the page modules import it from there, so a page module calls
+`showToast` or `actions.ragRequest` as imports, never as globals. A fragment htmx swaps in
+announces its state without inline script: it names a window event in `data-announce`
+(`papaia-...`) and its state in `data-active`, and `announce.js` dispatches the event with
+`{active}` after every settle (the job strip `partials/config_job_status.html` announces
+`papaia-config-job`). During the transition
 `core/legacy.js` assigns the names page templates still call as globals (`showToast`,
 `addonAction`, `fmt`, ...) to `window`, listed by name; `tests/test_js_core.py` keeps the list
 equal to the names the templates use, and a page that moves into a module drops its names.

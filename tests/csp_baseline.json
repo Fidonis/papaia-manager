@@ -12,7 +12,9 @@
     "jobs.html",
     "kit_specimen.html",
     "me.html",
-    "settings_installation.html"
+    "settings.html",
+    "settings_installation.html",
+    "settings_modules.html"
   ],
   "templates": {
     "addon_upgrade.html": {
@@ -225,20 +227,6 @@
       "style_blocks": 0,
       "style_attributes": 0
     },
-    "partials/_settings_branding.html": {
-      "inline_scripts": 1,
-      "on_attributes": 5,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/_settings_host.html": {
-      "inline_scripts": 1,
-      "on_attributes": 2,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "partials/addon_detail_content.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
@@ -287,13 +275,6 @@
       "alpine_unsupported": 3,
       "style_blocks": 0,
       "style_attributes": 6
-    },
-    "partials/config_job_status.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
     },
     "partials/connection_list.html": {
       "inline_scripts": 0,
@@ -470,20 +451,6 @@
       "style_blocks": 0,
       "style_attributes": 0
     },
-    "settings.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "settings_modules.html": {
-      "inline_scripts": 1,
-      "on_attributes": 12,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "settings_overlay.html": {
       "inline_scripts": 1,
       "on_attributes": 0,
@@ -507,8 +474,8 @@
     }
   },
   "totals": {
-    "inline_scripts": 43,
-    "on_attributes": 123,
+    "inline_scripts": 38,
+    "on_attributes": 104,
     "alpine_unsupported": 109,
     "style_blocks": 1,
     "style_attributes": 253

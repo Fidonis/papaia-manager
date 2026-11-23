@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/_csp.html" import data_island %}
 {% from "partials/_settings_tabs.html" import tabs %}
 
 {% block page_title %}{% trans %}Settings{% endtrans %}{% endblock %}
@@ -14,36 +15,12 @@
   {% include "partials/_settings_host.html" %}
 </div>
 
-<script>
-  // Shared by every settings section: send JSON/multipart with the CSRF
-  // header, surface the server's message, and keep the revision current.
-  let settingsRevision = {{ revision | tojson }};
-
-  // A saved section reloads the page so the sidebar, which reads the same file,
-  // shows it too.
-  function reloadAfter(message) {
-    showToast("success", message);
-    setTimeout(() => window.location.reload(), 600);
-  }
-
-  async function settingsRequest(url, options) {
-    const headers = Object.assign(
-      { "X-CSRF-Token": csrfToken() },
-      options.json !== undefined ? { "Content-Type": "application/json" } : {},
-    );
-    const res = await fetch(url, {
-      method: options.method || "POST",
-      headers: headers,
-      body: options.json !== undefined ? JSON.stringify(options.json) : options.body,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const detail = typeof data.detail === "string" ? data.detail : fmt({{ _('Request failed ({status})')|tojson }}, { status: res.status });
-      showToast("error", detail);
-      return null;
-    }
-    settingsRevision = data.revision;
-    return data;
-  }
-</script>
+{#- The shared part of every section (static/js/pages/settings.js): the revision the writes
+    send, and the message of a refusal without a sentence of its own. Each section's partial
+    brings its own island. #}
+{{ data_island("mgr-settings", {
+  "revision": revision,
+  "texts": {"requestFailed": _('Request failed ({status})')},
+}) }}
+<script type="module" src="{{ asset_url('js/pages/settings.js') }}"></script>
 {% endblock %}

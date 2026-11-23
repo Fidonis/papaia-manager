@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/_csp.html" import data_island %}
 {% from "partials/_settings_tabs.html" import tabs %}
 
 {% block page_title %}{% trans %}Settings{% endtrans %}{% endblock %}
@@ -32,7 +33,7 @@
                aria-label="{{ row.title }}"
                data-module="{{ row.name }}"
                {% if row.enabled %}checked{% endif %}
-               {% if row.switchable %}onchange="moduleToggled(this)"{% else %}disabled{% endif %}>
+               {% if not row.switchable %}disabled{% endif %}>
         <div class="min-w-0 flex-1">
           <p class="text-sm font-semibold">
             {{ row.title }}
@@ -102,7 +103,7 @@
               {% trans %}The first start downloads several GB of models. Switching on finishes while they load; the Services page shows when voice is ready.{% endtrans %}
             </p>
             {% elif row.name == "mail" %}
-            <form id="om-form" class="space-y-3" onsubmit="event.preventDefault(); enableModule('mail')" novalidate>
+            <form id="om-form" class="space-y-3" novalidate>
               <p class="text-xs text-pk-text-muted">
                 {% trans %}The relay forwards every mail to this server. Enter it as <code>papaia-ctl setup</code> asks for it. The password is only used for this host, port and login and is never shown again.{% endtrans %}
               </p>
@@ -127,7 +128,7 @@
                 </div>
               </div>
               <label class="flex cursor-pointer items-center gap-3">
-                <input id="om-login" type="checkbox" class="checkbox checkbox-sm" onchange="syncOnMail()">
+                <input id="om-login" type="checkbox" class="checkbox checkbox-sm">
                 <span class="text-sm font-medium">{% trans %}The mail server needs a login{% endtrans %}</span>
               </label>
               <div class="grid gap-3 sm:grid-cols-2">
@@ -162,11 +163,11 @@
             {% endif %}
             <p data-panel-error class="hidden text-sm text-error" role="alert"></p>
             <div class="flex flex-wrap gap-2">
-              <button type="button" class="btn btn-primary btn-sm" data-panel-go onclick="enableModule('{{ row.name }}')">{% trans title=row.title %}Enable {{ title }}{% endtrans %}</button>
+              <button type="button" class="btn btn-primary btn-sm" data-panel-go>{% trans title=row.title %}Enable {{ title }}{% endtrans %}</button>
               {% if row.name == "mail" %}
-              <button id="om-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeOnMail()">{% trans %}Test mail server{% endtrans %}</button>
+              <button id="om-probe" type="button" class="btn btn-ghost btn-sm" data-url="/api/v1/mail/probe">{% trans %}Test mail server{% endtrans %}</button>
               {% endif %}
-              <button type="button" class="btn btn-ghost btn-sm" onclick="cancelPanel('{{ row.name }}')">{% trans %}Cancel{% endtrans %}</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-panel-cancel>{% trans %}Cancel{% endtrans %}</button>
             </div>
           </div>
           {% endif %}
@@ -181,7 +182,7 @@
   </p>
 </div>
 
-<dialog id="module-off-dialog" class="modal" onclose="if (offTarget) cancelOff()">
+<dialog id="module-off-dialog" class="modal">
   <div class="modal-box max-w-lg">
     <h3 id="module-off-title" class="text-base font-bold"></h3>
     <p id="module-off-text" class="mt-2 text-sm text-pk-text-muted"></p>
@@ -197,8 +198,7 @@
       <p class="text-xs text-pk-text-muted">{% trans %}Written for this module by an administrator. Neither choice above deletes them, so switching it on again finds them as they were.{% endtrans %}</p>
       <ul id="module-off-operator-files" class="mt-2 space-y-1 text-xs"></ul>
       <label class="mt-3 flex cursor-pointer items-start gap-3">
-        <input id="module-off-operator-input" type="checkbox" class="checkbox checkbox-sm checkbox-error mt-0.5"
-               onchange="offOperator = this.checked; syncOffScope()">
+        <input id="module-off-operator-input" type="checkbox" class="checkbox checkbox-sm checkbox-error mt-0.5">
         <span class="min-w-0 text-sm">
           <span class="block font-medium">{% trans %}Also delete these files{% endtrans %}</span>
           <span class="block text-xs text-pk-text-muted">{% trans %}Can't be undone: their edit history and the map built from them go too.{% endtrans %}</span>
@@ -209,469 +209,63 @@
     <div id="module-off-confirm" class="form-control mt-4 hidden">
       <label id="module-off-confirm-label" for="module-off-confirm-input" class="label-text mb-1 text-sm font-medium"></label>
       <input id="module-off-confirm-input" type="text" class="input input-bordered input-sm w-full"
-             autocomplete="off" spellcheck="false" oninput="syncOffButton()">
+             autocomplete="off" spellcheck="false">
       <p class="mt-1 text-xs text-error">{% trans %}Deleted data can't be brought back.{% endtrans %}</p>
     </div>
 
     <p id="module-off-note" class="mt-3 hidden text-xs text-pk-text-muted"></p>
 
     <div class="modal-action">
-      <button type="button" class="btn btn-ghost btn-sm" onclick="cancelOff()">{% trans %}Cancel{% endtrans %}</button>
-      <button type="button" id="module-off-go" class="btn btn-primary btn-sm" onclick="confirmOff()">{% trans %}Switch off{% endtrans %}</button>
+      <button id="module-off-cancel" type="button" class="btn btn-ghost btn-sm">{% trans %}Cancel{% endtrans %}</button>
+      <button type="button" id="module-off-go" class="btn btn-primary btn-sm">{% trans %}Switch off{% endtrans %}</button>
     </div>
   </div>
-  <form method="dialog" class="modal-backdrop"><button onclick="cancelOff()">{% trans %}close{% endtrans %}</button></form>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
-<script>
-  let modulesRevision = {{ revision | tojson }};
-  const MODULE_ROWS = {{ module_rows | tojson }};
-  const MAIL_DEFAULT_PORTS = {{ default_ports | tojson }};
-  let offTarget = null;
-  let offScope = "keep";
-  // Whether the operator files go too (only offered for a module that has them).
-  let offOperator = false;
-
-  // What a switch-off adds to the generic sentence, per module.
-  const OFF_NOTES = {
-    rag: {{ _('LibreChat is recreated without the RAG tools. The documents folder is never deleted.')|tojson }},
-    mail: {{ _('Keycloak loses the mail server it was given, so password mails and “email a link” stop working. The server settings can stay for later.')|tojson }},
-    "knowledge-map": {{ _('LibreChat is recreated without the tools of the map, and the AI map page is hidden while the module is off.')|tojson }},
-  };
-
-  function moduleRow(name) { return MODULE_ROWS.find((r) => r.name === name); }
-  function moduleBox(name) { return document.querySelector('[data-module="' + name + '"]'); }
-  function offEl(id) { return document.getElementById(id); }
-
-  function moduleToggled(box) {
-    const name = box.dataset.module;
-    const row = moduleRow(name);
-    if (box.checked) {
-      if (name === "localai" || name === "rag" || name === "voice" || (name === "mail" && !row.configured)) openPanel(name);
-      else enableModule(name);
-    } else {
-      openOffDialog(name);
-    }
-  }
-
-  // What `setup` asks when a module is switched on and its settings are missing: the core says
-  // which questions are open (module-info) and what it would derive as the answer. Questions
-  // that are answered already are not asked again. A core that can't say asks nothing.
-  async function openQuestions(name) {
-    const info = await loadInfo(name);
-    return info ? (info.questions || []).filter((q) => q.ask) : [];
-  }
-
-  function questionField(name, question) {
-    const wrap = document.createElement("div");
-    wrap.className = "form-control w-full";
-    const label = document.createElement("label");
-    label.className = "label-text mb-1 text-sm font-medium";
-    label.htmlFor = "q-url-" + name;
-    label.textContent = question.label;
-    const input = document.createElement("input");
-    input.id = "q-url-" + name;
-    input.type = "text";
-    input.className = "input input-bordered input-sm w-full";
-    input.value = question.default;
-    input.autocomplete = "off";
-    input.spellcheck = false;
-    input.dataset.option = question.option;
-    const hint = document.createElement("p");
-    hint.className = "mt-1 text-xs text-pk-text-muted";
-    hint.textContent = {{ _('The same question as papaia-ctl setup. The default is derived from this stack\'s address; change it if the service is reached under another one.')|tojson }};
-    wrap.append(label, input, hint);
-    return wrap;
-  }
-
-  // The questions of a module open under its row, the same for every module and the same on a
-  // phone: nothing covers the page.
-  function panel(name) { return offEl("panel-" + name); }
-  function panelOpen(name) { const p = panel(name); return !!p && !p.classList.contains("hidden"); }
-
-  function panelError(name, text) {
-    const el = panel(name).querySelector("[data-panel-error]");
-    el.textContent = text || "";
-    el.classList.toggle("hidden", !text);
-  }
-
-  function closePanel(name) {
-    const p = panel(name);
-    if (!p) return;
-    p.classList.add("hidden");
-    panelError(name, "");
-    const probe = p.querySelector("#om-probe-result");
-    if (probe) probe.classList.add("hidden");
-    const questions = p.querySelector("[data-questions]");
-    if (questions) questions.replaceChildren();
-    p.querySelectorAll('input[type="password"]').forEach((el) => { el.value = ""; });
-  }
-
-  function cancelPanel(name) {
-    moduleBox(name).checked = false;
-    closePanel(name);
-  }
-
-  async function openPanel(name) {
-    const row = moduleRow(name);
-    const p = panel(name);
-    panelError(name, "");
-    if (name === "mail") {
-      fillMail(row.mail_defaults);
-      p.classList.remove("hidden");
-      offEl("om-host").focus();
-      return;
-    }
-    const box = moduleBox(name);
-    box.disabled = true;
-    const open = await openQuestions(name);
-    box.disabled = false;
-    // The RAG system has nothing else to choose: with its settings in place it just switches on.
-    if (!open.length && name === "rag") {
-      enableModule(name);
-      return;
-    }
-    const questions = p.querySelector("[data-questions]");
-    questions.replaceChildren();
-    if (open.length) questions.append(questionField(name, open[0]));
-    p.classList.remove("hidden");
-    const first = p.querySelector("input, select");
-    if (first) first.focus();
-  }
-
-  // The mail server's values as the form holds them. The password is only sent when there is a
-  // login and one was typed.
-  function mailForm() {
-    const login = offEl("om-login").checked;
-    const port = offEl("om-port").value.trim();
-    const values = {
-      host: offEl("om-host").value.trim(),
-      port: port === "" ? null : Number(port),
-      security: offEl("om-security").value,
-      user: login ? offEl("om-user").value.trim() : "",
-    };
-    const password = offEl("om-password").value;
-    if (login && password) values.password = password;
-    return values;
-  }
-
-  function probeResult(ok, text) {
-    const el = offEl("om-probe-result");
-    el.textContent = text;
-    el.classList.remove("hidden", "border-success", "bg-success/10", "border-error", "bg-error/10");
-    el.classList.add(ok ? "border-success" : "border-error", ok ? "bg-success/10" : "bg-error/10");
-  }
-
-  // Talks to the mail server with what is in the form: greeting, encryption, login. Nothing is
-  // sent and nothing is saved (the same check as on the Mail page).
-  async function probeOnMail() {
-    const button = offEl("om-probe");
-    button.disabled = true;
-    panelError("mail", "");
-    probeResult(true, {{ _('Connecting …')|tojson }});
-    const reply = await _ragRequest("POST", "/api/v1/mail/probe", mailForm());
-    button.disabled = false;
-    if (!reply.ok) {
-      if (!reply.handled) probeResult(false, reply.error);
-      return;
-    }
-    const r = reply.data;
-    if (r.ok) {
-      const login = r.login === "ok" ? {{ _('login accepted')|tojson }} : {{ _('no login needed')|tojson }};
-      probeResult(true, fmt({{ _('The mail server answered ({login}). No mail was sent.')|tojson }}, { login: login }));
-    } else {
-      probeResult(false, fmt({{ _('Stopped at {stage}: {reason}')|tojson }}, { stage: r.stage, reason: r.reason }));
-    }
-  }
-
-  function fillMail(d) {
-    offEl("om-host").value = d.host || "";
-    offEl("om-security").value = d.security;
-    offEl("om-port").value = d.port;
-    offEl("om-port").dataset.mode = d.security;
-    offEl("om-login").checked = d.login || !d.host;
-    offEl("om-user").value = d.user || "";
-    offEl("om-password").value = "";
-    offEl("om-from").value = d.from_address || "";
-    offEl("om-from-name").value = d.from_name || "";
-    syncOnMail();
-  }
-
-  // A login makes no sense without encryption, and without a login there is nothing to type in
-  // the two fields (the same rules as the Mail page).
-  function syncOnMail() {
-    const none = offEl("om-security").value === "none";
-    const box = offEl("om-login");
-    if (none) box.checked = false;
-    box.disabled = none;
-    offEl("om-user").disabled = !box.checked;
-    offEl("om-password").disabled = !box.checked;
-  }
-
-  offEl("om-security").addEventListener("change", () => {
-    const port = offEl("om-port");
-    const mode = offEl("om-security").value;
-    // 587, 465 and 25 belong to their mode: follow it unless a port was typed on purpose.
-    if (port.value === "" || Number(port.value) === MAIL_DEFAULT_PORTS[port.dataset.mode]) {
-      port.value = MAIL_DEFAULT_PORTS[mode];
-    }
-    port.dataset.mode = mode;
-    syncOnMail();
-  });
-
-  // The dialog first shows the plain question, then asks the core what the module holds and
-  // adds the choice. A core that can't say (or a failed request) leaves the plain switch-off.
-  // What the core says a module holds takes a moment to ask (it lists the Docker volumes), so it
-  // is asked before the page needs it: once for every module that is on when the page loads, and
-  // again when the answer is older than a minute. The dialog opens when it has the answer, so it
-  // never shows the plain question first and the choice a moment later.
-  const INFO_MAX_AGE_MS = 60000;
-  const infoCache = {};
-
-  function loadInfo(name) {
-    const hit = infoCache[name];
-    if (hit && Date.now() - hit.at < INFO_MAX_AGE_MS) return hit.promise;
-    const promise = _ragRequest("GET", "/api/v1/config/modules/" + name + "/info").then((reply) => {
-      if (!reply.ok || !reply.data.available) {
-        delete infoCache[name];
-        return null;
-      }
-      return reply.data;
-    });
-    infoCache[name] = { at: Date.now(), promise: promise };
-    return promise;
-  }
-
-  // The modules that are on may be switched off (volumes, settings); the ones that ask a
-  // question may be switched on.
-  MODULE_ROWS.filter((r) => r.can_delete && (r.enabled || r.name === "rag" || r.name === "localai"))
-    .forEach((r) => loadInfo(r.name));
-
-  async function openOffDialog(name) {
-    const row = moduleRow(name);
-    let info = null;
-    if (row.can_delete && !row.keep_only) {
-      const box = moduleBox(name);
-      box.disabled = true;
-      info = await loadInfo(name);
-      box.disabled = false;
-    }
-    offTarget = name;
-    offScope = "keep";
-    offOperator = false;
-    offEl("module-off-operator-input").checked = false;
-    offEl("module-off-operator").classList.add("hidden");
-    offEl("module-off-title").textContent = fmt({{ _('Switch {module} off?')|tojson }}, { module: row.title });
-    const containers = fmtPlural(row.services, {{ _('{count} container')|tojson }}, {{ _('{count} containers')|tojson }});
-    offEl("module-off-text").textContent = row.modules > 1
-      ? fmt({{ _('Stops and removes its {containers} in {modules} modules.')|tojson }}, { containers: containers, modules: row.modules })
-      : fmt({{ _('Stops and removes its {containers}.')|tojson }}, { containers: containers });
-    offEl("module-off-scopes").classList.add("hidden");
-    offEl("module-off-confirm").classList.add("hidden");
-    offEl("module-off-confirm-input").value = "";
-    const note = offEl("module-off-note");
-    note.textContent = [OFF_NOTES[name], row.keep_only].filter(Boolean).join(" ");
-    note.classList.toggle("hidden", !note.textContent);
-    if (info) renderScopes(name, info);
-    syncOffButton();
-    offEl("module-off-dialog").showModal();
-  }
-
-  function option(value, title, detail, checked) {
-    const label = document.createElement("label");
-    label.className = "flex cursor-pointer items-start gap-3 rounded-lg border border-base-300 p-3";
-    const input = document.createElement("input");
-    input.type = "radio";
-    input.name = "module-off-scope";
-    input.value = value;
-    input.className = "radio radio-sm mt-0.5";
-    input.checked = checked;
-    input.addEventListener("change", () => { offScope = value; syncOffScope(); });
-    const text = document.createElement("span");
-    text.className = "min-w-0 text-sm";
-    const head = document.createElement("span");
-    head.className = "block font-medium";
-    head.textContent = title;
-    const body = document.createElement("span");
-    body.className = "block break-words text-xs text-pk-text-muted";
-    body.textContent = detail;
-    text.append(head, body);
-    label.append(input, text);
-    return label;
-  }
-
-  function renderScopes(name, info) {
-    const row = moduleRow(name);
-    const box = offEl("module-off-scopes");
-    box.querySelectorAll("label").forEach((n) => n.remove());
-    const volumes = info.volumes || [];
-    const present = volumes.filter((v) => v.exists !== false);
-    const unknown = volumes.some((v) => v.exists === null);
-    const names = present.map((v) => v.name).join(", ");
-    const settings = (info.settings.dirs || []).map((d) => d + "/.env")
-      .concat(info.settings.root_keys && info.settings.root_keys.length ? [".env (" + info.settings.root_keys.join(", ") + ")"] : [])
-      .concat(info.settings.files || []).join(", ");
-
-    box.append(option("keep", {{ _('Keep data and settings')|tojson }},
-      {{ _('Switching it on again brings everything back.')|tojson }}, true));
-    if (present.length) {
-      box.append(option("data", {{ _('Delete the data, keep the settings')|tojson }},
-        fmtPlural(present.length, {{ _('Removes {count} volume: {names}.')|tojson }}, {{ _('Removes {count} volumes: {names}.')|tojson }}, { names: names }) +
-        (unknown ? " " + {{ _('Docker could not be asked, so this list may be incomplete.')|tojson }} : ""), false));
-      box.append(option("all", {{ _('Delete the data and the settings')|tojson }},
-        fmt(info.settings.regenerates_secrets
-          ? {{ _('Also puts {settings} back to the defaults and renews its generated secrets.')|tojson }}
-          : {{ _('Also puts {settings} back to the defaults.')|tojson }}, { settings: settings }), false));
-    } else {
-      box.append(option("all", {{ _('Delete the settings')|tojson }},
-        fmt({{ _('It holds no data. Puts {settings} back to the defaults.')|tojson }}, { settings: settings }), false));
-    }
-    box.classList.remove("hidden");
-    renderOperatorFiles(row, info);
-    offEl("module-off-confirm-label").innerHTML = fmtHtml({{ _('Type <code>{name}</code> to confirm the deletion')|tojson }}, { name: name });
-    syncOffScope();
-  }
-
-  // The operator files that exist, named the way the AI map page names them. No files, no
-  // choice.
-  function renderOperatorFiles(row, info) {
-    const labels = row.operator_files || {};
-    const files = (info.operator_files || []).filter((f) => f.exists && labels[f.path]);
-    const list = offEl("module-off-operator-files");
-    list.replaceChildren();
-    files.forEach((f) => {
-      const item = document.createElement("li");
-      const head = document.createElement("span");
-      head.className = "font-medium";
-      head.textContent = labels[f.path].label;
-      const path = document.createElement("code");
-      path.className = "ml-1 text-pk-text-muted";
-      path.textContent = f.path.split("/").pop();
-      const detail = document.createElement("span");
-      detail.className = "block text-pk-text-muted";
-      detail.textContent = labels[f.path].description;
-      item.append(head, path, detail);
-      list.append(item);
-    });
-    offEl("module-off-operator").classList.toggle("hidden", files.length === 0);
-  }
-
-  function offDeleting() {
-    return offScope !== "keep" || offOperator;
-  }
-
-  function syncOffScope() {
-    const deleting = offDeleting();
-    offEl("module-off-confirm").classList.toggle("hidden", !deleting);
-    const go = offEl("module-off-go");
-    go.classList.toggle("btn-error", deleting);
-    go.classList.toggle("btn-primary", !deleting);
-    go.textContent = deleting ? {{ _('Switch off and delete')|tojson }} : {{ _('Switch off')|tojson }};
-    if (deleting) offEl("module-off-confirm-input").focus();
-    syncOffButton();
-  }
-
-  function syncOffButton() {
-    const deleting = offDeleting();
-    offEl("module-off-go").disabled =
-      deleting && offEl("module-off-confirm-input").value.trim() !== offTarget;
-  }
-
-  // Also runs when the dialog is closed with Escape (its close event).
-  function cancelOff() {
-    const name = offTarget;
-    offTarget = null;
-    if (name) moduleBox(name).checked = true;
-    const dialog = offEl("module-off-dialog");
-    if (dialog.open) dialog.close();
-  }
-
-  function startedModuleJob(jobId, started) {
-    showToast("info", started);
-    htmx.ajax("GET", "/partials/config/job-status", { target: "#config-job-status", swap: "outerHTML" });
-    followConfigJob(jobId);
-  }
-
-  async function startModuleJob(path, body, started) {
-    const reply = await _ragRequest("POST", "/api/v1/config/modules/" + path, body);
-    if (!reply.ok) {
-      if (!reply.handled) showToast("error", _ragEscape(reply.error));
-      return false;
-    }
-    startedModuleJob(reply.data.job_id, started);
-    return true;
-  }
-
-  // Switches a module on. With its panel open the answers in it go along; a refusal is shown in
-  // the panel, which stays open so the answer can be corrected.
-  async function enableModule(name) {
-    const row = moduleRow(name);
-    const body = { revision: modulesRevision };
-    const open = panelOpen(name);
-    if (open) {
-      const p = panel(name);
-      if (name === "localai") body.variant = offEl("localai-variant").value;
-      if (name === "voice") body.variant = offEl("voice-variant").value;
-      const url = p.querySelector("[data-option]");
-      if (url) body.public_url = url.value.trim();
-      if (name === "mail") {
-        body.mail = Object.assign(mailForm(), {
-          from_address: offEl("om-from").value.trim(),
-          from_name: offEl("om-from-name").value.trim(),
-        });
-      }
-    }
-    const go = open ? panel(name).querySelector("[data-panel-go]") : null;
-    if (go) go.disabled = true;
-    const reply = await _ragRequest("POST", "/api/v1/config/modules/" + name + "/enable", body);
-    if (go) go.disabled = false;
-    if (!reply.ok) {
-      if (open) {
-        if (!reply.handled) panelError(name, reply.error);
-      } else {
-        if (!reply.handled) showToast("error", _ragEscape(reply.error));
-        moduleBox(name).checked = false;
-      }
-      return;
-    }
-    // The password has done its job; it does not stay in the field while the job runs.
-    closePanel(name);
-    startedModuleJob(reply.data.job_id, fmt({{ _('Switching {module} on …')|tojson }}, { module: row.title }));
-  }
-
-  async function confirmOff() {
-    const name = offTarget;
-    const scope = offScope;
-    const operatorFiles = offOperator;
-    const confirm = offEl("module-off-confirm-input").value.trim();
-    offEl("module-off-dialog").close();
-    offTarget = null;
-    const row = moduleRow(name);
-    const body = { revision: modulesRevision, scope: scope };
-    if (operatorFiles) body.operator_files = true;
-    if (scope !== "keep" || operatorFiles) body.confirm = confirm;
-    const ok = await startModuleJob(name + "/disable", body, fmt({{ _('Switching {module} off …')|tojson }}, { module: row.title }));
-    if (!ok) moduleBox(name).checked = true;
-  }
-
-  // The job strip shows the progress; this only waits for the end to show the new state.
-  let configFollowing = false;
-  function followConfigJob(jobId) {
-    configFollowing = true;
-    _pollJob(jobId, (job) => {
-      if (job.status === "succeeded") showToast("success", {{ _('Done')|tojson }});
-      else showToast("error", {{ _('The change failed. The log is above.')|tojson }});
-      setTimeout(() => window.location.reload(), 900);
-    });
-  }
-
-  // A job started in another tab, or before this page was opened, changes what the toggles
-  // show: reload once when the strip sees it end.
-  let configJobWasActive = false;
-  window.addEventListener("papaia-config-job", (event) => {
-    if (configFollowing) return;
-    if (event.detail.active) configJobWasActive = true;
-    else if (configJobWasActive) window.location.reload();
-  });
-</script>
+{#- The values of static/js/pages/settings-modules.js: the revision the changes send, the rows
+    as the page shows them, the ports that belong to each connection mode, and the sentences
+    of the page in its language (`{name}` marks a value). #}
+{{ data_island("mgr-settings-modules", {
+  "revision": revision,
+  "rows": module_rows,
+  "defaultPorts": default_ports,
+  "offNotes": {
+    "rag": _('LibreChat is recreated without the RAG tools. The documents folder is never deleted.'),
+    "mail": _('Keycloak loses the mail server it was given, so password mails and “email a link” stop working. The server settings can stay for later.'),
+    "knowledge-map": _('LibreChat is recreated without the tools of the map, and the AI map page is hidden while the module is off.'),
+  },
+  "texts": {
+    "questionHint": _('The same question as papaia-ctl setup. The default is derived from this stack\'s address; change it if the service is reached under another one.'),
+    "connecting": _('Connecting …'),
+    "loginAccepted": _('login accepted'),
+    "noLoginNeeded": _('no login needed'),
+    "probeAnswered": _('The mail server answered ({login}). No mail was sent.'),
+    "probeStopped": _('Stopped at {stage}: {reason}'),
+    "offTitle": _('Switch {module} off?'),
+    "container": _('{count} container'),
+    "containers": _('{count} containers'),
+    "stopsInModules": _('Stops and removes its {containers} in {modules} modules.'),
+    "stops": _('Stops and removes its {containers}.'),
+    "keep": _('Keep data and settings'),
+    "keepDetail": _('Switching it on again brings everything back.'),
+    "deleteData": _('Delete the data, keep the settings'),
+    "volume": _('Removes {count} volume: {names}.'),
+    "volumes": _('Removes {count} volumes: {names}.'),
+    "dockerUnknown": _('Docker could not be asked, so this list may be incomplete.'),
+    "deleteAll": _('Delete the data and the settings'),
+    "settingsSecrets": _('Also puts {settings} back to the defaults and renews its generated secrets.'),
+    "settingsDefaults": _('Also puts {settings} back to the defaults.'),
+    "deleteSettings": _('Delete the settings'),
+    "noData": _('It holds no data. Puts {settings} back to the defaults.'),
+    "confirmDeletion": _('Type <code>{name}</code> to confirm the deletion'),
+    "switchOffDelete": _('Switch off and delete'),
+    "switchOff": _('Switch off'),
+    "switchingOn": _('Switching {module} on …'),
+    "switchingOff": _('Switching {module} off …'),
+    "done": _('Done'),
+    "failed": _('The change failed. The log is above.'),
+  },
+}) }}
+<script type="module" src="{{ asset_url('js/pages/settings-modules.js') }}"></script>
 {% endblock %}

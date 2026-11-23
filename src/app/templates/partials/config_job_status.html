@@ -2,12 +2,18 @@
    ui_config.py (`_job_ctx`): any job in flight, because it holds this page's change behind
    itself, and otherwise a configuration job that finished within the last few minutes. The
    wrapper polls in every state, so a job started in another tab shows up here too; the fast
-   tick exists only while there is something to follow. #}
+   tick exists only while there is something to follow.
+
+   It announces its state instead of reloading from here: core/announce.js dispatches the
+   window event `papaia-config-job` with {active} after every swap, and the page decides what
+   a change of it means (a job that ended in another tab changes what the page should show). #}
 <div
   id="config-job-status"
   hx-get="/partials/config/job-status"
   hx-trigger="{% if job_active %}every 2s{% else %}every 10s{% endif %}"
   hx-swap="outerHTML"
+  data-announce="papaia-config-job"
+  data-active="{{ 'true' if (job_active and job_is_config) else 'false' }}"
 >
 {% if job and (job_active or job_is_config) %}
   {% set running, worked, failed = job_labels %}
@@ -53,12 +59,4 @@
     {% endif %}
   </div>
 {% endif %}
-
-{# Announces the state instead of reloading from here: the page decides what a change of it
-   means (a job that ended in another tab changes what the page should show). #}
-<script>
-  window.dispatchEvent(new CustomEvent("papaia-config-job", { detail: {
-    active: {{ "true" if (job_active and job_is_config) else "false" }},
-  }}));
-</script>
 </div>

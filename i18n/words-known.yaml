@@ -121,7 +121,7 @@ groups:
       - W1 src/app/templates/partials/service_list.html:185 Node
       - W1 src/app/templates/partials/upgrade_nodes.html:6 node
       - W1 src/app/templates/partials/upgrade_nodes.html:7 node
-      - W1 src/app/templates/settings_modules.html:50 node
+      - W1 src/app/templates/settings_modules.html:51 node
   - ticket: MGR-014
     reason: LLM in operator texts about the model gateway and inside the product name LiteLLM; the
       sentences move to Modell / Model, the product name needs an allowed context in the glossary.
@@ -207,7 +207,7 @@ groups:
       - W1 src/app/templates/partials/models_body.html:279 LLM
       - W1 src/app/templates/partials/models_body.html:306 LLM
       - W1 src/app/templates/partials/models_body.html:344 LLM
-      - W1 src/app/templates/settings_modules.html:180 LLM
+      - W1 src/app/templates/settings_modules.html:181 LLM
   - ticket: MGR-014
     reason: login in operator texts (sign-in names for Keycloak, the mail relay and SSH); reworded
       to Anmelden / Sign in where the person's sign-in is meant.
@@ -240,9 +240,9 @@ groups:
       - W1 src/app/templates/mail.html:76 login
       - W1 src/app/templates/mail.html:83 login
       - W1 src/app/templates/mail.html:89 Login
-      - W1 src/app/templates/settings_modules.html:107 login
-      - W1 src/app/templates/settings_modules.html:131 login
-      - W1 src/app/templates/settings_modules.html:135 Login
+      - W1 src/app/templates/settings_modules.html:108 login
+      - W1 src/app/templates/settings_modules.html:132 login
+      - W1 src/app/templates/settings_modules.html:136 Login
   - ticket: MGR-014
     reason: logout in operator texts about the identity provider's end-session address; reworded with
       the sign-in texts.
