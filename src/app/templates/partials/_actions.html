@@ -55,9 +55,11 @@
    do that: the scroll container clips it, and even a closed menu adds to the
    area it scrolls, so a table of one row grows a scrollbar. Such callers pass
    `float=True`. The menu is then `fixed`, which neither is clipped by nor adds
-   to a scroll container, and the script in base.html (`.dropdown-float`) puts
-   it next to its trigger when it opens. The position is an inline style
-   because daisyUI's `.dropdown .dropdown-content` outranks a `fixed` class. #}
+   to a scroll container, and static/js/core/menus.js (`.dropdown-float`) puts
+   it next to its trigger when it opens. `fixed` comes from the rule for
+   `.dropdown-float .dropdown-content` in docker/tailwind.app.css, which comes
+   after daisyUI's `.dropdown .dropdown-content` with the same weight; no inline
+   style, which the page policy refuses (T-UI-03). #}
 {% macro overflow_menu(size='sm', label=_('More actions'), float=False) %}
 {% if float %}
 <div class="dropdown dropdown-end dropdown-float shrink-0">
@@ -75,15 +77,9 @@
     {{ kebab() }}
   </div>
   {% endif %}
-  {% if float %}
-  <ul tabindex="0" style="position:fixed" class="dropdown-content z-30 menu bg-base-100 rounded-box w-56 p-2 shadow border border-base-300">
-    {{ caller() }}
-  </ul>
-  {% else %}
   <ul tabindex="0" class="dropdown-content z-30 menu bg-base-100 rounded-box w-56 p-2 shadow border border-base-300">
     {{ caller() }}
   </ul>
-  {% endif %}
 </div>
 {% endmacro %}
 
@@ -108,11 +104,11 @@
    one surface here that keeps a shadow, because it genuinely hovers. The primary
    border and the primary count carry the "selection active" signal instead.
 
-   `style="display:none"` rather than `x-cloak`, which needs a stylesheet rule
-   this project does not carry -- same anti-FOUC convention as the addon
-   controls. #}
+   `x-cloak` keeps it hidden until Alpine has started and `x-show` takes over;
+   the rule for `[x-cloak]` is in docker/tailwind.app.css. Not
+   `style="display:none"`: the page policy refuses inline styles (T-UI-03). #}
 {% macro bulk_bar(show) %}
-<div style="display:none" x-show="{{ show }}"
+<div x-cloak x-show="{{ show }}"
      class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 mt-4 px-5 py-3 rounded-xl border border-primary bg-base-100 shadow-lg">
   {{ caller() }}
 </div>

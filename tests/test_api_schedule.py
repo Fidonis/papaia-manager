@@ -537,12 +537,21 @@ def test_the_backup_page_carries_the_slot_and_the_editor(client: TestClient) -> 
     assert 'hx-get="/partials/backup/schedule"' in html
     assert 'id="schedule-modal"' in html
     assert 'hx-get="/partials/backup/schedule/preview"' in html
-    assert 'onsubmit="return false"' in html
     assert '<option value="Europe/Berlin">' in html
     assert 'name="weekdays" value="mon"' in html
     assert 'name="weekdays" value="sun"' in html
     assert '<option value="12">12 hours</option>' in html
-    assert "function openScheduleModal()" in html
+    # The editor's script is the page module; the strip's button names its action.
+    assert '<form id="schedule-form"' in html
+    assert 'data-dialog-close="schedule-modal"' in html
+    assert 'data-backup-action="save-schedule"' in html
+    assert "/static/js/pages/backup.js" in html
+
+
+def test_the_strip_opens_the_editor_through_the_page_module(client: TestClient) -> None:
+    html = _admin(client).get(_STRIP).text
+    assert 'data-backup-action="open-schedule"' in html
+    assert "onclick" not in html
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import yaml
 from fake_keycloak import TOKEN, FakeKeycloak
 from fastapi import FastAPI
 from itsdangerous import TimestampSigner
@@ -90,6 +91,59 @@ def add_mail_relay(config: Path, workspace: Path) -> None:
         "SMTP_RELAY_FROM_NAME=Example Mail\n",
         encoding="utf-8",
     )
+
+
+# Restore points of the stand-in world with backups (design_serve.py --with-backups): one of
+# the whole stack with a manifest, one that holds a single add-on only.
+BACKUPS = (
+    {
+        "id": "2026-07-30_10-19-38",
+        "created_at": "2026-07-30T10:19:38Z",
+        "size_mb": 12.0,
+        "result": "ok",
+        "artifacts": 2,
+        "addons": [],
+    },
+    {
+        "id": "2026-07-31_11-00-00",
+        "created_at": "2026-07-31T11:00:00Z",
+        "size_mb": 3.5,
+        "result": "partial",
+        "artifacts": 1,
+        "addons": ["papaia-sample"],
+        "scope": ["addon:papaia-sample"],
+    },
+)
+
+
+def seed_backups(config: Path, root: Path) -> Path:
+    """Give the world a backup directory with the restore points of BACKUPS; returns it."""
+    backup_dir = root / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    entries = []
+    for point in BACKUPS:
+        path = backup_dir / str(point["id"])
+        path.mkdir(exist_ok=True)
+        entries.append(
+            {**point, "path": str(path), "papaia_version": "1.10.0", "project": "papaia"}
+        )
+    (backup_dir / str(BACKUPS[0]["id"]) / "manifest.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "artifacts": [
+                    {"kind": "config", "target": "config", "owner": "core"},
+                    {"kind": "volume", "target": "papaia_librechat_mongo", "owner": "librechat"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (backup_dir / "backup.yaml").write_text(
+        yaml.safe_dump({"version": 1, "backups": entries}), encoding="utf-8"
+    )
+    with (config / ".env").open("a", encoding="utf-8") as env:
+        env.write(f"PAPAIA_BACKUP_DIR={backup_dir}\n")
+    return backup_dir
 
 
 def environment(config: Path, workspace: Path, *, host: str, secret: str) -> dict[str, str]:

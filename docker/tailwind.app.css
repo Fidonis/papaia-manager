@@ -87,6 +87,17 @@
   display: none;
 }
 
+/* ── Without inline styles ─────────────────────────────────────────────────
+   The strict content security policy allows no `style` attribute (T-UI-03), so what the
+   templates used to write inline lives here (`x-cloak` further down). The rule comes after
+   daisyUI's components with at least their weight, so it wins over a position class.
+
+   A row menu of overflow_menu(float=True) is fixed, so a table that scrolls sideways neither
+   clips it nor grows a scrollbar for it; static/js/core/menus.js places it. */
+.dropdown-float .dropdown-content {
+  position: fixed;
+}
+
 /* ── Focus ────────────────────────────────────────────────────────────────
    The floor for the content; the frame has its own. `--s` is the secondary role, the
    navigation-and-links blue in both themes. daisyUI 4 stores it as bare OKLCH components,

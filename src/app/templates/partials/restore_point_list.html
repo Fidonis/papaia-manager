@@ -64,11 +64,16 @@
            way there would read as a different operation. #}
         {% call row_actions() %}
           <button class="btn btn-outline btn-xs"
-                  onclick='openRestorePointDetail({{ p.id|tojson }})'>{% trans %}Details{% endtrans %}</button>
+                  data-backup-action="open-detail" data-restore-point="{{ p.id }}">{% trans %}Details{% endtrans %}</button>
           {% call overflow_menu(size='xs', label=_('More actions for restore point %(name)s', name=p.id)) %}
             {% if p.is_usable %}
+            {# The values of the row reach the page module (static/js/pages/backup.js)
+               as data-* attributes; the scope list as JSON in a single-quoted attribute,
+               which `tojson` escapes for. #}
             <li><a class="text-warning"
-                   onclick='openRestoreModal({{ p.id|tojson }}, {{ p.artifacts|tojson }}, {{ p.result|tojson }}, {{ (p.scope or [])|tojson }})'>{% trans %}Restore{% endtrans %}</a></li>
+                   data-backup-action="open-restore" data-restore-point="{{ p.id }}"
+                   data-artifacts="{{ p.artifacts }}" data-result="{{ p.result or '' }}"
+                   data-scope='{{ (p.scope or [])|tojson }}'>{% trans %}Restore{% endtrans %}</a></li>
             {% else %}
             <li class="disabled"><a title="{{ _('This backup wrote no archive, so there is nothing to restore from.') }}">{% trans %}Restore{% endtrans %}</a></li>
             {% endif %}
@@ -76,7 +81,7 @@
                every point, `failed` ones included -- a run that wrote no archive
                is exactly the kind an operator wants to clear. #}
             <li><a class="text-error"
-                   onclick='openDeleteBackupModal([{{ p.id|tojson }}])'>{% trans %}Delete{% endtrans %}</a></li>
+                   data-backup-action="delete-one" data-restore-point="{{ p.id }}">{% trans %}Delete{% endtrans %}</a></li>
           {% endcall %}
         {% endcall %}
       </div>

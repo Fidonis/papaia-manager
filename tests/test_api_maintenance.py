@@ -11,6 +11,7 @@ import asyncio
 import base64
 import json
 import os
+import sys
 import tempfile
 import time
 from collections.abc import AsyncGenerator, Iterator
@@ -166,6 +167,106 @@ def test_the_backup_page_carries_the_bulk_delete_scaffolding(client: TestClient)
     assert 'x-data="backupSelection()"' in html
     assert 'x-show="sel.length"' in html
     assert 'id="delete-backup-modal"' in html
+
+
+# ---------------------------------------------------------------------------
+# the page script (T-UI-03): one module, no inline script, no event attribute
+# ---------------------------------------------------------------------------
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import csp_scan  # noqa: E402
+
+
+def _scan(markup: str) -> dict[str, int]:
+    return csp_scan.count_markup(markup)
+
+
+_CLEAN = {
+    "inline_scripts": 0,
+    "on_attributes": 0,
+    "alpine_unsupported": 0,
+    "style_blocks": 0,
+    "style_attributes": 0,
+}
+
+
+def test_the_backup_page_runs_on_the_csp_build_with_its_module_first(
+    client: TestClient,
+) -> None:
+    html = _admin(client).get("/backup").text
+    assert html.count('<meta name="papaia-csp" content="strict">') == 1
+    assert "/static/alpine.min.js" not in html
+    module = html.index('<script type="module" src="/static/js/pages/backup.js')
+    # Deferred and module scripts run in document order: the page module registers its
+    # Alpine components before Alpine starts.
+    assert html.index("/static/js/core/main.js") < module
+    assert module < html.index("/static/htmx.min.js")
+    assert module < html.index("/static/alpine-csp.min.js")
+    assert _scan(html) == _CLEAN
+
+
+def test_the_backup_texts_reach_the_module_as_a_data_island(client: TestClient) -> None:
+    html = _admin(client).get("/backup").text
+    start = html.index('<script type="application/json" id="backup-texts">')
+    body = html[html.index(">", start) + 1 : html.index("</script>", start)]
+    texts = json.loads(body)
+    assert texts["busyTitle"] == "A job is already running"
+    assert texts["selectedOther"] == "{count} restore points selected"
+    assert texts["backupFailedLog"] == (
+        'Backup failed. <a href="/jobs/{job_id}" class="link">View log</a>'
+    )
+    assert all(isinstance(v, str) and v for v in texts.values())
+
+
+def test_the_header_cluster_takes_its_state_from_data_attributes(client: TestClient) -> None:
+    html = _admin(client).get("/backup").text
+    assert 'x-data="backupActions"' in html
+    assert 'data-busy="false"' in html
+    assert '@papaia-job-state.window="onJobState($event)"' in html
+    assert "x-cloak" in html
+
+
+def test_a_restore_point_row_names_its_actions_and_values(client: TestClient) -> None:
+    html = _admin(client).get("/partials/backup/restore-points").text
+    point = _POINTS[0]
+    assert f'data-backup-action="open-detail" data-restore-point="{point}"' in html
+    assert f'data-backup-action="open-restore" data-restore-point="{point}"' in html
+    assert 'data-artifacts="3" data-result="ok"' in html
+    assert "data-scope='[]'" in html
+    assert f'data-backup-action="delete-one" data-restore-point="{point}"' in html
+    assert _scan(html) == _CLEAN
+
+
+def test_the_job_strip_announces_through_data_attributes(client: TestClient) -> None:
+    html = _admin(client).get("/partials/backup/job-status").text
+    assert 'data-job-active="false"' in html
+    assert 'data-job-id=""' in html
+    assert "<script" not in html
+    assert _scan(html) == _CLEAN
+
+
+def test_the_restore_status_panel_dismisses_through_the_page_module(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _find(kind: object = None) -> api_maintenance.runner.RunnerStatus:
+        return api_maintenance.runner.RunnerStatus(
+            name="papaia-restore-" + _POINTS[0],
+            target=_POINTS[0],
+            status="exited",
+            exit_code=0,
+            started_at="",
+            finished_at="",
+        )
+
+    async def _log(name: str, **_: object) -> str:
+        return "[ok] restore finished"
+
+    monkeypatch.setattr(api_maintenance.runner, "find_runner", _find)
+    monkeypatch.setattr(api_maintenance.runner, "runner_log", _log)
+    html = _admin(client).get("/partials/backup/restore-status").text
+    assert 'data-backup-action="acknowledge-restore"' in html
+    assert _scan(html) == _CLEAN
 
 
 # ---------------------------------------------------------------------------
@@ -352,9 +453,9 @@ def test_the_restore_point_list_marks_a_scoped_point_and_hands_its_scope_to_the_
     assert response.status_code == 200
     html = response.text
     assert "only addon:paperless" in html
-    assert html.count('["addon:paperless"]') == 1
+    assert html.count("data-scope='[\"addon:paperless\"]'") == 1
     # The other two points are whole-stack backups and keep an empty scope.
-    assert html.count(", []);") + html.count(", [])'") >= 2
+    assert html.count("data-scope='[]'") == 2
 
 
 # ---------------------------------------------------------------------------

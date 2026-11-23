@@ -232,3 +232,27 @@ def test_every_page_without_findings_runs_on_the_csp_build() -> None:
     # A converted page never has a finding, through an include either.
     for name in converted:
         assert not _closure(name) & set(rows), name
+
+
+# -- page groups converted to the CSP build (MGR-017 onwards) ----------------------------------
+
+# Backup and restore: the page and every partial htmx swaps into it.
+_BACKUP_GROUP = (
+    "backup.html",
+    "partials/backup_job_status.html",
+    "partials/backup_schedule.html",
+    "partials/backup_schedule_preview.html",
+    "partials/restore_point_list.html",
+    "partials/restore_status.html",
+)
+
+
+@pytest.mark.parametrize("name", _BACKUP_GROUP)
+def test_the_backup_group_has_no_inline_script_handler_or_rejected_expression(name: str) -> None:
+    counts = csp_scan.count_markup((TEMPLATES / name).read_text(encoding="utf-8"))
+    assert counts == dict.fromkeys(csp_scan.KINDS, 0), name
+    assert name not in _templates_of_baseline(), name
+
+
+def test_the_backup_page_runs_on_the_csp_build() -> None:
+    assert "backup.html" in _baseline()["converted"]  # type: ignore[operator]

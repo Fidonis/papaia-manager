@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/_actions.html" import bulk_bar %}
+{% from "partials/_csp.html" import data_island %}
 
 {% block page_title %}{% trans %}Backup / Restore{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Back up and restore the stack{% endtrans %}</p>{% endblock %}
@@ -15,18 +16,19 @@
    first paint; `#backup-job-status` keeps it current from there, including for a
    job this page never started. #}
 {% block page_actions %}
-{# Single-quoted attribute: `tojson` escapes for exactly that, and the job id it
-   emits is double-quoted JSON. #}
+{# The server's values reach the component (backupActions, static/js/pages/backup.js) as
+   data-* attributes; `x-cloak` keeps the busy-only parts hidden until Alpine has started. #}
 <div class="flex items-center gap-2"
-     x-data='{ busy: {{ "true" if job_active else "false" }},
-               jobId: {{ (job.id | tojson) if job_active else "null" }} }'
-     @papaia-job-state.window="busy = $event.detail.active; jobId = $event.detail.jobId">
-  <a style="display:none" x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
+     x-data="backupActions"
+     data-busy="{{ 'true' if job_active else 'false' }}"
+     data-job-id="{{ job.id if job_active else '' }}"
+     @papaia-job-state.window="onJobState($event)">
+  <a x-cloak x-show="busy && jobId" :href="logHref" target="_blank"
      class="link link-hover text-xs text-pk-text-muted">{% trans %}view log{% endtrans %}</a>
   <button class="btn btn-primary btn-sm" :disabled="busy"
-          :title="busy ? {{ _('A job is already running')|tojson|forceescape }} : ''"
-          @click="document.getElementById('backup-modal').showModal()">
-    <span style="display:none" x-show="busy" class="loading loading-spinner loading-xs"></span>
+          :title="busyTitle"
+          @click="openBackupModal()">
+    <span x-cloak x-show="busy" class="loading loading-spinner loading-xs"></span>
     <span x-show="!busy">{% trans %}Create backup{% endtrans %}</span>
   </button>
 
@@ -64,11 +66,9 @@
 
       <div class="modal-action mt-0">
         <button class="btn btn-ghost btn-sm"
-                @click="document.getElementById('backup-modal').close()">{% trans %}Cancel{% endtrans %}</button>
+                @click="closeBackupModal()">{% trans %}Cancel{% endtrans %}</button>
         <button class="btn btn-primary btn-sm"
-                @click="document.getElementById('backup-modal').close();
-                        busy = true;
-                        startBackup(id => jobId = id).then(() => { busy = false; jobId = null })">
+                @click="createBackup()">
           {% trans %}Create backup{% endtrans %}
         </button>
       </div>
@@ -127,7 +127,7 @@
      `x-show`-killing trap the restore wizard avoids. -->
 <div id="backup-selection"
      x-data="backupSelection()"
-     @papaia-backups-deleted.window="sel = []">
+     @papaia-backups-deleted.window="clear()">
 <div class="mb-3 flex items-center justify-between gap-3">
   <h2 class="font-brand text-lg font-bold">{% trans %}Restore points{% endtrans %}</h2>
   <button class="btn btn-ghost btn-xs btn-square"
@@ -156,11 +156,11 @@
    exists, so it stays with the list it acts on. #}
 {% call bulk_bar("sel.length") %}
   <span class="text-sm flex-1 min-w-48">
-    <span x-text="fmtPlural(sel.length, {{ _('{count} restore point selected')|tojson|forceescape }}, {{ _('{count} restore points selected')|tojson|forceescape }})"></span>
+    <span x-text="selectionText"></span>
   </span>
   <button class="btn btn-error btn-sm" :disabled="busy"
-          @click="openDeleteBackupModal(sel)">{% trans %}Delete selected{% endtrans %}</button>
-  <button class="btn btn-ghost btn-sm" :disabled="busy" @click="sel = []">{% trans %}Clear{% endtrans %}</button>
+          @click="deleteSelected()">{% trans %}Delete selected{% endtrans %}</button>
+  <button class="btn btn-ghost btn-sm" :disabled="busy" @click="clear()">{% trans %}Clear{% endtrans %}</button>
 {% endcall %}
 </div>
 
@@ -184,16 +184,14 @@
     <div id="restore-step-1">
       <div class="flex flex-col gap-2 mb-4">
         <label class="flex items-start gap-3 cursor-pointer">
-          <input type="radio" name="restore-scope" value="all" class="radio radio-sm mt-0.5"
-                 onchange="setRestoreScope('all')">
+          <input type="radio" name="restore-scope" value="all" class="radio radio-sm mt-0.5">
           <span class="text-sm">
             <span class="font-medium">{% trans %}Everything in this restore point{% endtrans %}</span>
             <span id="restore-everything-detail" class="block text-pk-text-muted"></span>
           </span>
         </label>
         <label class="flex items-start gap-3 cursor-pointer">
-          <input type="radio" name="restore-scope" value="some" class="radio radio-sm mt-0.5"
-                 onchange="setRestoreScope('some')">
+          <input type="radio" name="restore-scope" value="some" class="radio radio-sm mt-0.5">
           <span class="text-sm">
             <span class="font-medium">{% trans %}Choose what to restore{% endtrans %}</span>
             <span class="block text-pk-text-muted">{% trans %}Only the selected services are stopped, restored and started again. Everything else keeps running.{% endtrans %}</span>
@@ -235,8 +233,7 @@
       </label>
 
       <label class="label cursor-pointer justify-start gap-3 mb-2">
-        <input id="restore-confirm" type="checkbox" class="checkbox"
-               onchange="document.getElementById('restore-go').disabled = !this.checked">
+        <input id="restore-confirm" type="checkbox" class="checkbox">
         <span class="label-text text-sm">{% trans %}I understand and want to restore this point{% endtrans %}</span>
       </label>
 
@@ -250,13 +247,13 @@
 
     <div class="modal-action">
       <button id="restore-back" type="button" class="btn btn-ghost mr-auto hidden"
-              onclick="restoreStep(-1)">{% trans %}Back{% endtrans %}</button>
+              data-backup-action="restore-back">{% trans %}Back{% endtrans %}</button>
       <button type="button" class="btn btn-ghost"
-              onclick="document.getElementById('restore-modal').close()">{% trans %}Cancel{% endtrans %}</button>
+              data-dialog-close="restore-modal">{% trans %}Cancel{% endtrans %}</button>
       <button id="restore-next" type="button" class="btn btn-primary"
-              onclick="restoreStep(1)">{% trans %}Continue{% endtrans %}</button>
+              data-backup-action="restore-next">{% trans %}Continue{% endtrans %}</button>
       <button id="restore-go" type="button" class="btn btn-warning hidden" disabled
-              onclick="submitRestore()">{% trans %}Restore{% endtrans %}</button>
+              data-backup-action="restore-go">{% trans %}Restore{% endtrans %}</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
@@ -269,7 +266,7 @@
     <div id="detail-body" class="text-sm"></div>
     <div class="modal-action">
       <button type="button" class="btn btn-ghost"
-              onclick="document.getElementById('restore-detail-modal').close()">{% trans %}Close{% endtrans %}</button>
+              data-dialog-close="restore-detail-modal">{% trans %}Close{% endtrans %}</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
@@ -289,675 +286,13 @@
     </div>
     <div class="modal-action mt-0">
       <button class="btn btn-ghost btn-sm"
-              onclick="document.getElementById('delete-backup-modal').close()">{% trans %}Cancel{% endtrans %}</button>
-      <button class="btn btn-error btn-sm" onclick="confirmDeleteBackups()">{% trans %}Delete{% endtrans %}</button>
+              data-dialog-close="delete-backup-modal">{% trans %}Cancel{% endtrans %}</button>
+      <button class="btn btn-error btn-sm" data-backup-action="confirm-delete">{% trans %}Delete{% endtrans %}</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
-<script>
-// Shared error extraction: the API answers with {detail: ...} on every 4xx.
-async function _apiError(r) {
-  try {
-    const e = await r.json();
-    return e.detail || JSON.stringify(e);
-  } catch (_) {
-    return String(r.status);
-  }
-}
-
-function _csrf() {
-  return csrfToken();
-}
-
-// refreshBackupJobStatus: re-read the strip that owns the running state. Called
-// on both outcomes of a POST -- after a 409 ("a backup job is already running")
-// it is what corrects a page that thought the queue was idle, without waiting
-// for the strip's own tick.
-function refreshBackupJobStatus() {
-  htmx.ajax('GET', '/partials/backup/job-status',
-            { target: '#backup-job-status', swap: 'outerHTML' });
-}
-
-// startBackup: POST the backup, then reuse the shared job poller from base.html.
-// onJobId lets the caller show a "view log" link while the job still runs.
-function startBackup(onJobId) {
-  var raw = document.getElementById('retention-days').value.trim();
-  var body = {};
-  if (raw !== '') body.retention_days = parseInt(raw, 10);
-  var node = document.getElementById('backup-node');
-  if (node && node.value) body.node = node.value;
-
-  return fetch('/api/v1/maintenance/backup', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
-    body: JSON.stringify(body),
-  }).then(async function (r) {
-    if (_authGuard(r)) return false;
-    if (!r.ok) {
-      showToast('error', {{ _('Backup failed:')|tojson }} + " " + (await _apiError(r)));
-      refreshBackupJobStatus();
-      return false;
-    }
-    var data = await r.json();
-    if (onJobId) onJobId(data.job_id);
-    refreshBackupJobStatus();
-    return new Promise(function (resolve) {
-      _pollJob(data.job_id, function (job) {
-        htmx.ajax('GET', '/partials/backup/restore-points',
-                  { target: '#restore-point-list', swap: 'innerHTML' });
-        refreshBackupJobStatus();
-        if (job.status === 'succeeded') {
-          showToast('success', {{ _('Backup complete.')|tojson }});
-        } else {
-          showToast('error', fmtHtml({{ _('Backup failed. <a href="/jobs/{job_id}" class="link">View log</a>')|tojson }}, { job_id: data.job_id }));
-        }
-        resolve(true);
-      });
-    });
-  });
-}
-
-// ── Delete restore points ────────────────────────────────────────────────
-//
-// The selection is an array on #backup-selection so it survives the list
-// refresh, the same shape as the services page. The confirmation dialog is
-// plain DOM; only the POST + job poll differ from startBackup.
-function backupSelection() {
-  return {
-    sel: [],
-    busy: false,
-    toggle(id) {
-      this.sel = this.sel.includes(id)
-        ? this.sel.filter(function (x) { return x !== id; })
-        : this.sel.concat([id]);
-    },
-  };
-}
-
-var _pendingDeleteIds = [];
-
-function openDeleteBackupModal(ids) {
-  _pendingDeleteIds = (ids || []).slice();
-  if (_pendingDeleteIds.length === 0) return;
-
-  var many = _pendingDeleteIds.length > 1;
-  _el('delete-backup-title').textContent = many
-    ? fmt({{ _('Delete {count} restore points?')|tojson }}, { count: _pendingDeleteIds.length })
-    : fmt({{ _('Delete restore point {id}?')|tojson }}, { id: _pendingDeleteIds[0] });
-  _el('delete-backup-text').textContent = many
-    ? {{ _('Removes the snapshot archives and their catalogue entries. Restoring from them will no longer be possible.')|tojson }}
-    : {{ _('Removes the snapshot archive and its catalogue entry. Restoring from it will no longer be possible.')|tojson }};
-
-  var list = _el('delete-backup-id-list');
-  list.textContent = '';
-  _pendingDeleteIds.forEach(function (id) {
-    var li = document.createElement('li');
-    li.textContent = id;
-    list.appendChild(li);
-  });
-
-  _el('delete-backup-modal').showModal();
-}
-
-function confirmDeleteBackups() {
-  var ids = _pendingDeleteIds.slice();
-  _el('delete-backup-modal').close();
-  if (ids.length === 0) return;
-
-  return fetch('/api/v1/maintenance/restore-points/delete', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
-    body: JSON.stringify({ restore_points: ids }),
-  }).then(async function (r) {
-    if (_authGuard(r)) return;
-    if (!r.ok) {
-      showToast('error', {{ _('Delete failed:')|tojson }} + " " + (await _apiError(r)));
-      refreshBackupJobStatus();
-      return;
-    }
-    var data = await r.json();
-    refreshBackupJobStatus();
-    _pollJob(data.job_id, function (job) {
-      htmx.ajax('GET', '/partials/backup/restore-points',
-                { target: '#restore-point-list', swap: 'innerHTML' });
-      refreshBackupJobStatus();
-      if (job.status === 'succeeded') {
-        window.dispatchEvent(new CustomEvent('papaia-backups-deleted'));
-        showToast('success', ids.length > 1
-          ? fmt({{ _('{count} restore points deleted.')|tojson }}, { count: ids.length })
-          : {{ _('Restore point deleted.')|tojson }});
-      } else {
-        showToast('error', fmtHtml({{ _('Delete failed. <a href="/jobs/{job_id}" class="link">View log</a>')|tojson }}, { job_id: data.job_id }));
-      }
-    });
-  });
-}
-
-// ── Restore wizard ────────────────────────────────────────────────────────
-//
-// _scope holds what the three steps share. `selected` carries selectors exactly
-// as the API takes them ("module:librechat", "volume:papaia_x"), so nothing has
-// to be translated at submit time -- and picking a whole module is genuinely a
-// different request from picking each of its volumes, not another spelling.
-//
-// Plain DOM, no Alpine: the picker is built from JSON that arrives after the
-// dialog opens, and an `x-effect` reading `$refs` of its own <dialog> silently
-// kills `x-show` for the entire page. Same reason openRestorePointDetail builds
-// its table by hand.
-var _scope = null;
-
-function _el(id) { return document.getElementById(id); }
-
-function _freshScope(id, artifacts, result) {
-  return {
-    id: id, artifacts: artifacts, result: result, supported: false,
-    groups: [], services: [], notes: [], configSelector: 'config',
-    mode: 'all', selected: new Set(), step: 1,
-    // Which disclosures are open. Has to live here, not in the DOM: ticking a
-    // checkbox rebuilds the picker, and a freshly built list would come back
-    // collapsed under the hand that just opened it.
-    expanded: new Set(),
-  };
-}
-
-// Every value below comes from the API and is written with textContent or as a
-// DOM node, never innerHTML. Same rule as openRestorePointDetail.
-function _node(tag, className, text) {
-  var el = document.createElement(tag);
-  if (className) el.className = className;
-  if (text !== undefined) el.textContent = text;
-  return el;
-}
-
-function openRestoreModal(id, artifacts, result, scope) {
-  _scope = _freshScope(id, artifacts, result);
-  var scoped = !!(scope && scope.length);
-  _el('restore-title').innerHTML = fmtHtml({{ _('Restore <span class="font-mono">{id}</span>')|tojson }}, { id: id });
-  _el('restore-everything-detail').textContent = fmt(
-    {{ _('Replaces the stack configuration and all {count} archives. The whole stack goes down.')|tojson }}, { count: artifacts });
-  _el('restore-partial-note').classList.toggle('hidden', result !== 'partial');
-  _el('restore-clean').checked = false;
-  _el('restore-confirm').checked = false;
-  _el('restore-go').disabled = true;
-  _el('restore-picker').textContent = '';
-  _el('restore-notes').textContent = '';
-  _el('restore-tally').textContent = '';
-  // A scoped restore point has no configuration directory and no core volumes,
-  // so it cannot be restored as a whole: the choice is made for the operator.
-  var allRadio = document.querySelector('input[name=restore-scope][value=all]');
-  allRadio.checked = !scoped;
-  allRadio.disabled = scoped;
-  document.querySelector('input[name=restore-scope][value=some]').checked = scoped;
-  if (scoped) {
-    _scope.mode = 'some';
-    _el('restore-everything-detail').textContent = fmt(
-      {{ _('This restore point only holds {scope}, so it can be restored by selection only.')|tojson }}, { scope: scope.join(', ') });
-  }
-  _renderStep();
-  _el('restore-modal').showModal();
-
-  fetch('/api/v1/maintenance/restore-points/' + encodeURIComponent(id) + '/selectors')
-    .then(async function (r) {
-      if (_authGuard(r)) return;
-      if (!r.ok) return;
-      var data = await r.json();
-      _scope.supported = !!data.supported;
-      _scope.groups = data.groups || [];
-      _scope.services = data.services || [];
-      _scope.notes = data.notes || [];
-      _scope.configSelector = data.config_selector || 'config';
-      _renderPicker();
-    });
-}
-
-function setRestoreScope(mode) {
-  _scope.mode = mode;
-  if (mode === 'all') _scope.selected.clear();
-  _renderPicker();
-}
-
-function _renderPicker() {
-  var box = _el('restore-picker');
-  var notes = _el('restore-notes');
-  box.textContent = '';
-  notes.textContent = '';
-
-  if (_scope.mode !== 'some') {
-    box.classList.add('hidden');
-    _el('restore-tally').textContent = '';
-    _updateNextButton();
-    return;
-  }
-  box.classList.remove('hidden');
-
-  // Re-rendering resets the scroll box to the top, which throws the cursor off
-  // the row that was just clicked once the list is longer than the panel.
-  var scrollTop = box.scrollTop;
-
-  var headings = { config: {{ _('Stack')|tojson }}, module: {{ _('Core services')|tojson }}, addon: {{ _('Add-ons')|tojson }}, node: {{ _('Nodes')|tojson }} };
-  var lastKind = '';
-  _scope.groups.forEach(function (group) {
-    if (group.kind !== lastKind) {
-      lastKind = group.kind;
-      box.appendChild(_node('div',
-        'px-3 py-1.5 text-xs uppercase tracking-wide text-pk-text-muted bg-base-200',
-        headings[group.kind] || {{ _('Other')|tojson }}));
-    }
-    box.appendChild(_groupRow(group));
-  });
-
-  // Not instead of the groups: such a snapshot still offers its configuration,
-  // and the note says what it does not offer.
-  if (!_scope.supported) {
-    box.appendChild(_node('p', 'px-3 py-3 text-sm text-pk-text-muted border-t border-base-300',
-      {{ _('This restore point was written by an older core and carries no per-service grouping, so its volumes can only be restored as part of the whole point.')|tojson }}));
-  }
-
-  box.scrollTop = scrollTop;
-  _scope.notes.forEach(function (note) { notes.appendChild(_node('span', '', note)); });
-  _updateTally();
-}
-
-function _groupRow(group) {
-  var wrap = _node('div', 'px-3 py-2.5 border-t border-base-300');
-  var head = _node('div', 'flex items-start gap-3');
-
-  var box = document.createElement('input');
-  box.type = 'checkbox';
-  box.className = 'checkbox checkbox-sm mt-0.5';
-  box.checked = _scope.selected.has(group.selector);
-  box.addEventListener('change', function () {
-    if (box.checked) {
-      _scope.selected.add(group.selector);
-      // A module and its volumes are alternatives, not a hierarchy: holding
-      // both would ask the core to restore the same archive twice.
-      group.items.forEach(function (i) { _scope.selected.delete(i.selector); });
-      if (group.requires_config) _scope.selected.add(_scope.configSelector);
-    } else {
-      _scope.selected.delete(group.selector);
-      group.items.forEach(function (i) { _scope.selected.delete(i.selector); });
-      if (group.requires_config) _scope.selected.delete(_scope.configSelector);
-    }
-    _renderPicker();
-  });
-  head.appendChild(box);
-
-  var text = _node('div', 'min-w-0 flex-1');
-  text.appendChild(_node('span', 'text-sm font-medium', group.label));
-  text.appendChild(_node('span', 'block text-xs text-pk-text-muted', group.summary));
-  head.appendChild(text);
-
-  head.appendChild(_node('div', 'text-xs text-pk-text-muted text-right whitespace-nowrap',
-    fmtPlural(group.archives, {{ _('{count} archive')|tojson }}, {{ _('{count} archives')|tojson }})));
-  wrap.appendChild(head);
-
-  if (group.requires_config && _scope.selected.has(group.selector)) {
-    var alert = _node('div', 'alert alert-warning text-xs mt-2 py-2');
-    var inner = _node('div', '');
-    inner.appendChild(_node('span', 'font-semibold block',
-      group.kind === 'config'
-        ? {{ _('Restoring the configuration restores the whole point.')|tojson }}
-        : fmt({{ _('{label} brings the stack configuration with it.')|tojson }}, { label: group.label })));
-    group.hazards.forEach(function (h) { inner.appendChild(_node('span', 'block', h)); });
-    inner.appendChild(_node('span', 'block mt-1', {{ _('This therefore runs as a full restore.')|tojson }}));
-    alert.appendChild(inner);
-    wrap.appendChild(alert);
-  }
-
-  if (group.items.length > 1) {
-    var open = _scope.expanded.has(group.selector);
-    var toggle = _node('button', 'btn btn-ghost btn-xs mt-1 ml-7',
-                       open ? {{ _('Hide volumes')|tojson }} : {{ _('Show volumes')|tojson }});
-    toggle.type = 'button';
-    var list = _node('div', 'ml-7 mt-1 pl-3 border-l border-base-300' + (open ? '' : ' hidden'));
-    group.items.forEach(function (item) { list.appendChild(_itemRow(group, item)); });
-    // The set is the source of truth, not the class: an item checkbox rebuilds
-    // this whole row, and a DOM-only toggle would come back collapsed.
-    toggle.addEventListener('click', function () {
-      if (_scope.expanded.has(group.selector)) _scope.expanded.delete(group.selector);
-      else _scope.expanded.add(group.selector);
-      var hidden = list.classList.toggle('hidden');
-      toggle.textContent = hidden ? {{ _('Show volumes')|tojson }} : {{ _('Hide volumes')|tojson }};
-    });
-    wrap.appendChild(toggle);
-    wrap.appendChild(list);
-  }
-  return wrap;
-}
-
-function _itemRow(group, item) {
-  var label = _node('label', 'flex items-center gap-2 py-1 cursor-pointer');
-  var box = document.createElement('input');
-  box.type = 'checkbox';
-  box.className = 'checkbox checkbox-xs';
-  box.checked = _scope.selected.has(item.selector) || _scope.selected.has(group.selector);
-  box.disabled = _scope.selected.has(group.selector);
-  box.addEventListener('change', function () {
-    if (box.checked) {
-      _scope.selected.add(item.selector);
-      if (group.requires_config) _scope.selected.add(_scope.configSelector);
-    } else {
-      _scope.selected.delete(item.selector);
-      var anyLeft = group.items.some(function (i) { return _scope.selected.has(i.selector); });
-      if (group.requires_config && !anyLeft) _scope.selected.delete(_scope.configSelector);
-    }
-    _renderPicker();
-  });
-  label.appendChild(box);
-  label.appendChild(_node('span', 'text-xs', item.label));
-  label.appendChild(_node('span', 'text-xs font-mono text-pk-text-muted', item.target));
-  if (item.advanced) label.appendChild(_node('span', 'badge badge-ghost badge-xs', 'large'));
-  return label;
-}
-
-// True when the selection can only be carried out by replacing the config
-// directory -- which means the detached runner and the whole stack, not a job.
-function _isFullRestore() {
-  return _scope.mode === 'all' || _scope.selected.has(_scope.configSelector);
-}
-
-function _selectedGroups() {
-  return _scope.groups.filter(function (g) {
-    return _scope.selected.has(g.selector) ||
-           g.items.some(function (i) { return _scope.selected.has(i.selector); });
-  });
-}
-
-function _updateTally() {
-  var groups = _selectedGroups();
-  var count = 0;
-  groups.forEach(function (g) {
-    count += _scope.selected.has(g.selector)
-      ? g.archives
-      : g.items.filter(function (i) { return _scope.selected.has(i.selector); }).length;
-  });
-  _el('restore-tally').textContent = groups.length
-    ? fmtPlural(count, {{ _('{count} item selected')|tojson }}, {{ _('{count} items selected')|tojson }})
-    : {{ _('Nothing selected yet.')|tojson }};
-  _updateNextButton();
-}
-
-function _updateNextButton() {
-  _el('restore-next').disabled = _scope.mode === 'some' && _selectedGroups().length === 0;
-}
-
-function restoreStep(delta) {
-  var target = _scope.step + delta;
-  if (target < 1 || target > 3) return;
-  if (target === 2) _renderImpact();
-  if (target === 3) _renderConfirm();
-  _scope.step = target;
-  _renderStep();
-}
-
-function _renderStep() {
-  [1, 2, 3].forEach(function (n) {
-    _el('restore-step-' + n).classList.toggle('hidden', n !== _scope.step);
-  });
-  _el('restore-step-badge').textContent = fmt({{ _('Step {step} of 3')|tojson }}, { step: _scope.step });
-  _el('restore-back').classList.toggle('hidden', _scope.step === 1);
-  _el('restore-next').classList.toggle('hidden', _scope.step === 3);
-  _el('restore-go').classList.toggle('hidden', _scope.step !== 3);
-  if (_scope.step === 1) _updateNextButton();
-}
-
-function _section(title, bodyClass) {
-  var wrap = _node('div', '');
-  wrap.appendChild(_node('p', 'text-xs uppercase tracking-wide text-pk-text-muted mb-1.5', title));
-  var body = _node('div', bodyClass || '');
-  wrap.appendChild(body);
-  return { wrap: wrap, body: body };
-}
-
-function _renderImpact() {
-  var full = _isFullRestore();
-  var groups = _selectedGroups();
-  var profiles = {};
-  var addons = [];
-  groups.forEach(function (g) {
-    if (g.kind === 'addon') addons.push(g.label);
-    else (g.profiles || []).forEach(function (p) { profiles[p] = true; });
-  });
-
-  var over = _section({{ _('Overwritten — current contents are deleted first')|tojson }});
-  if (full) {
-    over.body.appendChild(_node('p', 'text-sm',
-      fmt({{ _('The stack configuration and all {count} archives in this restore point.')|tojson }}, { count: _scope.artifacts })));
-  } else {
-    var list = _node('div', 'flex flex-col gap-0.5');
-    groups.forEach(function (g) {
-      if (_scope.selected.has(g.selector)) {
-        list.appendChild(_node('span', 'text-sm',
-          g.label + ' — ' + fmtPlural(g.archives, {{ _('{count} archive')|tojson }}, {{ _('{count} archives')|tojson }})));
-      } else {
-        g.items.forEach(function (i) {
-          if (_scope.selected.has(i.selector)) {
-            list.appendChild(_node('span', 'text-sm font-mono', i.target));
-          }
-        });
-      }
-    });
-    over.body.appendChild(list);
-  }
-  _el('impact-overwritten').textContent = '';
-  _el('impact-overwritten').appendChild(over.wrap);
-
-  // Built from profiles, not from the modules that were ticked: a profile is
-  // what actually stops. Selecting SearXNG stops librechat-websearch, which is
-  // nine containers across four modules.
-  var restarted = _section({{ _('Stopped and recreated')|tojson }}, 'flex flex-wrap gap-1');
-  var running = _section({{ _('Keeps running — untouched by this restore')|tojson }}, 'flex flex-wrap gap-1');
-  if (full) {
-    restarted.body.appendChild(_node('span', 'text-sm',
-      {{ _('Every core and add-on container, this panel included.')|tojson }}));
-    running.body.appendChild(_node('span', 'text-sm text-pk-text-muted', {{ _('Nothing.')|tojson }}));
-  } else {
-    _scope.services.forEach(function (svc) {
-      var hit = (svc.profiles || []).some(function (p) { return profiles[p] === true; });
-      if (hit) restarted.body.appendChild(_node('span', 'badge badge-warning badge-sm', svc.service));
-      else running.body.appendChild(_node('span', 'badge badge-success badge-sm', svc.service));
-    });
-    addons.forEach(function (name) {
-      restarted.body.appendChild(_node('span', 'badge badge-warning badge-sm', name));
-    });
-    if (!restarted.body.childNodes.length) {
-      restarted.body.appendChild(_node('span', 'text-sm text-pk-text-muted',
-        {{ _('Nothing — the selection touches no running container.')|tojson }}));
-    }
-  }
-  _el('impact-restarted').textContent = '';
-  _el('impact-restarted').appendChild(restarted.wrap);
-  _el('impact-running').textContent = '';
-  _el('impact-running').appendChild(running.wrap);
-
-  var hazards = _el('impact-hazards');
-  hazards.textContent = '';
-  var seen = [];
-  groups.forEach(function (g) {
-    (g.hazards || []).forEach(function (h) { if (seen.indexOf(h) === -1) seen.push(h); });
-  });
-  seen.push({{ _('Everything these archives recorded after the snapshot is discarded. Take a backup first if you might want it back.')|tojson }});
-  seen.forEach(function (text) {
-    var alert = _node('div', 'alert alert-warning text-xs mb-2 py-2');
-    alert.appendChild(_node('span', '', text));
-    hazards.appendChild(alert);
-  });
-}
-
-function _renderConfirm() {
-  var full = _isFullRestore();
-  var points = _el('restore-confirm-points');
-  points.textContent = '';
-  if (full) {
-    points.appendChild(_node('li', '', {{ _('The stack configuration directory is replaced.')|tojson }}));
-    points.appendChild(_node('li', '',
-      fmt({{ _('{count} archived volumes and directories are replaced.')|tojson }}, { count: _scope.artifacts })));
-    points.appendChild(_node('li', '',
-      {{ _('All core and add-on containers are removed and recreated.')|tojson }}));
-  } else {
-    _selectedGroups().forEach(function (g) {
-      points.appendChild(_node('li', '', fmt({{ _('{label} is replaced from the snapshot.')|tojson }}, { label: g.label })));
-    });
-    points.appendChild(_node('li', '', {{ _('Everything outside the selection keeps running.')|tojson }}));
-  }
-  _el('restore-clean-row').classList.toggle('hidden', !full);
-  if (!full) _el('restore-clean').checked = false;
-  _el('restore-detach-note').classList.toggle('hidden', !full);
-  _el('restore-inprocess-note').classList.toggle('hidden', full);
-  _el('restore-confirm').checked = false;
-  _el('restore-go').disabled = true;
-}
-
-function submitRestore() {
-  _el('restore-go').disabled = true;
-  if (_isFullRestore()) _submitFullRestore();
-  else _submitScopedRestore();
-}
-
-function _submitFullRestore() {
-  var body = {
-    restore_point: _scope.id,
-    restart_clean: _el('restore-clean').checked,
-  };
-  fetch('/api/v1/maintenance/restore', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
-    body: JSON.stringify(body),
-  }).then(async function (r) {
-    if (_authGuard(r)) return;
-    if (!r.ok) {
-      showToast('error', {{ _('Restore could not be started:')|tojson }} + " " + (await _apiError(r)));
-      _el('restore-go').disabled = false;
-      return;
-    }
-    _el('restore-modal').close();
-    showToast('success', {{ _('Restore started.')|tojson }});
-    // Load the status panel, which then polls itself across the restart.
-    htmx.ajax('GET', '/partials/backup/restore-status',
-              { target: '#restore-status-slot', swap: 'innerHTML' });
-  });
-}
-
-// A scoped restore is an ordinary job: it never replaces the config directory,
-// so the manager -- and this page -- stay up for the whole thing. That is why
-// it reports through the job log rather than the runner status panel.
-function _submitScopedRestore() {
-  var body = { restore_point: _scope.id, only: Array.from(_scope.selected) };
-  fetch('/api/v1/maintenance/restore/scoped', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
-    body: JSON.stringify(body),
-  }).then(async function (r) {
-    if (_authGuard(r)) return;
-    if (!r.ok) {
-      showToast('error', {{ _('Restore could not be started:')|tojson }} + " " + (await _apiError(r)));
-      _el('restore-go').disabled = false;
-      return;
-    }
-    var data = await r.json();
-    _el('restore-modal').close();
-    showToast('success', fmtHtml({{ _('Restore started. <a href="/jobs/{job_id}" class="link">View log</a>')|tojson }}, { job_id: data.job_id }));
-    refreshBackupJobStatus();
-    _pollJob(data.job_id, function (job) {
-      refreshBackupJobStatus();
-      htmx.ajax('GET', '/partials/backup/restore-points',
-                { target: '#restore-point-list', swap: 'innerHTML' });
-      if (job.status === 'succeeded') {
-        showToast('success', {{ _('Restore complete.')|tojson }});
-      } else {
-        showToast('error', fmtHtml({{ _('Restore failed. <a href="/jobs/{job_id}" class="link">View log</a>')|tojson }}, { job_id: data.job_id }));
-      }
-    });
-  });
-}
-
-// acknowledgeRestore: drop the finished runner container so the next restore can
-// start, then clear the panel and re-read the catalogue.
-function acknowledgeRestore() {
-  fetch('/api/v1/maintenance/restore', {
-    method: 'DELETE',
-    headers: { 'X-CSRF-Token': _csrf() },
-  }).then(async function (r) {
-    if (_authGuard(r)) return;
-    if (!r.ok) {
-      showToast('error', {{ _('Could not dismiss the restore:')|tojson }} + " " + (await _apiError(r)));
-      return;
-    }
-    htmx.ajax('GET', '/partials/backup/restore-status',
-              { target: '#restore-status-slot', swap: 'innerHTML' });
-    htmx.ajax('GET', '/partials/backup/restore-points',
-              { target: '#restore-point-list', swap: 'innerHTML' });
-  });
-}
-
-// openRestorePointDetail: renders the snapshot manifest. Every value comes from
-// the API as text and is written via textContent / DOM nodes, never innerHTML.
-function openRestorePointDetail(id) {
-  var body = document.getElementById('detail-body');
-  document.getElementById('detail-title').innerHTML = fmtHtml({{ _('Restore point <span class="font-mono">{id}</span>')|tojson }}, { id: id });
-  body.textContent = {{ _('Loading…')|tojson }};
-  document.getElementById('restore-detail-modal').showModal();
-
-  fetch('/api/v1/maintenance/restore-points/' + encodeURIComponent(id))
-    .then(async function (r) {
-      if (_authGuard(r)) return;
-      if (!r.ok) {
-        body.textContent = {{ _('Could not load details:')|tojson }} + " " + (await _apiError(r));
-        return;
-      }
-      var data = await r.json();
-      body.textContent = '';
-
-      var meta = document.createElement('p');
-      meta.className = 'text-pk-text-muted mb-3';
-      meta.textContent = fmt({{ _('{created} · {size} MB · {artifacts} artifacts · result {result}')|tojson }},
-                             { created: data.created_at, size: data.size_mb, artifacts: data.artifacts, result: data.result }) +
-                         (data.papaia_version ? ' · ' + fmt({{ _('core {version}')|tojson }}, { version: data.papaia_version }) : '');
-      body.appendChild(meta);
-
-      var list = data.artifact_list || [];
-      if (!list.length) {
-        var empty = document.createElement('p');
-        empty.className = 'text-pk-text-muted';
-        empty.textContent = {{ _('No manifest found for this restore point.')|tojson }};
-        body.appendChild(empty);
-        return;
-      }
-
-      var table = document.createElement('table');
-      table.className = 'table table-zebra table-xs';
-      var head = document.createElement('thead');
-      var headRow = document.createElement('tr');
-      [{{ _('Kind')|tojson }}, {{ _('Target')|tojson }}, {{ _('Owner')|tojson }}].forEach(function (label) {
-        var th = document.createElement('th');
-        th.textContent = label;
-        headRow.appendChild(th);
-      });
-      head.appendChild(headRow);
-      table.appendChild(head);
-
-      var tbody = document.createElement('tbody');
-      list.forEach(function (a) {
-        var tr = document.createElement('tr');
-        [a.kind, a.target, a.owner].forEach(function (value, i) {
-          var td = document.createElement('td');
-          if (i === 1) td.className = 'font-mono';
-          td.textContent = value == null ? '' : String(value);
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-
-      var wrapper = document.createElement('div');
-      wrapper.className = 'overflow-x-auto max-h-96 overflow-y-auto';
-      wrapper.appendChild(table);
-      body.appendChild(wrapper);
-    });
-}
-</script>
 
 <!-- Schedule editor. Plain DOM, like the other dialogs on this page: the fields are
      filled from JSON after it opens, and htmx re-validates the form into
@@ -971,7 +306,7 @@ function openRestorePointDetail(id) {
       {% trans %}Starts a backup by itself at these times, the same way the Create backup button does. A run is held back while a restore, an upgrade or another job is running, and tried again a few minutes later.{% endtrans %}
     </p>
 
-    <form id="schedule-form" onsubmit="return false"
+    <form id="schedule-form"
           hx-get="/partials/backup/schedule/preview"
           hx-trigger="input delay:300ms, change"
           hx-target="#schedule-preview"
@@ -985,8 +320,7 @@ function openRestorePointDetail(id) {
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="form-control">
           <label class="label py-1" for="schedule-mode"><span class="label-text text-sm">{% trans %}Repeat{% endtrans %}</span></label>
-          <select id="schedule-mode" name="mode" class="select select-bordered select-sm"
-                  onchange="scheduleModeChanged()">
+          <select id="schedule-mode" name="mode" class="select select-bordered select-sm">
             <option value="daily">{% trans %}Every day{% endtrans %}</option>
             <option value="weekly">{% trans %}On chosen days{% endtrans %}</option>
             <option value="hourly">{% trans %}Every few hours{% endtrans %}</option>
@@ -1064,149 +398,94 @@ function openRestorePointDetail(id) {
 
     <div class="modal-action">
       <button id="schedule-remove" type="button" class="btn btn-ghost btn-sm text-error mr-auto hidden"
-              onclick="removeSchedule()">{% trans %}Remove schedule{% endtrans %}</button>
+              data-backup-action="remove-schedule">{% trans %}Remove schedule{% endtrans %}</button>
       <button type="button" class="btn btn-ghost btn-sm"
-              onclick="document.getElementById('schedule-modal').close()">{% trans %}Cancel{% endtrans %}</button>
+              data-dialog-close="schedule-modal">{% trans %}Cancel{% endtrans %}</button>
       <button id="schedule-save" type="button" class="btn btn-primary btn-sm" disabled
-              onclick="saveSchedule()">{% trans %}Save schedule{% endtrans %}</button>
+              data-backup-action="save-schedule">{% trans %}Save schedule{% endtrans %}</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
-<script>
-// ── Backup schedule ──────────────────────────────────────────────────────────
-//
-// The page only edits the form and posts what the preview validated. Compiling a
-// preset to cron, checking the expression, the timezone, the retention and the
-// shortest allowed interval all happen on the server -- the same code the PUT
-// uses -- so there is no second copy of those rules in this file.
-function refreshScheduleStrip() {
-  htmx.ajax('GET', '/partials/backup/schedule',
-            { target: '#backup-schedule-slot', swap: 'innerHTML' });
-}
+{#- The page's script is static/js/pages/backup.js (T-UI-03): no inline script, no event
+    attribute. Its sentences come from this data island in the language of the page, a whole
+    sentence each; `{name}` marks a value. #}
+{{ data_island("backup-texts", {
+  "busyTitle": _("A job is already running"),
+  "selectedOne": _("{count} restore point selected"),
+  "selectedOther": _("{count} restore points selected"),
+  "backupFailedPrefix": _("Backup failed:"),
+  "backupComplete": _("Backup complete."),
+  "backupFailedLog": _('Backup failed. <a href="/jobs/{job_id}" class="link">View log</a>'),
+  "deleteManyTitle": _("Delete {count} restore points?"),
+  "deleteOneTitle": _("Delete restore point {id}?"),
+  "deleteManyText": _("Removes the snapshot archives and their catalogue entries. Restoring from them will no longer be possible."),
+  "deleteOneText": _("Removes the snapshot archive and its catalogue entry. Restoring from it will no longer be possible."),
+  "deleteFailedPrefix": _("Delete failed:"),
+  "deletedMany": _("{count} restore points deleted."),
+  "deletedOne": _("Restore point deleted."),
+  "deleteFailedLog": _('Delete failed. <a href="/jobs/{job_id}" class="link">View log</a>'),
+  "restoreTitle": _('Restore <span class="font-mono">{id}</span>'),
+  "everythingDetail": _("Replaces the stack configuration and all {count} archives. The whole stack goes down."),
+  "scopedOnly": _("This restore point only holds {scope}, so it can be restored by selection only."),
+  "headingStack": _("Stack"),
+  "headingCore": _("Core services"),
+  "headingAddons": _("Add-ons"),
+  "headingNodes": _("Nodes"),
+  "headingOther": _("Other"),
+  "olderCore": _("This restore point was written by an older core and carries no per-service grouping, so its volumes can only be restored as part of the whole point."),
+  "archiveOne": _("{count} archive"),
+  "archiveOther": _("{count} archives"),
+  "configWhole": _("Restoring the configuration restores the whole point."),
+  "bringsConfig": _("{label} brings the stack configuration with it."),
+  "runsFull": _("This therefore runs as a full restore."),
+  "hideVolumes": _("Hide volumes"),
+  "showVolumes": _("Show volumes"),
+  "itemOne": _("{count} item selected"),
+  "itemOther": _("{count} items selected"),
+  "nothingSelected": _("Nothing selected yet."),
+  "step": _("Step {step} of 3"),
+  "overwritten": _("Overwritten — current contents are deleted first"),
+  "overwrittenFull": _("The stack configuration and all {count} archives in this restore point."),
+  "restarted": _("Stopped and recreated"),
+  "running": _("Keeps running — untouched by this restore"),
+  "restartedFull": _("Every core and add-on container, this panel included."),
+  "nothing": _("Nothing."),
+  "nothingTouched": _("Nothing — the selection touches no running container."),
+  "discarded": _("Everything these archives recorded after the snapshot is discarded. Take a backup first if you might want it back."),
+  "confirmConfig": _("The stack configuration directory is replaced."),
+  "confirmArchives": _("{count} archived volumes and directories are replaced."),
+  "confirmContainers": _("All core and add-on containers are removed and recreated."),
+  "confirmReplaced": _("{label} is replaced from the snapshot."),
+  "confirmOutside": _("Everything outside the selection keeps running."),
+  "restoreNotStarted": _("Restore could not be started:"),
+  "restoreStarted": _("Restore started."),
+  "restoreStartedLog": _('Restore started. <a href="/jobs/{job_id}" class="link">View log</a>'),
+  "restoreComplete": _("Restore complete."),
+  "restoreFailedLog": _('Restore failed. <a href="/jobs/{job_id}" class="link">View log</a>'),
+  "dismissFailed": _("Could not dismiss the restore:"),
+  "detailTitle": _('Restore point <span class="font-mono">{id}</span>'),
+  "loading": _("Loading…"),
+  "detailFailed": _("Could not load details:"),
+  "detailMeta": _("{created} · {size} MB · {artifacts} artifacts · result {result}"),
+  "detailCore": _("core {version}"),
+  "noManifest": _("No manifest found for this restore point."),
+  "kind": _("Kind"),
+  "target": _("Target"),
+  "owner": _("Owner"),
+  "scheduleLoadFailed": _("Could not load the schedule:"),
+  "fixSchedule": _("Fix the schedule first."),
+  "scheduleNotSaved": _("The schedule was not saved:"),
+  "scheduleSaved": _("Schedule saved."),
+  "scheduleSavedPaused": _("Schedule saved and paused."),
+  "removeSchedule": _("Remove schedule"),
+  "clickAgain": _("Click again to remove"),
+  "scheduleNotRemoved": _("The schedule was not removed:"),
+  "scheduleRemoved": _("Schedule removed."),
+}) }}
+{% endblock %}
 
-// Which rows apply to the chosen repeat. Hidden fields are still part of the form
-// and still sent; the server reads only the ones its mode uses.
-function scheduleModeChanged() {
-  var mode = _el('schedule-mode').value;
-  _el('schedule-time-row').classList.toggle('hidden', !(mode === 'daily' || mode === 'weekly'));
-  _el('schedule-weekdays-row').classList.toggle('hidden', mode !== 'weekly');
-  _el('schedule-hours-row').classList.toggle('hidden', mode !== 'hourly');
-  _el('schedule-minute-row').classList.toggle('hidden', mode !== 'hourly');
-  _el('schedule-cron-row').classList.toggle('hidden', mode !== 'custom');
-}
-
-function _fillScheduleForm(data) {
-  var s = data.schedule;
-  var p = data.preset;
-  _el('schedule-enabled').checked = s ? s.enabled : true;
-  _el('schedule-mode').value = p ? p.mode : 'daily';
-  _el('schedule-time').value = p && (p.mode === 'daily' || p.mode === 'weekly') ? p.time : '03:00';
-  document.querySelectorAll('input[name=weekdays]').forEach(function (box) {
-    box.checked = !!p && p.mode === 'weekly' && p.weekdays.indexOf(box.value) !== -1;
-  });
-  _el('schedule-every-hours').value = String(p ? p.every_hours : 6);
-  _el('schedule-minute').value = p && p.mode === 'hourly' ? parseInt(p.time.slice(3), 10) : 0;
-  _el('schedule-cron').value = p && p.mode === 'custom' ? p.cron : (s ? s.cron : '');
-  _el('schedule-timezone').value = s ? s.timezone : data.timezone;
-  _el('schedule-retention').value = s && s.retention_days ? s.retention_days : '';
-  _el('schedule-catchup').checked = s ? s.run_on_startup === 'if_missed' : true;
-  // An unreadable schedule.yaml has no schedule to show, but it can be removed.
-  _el('schedule-remove').classList.toggle('hidden', !data.configured && !data.error);
-  _disarmRemoveSchedule();
-  scheduleModeChanged();
-}
-
-function openScheduleModal() {
-  fetch('/api/v1/maintenance/schedule').then(async function (r) {
-    if (_authGuard(r)) return;
-    if (!r.ok) {
-      showToast('error', {{ _('Could not load the schedule:')|tojson }} + " " + (await _apiError(r)));
-      return;
-    }
-    _fillScheduleForm(await r.json());
-    _el('schedule-save').disabled = true;
-    _el('schedule-modal').showModal();
-    htmx.trigger('#schedule-form', 'change');
-  });
-}
-
-// Save is only offered for a form the server has just validated, and not while a
-// newer validation is still on its way -- otherwise a quick click would send the
-// values of the previous keystroke.
-document.addEventListener('htmx:beforeRequest', function (e) {
-  if (e.detail.elt && e.detail.elt.id === 'schedule-form') _el('schedule-save').disabled = true;
-});
-document.addEventListener('htmx:afterSwap', function (e) {
-  if (e.detail.target && e.detail.target.id === 'schedule-preview') {
-    _el('schedule-save').disabled =
-      !document.querySelector('#schedule-preview [data-valid="true"]');
-  }
-});
-
-function saveSchedule() {
-  if (!document.querySelector('#schedule-preview [data-valid="true"]')) {
-    showToast('error', {{ _('Fix the schedule first.')|tojson }});
-    return;
-  }
-  var raw = _el('schedule-retention').value.trim();
-  var body = {
-    enabled: _el('schedule-enabled').checked,
-    cron: _el('schedule-compiled-cron').value,
-    timezone: _el('schedule-compiled-timezone').value,
-    retention_days: raw === '' ? null : parseInt(raw, 10),
-    run_on_startup: _el('schedule-catchup').checked ? 'if_missed' : 'never',
-  };
-  _el('schedule-save').disabled = true;
-  fetch('/api/v1/maintenance/schedule', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrf() },
-    body: JSON.stringify(body),
-  }).then(async function (r) {
-    if (_authGuard(r)) return;
-    if (!r.ok) {
-      showToast('error', {{ _('The schedule was not saved:')|tojson }} + " " + (await _apiError(r)));
-      _el('schedule-save').disabled = false;
-      return;
-    }
-    _el('schedule-modal').close();
-    showToast('success', body.enabled ? {{ _('Schedule saved.')|tojson }} : {{ _('Schedule saved and paused.')|tojson }});
-    refreshScheduleStrip();
-  });
-}
-
-// Removing is two clicks on the same button: the first arms it, the second does it.
-// A dialog for a confirmation inside a dialog is more ceremony than a file this
-// small deserves.
-var _removeScheduleTimer = null;
-
-function _disarmRemoveSchedule() {
-  clearTimeout(_removeScheduleTimer);
-  _removeScheduleTimer = null;
-  _el('schedule-remove').textContent = {{ _('Remove schedule')|tojson }};
-}
-
-function removeSchedule() {
-  if (_removeScheduleTimer === null) {
-    _el('schedule-remove').textContent = {{ _('Click again to remove')|tojson }};
-    _removeScheduleTimer = setTimeout(_disarmRemoveSchedule, 4000);
-    return;
-  }
-  _disarmRemoveSchedule();
-  fetch('/api/v1/maintenance/schedule', {
-    method: 'DELETE',
-    headers: { 'X-CSRF-Token': _csrf() },
-  }).then(async function (r) {
-    if (_authGuard(r)) return;
-    if (!r.ok) {
-      showToast('error', {{ _('The schedule was not removed:')|tojson }} + " " + (await _apiError(r)));
-      return;
-    }
-    _el('schedule-modal').close();
-    showToast('success', {{ _('Schedule removed.')|tojson }});
-    refreshScheduleStrip();
-  });
-}
-</script>
+{% block page_modules %}
+<script type="module" src="{{ asset_url('js/pages/backup.js') }}"></script>
 {% endblock %}

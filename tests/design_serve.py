@@ -9,11 +9,14 @@ Docker, LiteLLM or Qdrant show their "unreachable" state. A test tool, never par
 Usage (from the repository root):
   uv run --project src python tests/design_serve.py --port PORT \
       --storage-state [PERSON=]FILE [--storage-state PERSON=FILE ...]
-  uv run --project src python tests/design_serve.py --port PORT --storage-state FILE --mail-relay
+  uv run --project src python tests/design_serve.py --port PORT --storage-state FILE \
+      [--mail-relay] [--with-backups]
   uv run --project src python tests/design_serve.py --list-persons
   uv run --project src python tests/design_serve.py --list-pages [--person PERSON]
 A FILE without a person is Anna's. --mail-relay serves a core with the mail relay switched on
 and set up (design_world.add_mail_relay), for the browser check of the Mail page.
+--with-backups adds the restore points of design_world.BACKUPS (the browser path of the
+backup page, tests/backup_browser.mjs).
 """
 
 from __future__ import annotations
@@ -106,6 +109,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--list-persons", action="store_true", help="print the persons and stop")
     parser.add_argument("--person", type=_person, help="with --list-pages: only this person's")
     parser.add_argument("--mail-relay", action="store_true", help="a core with the mail relay on")
+    parser.add_argument(
+        "--with-backups", action="store_true", help="give the world restore points to list"
+    )
     args = parser.parse_args(argv)
     if args.list_persons:
         print("\n".join(design_persons()))
@@ -120,6 +126,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     config, workspace = design_world.make_world(root)
     if args.mail_relay:
         design_world.add_mail_relay(config, workspace)
+    if args.with_backups:
+        design_world.seed_backups(config, root)
     secret = secrets.token_urlsafe(32)
     host = f"http://127.0.0.1:{args.port}"
     os.environ.update(design_world.environment(config, workspace, host=host, secret=secret))

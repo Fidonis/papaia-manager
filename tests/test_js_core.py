@@ -112,3 +112,14 @@ def test_modules_import_only_relative_paths_of_the_tree() -> None:
             assert target.startswith("./") or target.startswith("../"), (path, target)
             assert (path.parent / target).resolve().is_relative_to(JS), (path, target)
             assert (path.parent / target).resolve().is_file(), (path, target)
+
+
+def test_page_modules_reach_no_legacy_global() -> None:
+    """A page module imports from core/ and never reads a name core/legacy.js puts on window."""
+    pages = sorted((JS / "pages").glob("*.js"))
+    assert pages
+    for path in pages:
+        source = path.read_text(encoding="utf-8")
+        for name in _legacy_names():
+            assert not re.search(r"\bwindow\." + re.escape(name) + r"\b", source), (path, name)
+        assert "../core/main.js" not in source, f"{path.name} must not import main.js again"

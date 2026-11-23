@@ -9,13 +9,22 @@
 
    Which job appears here is decided in ui.py (`_backup_panel_ctx`): any active
    job, since any of them blocks a backup, and otherwise a backup that finished
-   within the last few minutes. #}
+   within the last few minutes.
+
+   The header button lives outside this element, in the page_actions block, and
+   an out-of-band swap of that cluster would rebuild the <dialog> it contains --
+   closing an open confirmation on every poll. So the strip carries its state in
+   the data-job-* attributes below, the page module (static/js/pages/backup.js)
+   announces it once htmx has settled the strip, and the button listens. #}
 <div
   id="backup-job-status"
   hx-get="/partials/backup/job-status"
   hx-trigger="{% if job_active %}every 2s{% else %}every 10s{% endif %}"
   hx-swap="outerHTML"
   class="{% if job %}mb-6{% endif %}"
+  data-job-active="{{ 'true' if job_active else 'false' }}"
+  data-job-id="{{ job.id if job_active else '' }}"
+  data-job-action="{{ job.action if job_active else '' }}"
 >
 {% if job %}
   <div class="rounded-xl border px-5 py-3
@@ -61,17 +70,4 @@
     {% endif %}
   </div>
 {% endif %}
-
-{# The header button lives outside this element, in the page_actions block, and
-   an out-of-band swap of that cluster would rebuild the <dialog> it contains --
-   closing an open confirmation on every poll. So the strip announces its state
-   instead and the button listens. Same technique as the sidebar status row:
-   an inline script in a swapped partial. #}
-<script>
-  window.dispatchEvent(new CustomEvent("papaia-job-state", { detail: {
-    active: {{ "true" if job_active else "false" }},
-    jobId: {{ (job.id | tojson) if job_active else "null" }},
-    action: {{ (job.action | tojson) if job_active else "null" }},
-  }}));
-</script>
 </div>

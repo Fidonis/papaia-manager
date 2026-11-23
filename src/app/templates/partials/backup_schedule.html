@@ -70,7 +70,7 @@
     </div>
 
     <div class="shrink-0 self-center">
-      <button type="button" class="btn btn-outline btn-sm" onclick="openScheduleModal()">
+      <button type="button" class="btn btn-outline btn-sm" data-backup-action="open-schedule">
         {% if s or state.load.error %}{% trans %}Edit schedule{% endtrans %}{% else %}{% trans %}Set schedule{% endtrans %}{% endif %}
       </button>
     </div>

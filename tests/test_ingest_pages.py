@@ -901,7 +901,11 @@ def test_the_row_menus_of_the_tables_that_scroll_float(
         menus = re.findall(r'<div class="dropdown dropdown-end([^"]*)"', body)
         assert menus, path
         assert all("dropdown-float" in menu for menu in menus), path
-        assert 'style="position:fixed" class="dropdown-content' in body, path
+        # `fixed` comes from the stylesheet (docker/tailwind.app.css), not an inline style,
+        # which the strict page policy refuses (T-UI-03).
+        assert 'style="position:fixed"' not in body, path
+    css = (Path(__file__).resolve().parents[1] / "docker" / "tailwind.app.css").read_text("utf-8")
+    assert ".dropdown-float .dropdown-content {\n  position: fixed;\n}" in css
 
 
 def test_a_poll_waits_while_a_row_menu_is_open_and_a_wide_table_cannot_widen_the_page(

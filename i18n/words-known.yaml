@@ -105,8 +105,8 @@ groups:
       - W1 i18n/export/en.json#title.enrol-this-node node
       - W1 i18n/export/en.json#title.node-name-s Node
       - W1 i18n/export/en.json#title.release-per-node node
-      - W1 src/app/templates/backup.html:56 nodes
-      - W1 src/app/templates/backup.html:61 nodes
+      - W1 src/app/templates/backup.html:58 nodes
+      - W1 src/app/templates/backup.html:63 nodes
       - W1 src/app/templates/node_detail.html:106 nodes
       - W1 src/app/templates/node_detail.html:2 Node
       - W1 src/app/templates/node_detail.html:41 node

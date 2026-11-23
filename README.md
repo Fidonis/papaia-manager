@@ -989,7 +989,8 @@ below collects the reports. A response with a policy of its own keeps it (the lo
   components a module registers on `alpine:init` exist when Alpine starts. A module imports
   what it uses (`fmt`, `csrfToken`, `readIsland`, ...) instead of reaching for the transition
   globals; the page's toaster, failure report and actions are the one instance of
-  `js/core/page.js` (`pageCore()`), which `main.js` uses as well through `js/core/runtime.js`.
+  `js/core/page.js` (`pageCore()`), which `main.js` uses as well through `js/core/runtime.js`. `main.js` is never imported
+  again, and a page module reads no name of `js/core/legacy.js`.
 - Global functions become methods of an Alpine store or of an `Alpine.data` component the
   module registers; `on*` attributes become Alpine event bindings. An expression is a plain
   call or property (no arrow function, template literal, several statements, `window`,
@@ -1011,6 +1012,10 @@ below collects the reports. A response with a policy of its own keeps it (the lo
   that should pause while the tab is hidden carries `data-poll-visible` and the trigger
   `visibilitychange from:document` instead of an htmx trigger filter; `js/core/poll.js`
   cancels its requests while the page is hidden.
+- Buttons of a page and of the partials htmx swaps into it name what they do in a data
+  attribute (for example `data-backup-action`), and one listener of the page module on the
+  document runs it, so a swapped row needs nothing run for it. The values of a row are
+  `data-*` attributes. A dialog's cancel button names its dialog in `data-dialog-close`.
 
 **Converted pages.** The dashboard (`dashboard.html` with the partials `tile_gallery.html` and
 `tile_editor.html`): the editor is `js/pages/dashboard.js`, loaded for administrators only
@@ -1039,6 +1044,18 @@ a module on and off in `tests/settings_browser.mjs`).
 of its graph are in the stylesheet. `tests/test_knowledge_map_browser.py` walks the page in
 Chromium in both themes (map, "View as", search, detail by click and keyboard, every tab)
 and measures each of its Alpine expressions against the CSP build.
+
+`backup.html` (`/backup`) with the partials it swaps in (`backup_job_status.html`,
+`backup_schedule.html`, `backup_schedule_preview.html`, `restore_point_list.html`,
+`restore_status.html`): its script is `js/pages/backup.js`, with the restore wizard's
+selection in `js/pages/backup-scope.js` (unit tests in `tests/js/backup.test.mjs`); its
+sentences come from the data island `backup-texts`. The job strip carries its state in
+`data-job-*` attributes, and the page module announces it as `papaia-job-state` whenever htmx
+has settled a new strip. `tests/test_backup_browser.py` walks the page in Chromium in both
+colour schemes (start a backup and follow its job, change the schedule, list and open restore
+points, select and clear them, start and confirm a restore) in the stand-in world with
+restore points (`tests/design_serve.py --with-backups`) and fails on any report of the
+policy, refused Alpine expression or script error.
 
 **Ratchet.** `tests/test_csp_ratchet.py` counts per template the executable inline scripts,
 `on*` attributes, Alpine attributes the CSP build rejects, `<style>` blocks and `style`
