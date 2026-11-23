@@ -143,8 +143,9 @@ def test_the_page_list_names_every_full_page_template() -> None:
         "ingest_runs.html", "ingest_run.html", "ingest_secrets.html", "ingest_orphans.html",
         "ingest_catalog.html", "knowledge_map.html", "backup.html", "upgrade.html",
         "users.html", "roles.html", "notifications.html", "mail.html", "nodes.html",
-        "node_detail.html", "audit.html", "settings.html", "settings_modules.html",
-        "settings_overlay.html", "help.html", "me.html", "kit_specimen.html",
+        "node_detail.html", "audit.html", "settings.html", "settings_installation.html",
+        "settings_modules.html", "settings_overlay.html", "help.html", "me.html",
+        "kit_specimen.html",
     }  # fmt: skip
     assert full == rendered
 

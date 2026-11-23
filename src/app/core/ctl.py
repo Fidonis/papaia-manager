@@ -113,6 +113,7 @@ ALLOWED_PY_COMMANDS: frozenset[str] = frozenset(
         "module-info",
         "node-list",
         "node-keyscan",
+        "settings-show",
     }
 )
 
@@ -137,7 +138,43 @@ NODE_CORE_VERBS: dict[str, str] = {"start": "compose-up", "stop": "compose-stop"
 # back to what the release ships. It is reachable only through `run_module_purge`, takes
 # nothing but a module name from `PURGE_MODULES` and the two switches, and the core refuses
 # it while the module is still switched on and never touches another module's data.
-ALLOWED_PY_WRITE_COMMANDS: frozenset[str] = frozenset({"setup", "module-purge"})
+#
+# The installation settings of the core (contact point, brand, four-eyes rule; `papaia-ctl
+# settings`) and the delegation lifetime (`papaia-ctl delegations lifetime`) are reachable only
+# through `run_installation_set`, `run_installation_unset` and `run_delegation_lifetime`. They
+# take a key of `INSTALLATION_KEYS` and nothing but its value, or two whole numbers of days. The
+# core checks every value again, applies the security profile, renders the platform catalog and
+# writes its own `papaia.audit/1` row. `catalog-render` writes the catalog from what the core
+# already stores and takes no argument.
+ALLOWED_PY_WRITE_COMMANDS: frozenset[str] = frozenset(
+    {
+        "setup",
+        "module-purge",
+        "settings-set",
+        "settings-unset",
+        "delegation-lifetime",
+        "catalog-render",
+    }
+)
+
+# The keys of `papaia-ctl settings set` and `unset`, as the core names them.
+INSTALLATION_KEYS: frozenset[str] = frozenset(
+    {
+        "branding.name",
+        "branding.suffix",
+        "branding.logo",
+        "contact.name",
+        "contact.mail",
+        "contact.phone",
+        "approvals.four_eyes",
+    }
+)
+INSTALLATION_UNSET_KEYS: frozenset[str] = frozenset(
+    {"branding.name", "branding.suffix", "branding.logo", "contact", "contact.mail",
+     "contact.phone"}
+)
+# The bounds of a delegation lifetime in days, in every profile; the profile narrows them.
+LIFETIME_DAYS = (1, 365)
 
 # The commands that change the set of nodes: reachable only through `run_node_command`,
 # from the routes that demand a fresh sign-in. `node-register` and `node-unregister` edit the
@@ -788,6 +825,82 @@ async def run_module_purge(
         config_dir=config_dir,
         extra_flags=flags,
         limit=limit,
+    )
+
+
+async def run_installation_set(
+    key: str, value: str, *, workspace_dir: str, config_dir: str,
+    limit: float | None = SETUP_TIMEOUT_SECONDS,
+) -> tuple[int, str, str]:
+    """`papaia-ctl settings set <key> <value>`: exit 0 done or unchanged, 1 refused by the
+    security profile (audited by the core), 2 invalid, 3 stored but the catalog not rendered.
+    For `branding.logo` the value is the path of the image file to take."""
+    if key not in INSTALLATION_KEYS:
+        raise ValueError(_("unknown installation setting %(key)r") % {"key": key})
+    if not isinstance(value, str) or "\x00" in value:
+        raise ValueError(_("the value of %(key)s is not a text") % {"key": key})
+    return await _run_py(
+        command="settings-set",
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        extra_flags=[f"--key={key}", f"--value={value}"],
+        limit=limit,
+    )
+
+
+async def run_installation_unset(
+    key: str, *, workspace_dir: str, config_dir: str, limit: float | None = SETUP_TIMEOUT_SECONDS
+) -> tuple[int, str, str]:
+    """`papaia-ctl settings unset <key>`, same exit codes as `run_installation_set`."""
+    if key not in INSTALLATION_UNSET_KEYS:
+        raise ValueError(_("installation setting %(key)r cannot be unset") % {"key": key})
+    return await _run_py(
+        command="settings-unset",
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        extra_flags=[f"--key={key}"],
+        limit=limit,
+    )
+
+
+async def run_delegation_lifetime(
+    *,
+    idle_days: int | None,
+    max_days: int | None,
+    workspace_dir: str,
+    config_dir: str,
+    limit: float | None = SETUP_TIMEOUT_SECONDS,
+) -> tuple[int, str, str]:
+    """Show the delegation lifetime as JSON (both None) or set it. Exit 0 shown, set or
+    unchanged; 1 the stored setting cannot be used; 2 refused (audited by the core)."""
+    if idle_days is None and max_days is None:
+        flags = ["--show", "--json"]
+    else:
+        low, high = LIFETIME_DAYS
+        flags = []
+        for name, days in (("idle-days", idle_days), ("max-days", max_days)):
+            if days is None:
+                continue
+            if isinstance(days, bool) or not isinstance(days, int) or not low <= days <= high:
+                raise ValueError(_("%(name)s must be %(low)s to %(high)s days") % {
+                    "name": name, "low": low, "high": high})
+            flags.append(f"--{name}={days}")
+    return await _run_py(
+        command="delegation-lifetime",
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        extra_flags=flags,
+        limit=limit,
+    )
+
+
+async def run_catalog_render(
+    *, workspace_dir: str, config_dir: str, limit: float | None = SETUP_TIMEOUT_SECONDS
+) -> tuple[int, str, str]:
+    """Render the platform catalog from what the core stores: exit 0 written or unchanged,
+    3 the installation has no catalog yet."""
+    return await _run_py(
+        command="catalog-render", workspace_dir=workspace_dir, config_dir=config_dir, limit=limit
     )
 
 

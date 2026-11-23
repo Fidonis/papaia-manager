@@ -38,7 +38,7 @@ from app.auth.deps import AnyUser
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
-from app.core import prefs, user_prefs
+from app.core import installation, prefs, user_prefs
 from app.core.audit import write_audit_entry, write_audit_row
 from app.core.module_catalog import platform_catalog
 from app.i18n import gettext as _
@@ -52,7 +52,8 @@ router = APIRouter()
 
 KIT_VERSION = papaia_kit.__version__
 SIDEBAR_MAX_AGE = 365 * 24 * 3600
-MAX_LOGO_BYTES = 512 * 1024
+# The core takes a logo of at most 1 MiB (`papaia-ctl settings set branding.logo`).
+MAX_LOGO_BYTES = 1024 * 1024
 MAX_FIELD = 64
 # Folders of the kit's dist directory a page may load, and the file types in each.
 ASSETS: dict[str, dict[str, str]] = {
@@ -104,8 +105,14 @@ async def kit_asset(version: str, folder: str, name: str) -> Response:
 
 
 def _logo_type(data: bytes) -> str | None:
+    """PNG, JPEG and WebP as the core stores them; SVG as the kit's reference inputs carry it,
+    served under a policy that lets no script in it run."""
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
     if data[:256].lstrip().startswith((b"<svg", b"<?xml")):
         return "image/svg+xml"
     return None
@@ -281,11 +288,7 @@ async def help_page(
     lang = shell.frame_language(i18n_runtime.current_locale())
     glossary = load_glossary()
     terms = [glossary.by_id[term].lang(lang) for term in HELP_TERMS]
-    catalog = platform_catalog(settings.papaia_config_dir)
-    branding = (catalog.branding if catalog is not None else None) or {}
-    contact = branding.get("contact")
-    if not isinstance(contact, dict):
-        contact = {}
+    contact = installation.contact_point(settings.papaia_config_dir)
     return _page(request, user, "help.html", terms=terms, contact=contact)
 
 

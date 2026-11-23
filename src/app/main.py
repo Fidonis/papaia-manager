@@ -14,7 +14,7 @@ from app.auth import roles
 from app.auth.csrf import get_csrf_token
 from app.auth.oidc import OIDCClaims
 from app.config import get_settings
-from app.core import kit_audit, prefs
+from app.core import installation, kit_audit, prefs
 from app.core.ingest.watcher import IngestWatcher
 from app.core.jobs import JobQueue
 from app.core.notifications.service import NotificationService
@@ -33,6 +33,7 @@ from app.routers import (
     api_connections,
     api_ingest,
     api_ingest_jobs,
+    api_installation,
     api_jobs,
     api_knowledge_map,
     api_knowledge_map_governance,
@@ -134,6 +135,7 @@ def create_app() -> FastAPI:
     app.include_router(api_notifications.router)
     app.include_router(api_roles.router)
     app.include_router(api_settings.router)
+    app.include_router(api_installation.router)
     app.include_router(api_stack.router)
     app.include_router(api_tiles.router)
     app.include_router(api_upgrade.router)
@@ -169,6 +171,7 @@ def create_app() -> FastAPI:
             return JSONResponse({"detail": detail}, status_code=status.HTTP_403_FORBIDDEN)
 
         claims = _session_claims(request)
+        current = request.app.dependency_overrides.get(get_settings, get_settings)()
         return templates.TemplateResponse(
             request,
             "error.html",
@@ -176,6 +179,9 @@ def create_app() -> FastAPI:
                 "status_code": status.HTTP_403_FORBIDDEN,
                 "heading": _("Access denied"),
                 "message": detail,
+                # Whom to ask, worded as every module words it (UXA-N04).
+                "contact": installation.contact_point(current.papaia_config_dir),
+                "show_contact": True,
                 "csrf_token": get_csrf_token(request),
                 "user": claims,
                 "is_admin": claims is not None and roles.is_admin(claims, settings),

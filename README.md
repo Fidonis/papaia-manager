@@ -169,8 +169,27 @@ Without a settings file nothing changes. A second card, **Host monitoring**, set
 how often the Host page re-measures the machine (10 seconds to 60 minutes,
 default 60 seconds); it applies to every administrator.
 
-**Modules and overlay.** Settings has three tabs: **Manager** (the cards above),
-**Modules** and **Overlay**. **Modules** is the one place that switches the
+**Installation.** The tab **Installation** of Settings holds what applies to the whole
+installation and every module, as the core keeps it (papAIa 1.10.0 and newer): the name, the
+suffix and the logo (PNG, JPEG or WebP, up to 1 MiB) shown at the top of every module's
+sidebar, the contact point (a name, and a mail address or phone number) that every module
+names when someone has no access or a function is not allowed, the four-eyes principle for
+approvals (`approvals.four_eyes`) and how long a delegation lives (days without use and days in
+all, 1 to 365). The manager stores none of these values: each card hands its values to the
+core's own commands (`papaia-ctl settings set|unset`, `papaia-ctl delegations lifetime`),
+which check them again, apply the security profile, write their own audit row and render the
+platform catalog. Every module reads the catalog at least once a minute and serves the logo
+from its own origin under `/_kit/brand/logo`, so a change reaches all modules within 60
+seconds. In the security profile `kritis` the four-eyes principle is shown as fixed (always
+on) and the core refuses a delegation lifetime above 7 days without use or 30 days in all;
+the refusal is audited and shown on the page. Without a contact point, a denial reads "No
+contact point on record" ("Ansprechstelle nicht hinterlegt"). The tab needs the manager's
+administrator role and the platform's administration role (`MANAGER_IDENTITY_ADMIN_ROLE`);
+every change also leaves one entry in the manager's audit log, which names the settings but
+never the contact point's values.
+
+**Modules and overlay.** Settings has four tabs: **Manager** (the cards above),
+**Installation**, **Modules** and **Overlay**. **Modules** is the one place that switches the
 optional parts of the stack on and off: LocalAI, web search, the RAG system, voice
 (local speech-to-text and text-to-speech, papAIa 1.9.0 and newer), the mail relay and
 the AI map (the core's knowledge map, papAIa 1.9.0 and newer; switching it on also

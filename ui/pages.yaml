@@ -239,6 +239,12 @@ pages:
     needs_neighbours: true
     person: anna
   - module: manager
+    path: /settings/installation
+    title_key: manager.settings_installation
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
     path: /settings/modules
     title_key: manager.settings_modules
     kinds: [formular]

@@ -109,9 +109,10 @@ def test_setup_gets_nothing_but_the_options_of_the_module(monkeypatch: pytest.Mo
         assert not flag.startswith(("--force", "--env", "--host", "--app-host"))
 
 
-def test_the_read_only_commands_and_the_two_writers_stay_apart() -> None:
+def test_the_read_only_commands_and_the_writers_stay_apart() -> None:
     assert {"render-preview", "module-info"} <= ctl.ALLOWED_PY_COMMANDS
-    assert frozenset({"setup", "module-purge"}) == ctl.ALLOWED_PY_WRITE_COMMANDS
+    # The two writers of this page; the others belong to Settings -> Installation.
+    assert {"setup", "module-purge"} <= ctl.ALLOWED_PY_WRITE_COMMANDS
     assert not ctl.ALLOWED_PY_COMMANDS & ctl.ALLOWED_PY_WRITE_COMMANDS
 
 

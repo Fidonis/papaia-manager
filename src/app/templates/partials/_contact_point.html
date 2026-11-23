@@ -1,0 +1,11 @@
+{# Whom to ask at this installation, from the platform catalog. Expects: contact (name, mail,
+   phone; or none). Without one it says so, never an empty placeholder (UXA-N04-A2). #}
+<p id="contact-point" class="text-sm max-w-md">
+  {% if contact %}
+  {% trans %}Contact point:{% endtrans %} {{ contact.name }}
+  {% if contact.mail %}· <a class="link" href="mailto:{{ contact.mail | urlencode }}">{{ contact.mail }}</a>{% endif %}
+  {% if contact.phone %}· <a class="link" href="tel:{{ contact.phone | replace(' ', '') | urlencode }}">{{ contact.phone }}</a>{% endif %}
+  {% else %}
+  {% trans %}No contact point on record{% endtrans %}
+  {% endif %}
+</p>

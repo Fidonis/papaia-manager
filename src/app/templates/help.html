@@ -19,15 +19,10 @@
   </div>
 </div>
 
-{% if contact.name or contact.mail %}
 <div class="card bg-base-100 border border-base-300 max-w-3xl mt-6">
   <div class="card-body">
     <h2 class="card-title text-base">{% trans %}Contact{% endtrans %}</h2>
-    <p class="text-sm">
-      {% if contact.name %}{{ contact.name }}{% endif %}
-      {% if contact.mail %}<br><a class="link" href="mailto:{{ contact.mail | urlencode }}">{{ contact.mail }}</a>{% endif %}
-    </p>
+    {% include "partials/_contact_point.html" %}
   </div>
 </div>
-{% endif %}
 {% endblock %}

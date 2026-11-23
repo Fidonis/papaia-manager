@@ -22,6 +22,7 @@ map:
   einstellungen: nav.settings
   aufgabe: nicht vorhanden
   audit_log: nav.audit
+  freigabe: title.approvals
   not_aus: nicht vorhanden
   anbindung: nicht vorhanden
   benachrichtigung: tab.notifications

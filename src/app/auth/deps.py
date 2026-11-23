@@ -209,3 +209,23 @@ async def require_step_up(
 SteppedUpAdmin = Annotated[OIDCClaims, Depends(require_step_up)]
 AnyUser = Annotated[OIDCClaims, Depends(require_manager_access)]
 IdentityAdmin = Annotated[OIDCClaims, Depends(require_identity_admin)]
+
+
+def require_platform_admin(
+    claims: Annotated[OIDCClaims, Depends(require_admin)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> OIDCClaims:
+    """An administrator of the manager who also holds the platform's administration role: the
+    settings of the whole installation (brand, contact point, four eyes, delegation lifetime)
+    are that role's (betrieb RE-19, E-18)."""
+    if not is_identity_admin(claims, settings):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=gettext(
+                "the %(role)s role is required to change the installation's settings"
+            ) % {"role": settings.manager_identity_admin_role},
+        )
+    return claims
+
+
+PlatformAdmin = Annotated[OIDCClaims, Depends(require_platform_admin)]

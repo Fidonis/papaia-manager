@@ -180,7 +180,8 @@ def test_the_py_commands_are_exactly_the_read_only_ones() -> None:
     # is here for the overlay editor: it merges a draft in memory, prints it and
     # writes nothing. `module-info` is here for the Modules tab: it lists what a module
     # owns, as JSON, and writes nothing. The `node-*` ones are here for the Nodes page: they
-    # read the topology and what each node answers, and change nothing.
+    # read the topology and what each node answers, and change nothing. `settings-show` is
+    # here for Settings -> Installation: it prints the installation's settings as JSON.
     assert set(ALLOWED_PY_COMMANDS) == {
         "upgrade-resolve",
         "upgrade-plan",
@@ -190,6 +191,7 @@ def test_the_py_commands_are_exactly_the_read_only_ones() -> None:
         "module-info",
         "node-list",
         "node-keyscan",
+        "settings-show",
     }
 
 
@@ -274,9 +276,13 @@ def test_the_write_commands_are_setup_and_module_purge_and_kept_apart() -> None:
     # `setup` writes the configuration. It is reachable only through `run_smtp_setup` and
     # `run_module_setup`, which pass the options of the mail relay or of one module and
     # nothing else. `module-purge` deletes a switched-off module's volumes and settings and
-    # is reachable only through `run_module_purge`. Both share nothing with the read-only
-    # commands, so adding to either set is a decision of its own.
-    assert set(ALLOWED_PY_WRITE_COMMANDS) == {"setup", "module-purge"}
+    # is reachable only through `run_module_purge`. The installation settings and the
+    # delegation lifetime are reachable only through their typed runners. None shares anything
+    # with the read-only commands, so adding to either set is a decision of its own.
+    assert set(ALLOWED_PY_WRITE_COMMANDS) == {
+        "setup", "module-purge", "settings-set", "settings-unset", "delegation-lifetime",
+        "catalog-render",
+    }
     assert not (set(ALLOWED_PY_WRITE_COMMANDS) & set(ALLOWED_PY_COMMANDS))
     assert not (set(ALLOWED_PY_WRITE_COMMANDS) & set(ALLOWED_CORE_VERBS))
     assert not (set(ALLOWED_PY_WRITE_COMMANDS) & set(ALLOWED_VERBS))

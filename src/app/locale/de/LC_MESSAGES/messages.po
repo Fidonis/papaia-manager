@@ -10850,3 +10850,190 @@ msgstr "kein Container für %(services)s, und papaia-docker-gate legt keinen an:
 
 msgid "clean_up removes containers, which papaia-docker-gate does not allow: run `papaia-ctl stop --clean-up` on the host"
 msgstr "clean_up entfernt Container, was papaia-docker-gate nicht erlaubt: führen Sie `papaia-ctl stop --clean-up` auf dem Host aus"
+
+#, python-format
+msgid "the %(role)s role is required to change the installation's settings"
+msgstr "die Rolle %(role)s ist nötig, um die Einstellungen der Installation zu ändern"
+
+#, python-format
+msgid "unknown installation setting %(key)r"
+msgstr "unbekannte Einstellung der Installation %(key)r"
+
+#, python-format
+msgid "the value of %(key)s is not a text"
+msgstr "der Wert von %(key)s ist kein Text"
+
+#, python-format
+msgid "installation setting %(key)r cannot be unset"
+msgstr "die Einstellung %(key)r der Installation kann nicht entfernt werden"
+
+#, python-format
+msgid "%(name)s must be %(low)s to %(high)s days"
+msgstr "%(name)s muss %(low)s bis %(high)s Tage betragen"
+
+#, python-format
+msgid "%(label)s must be 1 to %(limit)s characters long."
+msgstr "%(label)s muss 1 bis %(limit)s Zeichen lang sein."
+
+#, python-format
+msgid "%(label)s must not contain a control character."
+msgstr "%(label)s darf kein Steuerzeichen enthalten."
+
+msgid "The name"
+msgstr "Der Name"
+
+msgid "The suffix"
+msgstr "Der Zusatz"
+
+msgid "The contact point"
+msgstr "Die Ansprechstelle"
+
+msgid "Enter a valid mail address."
+msgstr "Geben Sie eine gültige Mailadresse ein."
+
+msgid "Enter a phone number of 3 to 40 digits, spaces and ()/-, optionally starting with +."
+msgstr "Geben Sie eine Telefonnummer aus 3 bis 40 Ziffern, Leerzeichen und ()/- ein, wahlweise mit + am Anfang."
+
+msgid "Unknown setting."
+msgstr "Unbekannte Einstellung."
+
+msgid "The logo must be at most 1 MiB."
+msgstr "Das Logo darf höchstens 1 MiB groß sein."
+
+msgid "Use a PNG, JPEG or WebP image."
+msgstr "Verwenden Sie ein PNG-, JPEG- oder WebP-Bild."
+
+msgid "no reason given"
+msgstr "kein Grund angegeben"
+
+#, python-format
+msgid "Refused by the security profile: %(reason)s"
+msgstr "Vom Sicherheitsprofil abgelehnt: %(reason)s"
+
+#, python-format
+msgid "Refused: %(reason)s"
+msgstr "Abgelehnt: %(reason)s"
+
+#, python-format
+msgid "Stored, but the platform catalog was not rendered: %(reason)s"
+msgstr "Gespeichert, aber der Plattformkatalog wurde nicht erzeugt: %(reason)s"
+
+#, python-format
+msgid "The core could not apply the setting: %(reason)s"
+msgstr "Der Kern konnte die Einstellung nicht übernehmen: %(reason)s"
+
+msgid "The core's answer is too long."
+msgstr "Die Antwort des Kerns ist zu lang."
+
+msgid "The core's answer is not JSON."
+msgstr "Die Antwort des Kerns ist kein JSON."
+
+msgid "Name the contact point first; mail and phone belong to it."
+msgstr "Nennen Sie zuerst die Ansprechstelle; Mail und Telefon gehören zu ihr."
+
+msgid "The days without use cannot be more than the days in all."
+msgstr "Die Tage ohne Nutzung dürfen nicht mehr sein als die Tage insgesamt."
+
+msgid "The delegation lifetime cannot be set in a distributed installation yet."
+msgstr "Die Laufzeit von Vollmachten lässt sich in einer verteilten Installation noch nicht einstellen."
+
+msgid "Settings of the whole installation. Every module shows them within a minute."
+msgstr "Einstellungen der ganzen Installation. Jedes Modul zeigt sie innerhalb einer Minute."
+
+msgid "The settings could not be read from the core."
+msgstr "Die Einstellungen konnten nicht vom Kern gelesen werden."
+
+msgid "Name saved"
+msgstr "Name gespeichert"
+
+msgid "Contact point saved"
+msgstr "Ansprechstelle gespeichert"
+
+msgid "Approvals saved"
+msgstr "Freigaben gespeichert"
+
+msgid "Delegation lifetime saved"
+msgstr "Laufzeit der Vollmachten gespeichert"
+
+msgid "Saved. The sign-in service takes the new lifetime at the next start of the stack."
+msgstr "Gespeichert. Der Anmeldedienst übernimmt die neue Laufzeit beim nächsten Start des Stacks."
+
+msgid "Name and logo"
+msgstr "Name und Logo"
+
+msgid "Shown at the top of the sidebar of every module."
+msgstr "Steht oben in der Seitenleiste jedes Moduls."
+
+msgid "Name of the installation"
+msgstr "Name der Installation"
+
+msgid "Leave empty to use the product name."
+msgstr "Leer lassen, um den Produktnamen zu verwenden."
+
+msgid "Suffix"
+msgstr "Zusatz"
+
+msgid "A second, smaller line under the name. Leave empty for none."
+msgstr "Eine zweite, kleinere Zeile unter dem Namen. Leer lassen für keine."
+
+msgid "PNG, JPEG or WebP, up to 1&nbsp;MiB."
+msgstr "PNG, JPEG oder WebP, bis 1&nbsp;MiB."
+
+msgid "No logo"
+msgstr "Kein Logo"
+
+msgid "Contact point"
+msgstr "Ansprechstelle"
+
+msgid "Whom people ask when a module says they have no access or a function is not allowed. Without one, modules say that no contact point is on record."
+msgstr "An wen sich Personen wenden, wenn ein Modul meldet, dass kein Zugang besteht oder eine Funktion nicht zugelassen ist. Ohne Eintrag melden die Module, dass keine Ansprechstelle hinterlegt ist."
+
+msgid "Phone"
+msgstr "Telefon"
+
+msgid "Leave the name empty to remove the contact point."
+msgstr "Lassen Sie den Namen leer, um die Ansprechstelle zu entfernen."
+
+msgid "Approvals"
+msgstr "Freigaben"
+
+msgid "With the four-eyes principle on, an approval in any module needs a second person. With it off, people may approve their own changes, and each such approval is recorded as one."
+msgstr "Ist das Vier-Augen-Prinzip an, braucht eine Freigabe in jedem Modul eine zweite Person. Ist es aus, dürfen Personen eigene Änderungen freigeben, und jede solche Freigabe wird als solche protokolliert."
+
+msgid "Approvals: four-eyes principle"
+msgstr "Freigaben: Vier-Augen-Prinzip"
+
+msgid "on"
+msgstr "an"
+
+msgid "off"
+msgstr "aus"
+
+#, python-format
+msgid "Fixed by the security profile “%(profile)s”: the four-eyes principle cannot be switched off."
+msgstr "Vom Sicherheitsprofil „%(profile)s“ festgelegt: Das Vier-Augen-Prinzip lässt sich nicht ausschalten."
+
+msgid "How long Flow and the assistant may act for a person after the person allowed it: days without use and days in all."
+msgstr "Wie lange Flow und der Assistant für eine Person handeln dürfen, nachdem die Person es erlaubt hat: Tage ohne Nutzung und Tage insgesamt."
+
+msgid "The stored values are above what the security profile allows and are not used. Set values within the bounds below."
+msgstr "Die gespeicherten Werte liegen über dem, was das Sicherheitsprofil erlaubt, und werden nicht verwendet. Setzen Sie Werte innerhalb der Grenzen unten."
+
+msgid "Days without use"
+msgstr "Tage ohne Nutzung"
+
+msgid "Days in all"
+msgstr "Tage insgesamt"
+
+#, python-format
+msgid "At most %(idle)s days without use and %(total)s days in all in the security profile “%(profile)s”."
+msgstr "Höchstens %(idle)s Tage ohne Nutzung und %(total)s Tage insgesamt im Sicherheitsprofil „%(profile)s“."
+
+msgid "Contact point:"
+msgstr "Ansprechstelle:"
+
+msgid "No contact point on record"
+msgstr "Ansprechstelle nicht hinterlegt"
+
+msgid "Installation"
+msgstr "Installation"

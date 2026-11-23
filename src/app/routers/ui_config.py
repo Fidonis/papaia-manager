@@ -1,4 +1,4 @@
-"""The Modules and Overlay tabs of Settings, and the job strip they share.
+"""The Installation, Modules and Overlay tabs of Settings, and the job strip the last two share.
 
 (The first tab, Manager, is `settings_page` in `ui`: the branding and the host monitoring.)
 
@@ -15,8 +15,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
-from app.auth.deps import AdminUser
+from app.auth.deps import AdminUser, PlatformAdmin
 from app.config import Settings, get_settings
+from app.core import installation
 from app.core.config import modules, overlay, preview, service
 from app.core.jobs import Job, JobQueue, JobStatus
 from app.core.mail.settings import DEFAULT_PORTS, SECURITY_MODES
@@ -120,6 +121,33 @@ def _job_ctx(queue: JobQueue | None) -> dict[str, Any]:
             else ""
         ),
     }
+
+
+@router.get("/settings/installation", response_class=HTMLResponse)
+async def installation_page(
+    request: Request,
+    user: PlatformAdmin,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    """Name, suffix, logo and contact point of the installation, the four-eyes rule and the
+    delegation lifetime, as the core keeps them; each card is saved on its own."""
+    shown: dict[str, Any] | None = None
+    problem: str | None = None
+    try:
+        shown = await installation.show(
+            installation.Paths(settings.papaia_workspace_dir, settings.papaia_config_dir)
+        )
+    except installation.InstallationError as exc:
+        problem = str(exc)
+    return _no_store(
+        _templates.TemplateResponse(
+            request,
+            "settings_installation.html",
+            _ctx(request, user, shown=shown, problem=problem,
+                 name_max=installation.NAME_MAX, suffix_max=installation.SUFFIX_MAX,
+                 contact_max=installation.CONTACT_NAME_MAX, mail_max=installation.MAIL_MAX),
+        )
+    )
 
 
 @router.get("/settings/modules", response_class=HTMLResponse)
