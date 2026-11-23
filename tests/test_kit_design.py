@@ -150,7 +150,7 @@ def test_the_page_list_names_every_full_page_template() -> None:
         "users.html", "roles.html", "notifications.html", "mail.html", "nodes.html",
         "node_detail.html", "audit.html", "settings.html", "settings_installation.html",
         "settings_modules.html", "settings_overlay.html", "help.html", "me.html",
-        "kit_specimen.html", "inventory.html",
+        "kit_specimen.html", "inventory.html", "person_requests.html",
     }  # fmt: skip
     assert full == rendered
 
@@ -166,6 +166,13 @@ def test_every_placeholder_of_the_list_has_a_sample_value() -> None:
 def test_every_person_of_the_list_is_a_person_of_the_stand_in_world() -> None:
     for path, person in page_rows():
         assert person in design_world.PERSONS, (path, person)
+
+
+def test_the_data_subject_requests_are_a_page_of_the_confirming_person() -> None:
+    """Erika holds the confirmation role and nothing of the administration."""
+    assert ("/person-requests", "erika") in page_rows()
+    assert "papaia-confirm" in design_world.PERSONS["erika"]
+    assert not {"admin", "papaia-admin", "papaia-auditor"} & set(design_world.PERSONS["erika"])
 
 
 def test_the_inventory_is_a_page_of_the_auditor_only() -> None:
@@ -371,8 +378,9 @@ def test_the_design_check_covers_every_page_of_the_list() -> None:
         for page in design_serve.design_pages(person=person)
     ]  # fmt: skip
     assert sorted(by_person) == sorted(design_serve.design_pages())
-    assert design_serve.design_persons() == ["anna", "emil"]
+    assert design_serve.design_persons() == ["anna", "emil", "erika"]
     assert design_serve.design_pages(person="emil") == ["/inventory"]
+    assert design_serve.design_pages(person="erika") == ["/person-requests"]
 
 
 GOOD = """\

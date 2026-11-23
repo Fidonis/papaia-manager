@@ -11129,3 +11129,91 @@ msgstr "Dashboard"
 
 msgid "Checksum"
 msgstr "Prüfsumme"
+
+msgid "Data subject requests"
+msgstr "Betroffenenanträge"
+
+msgid "Confirming needs a sign-in of at most five minutes ago. Confirm your sign-in and confirm the request again."
+msgstr "Zum Bestätigen ist eine Anmeldung nötig, die höchstens fünf Minuten zurückliegt. Bestätigen Sie Ihre Anmeldung und bestätigen Sie den Antrag dann erneut."
+
+msgid "You filed this request yourself and cannot confirm it. The second person named in the request confirms it."
+msgstr "Sie haben diesen Antrag selbst gestellt und können ihn nicht bestätigen. Die im Antrag genannte zweite Person bestätigt ihn."
+
+msgid "Only persons with the confirmation role decide on these requests."
+msgstr "Über diese Anträge entscheiden nur Personen mit der Rolle Bestätigung."
+
+msgid "This request does not exist or does not name you."
+msgstr "Diesen Antrag gibt es nicht, oder er nennt Sie nicht."
+
+msgid "The request is no longer open: it was decided already or its time ran out. Reload the list."
+msgstr "Der Antrag ist nicht mehr offen: Er wurde schon entschieden, oder seine Frist ist abgelaufen. Laden Sie die Liste neu."
+
+msgid "Your sign-in could not be passed on. Sign in again and retry."
+msgstr "Ihre Anmeldung konnte nicht weitergegeben werden. Melden Sie sich erneut an und versuchen Sie es noch einmal."
+
+msgid "The service that keeps the requests does not answer. The list cannot be shown and nothing was decided. Try again later; if it persists, check the state under “Services”."
+msgstr "Der Dienst, der die Anträge verwahrt, antwortet nicht. Die Liste kann nicht angezeigt werden, und es wurde nichts entschieden. Versuchen Sie es später erneut; bleibt es so, prüfen Sie den Zustand unter „Dienste“."
+
+msgid "Information"
+msgstr "Auskunft"
+
+msgid "Erasure"
+msgstr "Löschung"
+
+msgid "confirmed"
+msgstr "bestätigt"
+
+msgid "rejected"
+msgstr "abgelehnt"
+
+msgid "done"
+msgstr "erledigt"
+
+msgid "Requests for information and erasure of persons without an account that name you, from the last 7 days"
+msgstr "Anträge auf Auskunft und Löschung für Personen ohne Konto, die Sie nennen, aus den letzten 7 Tagen"
+
+msgid "Passphrase of the archive"
+msgstr "Passphrase des Archivs"
+
+msgid "The request %(id)s is confirmed. This passphrase is shown only now: it is not stored anywhere and cannot be shown again."
+msgstr "Der Antrag %(id)s ist bestätigt. Diese Passphrase wird nur jetzt angezeigt: Sie wird nirgends gespeichert und kann nicht erneut angezeigt werden."
+
+msgid "Write it down now. Hand it to the person concerned by another way than the archive. The operator runs the request on the host within 24 hours."
+msgstr "Notieren Sie sie jetzt. Geben Sie sie der betroffenen Person auf einem anderen Weg als das Archiv. Der Betrieb führt den Antrag innerhalb von 24 Stunden auf dem Host aus."
+
+msgid "The request %(id)s is confirmed. The operator runs it on the host within 24 hours."
+msgstr "Der Antrag %(id)s ist bestätigt. Der Betrieb führt ihn innerhalb von 24 Stunden auf dem Host aus."
+
+msgid "The request %(id)s is rejected. Nothing runs."
+msgstr "Der Antrag %(id)s ist abgelehnt. Es wird nichts ausgeführt."
+
+msgid "Confirming needs a fresh sign-in. Confirm your sign-in first; it stays valid for five minutes."
+msgstr "Zum Bestätigen ist eine neue Anmeldung nötig. Bestätigen Sie zuerst Ihre Anmeldung; sie gilt fünf Minuten."
+
+msgid "No request for information or erasure names you."
+msgstr "Kein Antrag auf Auskunft oder Löschung nennt Sie."
+
+msgid "Request"
+msgstr "Antrag"
+
+
+msgid "Person concerned"
+msgstr "Betroffene Person"
+
+msgid "Filed by"
+msgstr "Gestellt von"
+
+msgid "Filed (UTC)"
+msgstr "Gestellt (UTC)"
+
+msgid "with hand-over of owned objects"
+msgstr "mit Übergabe der eigenen Objekte"
+
+msgid "you"
+msgstr "Sie"
+
+msgid "Confirm"
+msgstr "Bestätigen"
+
+msgid "Waiting for the second person"
+msgstr "Wartet auf die zweite Person"

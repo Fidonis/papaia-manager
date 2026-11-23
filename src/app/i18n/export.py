@@ -145,7 +145,13 @@ def named() -> dict[str, tuple[str, str]]:
     out: dict[str, tuple[str, str]] = {}
     groups = shell.nav_groups(
         shell.NavFlags(
-            admin=True, rag=True, knowledge_map=True, users=True, nodes=True, auditor=True
+            admin=True,
+            rag=True,
+            knowledge_map=True,
+            users=True,
+            nodes=True,
+            auditor=True,
+            confirmer=True,
         ),
         lambda text: text,
     )

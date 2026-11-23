@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     # signs in and reaches the surfaces of every user (overview, account, personal settings,
     # widgets, kit specimen), and on top of them the inventory; no administration page.
     manager_auditor_role: str = "papaia-auditor"
+    # Realm role of the second person who confirms a request for information or erasure of a
+    # person without an account (page "Data subject requests"). papaia-audit accepts it and
+    # the platform's administration role (`MANAGER_IDENTITY_ADMIN_ROLE`); like the auditors'
+    # role it signs in and reaches the surfaces of every user, plus that page, and no
+    # administration page.
+    manager_confirm_role: str = "papaia-confirm"
     manager_host: str
     manager_oidc_client_id: str = "papaia-manager"
     manager_oidc_client_secret: str
@@ -145,6 +151,12 @@ class Settings(BaseSettings):
         default="/run/papaia/audit-tls/client.pem", max_length=4096
     )
     audit_tls_key_file: str = Field(default="/run/papaia/audit-tls/client.key", max_length=4096)
+    # The read API of papaia-audit (same service and certificate as above): the page "Data
+    # subject requests" lists and decides the requests for information and erasure there, with
+    # the signed-in person's token. Base URL without a path; only https.
+    audit_read_url: str = Field(
+        default="https://papaia-audit:8443", min_length=1, max_length=2048
+    )
 
     # The inventory of work objects (governance GV-17): where this process reaches each
     # module's `GET /internal/inventory`, as `module=https://host:port` pairs separated by
@@ -167,6 +179,21 @@ class Settings(BaseSettings):
         if not v.startswith("https://"):
             raise ValueError("AUDIT_INGEST_URL must be an https URL")
         return v
+
+    @field_validator("audit_read_url")
+    @classmethod
+    def _https_base(cls, v: str) -> str:
+        parts = urlsplit(v)
+        if (
+            parts.scheme != "https"
+            or not parts.hostname
+            or "@" in parts.netloc
+            or parts.path.strip("/")
+            or parts.query
+            or parts.fragment
+        ):
+            raise ValueError("AUDIT_READ_URL must be https://host[:port] without a path")
+        return v.rstrip("/")
 
     @field_validator("prefs_url")
     @classmethod

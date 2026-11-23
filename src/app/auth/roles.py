@@ -43,16 +43,33 @@ def is_auditor(claims: OIDCClaims, settings: Settings) -> bool:
     return settings.manager_auditor_role in claims.roles
 
 
+def is_confirmer(claims: OIDCClaims, settings: Settings) -> bool:
+    """True if the account may confirm a request for information or erasure.
+
+    The page "Data subject requests" is where such a request is confirmed.
+
+    The confirmation role (`papaia-confirm`) or the platform's administration role, the two
+    roles papaia-audit accepts for it. papaia-audit checks them again on every call, and it
+    alone decides whether this person is the one a request names.
+    """
+    return (
+        settings.manager_confirm_role in claims.roles
+        or settings.manager_identity_admin_role in claims.roles
+    )
+
+
 def has_manager_access(claims: OIDCClaims, settings: Settings) -> bool:
     """True if the account may use the manager at all.
 
     Admins are a superset of users -- they reach every surface a user
     reaches -- so this is an OR rather than a separate user-only tier. An auditor
     reaches the surfaces of a user too, plus the inventory, which names the role
-    itself. An account holding none of them has no business getting a session.
+    itself; so does a confirming person, plus the page "Data subject requests". An
+    account holding none of them has no business getting a session.
     """
     return (
         is_admin(claims, settings)
         or is_user(claims, settings)
         or is_auditor(claims, settings)
+        or is_confirmer(claims, settings)
     )

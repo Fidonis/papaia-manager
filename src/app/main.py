@@ -63,6 +63,7 @@ from app.routers import (
     ui_models,
     ui_nodes,
     ui_notifications,
+    ui_person_requests,
     ui_widgets,
 )
 from app.templating import templates
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(ui_models.router)
     app.include_router(ui_nodes.router)
     app.include_router(ui_notifications.router)
+    app.include_router(ui_person_requests.router)
     app.include_router(ui_widgets.router)
     app.include_router(api_audit.router)
     app.include_router(api_inventory.router)

@@ -13,7 +13,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from app.auth import user_token
 from app.auth.csrf import verify_csrf
-from app.auth.deps import STEP_UP_AT, STEP_UP_PENDING, STEP_UP_SKEW_SECONDS, AdminUser
+from app.auth.deps import STEP_UP_AT, STEP_UP_PENDING, STEP_UP_SKEW_SECONDS, StepUpSubject
 from app.auth.oidc import OIDCClaims, OIDCError, _pkce_pair, get_oidc_client
 from app.auth.roles import has_manager_access
 from app.config import Settings, get_settings
@@ -89,11 +89,12 @@ async def login(
 @router.get("/step-up")
 async def step_up(
     request: Request,
-    user: AdminUser,
+    user: StepUpSubject,
     settings: Annotated[Settings, Depends(get_settings)],
     next_: Annotated[str, Query(alias="next")] = "/",
 ) -> RedirectResponse:
-    """Send an administrator to Keycloak to sign in again before a sensitive action.
+    """Send an administrator or a confirming person to Keycloak to sign in again before a
+    sensitive action (a change of the nodes, the confirmation of a person request).
 
     The pending entry ties the callback to this redirect through the PKCE verifier: an
     ordinary login in another tab is not mistaken for the step-up, and one the provider

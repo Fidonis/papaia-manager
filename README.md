@@ -176,6 +176,28 @@ conditions, no reminder text. The page is drawn with the platform kit's patterns
 alert, select field, empty state) and is listed in `ui/pages.yaml` as the page of the
 auditor; the design check signs in as the list's test person of each page.
 
+**Data subject requests.** Information and erasure for a person without an account
+(`papaia-ctl person export|erase` on the host) need a second person: the request names her, and
+she confirms or rejects it on the page **Data subject requests** (`/person-requests`, German
+"Betroffenenanträge"). Only the realm role `MANAGER_CONFIRM_ROLE` (default `papaia-confirm`) or
+`MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`) sees the page; it signs in like the user
+role and reaches no administration page. The page lists the requests of the last 7 days that
+name the signed-in person, read on every visit from the core's `papaia-audit` at
+`AUDIT_READ_URL` (default `https://papaia-audit:8443`) over mutual TLS with the client
+certificate of `AUDIT_TLS_CERT_FILE` and the person's own token, exchanged for the audience
+`papaia-audit`; the manager keeps no copy. Each row shows the request id, the kind
+(information or erasure, with or without hand-over of owned objects), the person concerned and
+the person who filed it as pseudonyms, the time it was filed and its state. **Confirm** needs a
+sign-in of at most five minutes ago (**Confirm your sign-in**); papaia-audit checks it again.
+The person who filed a request cannot confirm it: the manager refuses from papaia-audit's own
+answer before sending anything, and papaia-audit refuses as well. Either person may
+**Reject**. Confirming an information request shows the passphrase of the archive once, on the
+answer to the confirmation (`Cache-Control: no-store`); it is not stored, logged or written
+into an audit row, and reloading does not show it again. Every decision, a refused one too, is
+one entry in the audit log and one `papaia.audit/1` row (`person_request.confirm` or
+`person_request.reject`, `object_ref` `person_request` with the request id) under the
+request's correlation id, which papaia-audit receives with the decision.
+
 **Audit rows.** Besides the local audit log, every write, send and delete of the manager
 leaves one `papaia.audit/1` row: who acted (the signed-in person, or the manager's own service
 identity for scheduled work), the operation, its result and the request's

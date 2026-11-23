@@ -9,7 +9,13 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, Request, status
 
 from app.auth.oidc import OIDCClaims, OIDCError, get_oidc_client
-from app.auth.roles import has_manager_access, is_admin, is_auditor, is_identity_admin
+from app.auth.roles import (
+    has_manager_access,
+    is_admin,
+    is_auditor,
+    is_confirmer,
+    is_identity_admin,
+)
 from app.config import Settings, get_settings
 from app.core.audit import write_audit_entry
 from app.i18n import gettext
@@ -170,6 +176,34 @@ def require_auditor(
     return claims
 
 
+def require_confirmer(
+    claims: Annotated[OIDCClaims, Depends(get_current_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> OIDCClaims:
+    """Raise 403 unless the account may confirm requests for information or erasure."""
+    if not is_confirmer(claims, settings):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=gettext("the %(role)s role is required")
+            % {"role": settings.manager_confirm_role},
+        )
+    return claims
+
+
+def require_step_up_subject(
+    claims: Annotated[OIDCClaims, Depends(get_current_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> OIDCClaims:
+    """An account with an action that needs a fresh sign-in: an administrator or a confirming
+    person. Signing in again grants nothing; each such action checks its own role."""
+    if not (is_admin(claims, settings) or is_confirmer(claims, settings)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=gettext("admin role required"),
+        )
+    return claims
+
+
 def require_manager_access(
     claims: Annotated[OIDCClaims, Depends(get_current_user)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -224,6 +258,8 @@ SteppedUpAdmin = Annotated[OIDCClaims, Depends(require_step_up)]
 AnyUser = Annotated[OIDCClaims, Depends(require_manager_access)]
 AuditorUser = Annotated[OIDCClaims, Depends(require_auditor)]
 IdentityAdmin = Annotated[OIDCClaims, Depends(require_identity_admin)]
+ConfirmerUser = Annotated[OIDCClaims, Depends(require_confirmer)]
+StepUpSubject = Annotated[OIDCClaims, Depends(require_step_up_subject)]
 
 
 def require_platform_admin(

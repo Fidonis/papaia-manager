@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{#
+  Requests for information and erasure without an account (security 1.14 no. 2b, OPS-08), built
+  from the kit's patterns (pk/components.html of papaia-kit 0.2.2): table, badges, alerts, forms
+  and empty state. Nothing inline. The route checks the role, the fresh sign-in and that the
+  person who filed a request does not confirm it; the buttons here are presentation only.
+  A passphrase is in the context only of the answer to the confirmation that made it.
+#}
+{% import "pk/components.html" as kit with context %}
+
+{% block page_title %}{% trans %}Data subject requests{% endtrans %}{% endblock %}
+{% block page_subtitle %}{{ kit.lead(_("Requests for information and erasure of persons without an account that name you, from the last 7 days")) }}{% endblock %}
+
+{% block content %}
+{% call kit.stack() %}
+{% if error %}
+<div id="person-requests-error">{{ kit.alert(error, tone=error_tone) }}</div>
+{% if error_reason == "not_fresh" %}
+<div>{{ kit.button(_("Confirm your sign-in"), href=step_up_href, variant="primary", symbol="lock", id="person-requests-step-up-again") }}</div>
+{% endif %}
+{% endif %}
+
+{% if decided %}
+{% if decided.passphrase %}
+{% call kit.section(_("Passphrase of the archive"), "person-requests-passphrase-title") %}
+{% call kit.stack(gap="sm") %}
+{{ kit.alert(_("The request %(id)s is confirmed. This passphrase is shown only now: it is not stored anywhere and cannot be shown again.", id=decided.request.id), tone="success") }}
+<p id="person-requests-passphrase" class="break-all"><code>{{ decided.passphrase }}</code></p>
+<p>{% trans %}Write it down now. Hand it to the person concerned by another way than the archive. The operator runs the request on the host within 24 hours.{% endtrans %}</p>
+{% endcall %}
+{% endcall %}
+{% elif decided.request.state == "confirmed" %}
+<div id="person-requests-decided">{{ kit.alert(_("The request %(id)s is confirmed. The operator runs it on the host within 24 hours.", id=decided.request.id), tone="success") }}</div>
+{% else %}
+<div id="person-requests-decided">{{ kit.alert(_("The request %(id)s is rejected. Nothing runs.", id=decided.request.id), tone="success") }}</div>
+{% endif %}
+{% endif %}
+
+{% if listed %}
+{% set confirmable = items | selectattr("can_confirm") | list %}
+{% if confirmable and not stepped_up %}
+{{ kit.alert(_("Confirming needs a fresh sign-in. Confirm your sign-in first; it stays valid for five minutes."), tone="info") }}
+<div>{{ kit.button(_("Confirm your sign-in"), href=step_up_href, variant="primary", symbol="lock", id="person-requests-step-up") }}</div>
+{% endif %}
+
+{% if not items %}
+<div id="person-requests-empty">{{ kit.empty(_("No request for information or erasure names you.")) }}</div>
+{% else %}
+{% call kit.table(_("Data subject requests"), columns=[
+  {"label": _("Request")}, {"label": _("Kind")}, {"label": _("Person concerned")},
+  {"label": _("Filed by")}, {"label": _("Filed (UTC)")}, {"label": _("State")},
+], actions=true) %}
+{% for item in items %}
+<tr id="person-request-{{ item.id }}">
+  <td><code>{{ item.id }}</code></td>
+  <td>
+    {{ titles.operation[item.operation] }}
+    {% if item.transfer %}<br>{% trans %}with hand-over of owned objects{% endtrans %}{% endif %}
+  </td>
+  <td><code>{{ item.person }}</code></td>
+  <td><code>{{ item.requested_by }}</code>{% if item.own %} {{ kit.badge(_("you"), tone="info") }}{% endif %}</td>
+  <td>{{ kit.datetime(item.requested_at, "log", "UTC") }}</td>
+  <td>{{ kit.badge(titles.state[item.state], tone=state_tones[item.state]) }}</td>
+  <td>
+    {% if item.state == "open" %}
+    {% call kit.cluster() %}
+    {% if item.can_confirm and stepped_up %}
+    {% call kit.form(action="/person-requests/" ~ item.id ~ "/confirm") %}
+    {{ kit.button(_("Confirm"), variant="primary", type="submit", size="sm", id="person-request-confirm-" ~ item.id) }}
+    {% endcall %}
+    {% elif item.own %}
+    <span>{% trans %}Waiting for the second person{% endtrans %}</span>
+    {% endif %}
+    {% call kit.form(action="/person-requests/" ~ item.id ~ "/reject") %}
+    {{ kit.button(_("Reject"), variant="danger", type="submit", size="sm", id="person-request-reject-" ~ item.id) }}
+    {% endcall %}
+    {% endcall %}
+    {% endif %}
+  </td>
+</tr>
+{% endfor %}
+{% endcall %}
+{% endif %}
+{% endif %}
+{% endcall %}
+{% endblock %}

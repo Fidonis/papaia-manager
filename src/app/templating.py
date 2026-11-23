@@ -23,7 +23,7 @@ from papaia_kit.ui import extend_environment, shell_context
 from app import client_texts, csp, shell
 from app.auth.csrf import get_csrf_token
 from app.auth.oidc import OIDCClaims
-from app.auth.roles import is_admin, is_auditor, is_identity_admin
+from app.auth.roles import is_admin, is_auditor, is_confirmer, is_identity_admin
 from app.config import Settings, get_settings
 from app.core import prefs
 from app.core.ingest import display
@@ -235,6 +235,7 @@ def pk_shell(
         users=users_nav(context),
         nodes=nodes_enabled(context),
         auditor=user is not None and is_auditor(user, settings),
+        confirmer=user is not None and is_confirmer(user, settings),
     )
     csrf = context.get("csrf_token")
     theme, sidebar, path = "system", "pinned", "/"

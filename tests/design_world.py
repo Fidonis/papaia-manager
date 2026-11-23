@@ -3,10 +3,12 @@
 One configuration directory with the RAG profile on and a distributed topology, so every
 page of `ui/pages.yaml` is reachable, signed session cookies for the test persons of the list
 (Anna, an administrator of the platform; Emil, the auditor of the inventory, who is no
-administrator: separation of duties), and the simulated Keycloak of the tests for the Users
-and Roles pages. Nothing here talks to a real service: pages that would ask Docker, LiteLLM
-or Qdrant show their own "unreachable" state. Used by tests/test_kit_design.py and
-tests/design_serve.py, so the design check sees the pages the tests see.
+administrator: separation of duties; Erika, the second person of the data subject requests),
+the simulated Keycloak of the tests for the Users and Roles pages and a simulated papaia-audit
+with synthetic requests for the page "Data subject requests". Nothing here talks to a real
+service: pages that would ask Docker, LiteLLM or Qdrant show their own "unreachable" state.
+Used by tests/test_kit_design.py and tests/design_serve.py, so the design check sees the
+pages the tests see.
 """
 
 from __future__ import annotations
@@ -28,9 +30,12 @@ SESSION_COOKIE = "papaia_manager_session"
 ROLES = ("admin", "user", "papaia-admin")
 # The test persons of ui/pages.yaml (column `person`) with their realm roles. Emil holds
 # `papaia-auditor` (KE-13) and nothing of the administration, so the inventory is his page.
+# Erika holds `papaia-confirm` and nothing of the administration: she is the second person who
+# confirms requests for information and erasure, so the page "Data subject requests" is hers.
 PERSONS: dict[str, tuple[str, ...]] = {
     "anna": ROLES,
     "emil": ("user", "papaia-auditor"),
+    "erika": ("user", "papaia-confirm"),
 }
 CSRF = "design-check-csrf-token-0001"
 # Values for the placeholders of ui/pages.yaml. The pages behind them render the state of
@@ -190,9 +195,48 @@ def sample_path(pattern: str) -> str:
     return path
 
 
+# Synthetic requests of the simulated papaia-audit, as Erika sees them (pseudonyms only): an
+# open export she confirms, an open erasure with hand-over, one she filed herself, one done.
+PERSON_REQUESTS: list[dict[str, Any]] = [
+    {
+        "id": request_id, "operation": operation, "state": state,
+        "requested_at": "2026-11-23T08:15:00.000Z",
+        "decided_at": "2026-11-22T10:00:00.000Z" if state == "done" else None,
+        "person": "P-ANNAAAAA", "requested_by": "P-ERIKAAAA" if own else "P-DORAAAAA",
+        "confirmed_by": "P-DORAAAAA" if own else "P-ERIKAAAA", "transfer": transfer,
+        "own": own, "can_confirm": state == "open" and not own,
+    }
+    for request_id, operation, state, transfer, own in (
+        ("0b5c4a1e-1111-4aaa-8bbb-000000000001", "export", "open", False, False),
+        ("0b5c4a1e-2222-4aaa-9bbb-000000000002", "erase", "open", True, False),
+        ("0b5c4a1e-3333-4aaa-abbb-000000000003", "export", "open", False, True),
+        ("0b5c4a1e-4444-4aaa-bbbb-000000000004", "erase", "done", False, False),
+    )
+]  # fmt: skip
+
+
+def _audit_send(method: str, url: str, headers: Any) -> tuple[int, bytes]:
+    """papaia-audit's list of requests; this world decides nothing."""
+    if method == "GET" and url.endswith("/v1/person-requests"):
+        return 200, json.dumps({"requests": PERSON_REQUESTS}).encode()
+    return 404, b'{"code": "AUDIT-READ-404"}'
+
+
 def stand_ins(app: FastAPI) -> FakeKeycloak:
-    """Answer the Users and Roles pages from the simulated Keycloak, with synthetic accounts."""
+    """Answer the Users and Roles pages from the simulated Keycloak, with synthetic accounts,
+    and the page "Data subject requests" from the simulated papaia-audit."""
+    from app.core import person_requests
+    from app.routers.ui_person_requests import person_token
     from app.routers.users_deps import get_keycloak_transport, get_user_token
+
+    person_requests.use(
+        person_requests.Wiring(
+            base_url="https://papaia-audit.example.test:8443",
+            send=_audit_send,
+            exchange=lambda token, cid: token,
+        )
+    )
+    app.dependency_overrides[person_token] = lambda: TOKEN
 
     keycloak = FakeKeycloak(smtp=True)
     keycloak.add_user("anna", email="anna@example.test", first="Anna", roles=("papaia-admin",))

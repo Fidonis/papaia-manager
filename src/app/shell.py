@@ -73,6 +73,7 @@ class NavFlags:
     users: bool = False
     nodes: bool = False
     auditor: bool = False
+    confirmer: bool = False
 
 
 def own_module() -> dict[str, Any]:
@@ -134,12 +135,18 @@ def nav_groups(flags: NavFlags, gettext: Callable[[str], str]) -> list[tuple[str
     (`i18n/glossary-map.yaml`); the manager's places of the kit's administration map
     (`contract/admin-map.yaml`: /modules, /backup, /users, /settings, /audit) are rows here. An
     account without the admin role sees the overview only, and an auditor the review group with
-    the inventory (Bestand) as well.
+    the inventory (Bestand) as well; a confirming person the requests for information and
+    erasure (Betroffenenanträge) in the same group.
     """
     _ = gettext
-    review: list[tuple[str, list[NavRow]]] = []
+    review_rows: list[NavRow] = []
     if flags.auditor:
-        review = [(_("Review"), [NavRow("/inventory", _("Inventory"), ("/inventory",))])]
+        review_rows.append(NavRow("/inventory", _("Inventory"), ("/inventory",)))
+    if flags.confirmer:
+        review_rows.append(
+            NavRow("/person-requests", _("Data subject requests"), ("/person-requests",))
+        )
+    review: list[tuple[str, list[NavRow]]] = [(_("Review"), review_rows)] if review_rows else []
     if not flags.admin:
         return review
     groups: list[tuple[str, list[NavRow]]] = [
