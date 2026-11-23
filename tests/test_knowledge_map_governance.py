@@ -40,6 +40,10 @@ from tests.test_knowledge_map import (
 )
 
 _GOV = f"{_BASE}/governance"
+_COMPONENT = (
+    Path(__file__).resolve().parents[1]
+    / "src/app/static/js/pages/knowledge-map/component.js"
+)
 
 AGENT = {"id": "agent.service", "kind": "agent", "system": "Service assistant",
          "uses": ["MediaWiki"]}
@@ -520,8 +524,12 @@ def test_a_declaration_needs_no_confirmation(client: TestClient) -> None:
 def test_the_page_has_the_governance_tab(client: TestClient) -> None:
     page = _as(client, "admin").get("/knowledge-map")
     assert page.status_code == 200
-    assert "loadGovernance()" in page.text and "confirm_no_personal_data" in page.text
-    assert "export/facts.json" in page.text and "confirm-proposal" in page.text
+    assert "showGovernance()" in page.text and "export/facts.json" in page.text
+    # The page's script is its module (T-UI-03); the calls are there.
+    assert "js/pages/knowledge-map.js" in page.text
+    script = (_COMPONENT).read_text(encoding="utf-8")
+    assert "loadGovernance()" in script and "confirm_no_personal_data" in script
+    assert "confirm-proposal" in script
 
 
 def test_proposals_and_agent_models_come_from_lints(client: TestClient) -> None:

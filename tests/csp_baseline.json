@@ -11,6 +11,7 @@
     "job_log.html",
     "jobs.html",
     "kit_specimen.html",
+    "knowledge_map.html",
     "me.html",
     "settings.html",
     "settings_installation.html",
@@ -134,13 +135,6 @@
       "on_attributes": 2,
       "alpine_unsupported": 0,
       "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "knowledge_map.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 11,
-      "style_blocks": 1,
       "style_attributes": 0
     },
     "mail.html": {
@@ -474,10 +468,10 @@
     }
   },
   "totals": {
-    "inline_scripts": 38,
+    "inline_scripts": 37,
     "on_attributes": 104,
-    "alpine_unsupported": 109,
-    "style_blocks": 1,
+    "alpine_unsupported": 98,
+    "style_blocks": 0,
     "style_attributes": 253
   }
 }

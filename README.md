@@ -983,7 +983,12 @@ below collects the reports. A response with a policy of its own keeps it (the lo
 
 - Page code is an ES module under `src/app/static/js/pages/<group>.js`, shared helpers are
   under `src/app/static/js/core/`; both are served as they are from `/static/js/`, without a
-  bundler. Every page built on `base.html` loads `js/core/main.js`.
+  bundler. Every page built on `base.html` loads `js/core/main.js`. A page loads its own
+  module in the block `page_modules` of `base.html`, which comes before htmx and Alpine:
+  modules and deferred scripts run in document order, so the module registers its components
+  with `Alpine.data` on `alpine:init` before Alpine starts. A component offers as methods
+  what the CSP build does not evaluate in a template (several statements, arrow functions,
+  globals such as `Math`, `Number`, `Object` or `Boolean`).
 - Server values reach a module as a JSON data island, never inside a script: the macro
   `data_island(id, value)` of `templates/partials/_csp.html` writes
   `<script type="application/json">` (escaped with `tojson`, so `<`, `>`, `&` and `'` never end
@@ -1011,6 +1016,11 @@ come from the islands `mgr-settings`, `mgr-settings-branding`, `mgr-settings-hos
 themselves (`tests/test_settings_scripts.py`, with the browser check of both pages and the
 paths of saving the host interval, the branding, a logo upload and its preview, and switching
 a module on and off in `tests/settings_browser.mjs`).
+`knowledge_map.html` (`/knowledge-map`): its component lives in
+`js/pages/knowledge-map/component.js`, registered by `js/pages/knowledge-map.js`; the styles
+of its graph are in the stylesheet. `tests/test_knowledge_map_browser.py` walks the page in
+Chromium in both themes (map, "View as", search, detail by click and keyboard, every tab)
+and measures each of its Alpine expressions against the CSP build.
 
 **Ratchet.** `tests/test_csp_ratchet.py` counts per template the executable inline scripts,
 `on*` attributes, Alpine attributes the CSP build rejects, `<style>` blocks and `style`

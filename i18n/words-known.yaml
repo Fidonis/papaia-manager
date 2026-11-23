@@ -193,7 +193,7 @@ groups:
       - W1 i18n/export/en.json#text.d37a58e4144821c3 LLM
       - W1 i18n/export/en.json#text.dee850b9bab3a6d2 LLM
       - W1 i18n/export/en.json#text.fca87a2bfe5aed57 LLM
-      - W1 src/app/templates/knowledge_map.html:585 LLM
+      - W1 src/app/templates/knowledge_map.html:598 LLM
       - W1 src/app/templates/models.html:11 LLM
       - W1 src/app/templates/models.html:4 LLM
       - W1 src/app/templates/partials/_group_controls.html:113 LLM

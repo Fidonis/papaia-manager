@@ -57,6 +57,10 @@
 <template id="mgr-toast-{{ tone }}">{{ kit.toast(text="…", tone=tone, region=true) }}</template>
 {% endfor %}
 <script type="module" src="{{ asset_url('js/core/main.js') }}"></script>
+{#- A page's own module (static/js/pages/<group>.js). Modules and deferred scripts run in
+    document order, so it runs before Alpine starts and can register its components on
+    `alpine:init`. #}
+{% block page_modules %}{% endblock %}
 <script src="{{ asset_url('htmx.min.js') }}" defer></script>
 {{ alpine_build(strict) }}
 <div class="mgr-page" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}' x-data>
