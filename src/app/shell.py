@@ -126,9 +126,12 @@ def nav_groups(flags: NavFlags, gettext: Callable[[str], str]) -> list[tuple[str
     """The manager's navigation after the fixed first row (the dashboard is the overview).
 
     The same groups as before the shared frame, split by what an entry acts on: what is
-    running now (Monitor), what extends the installation (Extensions), the RAG system and the
-    knowledge map when the core runs them, and what concerns the deployment as a whole
-    (System). An account without the admin role sees the overview only.
+    running now (Monitor), what the installation is made of (Modules and add-ons: each module
+    with "Open" and "Manage", PLT-77), the RAG system and the knowledge map when the core runs
+    them, and what concerns the deployment as a whole (System). The terms are the glossary's
+    (`i18n/glossary-map.yaml`); the manager's places of the kit's administration map
+    (`contract/admin-map.yaml`: /modules, /backup, /users, /settings, /audit) are rows here. An
+    account without the admin role sees the overview only.
     """
     _ = gettext
     if not flags.admin:
@@ -144,10 +147,11 @@ def nav_groups(flags: NavFlags, gettext: Callable[[str], str]) -> list[tuple[str
             ],
         ),
         (
-            _("Extensions"),
+            _("Modules and add-ons"),
             [
-                NavRow("/addons", _("Add-Ons"), ("/addons", "/modules")),
-                NavRow("/catalogs", _("Catalogs"), ("/catalogs",)),
+                NavRow("/modules", _("Modules"), ("/modules",)),
+                NavRow("/addons", _("Add-Ons"), ("/addons",)),
+                NavRow("/catalogs", _("Add-on catalogs"), ("/catalogs",)),
             ],
         ),
     ]
@@ -156,7 +160,7 @@ def nav_groups(flags: NavFlags, gettext: Callable[[str], str]) -> list[tuple[str
             (
                 "RAG",
                 [
-                    NavRow("/connections", _("Connections"), ("/connections",)),
+                    NavRow("/connections", _("Vector databases"), ("/connections",)),
                     NavRow("/collections", _("Collections"), ("/collections",)),
                     NavRow("/embedding", _("Embedding"), ("/embedding",)),
                     # Jobs, runs, credentials, leftovers and the catalog file are the tabs

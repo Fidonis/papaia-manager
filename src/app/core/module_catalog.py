@@ -14,6 +14,12 @@ Two sources, both read-only:
   console is. A module of the suite without an entry is "available": it is installed from the
   catalog with `papaia-ctl addon install`, without copying anything out of a module repository.
 
+Each installed module that runs offers "Open" (its address) and, when its catalog entry names
+an administration overview (`ui[].admin_url`), "Manage" (PLT-77: the administration of a module
+is reached from the manager in at most two clicks). Both addresses come from the catalog
+through the kit's address resolver, never from a request. A stopped module keeps its row with
+the kit's fixed sentence instead of links, a module that is not set up says so (PLT-73).
+
 Nothing here grants a right. The link is the module's own address from the catalog; the
 module checks every call itself.
 """
@@ -34,7 +40,9 @@ import yaml
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from papaia_kit.catalog import Catalog, Entry, ServicesReader
+from papaia_kit.catalog import ADMIN_TARGET, Catalog, Entry, ServicesReader
+from papaia_kit.ui.address import target_url
+from papaia_kit.ui.messages import text as fixed_text
 
 from app.i18n import current_locale
 
@@ -87,6 +95,7 @@ class Module:
     installed_version: str | None
     state: State
     url: str | None
+    admin_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -231,6 +240,7 @@ def _module(name: str, version: str, catalog: Catalog | None) -> Module:
     shown = ui or (entries[0] if entries else None)
     state: State = "available"
     url: str | None = None
+    admin_url: str | None = None
     if shown is not None:
         state = "installed"
         if ui is not None and ui.state is not None:
@@ -240,6 +250,8 @@ def _module(name: str, version: str, catalog: Catalog | None) -> Module:
                 (s for s in catalog.surfaces if s.entry_id == ui.id), key=lambda s: (s.order, s.id)
             )
             url = surfaces[0].public_url if surfaces else None
+            if surfaces:
+                admin_url = target_url(catalog, surfaces[0].id, ADMIN_TARGET)
     title = _text(shown.data.get("title")) if shown is not None else {}
     return Module(
         name=name,
@@ -249,6 +261,7 @@ def _module(name: str, version: str, catalog: Catalog | None) -> Module:
         installed_version=shown.version if shown is not None else None,
         state=state,
         url=url,
+        admin_url=admin_url,
     )
 
 
@@ -269,6 +282,19 @@ def localized(text: Mapping[str, str]) -> str:
     return text.get(language) or text.get("en") or next(iter(text.values()), "")
 
 
+def state_sentence(module: Module) -> str | None:
+    """The kit's fixed sentence for a module that is stopped or not set up (PLT-73), else None.
+
+    The sentence is the same in every module (`contract/messages/states.<lang>.yaml`); the
+    module's name is its display name in the language of the request.
+    """
+    key = {"stopped": "stopped.text", "available": "not_installed.text"}.get(module.state)
+    if key is None:
+        return None
+    language = "de" if current_locale().split("_")[0].split("-")[0] == "de" else "en"
+    return fixed_text("states", language, key, module=localized(module.title))
+
+
 def module_json(module: Module) -> dict[str, Any]:
     return {
         "name": module.name,
@@ -278,4 +304,6 @@ def module_json(module: Module) -> dict[str, Any]:
         "installed_version": module.installed_version,
         "state": module.state,
         "url": module.url,
+        "admin_url": module.admin_url,
+        "state_text": state_sentence(module),
     }

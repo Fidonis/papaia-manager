@@ -4,7 +4,7 @@
    Class names are spelled out per branch and never assembled from a variable: app.css is built
    by scanning these templates, so a computed class name does not survive the purge. #}
 
-{# The tabs do not wrap: on a narrow screen "Catalog file" broke into two lines and overflowed the
+{# The tabs do not wrap: on a narrow screen a long tab label broke into two lines and overflowed the
    fixed height of a tab, which showed as a vertical scrollbar next to a horizontal one. #}
 {% macro tabs(active) %}
 <nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="{{ _('Ingest') }}">
@@ -12,7 +12,7 @@
   <a href="/ingest/runs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'runs' else '' }}">{% trans %}Runs{% endtrans %}</a>
   <a href="/ingest/secrets" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'secrets' else '' }}">{% trans %}Credentials{% endtrans %}</a>
   <a href="/ingest/orphans" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'orphans' else '' }}">{% trans %}Leftovers{% endtrans %}</a>
-  <a href="/ingest/catalog" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'catalog' else '' }}">{% trans %}Catalog file{% endtrans %}</a>
+  <a href="/ingest/catalog" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'catalog' else '' }}">{% trans %}Job file{% endtrans %}</a>
 </nav>
 {% endmacro %}
 

@@ -19,7 +19,7 @@
   <section id="modules" class="card bg-base-100 border border-base-300">
     <div class="card-body gap-0 p-0">
       <div class="px-6 pt-5 pb-3">
-        <h2 class="font-brand text-lg font-bold">{% trans %}Optional Modules{% endtrans %}</h2>
+        <h2 class="font-brand text-lg font-bold">{% trans %}Optional core features{% endtrans %}</h2>
         <p class="text-sm opacity-60">
           {% trans %}Switch parts of the stack on or off. Switching a module off removes its containers. You choose whether its data and settings stay, so switching it on again can bring everything back.{% endtrans %}
         </p>
@@ -164,7 +164,7 @@
             <div class="flex flex-wrap gap-2">
               <button type="button" class="btn btn-primary btn-sm" data-panel-go onclick="enableModule('{{ row.name }}')">{% trans title=row.title %}Enable {{ title }}{% endtrans %}</button>
               {% if row.name == "mail" %}
-              <button id="om-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeOnMail()">{% trans %}Test Connection{% endtrans %}</button>
+              <button id="om-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeOnMail()">{% trans %}Test mail server{% endtrans %}</button>
               {% endif %}
               <button type="button" class="btn btn-ghost btn-sm" onclick="cancelPanel('{{ row.name }}')">{% trans %}Cancel{% endtrans %}</button>
             </div>

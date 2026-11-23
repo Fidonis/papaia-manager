@@ -75,19 +75,41 @@ it chooses, follows the browser's language and falls back to the installation's 
 `src/app/locale/` and needs no change to the code; see [CONTRIBUTING.md](CONTRIBUTING.md). Log
 lines, the audit log, job logs and the emails and webhooks of notifications stay in English.
 
-**Module catalog.** **Add-Ons → Module catalog** (`/modules`) lists the modules of the
+**Modules.** **Modules and add-ons → Modules** (`/modules`) lists the modules of the
 suite (Studio, Data, Flow, Assistant) with the version of the suite bill of materials of the
 core checkout (`compat/suite-<VERSION>.yaml`, repos with role `module`) and their state here:
-*available* (not installed; install it from the catalog with `papaia-ctl addon install
-<name>`, nothing has to be copied out of a module repository), *running* with a link to its
-console, *not reachable* (installed but stopped) or *installed*. The state comes from the
-platform catalog `$PAPAIA_CONFIG_DIR/platform/services.json`, read with the platform kit's
-reader: a broken file keeps the last valid state and the page says so. When the core pins a
-release key (`compat/release-key.pub`) the bill of materials must carry a valid signature
-(`suite-<VERSION>.yaml.sig`) or it is not used; without a pinned key the versions are marked
-as not verified. The page only reads.
+*available* (not installed; the row says "<module> is not set up in this installation." and
+names `papaia-ctl addon install <name>`, nothing has to be copied out of a module repository),
+*running* with **Open** (the module's address) and, when its catalog entry names an
+administration overview (`ui[].admin_url`), **Manage**, *not reachable* (installed but
+stopped: a locked entry "<module> is currently not reachable.") or *installed*. Both
+sentences are the platform kit's fixed texts, the same in every module. The addresses and the
+state come from the platform catalog `$PAPAIA_CONFIG_DIR/platform/services.json`, read with
+the platform kit's reader: a broken file keeps the last valid state and the page says so.
+When the core pins a release key (`compat/release-key.pub`) the bill of materials must carry
+a valid signature (`suite-<VERSION>.yaml.sig`) or it is not used; without a pinned key the
+versions are marked as not verified. The page only reads.
 
-**Delegations.** For an account with the `MANAGER_IDENTITY_ADMIN_ROLE`, the module catalog
+**Administration places.** The platform kit's map of administration places
+(`contract/admin-map.yaml`) assigns each administration task to one place. The manager's
+places are rows of its navigation: installing and upgrading modules (`/modules`, `/upgrade`),
+backup and restore (`/backup`), users and roles (`/users`), name, logo and contact
+(`/settings`) and the audit log (`/audit`). A module's group **Verwaltung** leads into the
+manager for the audit log and for assigning roles; `tests/test_admin_map.py` checks that every
+such place is a page here.
+
+**Terms and word check.** The interface uses the terms of the platform glossary (shipped in
+the kit). `cd src && uv run python -m app.i18n.export` writes every interface text with its
+kind (navigation, title, tab, button, text) to `i18n/export/{de,en}.json`;
+`uv run python -m app.i18n.wordcheck` runs the kit's word check over that export and the
+templates. `i18n/glossary-map.yaml` names the keys of the glossary's mandatory places (they
+must read exactly as the glossary says) and the only keys allowed to use the restricted words
+*Module*, *Add-on catalog* and *Review*. Findings that stay for a reason are listed with that
+reason in `i18n/words-known.yaml`; the check fails on any finding that is not listed and on a
+listed one that is gone, so the list only shrinks. `tests/test_word_check.py` runs both and
+checks that the export is current.
+
+**Delegations.** For an account with the `MANAGER_IDENTITY_ADMIN_ROLE`, the modules page
 also shows the delegations (offline sessions at `flow-engine` for Flow and `assist-gate` for
 Assistant): how many each person has granted per module, and nothing else (no session,
 address, time, purpose or token). **Revoke** ends every delegation of that person at that
@@ -142,7 +164,7 @@ anything. Switching a module on asks the questions `papaia-ctl setup` asks, inli
 its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings
 were deleted): the public URL of the RAG system and of LocalAI, prefilled with what the
 core derives from the stack's address, and for the mail relay the mail server (host,
-connection, port, login, password, sender), which **Test Connection** tries before the
+connection, port, login, password, sender), which **Test mail server** tries before the
 relay is switched on without sending a mail or saving anything. A module whose settings exist switches on
 without a dialog. The mail server can also be saved on the Mail page with the relay off.
 The manager itself cannot be switched off.
@@ -181,10 +203,10 @@ Overlay content is never written to the audit log.
 Users; `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`) sits above it and
 also opens Users (see below); `MANAGER_USER_ROLE` (default `user`) reaches the
 dashboard only. Accounts holding none of the roles are rejected at login. The
-dashboard at `/` is a tile overview of the deployed applications, held in
+dashboard at `/` (titled **Overview**, the glossary's name for a module's start page) is a tile overview of the deployed applications, held in
 `$PAPAIA_CONFIG_DIR/manager/tiles.yaml` and seeded with the applications the
 stack ships today on first run. Administrators edit it in place: **Edit
-dashboard** turns the page into an editor for groups and tiles, with drag and
+overview** turns the page into an editor for groups and tiles, with drag and
 drop reordering, a live preview of each tile, and one **Save changes** that
 writes the whole file. Hand editing the file keeps working, but a save from the
 UI rewrites the document, so comments are not preserved; a concurrent change on
@@ -248,8 +270,8 @@ administrators:
 **RAG system.** When the core runs its optional RAG system (the `rag` profile
 in `COMPOSE_PROFILES` of the core `.env`), administrators get two more things.
 The dashboard shows a **RAG** group with a *Qdrant* tile (the vector database's
-dashboard), and the sidebar gets a **RAG** category between *Extensions* and
-*System* with the pages described below: *Connections*, *Collections*,
+dashboard), and the sidebar gets a **RAG** category between *Modules and add-ons* and
+*System* with the pages described below: *Vector databases*, *Collections*,
 *Embedding* and *Ingest Jobs*. The ingest service's own web interface (removed in
 `qdrant-ingest` 1.0.0) has no tile and no menu entry: what it offered is on those
 pages.
@@ -268,7 +290,7 @@ ingest features need `qdrant-ingest` 1.0.0 or newer, the first release that repo
 the features the Embedding and Ingest Jobs pages adapt to (see the end of *Ingest
 jobs*); an older ingester keeps working, with the parts it lacks left out.
 
-**Connections.** An admin-only page at `/connections`, first under *RAG* in the
+**Vector databases.** An admin-only page at `/connections`, first under *RAG* in the
 sidebar and only while the `rag` profile is active, for the vector databases the
 RAG system works with. A connection is a name, a type and the values that type
 needs; Qdrant, the only type so far, takes an address and an optional api-key.
@@ -384,7 +406,7 @@ Azure Blob Storage or a web directory), which collection on which connection the
 result goes to, what a run does with files that are new, changed or gone, and when
 it runs. Jobs are kept in `ai/rag/catalog/jobs.yaml`, the file the ingester reads,
 and the page is one more editor of it. Five tabs run across the top: *Jobs*,
-*Runs*, *Credentials*, *Leftovers* and *Catalog file*.
+*Runs*, *Credentials*, *Leftovers* and *Job file*.
 
 The **job list** shows each job with its state (active, disabled, not loaded with
 the ingester's reason, or running its previous version while the ingester keeps an
@@ -451,7 +473,7 @@ says so, and says when the ingester is too old to read the file.
 **Leftovers and the catalog file.** What a deleted or renamed job embedded stays in
 its collection with the ingester's records of it; *Leftovers* lists those and
 removes them on request (the id of the job is typed to confirm). Deleting a job
-offers to remove its content in the same step. *Catalog file* has the defaults every
+offers to remove its content in the same step. *Job file* has the defaults every
 job inherits (the embedding model, chunking, filters, the time zone of schedules, the
 removal limit) as a form that checks every job against the new values before it
 writes, and `jobs.yaml` as text, edited as typed with comments kept, checked before
@@ -856,7 +878,7 @@ Long-running operations return `202` with a job id. The RAG routes
 ```
 GET  /health                              # unauthenticated
 
-GET    /api/v1/modules                    # module catalog: {bom, catalog_error, modules}; admin, read-only
+GET    /api/v1/modules                    # modules: {bom, catalog_error, modules}; admin, read-only
 GET    /api/v1/delegations                # counts per module and person; identity admin
 DELETE /api/v1/delegations/{module}/persons/{user_id}   # revoke; module flow|assistant
 

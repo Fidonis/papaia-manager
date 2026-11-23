@@ -170,7 +170,7 @@
         @connection-edit.window="openEdit($event.detail)"
         @close="reset()">
   <div class="modal-box max-w-xl">
-    <h3 class="mb-4 text-lg font-bold" x-text="mode === 'create' ? {{ _('New connection')|tojson|forceescape }} : {{ _('Edit connection')|tojson|forceescape }}"></h3>
+    <h3 class="mb-4 text-lg font-bold" x-text="mode === 'create' ? {{ _('New vector database')|tojson|forceescape }} : {{ _('Edit vector database')|tojson|forceescape }}"></h3>
     <form @submit.prevent="submit()" autocomplete="off">
 
       <div class="form-control mb-3">

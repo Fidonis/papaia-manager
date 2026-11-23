@@ -226,7 +226,7 @@ def test_the_sidebar_has_one_entry_for_the_ingest_pages(client: TestClient) -> N
     body = _body(client, "/ingest/runs")
     sidebar = nav_section(body)
 
-    assert _nav(body)["RAG"] == ["Connections", "Collections", "Embedding", "Ingest Jobs"]
+    assert _nav(body)["RAG"] == ["Vector databases", "Collections", "Embedding", "Ingest Jobs"]
     assert 'href="/ingest/runs"' not in sidebar
     assert 'href="/ingest/runs" class="tab' in body, "the Runs tab is the way to the runs"
 

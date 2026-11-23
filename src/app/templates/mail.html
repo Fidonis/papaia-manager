@@ -120,10 +120,10 @@
 
         <div class="flex flex-wrap gap-2">
           <button id="mail-save" type="submit" class="btn btn-primary btn-sm">
-            {% if mail.enabled %}{% trans %}Save and apply{% endtrans %}{% else %}{% trans %}Save settings{% endtrans %}{% endif %}
+            {% if mail.enabled %}{% trans %}Save and apply{% endtrans %}{% else %}{% trans %}Save{% endtrans %}{% endif %}
           </button>
           <button id="mail-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeMail()">
-            {% trans %}Test Connection{% endtrans %}
+            {% trans %}Test mail server{% endtrans %}
           </button>
         </div>
       </form>

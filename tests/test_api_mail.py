@@ -12,6 +12,7 @@ import base64
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 from collections.abc import Iterator
@@ -689,7 +690,7 @@ def test_the_page_has_the_form_and_the_test_mail_but_no_switch_off(client: TestC
         'id="mail-password"',
         'id="mail-from"',
         'id="mail-test-to"',
-        "Test Connection",
+        "Test mail server",
         "Save and apply",
     ):
         assert element in text
@@ -712,7 +713,7 @@ def test_a_relay_that_is_off_says_so_and_saves_without_applying(
 ) -> None:
     _configure(config_dir, on=False)
     text = _admin(_make_client(config_dir, workspace)).get("/mail/server").text
-    assert "Save settings" in text
+    assert re.search(r'id="mail-save"[^>]*>\s*Save\s*</button>', text)
     assert "Save and apply" not in text
     assert 'href="/settings/modules"' in text
     assert "relay is <strong>off</strong>" in text

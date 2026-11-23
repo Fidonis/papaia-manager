@@ -219,10 +219,10 @@ def test_no_file_comes_from_another_host(client: TestClient) -> None:
 def test_the_admin_navigation_keeps_its_groups(client: TestClient) -> None:
     groups = _nav_groups(_as(client, "admin").get("/host").text)
 
-    assert list(groups) == ["", "Monitor", "Extensions", "System"]
+    assert list(groups) == ["", "Monitor", "Modules and add-ons", "System"]
     assert groups[""] == ["Overview"]
     assert groups["Monitor"] == ["Services", "Host", "Models & Usage", "Jobs"]
-    assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
+    assert groups["Modules and add-ons"] == ["Modules", "Add-Ons", "Add-on catalogs"]
     assert groups["System"] == ["Backup / Restore", "Upgrade", "Mail", "Audit log", "Settings"]
 
 

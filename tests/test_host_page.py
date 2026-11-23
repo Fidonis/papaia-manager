@@ -778,10 +778,10 @@ def _nav_groups(body: str) -> dict[str, list[str]]:
 def test_the_admin_nav_is_grouped_by_what_an_entry_acts_on(client: TestClient) -> None:
     groups = _nav_groups(_as(client, "admin").get("/host").text)
 
-    assert list(groups) == ["", "Monitor", "Extensions", "System"]
+    assert list(groups) == ["", "Monitor", "Modules and add-ons", "System"]
     assert groups[""] == ["Overview"]
     assert groups["Monitor"] == ["Services", "Host", "Models & Usage", "Jobs"]
-    assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
+    assert groups["Modules and add-ons"] == ["Modules", "Add-Ons", "Add-on catalogs"]
     # Backup and upgrade are stack-level commands, so they sit with the system, and so does
     # the mail relay: it is the stack's, not a setting of the manager.
     assert groups["System"] == ["Backup / Restore", "Upgrade", "Mail", "Audit log", "Settings"]

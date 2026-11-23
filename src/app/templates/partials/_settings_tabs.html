@@ -5,7 +5,7 @@
 {% macro tabs(active) %}
 <nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="{{ _('Settings') }}">
   <a href="/settings" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'manager' else '' }}">{% trans %}Manager{% endtrans %}</a>
-  <a href="/settings/modules" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'modules' else '' }}">{% trans %}Modules{% endtrans %}</a>
+  <a href="/settings/modules" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'modules' else '' }}">{% trans %}Core features{% endtrans %}</a>
   <a href="/settings/overlay" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'overlay' else '' }}">{% trans %}Overlay{% endtrans %}</a>
 </nav>
 {% endmacro %}

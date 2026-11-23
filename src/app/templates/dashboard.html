@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block page_title %}{% trans %}Dashboard{% endtrans %}{% endblock %}
+{% block page_title %}{% trans %}Overview{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Your papAIa applications{% endtrans %}</p>{% endblock %}
 
 {% block page_actions %}
@@ -660,7 +660,7 @@
           const data = await response.json();
           this.revision = data.revision;
           this.dirty = 0;
-          showToast("success", {{ _('Dashboard saved.')|tojson }});
+          showToast("success", {{ _('Overview saved.')|tojson }});
           tilesExitEdit();
         } finally {
           this.busy = false;

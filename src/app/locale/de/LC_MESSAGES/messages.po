@@ -3660,9 +3660,6 @@ msgstr "Läuft das Add-on, wird es aus der neuen Version neu erstellt."
 msgid "This core does not accept the new version."
 msgstr "Dieser Core akzeptiert die neue Version nicht."
 
-msgid "Components"
-msgstr "Komponenten"
-
 msgid "Component"
 msgstr "Komponente"
 
@@ -4285,9 +4282,6 @@ msgstr "Das Löschen ist fehlgeschlagen: {detail}"
 msgid "Catalog \"{name}\" deleted."
 msgstr "Katalog „{name}“ gelöscht."
 
-msgid "Dashboard"
-msgstr "Dashboard"
-
 msgid "Monitor"
 msgstr "Überwachung"
 
@@ -4297,14 +4291,14 @@ msgstr "Modelle & Verbrauch"
 msgid "Jobs"
 msgstr "Jobs"
 
-msgid "Extensions"
-msgstr "Erweiterungen"
+msgid "Modules and add-ons"
+msgstr "Module und Add-ons"
 
-msgid "Catalogs"
-msgstr "Kataloge"
+msgid "Add-on catalogs"
+msgstr "Add-on-Kataloge"
 
-msgid "Connections"
-msgstr "Verbindungen"
+msgid "Vector databases"
+msgstr "Vektordatenbanken"
 
 msgid "Collections"
 msgstr "Collections"
@@ -4393,8 +4387,8 @@ msgstr "Verbindung"
 msgid "(default)"
 msgstr "(Standard)"
 
-msgid "Manage connections"
-msgstr "Verbindungen verwalten"
+msgid "Manage vector databases"
+msgstr "Vektordatenbanken verwalten"
 
 msgid "The list could not be loaded."
 msgstr "Die Liste konnte nicht geladen werden."
@@ -4423,8 +4417,8 @@ msgstr "Die Berechtigung wurde nicht angelegt:"
 msgid "Vector databases of the RAG system, shared with the ingester"
 msgstr "Vektordatenbanken des RAG-Systems, gemeinsam mit dem Ingester genutzt"
 
-msgid "New connection"
-msgstr "Neue Verbindung"
+msgid "New vector database"
+msgstr "Neue Vektordatenbank"
 
 msgid "The connections could not be loaded."
 msgstr "Die Verbindungen konnten nicht geladen werden."
@@ -4503,8 +4497,8 @@ msgstr "tiles.yaml hat sich auf dem Datenträger geändert, seit der Editor geö
 msgid "Save failed:"
 msgstr "Speichern fehlgeschlagen:"
 
-msgid "Dashboard saved."
-msgstr "Dashboard gespeichert."
+msgid "Overview saved."
+msgstr "Übersicht gespeichert."
 
 msgid "Discard all unsaved dashboard changes?"
 msgstr "Alle ungespeicherten Änderungen am Dashboard verwerfen?"
@@ -4582,17 +4576,17 @@ msgstr "Der Lauf wurde nicht abgebrochen:"
 msgid "Abort requested. The ingester stops between documents, so the one it is working on is finished first."
 msgstr "Abbruch angefordert. Der Ingester stoppt zwischen zwei Dokumenten, das gerade bearbeitete wird also noch fertiggestellt."
 
-msgid "Back to dashboard"
-msgstr "Zurück zum Dashboard"
+msgid "Back to overview"
+msgstr "Zurück zur Übersicht"
 
 msgid "Resources, disk space and certificates of the machine this deployment runs on"
 msgstr "Ressourcen, Speicherplatz und Zertifikate der Maschine, auf der diese Installation läuft"
 
 msgid "Re-check"
-msgstr "Erneut prüfen"
+msgstr "Erneut testen"
 
-msgid "Catalog file"
-msgstr "Katalogdatei"
+msgid "Job file"
+msgstr "Jobdatei"
 
 msgid "The defaults every job inherits, and <span class=\"font-mono\">jobs.yaml</span> itself"
 msgstr "Die Vorgaben, die jeder Job erbt, und <span class=\"font-mono\">jobs.yaml</span> selbst"
@@ -4674,7 +4668,7 @@ msgid "This would load."
 msgstr "Das würde geladen."
 
 msgid "Check"
-msgstr "Prüfen"
+msgstr "Testen"
 
 msgid "Reload the file"
 msgstr "Datei neu laden"
@@ -5258,11 +5252,8 @@ msgstr "Ihr Anbieter nimmt möglicherweise nur Adressen an, die er kennt: eine v
 msgid "Save and apply"
 msgstr "Speichern und anwenden"
 
-msgid "Save settings"
-msgstr "Einstellungen speichern"
-
-msgid "Test Connection"
-msgstr "Verbindung testen"
+msgid "Test mail server"
+msgstr "Mailserver testen"
 
 msgid "Test Mail"
 msgstr "Test-Mail"
@@ -5397,8 +5388,8 @@ msgstr "Weitere Aktionen für %(name)s"
 msgid "Delete…"
 msgstr "Löschen …"
 
-msgid "Event Settings"
-msgstr "Ereignis-Einstellungen"
+msgid "Events"
+msgstr "Ereignisse"
 
 msgid "These apply to every recipient. A failed job is always reported at once."
 msgstr "Diese gelten für jeden Empfänger. Ein fehlgeschlagener Job wird immer sofort gemeldet."
@@ -5620,8 +5611,11 @@ msgstr "Anfrage fehlgeschlagen ({status})"
 msgid "Optional parts of the stack. A change recreates the affected containers and runs as a job."
 msgstr "Optionale Teile des Stacks. Eine Änderung erstellt die betroffenen Container neu und läuft als Job."
 
-msgid "Optional Modules"
-msgstr "Optionale Module"
+msgid "Optional core features"
+msgstr "Optionale Kernfunktionen"
+
+msgid "Core features"
+msgstr "Kernfunktionen"
 
 msgid "Switch parts of the stack on or off. Switching a module off removes its containers. You choose whether its data and settings stay, so switching it on again can bring everything back."
 msgstr "Schalten Sie Teile des Stacks ein oder aus. Das Ausschalten eines Moduls entfernt seine Container. Sie wählen, ob seine Daten und Einstellungen bleiben, damit das Einschalten alles zurückbringen kann."
@@ -6084,8 +6078,8 @@ msgstr "Kein Container verwendet sie, und das installierte Release deklariert si
 msgid "Remove"
 msgstr "Entfernen"
 
-msgid "History"
-msgstr "Verlauf"
+msgid "Past upgrades"
+msgstr "Frühere Upgrades"
 
 msgid "Upgrade check failed:"
 msgstr "Upgrade-Prüfung fehlgeschlagen:"
@@ -7529,8 +7523,8 @@ msgstr "Der Manager verbindet sich mit"
 msgid "The ingester picks up a change within about 30 seconds. A test runs from the manager, which may reach an address differently than the ingester does."
 msgstr "Der Ingester übernimmt eine Änderung innerhalb von etwa 30 Sekunden. Ein Test läuft vom Manager aus, der eine Adresse möglicherweise anders erreicht als der Ingester."
 
-msgid "Edit connection"
-msgstr "Verbindung bearbeiten"
+msgid "Edit vector database"
+msgstr "Vektordatenbank bearbeiten"
 
 msgid "archive"
 msgstr "archiv"
@@ -9063,8 +9057,8 @@ msgstr "tiles.yaml"
 msgid "Save file"
 msgstr "Datei speichern"
 
-msgid "Edit dashboard"
-msgstr "Dashboard bearbeiten"
+msgid "Edit overview"
+msgstr "Übersicht bearbeiten"
 
 msgid "The application list could not be read"
 msgstr "Die Anwendungsliste konnte nicht gelesen werden"
@@ -9461,7 +9455,7 @@ msgid "Node"
 msgstr "Node"
 
 msgid "Links"
-msgstr "Verbindungen"
+msgstr "Gegenstellen"
 
 msgid "controller"
 msgstr "Controller"
@@ -10746,9 +10740,6 @@ msgstr "Dieses Modul hält keine Vollmachten."
 msgid "This person has no delegation at this module."
 msgstr "Diese Person hat bei diesem Modul keine Vollmacht."
 
-msgid "Module catalog"
-msgstr "Modulkatalog"
-
 msgid "The modules of this suite, in the version of its bill of materials"
 msgstr "Die Module dieser Suite in der Version ihrer Stückliste"
 
@@ -10782,8 +10773,11 @@ msgstr "Zustand"
 msgid "installed: %(installed)s"
 msgstr "installiert: %(installed)s"
 
-msgid "Open console"
-msgstr "Konsole öffnen"
+msgid "Open"
+msgstr "Öffnen"
+
+msgid "Manage"
+msgstr "Verwalten"
 
 msgid "Delegations"
 msgstr "Vollmachten"

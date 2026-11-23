@@ -580,10 +580,10 @@ def test_the_mail_row_carries_what_the_dialog_starts_from(
     assert 'id="panel-web-search"' not in html
     assert 'id="om-host"' in html
     # The mail server can be tried before the relay is switched on, with what is in the form.
-    assert 'id="om-probe"' in html and ">Test Connection</button>" in html
+    assert 'id="om-probe"' in html and ">Test mail server</button>" in html
     assert 'id="om-probe-result"' in html
     assert "/api/v1/mail/probe" in html
-    for title in ("Web Search", "RAG System", "Mail Relay", "Optional Modules"):
+    for title in ("Web Search", "RAG System", "Mail Relay", "Optional core features"):
         assert title in html
     assert "The relay forwards every mail to this server" in html
 
@@ -1144,7 +1144,7 @@ def test_rolling_back_from_a_stale_page_is_a_409(client: TestClient, config_dir:
 def test_settings_has_three_tabs_and_the_menu_has_no_new_entry(client: TestClient) -> None:
     for path, active in (
         ("/settings", "Manager"),
-        ("/settings/modules", "Modules"),
+        ("/settings/modules", "Core features"),
         ("/settings/overlay", "Overlay"),
     ):
         html = _admin(client).get(path).text
@@ -1158,7 +1158,7 @@ def test_settings_has_three_tabs_and_the_menu_has_no_new_entry(client: TestClien
 def test_the_modules_page_has_a_switch_for_the_five_optional_modules(client: TestClient) -> None:
     html = _admin(client).get("/settings/modules").text
     assert html.count('onchange="moduleToggled(this)"') == 5
-    assert "Optional Modules" in html
+    assert "Optional core features" in html
     assert 'data-module="manager"' in html and 'data-module="rag"' in html
     assert 'data-module="voice"' in html and 'id="voice-variant"' in html
     # The manager is shown and locked.

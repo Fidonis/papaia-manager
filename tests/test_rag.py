@@ -358,14 +358,14 @@ def test_the_admin_sidebar_has_a_rag_category_between_extensions_and_system(
 ) -> None:
     groups = _nav_groups(_admin(client).get("/").text)
 
-    assert list(groups) == ["", "Monitor", "Extensions", "RAG", "System"]
+    assert list(groups) == ["", "Monitor", "Modules and add-ons", "RAG", "System"]
     assert groups["RAG"] == [
-        "Connections",
+        "Vector databases",
         "Collections",
         "Embedding",
         "Ingest Jobs",
     ]
-    assert groups["Extensions"] == ["Add-Ons", "Catalogs"]
+    assert groups["Modules and add-ons"] == ["Modules", "Add-Ons", "Add-on catalogs"]
 
 
 @pytest.mark.parametrize("page", ["/connections", "/collections", "/embedding"])
@@ -412,7 +412,7 @@ def test_the_category_survives_a_profile_that_is_on_without_its_url_keys(
     groups = _nav_groups(_admin(client).get("/").text)
 
     assert groups["RAG"] == [
-        "Connections",
+        "Vector databases",
         "Collections",
         "Embedding",
         "Ingest Jobs",
@@ -438,7 +438,7 @@ def test_there_is_no_empty_category_without_the_profile(
 
     body = _admin(client).get("/").text
 
-    assert list(_nav_groups(body)) == ["", "Monitor", "Extensions", "System"]
+    assert list(_nav_groups(body)) == ["", "Monitor", "Modules and add-ons", "System"]
     assert ">RAG<" not in body
 
 

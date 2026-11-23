@@ -33,7 +33,7 @@ dependencies = [
     "babel>=2.16",
     # Shared platform contract: catalog reader and papaia.audit/1 writer. No package
     # index yet: the wheel is vendored; kit.lock names its version and SHA-256.
-    "papaia-kit==0.1.3",
+    "papaia-kit==0.1.5",
 ]
 
 [dependency-groups]
@@ -50,7 +50,7 @@ dev = [
 package = false
 
 [tool.uv.sources]
-papaia-kit = { path = "vendor/papaia-kit/0.1.3/papaia_kit-0.1.3-py3-none-any.whl" }
+papaia-kit = { path = "vendor/papaia-kit/0.1.5/papaia_kit-0.1.5-py3-none-any.whl" }
 
 [tool.ruff]
 line-length = 100

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block page_title %}{% trans %}Module catalog{% endtrans %}{% endblock %}
+{% block page_title %}{% trans %}Modules{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}The modules of this suite, in the version of its bill of materials{% endtrans %}</p>{% endblock %}
 
 {% block page_actions %}
@@ -40,15 +40,26 @@
           <th>{% trans %}Module name{% endtrans %}</th>
           <th>{% trans %}Version{% endtrans %}</th>
           <th>{% trans %}State{% endtrans %}</th>
-          <th></th>
         </tr>
       </thead>
       <tbody>
+        {# "Open" and "Manage" lead to the module's own addresses from the catalog (PLT-77);
+           a stopped module keeps a locked entry, a module that is not set up says so, both
+           with the kit's fixed sentence (PLT-73). Actions and sentences sit in the cells they
+           belong to, so a narrow screen wraps them instead of cutting a fourth column off. #}
         {% for m in modules %}
-        <tr>
+        <tr data-module="{{ m.name }}">
           <td>
             <div class="font-medium">{{ m.title }}</div>
             {% if m.description %}<div class="text-xs opacity-60">{{ m.description }}</div>{% endif %}
+            {% if m.url %}
+            <div class="mt-1 flex flex-wrap gap-1">
+              <a class="btn btn-outline btn-xs" href="{{ m.url }}" rel="noopener">{% trans %}Open{% endtrans %}</a>
+              {% if m.admin_url %}
+              <a class="btn btn-outline btn-xs" href="{{ m.admin_url }}" rel="noopener">{% trans %}Manage{% endtrans %}</a>
+              {% endif %}
+            </div>
+            {% endif %}
           </td>
           <td>
             <span class="font-mono">{{ m.version }}</span>
@@ -58,20 +69,16 @@
           </td>
           <td>
             {% if m.state == "running" %}
-            <span class="badge badge-success badge-sm">{% trans %}running{% endtrans %}</span>
+            <span class="badge badge-success badge-sm whitespace-nowrap">{% trans %}running{% endtrans %}</span>
             {% elif m.state == "stopped" %}
-            <span class="badge badge-error badge-sm">{% trans %}not reachable{% endtrans %}</span>
+            <span class="badge badge-error badge-sm whitespace-nowrap">{% trans %}not reachable{% endtrans %}</span>
+            <p class="mt-1 text-xs"><span class="pk-link" aria-disabled="true">{{ m.state_text }}</span></p>
             {% elif m.state == "installed" %}
-            <span class="badge badge-ghost badge-sm">{% trans %}installed{% endtrans %}</span>
+            <span class="badge badge-ghost badge-sm whitespace-nowrap">{% trans %}installed{% endtrans %}</span>
             {% else %}
-            <span class="badge badge-outline badge-sm">{% trans %}available{% endtrans %}</span>
-            {% endif %}
-          </td>
-          <td class="text-right">
-            {% if m.url %}
-            <a href="{{ m.url }}" class="btn btn-ghost btn-xs" rel="noopener">{% trans %}Open console{% endtrans %}</a>
-            {% elif m.state == "available" %}
-            <code class="text-xs opacity-70">papaia-ctl addon install {{ m.name }}</code>
+            <span class="badge badge-outline badge-sm whitespace-nowrap">{% trans %}available{% endtrans %}</span>
+            <p class="mt-1 text-xs">{{ m.state_text }}</p>
+            <code class="text-xs text-pk-text-muted">papaia-ctl addon install {{ m.name }}</code>
             {% endif %}
           </td>
         </tr>

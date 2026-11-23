@@ -1,0 +1,38 @@
+# Glossary places of the manager and the keys of i18n/export that carry them
+# (PLT-27-A3, interface spec 4.3). Keys come from `python -m app.i18n.export`:
+# named for navigation rows (nav.*), titles (title.*) and tabs (tab.*), else
+# derived from the English text (text.<hash>).
+#
+# Mandatory places the kit's frame renders itself (language, appearance, sign
+# out) and places the manager does not have (administration group, tasks,
+# emergency stop, integrations) are "nicht vorhanden". The restricted words
+# Modul, Add-on-Katalog and Prüfen are used only in the keys listed under their
+# entries (stage W3).
+version: 1
+module: manager
+map:
+  module_title: tab.manager
+  mein_bereich: title.my-area
+  sprache: nicht vorhanden
+  erscheinungsbild: nicht vorhanden
+  hilfe: title.help
+  abmelden: nicht vorhanden
+  uebersicht: title.overview
+  verwaltung: nicht vorhanden
+  einstellungen: nav.settings
+  aufgabe: nicht vorhanden
+  audit_log: nav.audit
+  not_aus: nicht vorhanden
+  anbindung: nicht vorhanden
+  benachrichtigung: tab.notifications
+  modul:
+    - nav.modules
+    - nav.group.modules-and-add-ons
+  add_on_katalog:
+    - nav.catalogs
+    - title.add-catalog
+    - title.edit-catalog
+    - text.e751756eca3f3991  # Manage catalogs
+    - text.e8155acc89e5ee3c  # Refresh catalogs
+  pruefen:
+    - text.6293da9979b07171  # Review upgrade

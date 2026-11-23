@@ -375,7 +375,7 @@ def test_the_detail_page_lists_every_component_with_its_state(app: FastAPI) -> N
     response = _admin(app).get("/partials/addons/paperless")
     assert response.status_code == 200
     text = _text(response.text)
-    assert "Components" in text
+    assert "Services" in text
     assert "3.0.5 → 3.1.0" in text
     assert "overridden in .env: 3.0.7" in text
     assert "PostgreSQL" in text
@@ -386,7 +386,7 @@ def test_the_detail_page_lists_every_component_with_its_state(app: FastAPI) -> N
 def test_the_detail_page_is_in_the_language_of_the_account(app: FastAPI) -> None:
     response = _admin(app, locale="de").get("/partials/addons/paperless")
     text = _text(response.text)
-    assert "Komponenten" in text
+    assert "Dienste" in text
     assert "Components" not in text
     assert "in .env überschrieben: 3.0.7" in text
 

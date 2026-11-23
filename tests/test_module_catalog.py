@@ -353,6 +353,8 @@ def test_the_api_lists_the_modules_for_an_administrator(
         "installed_version": "2.0.0",
         "state": "running",
         "url": "https://flow.example.org/",
+        "admin_url": "https://flow.example.org/admin",
+        "state_text": None,
     }
 
 
@@ -370,7 +372,7 @@ def test_the_page_renders_the_catalog_in_german(
     response = _as(client, "admin").get("/modules", headers={"Accept-Language": "de"})
     assert response.status_code == 200
     text = response.text
-    assert "Modulkatalog" in text
+    assert "<title>Module – Manager" in text
     for title in ("Studio", "Data", "Flow", "Assistant"):
         assert title in text
     assert "verfügbar" in text
