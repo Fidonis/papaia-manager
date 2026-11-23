@@ -273,7 +273,8 @@ def test_without_a_catalog_the_switcher_names_the_manager_only(client: TestClien
     assert "<details" not in switcher
     assert "Manager" in switcher
     brand = _between(body, 'data-pk-zone="brand"', "</div>")
-    assert '<a href="/" aria-label="papAIa manager, overview">' in brand
+    # The link is named by its visible text: the name and the second line (kit 0.2.2).
+    assert '<a href="/" aria-label="papAIa manager by Fidonis, overview">' in brand
 
 
 def test_the_switcher_lists_the_visible_modules_of_the_catalog(
@@ -316,7 +317,9 @@ def test_the_account_menu_has_four_entries_in_order(
     client: TestClient, config_dir: Path
 ) -> None:
     _install_catalog(config_dir)
-    body = _as(client, "admin").get("/").text
+    # With Mein Bereich in the catalog the language follows the platform's preference service,
+    # which reads the browser when nothing is chosen (test_prefs.py).
+    body = _as(client, "admin").get("/", headers={"accept-language": "en"}).text
     menu = _between(body, '<details class="pk-account">', '<a class="pk-drawer-close"')
     top = menu[menu.index("<ul>") :]
     entries = re.findall(

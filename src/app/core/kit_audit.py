@@ -252,6 +252,14 @@ def record(
         logger.error("papaia.audit/1 row not written (%s)", type(exc).__name__)
 
 
+def record_row(config_dir: str, row: Mapping[str, Any]) -> None:
+    """Store a row another component built (the kit's preference write); never raises."""
+    try:
+        _writer(outbox_path(config_dir)).record(dict(row))
+    except Exception as exc:  # the write it records has happened; see the module docstring
+        logger.error("papaia.audit/1 row not written (%s)", type(exc).__name__)
+
+
 # -- delivery ----------------------------------------------------------------------------
 
 

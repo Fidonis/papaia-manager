@@ -14,7 +14,7 @@ from app.auth import roles
 from app.auth.csrf import get_csrf_token
 from app.auth.oidc import OIDCClaims
 from app.config import get_settings
-from app.core import kit_audit
+from app.core import kit_audit, prefs
 from app.core.ingest.watcher import IngestWatcher
 from app.core.jobs import JobQueue
 from app.core.notifications.service import NotificationService
@@ -22,7 +22,7 @@ from app.core.papaia_lib import bootstrap
 from app.core.scheduler import BackupScheduler
 from app.core.vectordb.service import ConnectionService
 from app.i18n import gettext as _
-from app.i18n.middleware import LocaleMiddleware
+from app.i18n.middleware import LocaleMiddleware, settings_for_scope
 from app.routers import (
     account,
     api_addons,
@@ -85,6 +85,9 @@ def create_app() -> FastAPI:
     # Registered before the session middleware, so it runs inside it: the language of a request
     # comes from the account in the session, and the exception handlers below run inside it too.
     app.add_middleware(LocaleMiddleware)
+    # Between the two: with Mein Bereich on the platform, the language and the appearance come
+    # from the preference service `prefs`, read before the language is chosen (app.core.prefs).
+    app.add_middleware(prefs.PreferencesMiddleware, settings=settings_for_scope)
     # Inside the session middleware as well: every papaia.audit/1 row of the request names the
     # signed-in person and the request's correlation id (app.core.kit_audit).
     app.add_middleware(

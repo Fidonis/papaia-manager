@@ -41,7 +41,8 @@ SIDEBARS = ("pinned", "collapsed")
 LANGUAGE_SETTINGS = ("browser", "de", "en")
 APPEARANCES = ("light", "dark")
 # Where the frame keeps what the footer forms chose: the sidebar in a cookie (shell
-# contract 7), the appearance in the signed session until the preference service holds it.
+# contract 7); the appearance in the platform's preference service when Mein Bereich runs
+# (app.core.prefs), else in the signed session.
 SIDEBAR_COOKIE = "pk_sidebar"
 APPEARANCE_KEY = "pk_appearance"
 MAX_LABEL = 200

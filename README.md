@@ -60,20 +60,47 @@ button. The frame's stylesheet, script, symbols and fonts are served from the wh
 catalog; nothing is loaded from another host. The footer forms (`POST /_kit/sidebar`,
 `/_kit/appearance`, `/_kit/language`) need the session and its CSRF token, accept exactly one
 of their values and write an audit entry each: the sidebar state is kept in the `pk_sidebar`
-cookie, the appearance (light, dark, or the system setting until one is chosen) in the
-session, the language with the account as before. **Help** (`/help`) explains the manager's
+cookie; where the appearance (light, dark, or the system setting until one is chosen) and the
+language are kept is described under **Language and appearance**. **Help** (`/help`) explains the manager's
 terms from the platform glossary and names the contact of the installation.
 `cd src && uv run python -m app.shell --input <file>` renders a shell input as the manager
 does, for the kit's markup check.
 
-**Language.** The interface is available in English and German. Every account chooses its
-own language in the account menu at the bottom of the sidebar (**Language**: **Automatic**,
-**Deutsch** or **English**). The choice is stored on the server with the account, not in the browser, so it is
-the same on every computer the account signs in from. **Automatic**, which is also what an account has before
-it chooses, follows the browser's language and falls back to the installation's default
-(`MANAGER_DEFAULT_LOCALE`, English unless set). Another language is a catalogue file under
-`src/app/locale/` and needs no change to the code; see [CONTRIBUTING.md](CONTRIBUTING.md). Log
-lines, the audit log, job logs and the emails and webhooks of notifications stay in English.
+**Language and appearance.** The interface is available in English and German. Every account
+chooses its own language in the account menu at the bottom of the sidebar (**Language**:
+**Automatic**, **Deutsch** or **English**) and its appearance with the button above it (light or
+dark; the system setting until one is chosen). Neither is kept in the browser's storage.
+
+- *On a platform with Mein Bereich* (the platform catalog lists `me`), both come from the
+  platform's preference service `prefs`, the one place every module reads them from. The manager
+  reads them when the account signs in (`GET /api/v1/preferences/me` at `PREFS_URL`, default
+  `http://prefs:8080`) and keeps them in the session. A change made in another module (Studio,
+  Flow, Mein Bereich) shows on the manager's next page without signing in again: that module sets
+  the session cookie `pk_ui` (`<appearance>.<language>.<etag>`), and when its etag differs from the
+  session's, the manager reads `prefs` again before it renders the page, so the page arrives in
+  the new language and appearance (`<html lang=… data-theme=…>`). The footer and menu forms write
+  `PUT /api/v1/preferences/me` with `If-Match`; after a change by someone else in between, the
+  current record is read and the change sent once more. Each write leaves one `papaia.audit/1`
+  row (catalog `prefs`, operation `write_own`, the field name, never the value) and an audit-log
+  entry `kit.appearance` or `kit.language`, and sets `pk_ui` (no lifetime, not `HttpOnly`, no
+  personal data). `PREFS_COOKIE_DOMAIN` (for example `papaia.example.org`) shares the cookie with
+  the modules below that domain; unset, it is the manager's own host only. Every call carries the
+  signed-in account's own token, exchanged with the manager's client for the audience
+  `papaia-prefs`; the realm has to allow that exchange for the client `papaia-manager` (optional
+  scope `aud-papaia-prefs`). **Automatic** follows the browser the way every module does
+  (German when the browser asks for neither). The token's `locale` claim and the manager's
+  language file are not read. When `prefs` cannot be reached, pages render with the values the
+  session last held, else with the system appearance and the browser's language, and `prefs` is
+  not asked again for that account for 30 seconds; a change cannot be saved then (503).
+- *Without Mein Bereich*, the language is stored on the server with the account (by its OIDC
+  subject in `manager/preferences.yaml`), so it is the same on every computer the account signs
+  in from, and the appearance in the signed session. **Automatic**, which is also what an account
+  has before it chooses, follows the browser's language and falls back to the installation's
+  default (`MANAGER_DEFAULT_LOCALE`, English unless set).
+
+Another language is a catalogue file under `src/app/locale/` and needs no change to the code; see
+[CONTRIBUTING.md](CONTRIBUTING.md). Log lines, the audit log, job logs and the emails and webhooks
+of notifications stay in English.
 
 **Modules.** **Modules and add-ons → Modules** (`/modules`) lists the modules of the
 suite (Studio, Data, Flow, Assistant) with the version of the suite bill of materials of the

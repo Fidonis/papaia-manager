@@ -63,6 +63,28 @@ def write_audit_entry(
     ``event``, ``object_ref`` and ``context`` are for rows that are not a plain
     operation, such as a revoked delegation.
     """
+    _append(config_dir, user=user, action=action, target=target, result=result,
+            params=params, job_id=job_id)  # fmt: skip
+    kit_audit.record(
+        config_dir,
+        action=action,
+        result=result,
+        event=event,
+        object_ref=object_ref,
+        context=context,
+    )
+
+
+def _append(
+    config_dir: str,
+    *,
+    user: str,
+    action: str,
+    target: str,
+    result: str,
+    params: dict[str, Any] | None = None,
+    job_id: str | None = None,
+) -> None:
     path = audit_path(config_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -80,14 +102,24 @@ def write_audit_entry(
 
     with _LOCK, path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
-    kit_audit.record(
-        config_dir,
-        action=action,
-        result=result,
-        event=event,
-        object_ref=object_ref,
-        context=context,
-    )
+
+
+# The result of a papaia.audit/1 row in the words of the local log.
+_LOCAL_RESULT = {"allowed": "ok", "denied": "denied", "error": "error"}
+
+
+def write_audit_row(
+    config_dir: str, *, user: str, action: str, target: str, row: Mapping[str, Any]
+) -> None:
+    """Append one entry to the audit log for a ``papaia.audit/1`` row built elsewhere.
+
+    For a write whose row a library builds and checks itself (the kit's preference write,
+    ``app.core.prefs``): the log entry takes the row's result, and the row goes to the outbox
+    unchanged, so the write still leaves exactly one row.
+    """
+    result = _LOCAL_RESULT.get(str(row.get("result")), "error")
+    _append(config_dir, user=user, action=action, target=target, result=result)
+    kit_audit.record_row(config_dir, row)
 
 
 def redact_params(value: Any) -> Any:

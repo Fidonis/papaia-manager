@@ -3020,6 +3020,7 @@
 {"key": "text.ef004b6c80ad746a", "text": "<span class=\"font-mono\">{username}</span> kann sich mit dem bisherigen Passwort wieder anmelden.", "kind": "text"},
 {"key": "text.ef0bd4270ee6037d", "text": "Der OIDC-Sitzungszustand fehlt – bitte starten Sie die Anmeldung erneut", "kind": "text"},
 {"key": "text.ef13f11d0aaeed67", "text": "Der Wert %(dec_val)s liegt unter dem Minimum %(min_value)s", "kind": "text"},
+{"key": "text.ef295c2f12919575", "text": "Die Einstellung konnte nicht gespeichert werden. Versuchen Sie es gleich noch einmal.", "kind": "text"},
 {"key": "text.ef3af45c0b487022", "text": "Neue Zugangsdaten", "kind": "button"},
 {"key": "text.ef4e7ad9cf53ffc5", "text": "Benötigt von %(names)s; zuerst diese entfernen", "kind": "text"},
 {"key": "text.ef5c0a3229ac5b04", "text": "deployment.yaml konnte nicht gelesen werden: %(exc)s", "kind": "text"},

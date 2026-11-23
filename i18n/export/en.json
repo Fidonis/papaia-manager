@@ -3020,6 +3020,7 @@
 {"key": "text.ef004b6c80ad746a", "text": "<span class=\"font-mono\">{username}</span> can sign in again with the password they had.", "kind": "text"},
 {"key": "text.ef0bd4270ee6037d", "text": "missing OIDC session state — please start login again", "kind": "text"},
 {"key": "text.ef13f11d0aaeed67", "text": "value %(dec_val)s is below minimum %(min_value)s", "kind": "text"},
+{"key": "text.ef295c2f12919575", "text": "The setting could not be saved. Try again in a moment.", "kind": "text"},
 {"key": "text.ef3af45c0b487022", "text": "New credential", "kind": "button"},
 {"key": "text.ef4e7ad9cf53ffc5", "text": "Required by %(names)s; remove those first", "kind": "text"},
 {"key": "text.ef5c0a3229ac5b04", "text": "deployment.yaml could not be read: %(exc)s", "kind": "text"},

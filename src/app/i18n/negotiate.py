@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from papaia_kit.ui.prefs import language_from_accept
+
 from app.i18n.catalog import SOURCE_LOCALE, Catalogs
 
 # An absurdly long header is not a language list; stop reading it.
@@ -71,4 +73,21 @@ def resolve(
     fallback = catalogs.match(default) or SOURCE_LOCALE
     auto = negotiate(accept_language, catalogs) or fallback
     chosen = catalogs.match(stored) if stored else None
+    return LocaleState(locale=chosen or auto, stored=chosen, auto=auto)
+
+
+# Where a request carries the language setting of the platform's preference service
+# (`de`, `en` or `browser`), when that service is the source (app.core.prefs).
+PLATFORM_LANGUAGE_KEY = "papaia.prefs.language"
+
+
+def platform_state(setting: str, *, accept_language: str | None, catalogs: Catalogs) -> LocaleState:
+    """The language when the platform's preference service is the source (interface spec 3.3).
+
+    `de` or `en` as chosen; `browser` the way every module of the platform reads the browser
+    (the kit's mapping, German when the browser asks for neither), not the manager's own
+    default, so all modules show the same language.
+    """
+    auto = catalogs.match(language_from_accept(accept_language)) or SOURCE_LOCALE
+    chosen = catalogs.match(setting) if setting in ("de", "en") else None
     return LocaleState(locale=chosen or auto, stored=chosen, auto=auto)

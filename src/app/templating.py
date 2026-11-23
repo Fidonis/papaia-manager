@@ -24,6 +24,7 @@ from app.auth.csrf import get_csrf_token
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin, is_identity_admin
 from app.config import Settings, get_settings
+from app.core import prefs
 from app.core.ingest import display
 from app.core.knowledge_map import active as knowledge_map_active
 from app.core.module_catalog import platform_catalog
@@ -230,7 +231,12 @@ def pk_shell(
     if isinstance(request, Request):
         if not isinstance(csrf, str) or not csrf:
             csrf = get_csrf_token(request)
-        theme = str(request.session.get(shell.APPEARANCE_KEY) or "system")
+        view = prefs.view_of(request.scope)
+        if view is not None:
+            # The platform's preference service is the source (app.core.prefs).
+            theme = view.appearance
+        else:
+            theme = str(request.session.get(shell.APPEARANCE_KEY) or "system")
         sidebar = request.cookies.get(shell.SIDEBAR_COOKIE, "pinned")
         path = request.url.path
     brand = branding(context)

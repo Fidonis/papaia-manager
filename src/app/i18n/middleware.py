@@ -10,13 +10,13 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.config import Settings, get_settings
 from app.core import user_prefs
 from app.i18n.catalog import get_catalogs
-from app.i18n.negotiate import LocaleState, resolve
+from app.i18n.negotiate import PLATFORM_LANGUAGE_KEY, LocaleState, platform_state, resolve
 from app.i18n.runtime import reset_state, set_state
 
 logger = logging.getLogger(__name__)
 
 
-def _settings_for(scope: Scope) -> Settings | None:
+def settings_for_scope(scope: Scope) -> Settings | None:
     """The settings the app serves with, honouring a test's dependency override."""
     app: Any = scope.get("app")
     overrides = getattr(app, "dependency_overrides", None) or {}
@@ -37,7 +37,13 @@ def state_for_scope(scope: Scope) -> LocaleState:
     is still valid is for the auth dependency to decide, a language needs no more than a name.
     """
     catalogs = get_catalogs()
-    settings = _settings_for(scope)
+    platform = scope.get(PLATFORM_LANGUAGE_KEY)
+    if isinstance(platform, str):
+        # The platform's preference service is the source; the manager's file is not read.
+        return platform_state(
+            platform, accept_language=Headers(scope=scope).get("accept-language"), catalogs=catalogs
+        )
+    settings = settings_for_scope(scope)
     session = scope.get("session")
     user = session.get("user") if isinstance(session, dict) else None
     subject = user.get("sub") if isinstance(user, dict) else None

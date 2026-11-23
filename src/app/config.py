@@ -1,10 +1,15 @@
 """Application settings loaded from environment variables via pydantic-settings."""
 from __future__ import annotations
 
+import re
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_DOMAIN = re.compile(rf"(?=.{{1,253}}$){_LABEL}(?:\.{_LABEL})*")
 
 
 class Settings(BaseSettings):
@@ -76,6 +81,17 @@ class Settings(BaseSettings):
     # shipped language is the same as `en`.
     manager_default_locale: str = "en"
 
+    # Where this process reaches the platform's preference service `prefs` (core profile
+    # `me`, on the network the manager shares with it). It is asked only while the platform
+    # catalog lists Mein Bereich; it then is the one source of the language and the
+    # appearance (app/core/prefs.py). No credential: every call carries the signed-in
+    # person's own token, exchanged for the audience `papaia-prefs`.
+    prefs_url: str = Field(default="http://prefs:8080", min_length=1, max_length=2048)
+    # The domain the shared cookie `pk_ui` is set for after a change, so the other modules
+    # below it see the change on their next page (for example `papaia.example.org`). Empty:
+    # a cookie for the manager's own host only.
+    prefs_cookie_domain: str | None = Field(default=None, max_length=253)
+
     # TLS (optional — path to custom CA bundle)
     ssl_cert_file: str | None = None
 
@@ -106,6 +122,29 @@ class Settings(BaseSettings):
     def _https_only(cls, v: str) -> str:
         if not v.startswith("https://"):
             raise ValueError("AUDIT_INGEST_URL must be an https URL")
+        return v
+
+    @field_validator("prefs_url")
+    @classmethod
+    def _http_base(cls, v: str) -> str:
+        parts = urlsplit(v)
+        if (
+            parts.scheme not in ("http", "https")
+            or not parts.hostname
+            or "@" in parts.netloc
+            or parts.query
+            or parts.fragment
+        ):
+            raise ValueError("PREFS_URL must be http(s)://host[:port] without credentials")
+        return v.rstrip("/")
+
+    @field_validator("prefs_cookie_domain")
+    @classmethod
+    def _cookie_domain(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return None
+        if not _DOMAIN.fullmatch(v):
+            raise ValueError("PREFS_COOKIE_DOMAIN must be a lower-case host name")
         return v
 
     @field_validator("audit_outbox_path")

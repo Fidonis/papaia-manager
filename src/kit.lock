@@ -4,11 +4,11 @@
 # below. The wheel is built reproducibly from the commit below
 # (SOURCE_DATE_EPOCH = commit time, `uv build --wheel`).
 
-version = "0.1.5"
-commit = "8828ac6bd309f2a9994ddc3a5dee5809437870f8"
-source_date_epoch = 1795314016
+version = "0.2.2"
+commit = "f45bf964422eecaa42f17c3bf2603f5099b747e2"
+source_date_epoch = 1795392036
 
 [[files]]
-name = "papaia_kit-0.1.5-py3-none-any.whl"
-path = "vendor/papaia-kit/0.1.5/papaia_kit-0.1.5-py3-none-any.whl"
-sha256 = "d2ea306ce4b4a8165b9dd766e0651adfe3b4ae53828978793713f1fa9ca75ec5"
+name = "papaia_kit-0.2.2-py3-none-any.whl"
+path = "vendor/papaia-kit/0.2.2/papaia_kit-0.2.2-py3-none-any.whl"
+sha256 = "9e54c6db9d7ec8bcef5e9e5548e9cde81ecda40065677dae351875bcb575a250"

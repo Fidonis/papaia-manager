@@ -7,7 +7,9 @@
 - `POST /_kit/sidebar`, `/_kit/appearance`, `/_kit/language`: the footer and account menu
   forms. Each needs the session and its CSRF token (`pk_csrf`), accepts exactly its one field
   with one of its values, writes one audit entry and answers `303` back to the page it came
-  from, if that page is on this origin, else to the overview.
+  from, if that page is on this origin, else to the overview. With Mein Bereich on the
+  platform, appearance and language are stored in the preference service `prefs`
+  (`app.core.prefs`); without it, in the session and the manager's language file.
 - `GET /help` and `GET /me`: the account menu's "Help", and "My area" for a manager that runs
   without a platform catalog (with one, the entry leads to Mein Bereich).
 """
@@ -15,8 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 import papaia_kit
@@ -31,8 +34,8 @@ from app.auth.deps import AnyUser
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin
 from app.config import Settings, get_settings
-from app.core import user_prefs
-from app.core.audit import write_audit_entry
+from app.core import prefs, user_prefs
+from app.core.audit import write_audit_entry, write_audit_row
 from app.core.module_catalog import platform_catalog
 from app.i18n import gettext as _
 from app.i18n import runtime as i18n_runtime
@@ -188,12 +191,44 @@ async def sidebar(
     return response
 
 
+async def to_prefs(
+    request: Request, settings: Settings, user: OIDCClaims, kind: prefs.Kind, value: str
+) -> Response:
+    """Store a choice in the platform's preference service and set the shared `pk_ui`."""
+
+    def audit(row: Mapping[str, Any]) -> None:
+        write_audit_row(
+            settings.papaia_config_dir,
+            user=user.preferred_username,
+            action=f"kit.{kind}",
+            target=f"/_kit/{kind}",
+            row=row,
+        )
+
+    try:
+        cookie = await prefs.write(
+            request, settings, sub=user.sub, kind=kind, value=value, audit=audit
+        )
+    except prefs.WriteFailed as exc:
+        raise HTTPException(
+            status_code=exc.status,
+            detail=_("The setting could not be saved. Try again in a moment."),
+        ) from exc
+    # The manager's own copies are no source any more (app.core.prefs).
+    request.session.pop(shell.APPEARANCE_KEY, None)
+    response = RedirectResponse(_back(request), status_code=status.HTTP_303_SEE_OTHER)
+    response.headers.append("set-cookie", cookie)
+    return response
+
+
 @router.post("/_kit/appearance", include_in_schema=False)
 async def appearance(
     request: Request, user: AnyUser, settings: Annotated[Settings, Depends(get_settings)]
 ) -> Response:
     value = await _choice(request, "appearance", shell.APPEARANCES)
-    # Kept in the signed session until the preference service holds it for every module.
+    if prefs.active(settings):
+        return await to_prefs(request, settings, user, "appearance", value)
+    # Without Mein Bereich there is no preference service: the signed session keeps it.
     request.session[shell.APPEARANCE_KEY] = value
     _audit(settings, user, "appearance")
     return RedirectResponse(_back(request), status_code=status.HTTP_303_SEE_OTHER)
@@ -204,6 +239,8 @@ async def language(
     request: Request, user: AnyUser, settings: Annotated[Settings, Depends(get_settings)]
 ) -> Response:
     value = await _choice(request, "language", shell.LANGUAGE_SETTINGS)
+    if prefs.active(settings):
+        return await to_prefs(request, settings, user, "language", value)
     try:
         user_prefs.set_locale(
             settings.papaia_config_dir, user.sub, None if value == "browser" else value

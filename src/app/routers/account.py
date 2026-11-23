@@ -6,14 +6,16 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
+from app import shell
 from app.auth.csrf import verify_csrf
 from app.auth.deps import AnyUser
 from app.config import Settings, get_settings
-from app.core import user_prefs
+from app.core import prefs, user_prefs
 from app.i18n import get_catalogs
 from app.i18n import gettext as _
+from app.routers import kit
 from app.routers.auth import _safe_next
 
 logger = logging.getLogger(__name__)
@@ -46,7 +48,7 @@ async def set_language(
     locale: Annotated[str, Form()] = AUTOMATIC,
     csrf_token: Annotated[str | None, Form()] = None,
     next_: Annotated[str, Form(alias="next")] = "",
-) -> RedirectResponse:
+) -> Response:
     """Remember the language the signed-in account wants, then go back to where it was.
 
     Open to every role that may use the manager: it changes nothing but the account's own
@@ -63,6 +65,14 @@ async def set_language(
                 status_code=422,
                 detail=_("This language is not available."),
             )
+
+    if prefs.active(settings):
+        # With Mein Bereich the platform's preference service holds the language of every
+        # module; the same write as the frame's language menu (`/_kit/language`).
+        setting = shell.frame_language(chosen) if chosen is not None else "browser"
+        response = await kit.to_prefs(request, settings, user, "language", setting)
+        response.headers["location"] = _return_path(request, next_)
+        return response
 
     try:
         user_prefs.set_locale(settings.papaia_config_dir, user.sub, chosen)

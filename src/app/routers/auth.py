@@ -17,6 +17,7 @@ from app.auth.deps import STEP_UP_AT, STEP_UP_PENDING, STEP_UP_SKEW_SECONDS, Adm
 from app.auth.oidc import OIDCClaims, OIDCError, _pkce_pair, get_oidc_client
 from app.auth.roles import has_manager_access
 from app.config import Settings, get_settings
+from app.core import prefs
 from app.i18n import gettext as _
 
 logger = logging.getLogger(__name__)
@@ -194,6 +195,8 @@ async def callback(
         # itself ends -- see app.auth.deps._refresh_session.
         request.session["oidc"] = {"refresh_token": token_set.refresh_token}
     logger.info("user %s authenticated successfully", claims.preferred_username)
+    # With Mein Bereich, language and appearance come from the platform's preference service.
+    await prefs.load_on_sign_in(request, settings, token_set.access_token)
 
     if stepped_up_to is not None:
         return RedirectResponse(stepped_up_to, status_code=status.HTTP_302_FOUND)

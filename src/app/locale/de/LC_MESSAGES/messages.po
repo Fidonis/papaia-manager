@@ -3165,6 +3165,9 @@ msgstr "Diese Sprache ist nicht verfügbar."
 msgid "The language could not be saved. Check the manager's log."
 msgstr "Die Sprache konnte nicht gespeichert werden. Prüfen Sie das Log des Managers."
 
+msgid "The setting could not be saved. Try again in a moment."
+msgstr "Die Einstellung konnte nicht gespeichert werden. Versuchen Sie es gleich noch einmal."
+
 msgid "job queue not initialized"
 msgstr "Job-Warteschlange nicht initialisiert"
 

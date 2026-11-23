@@ -11,10 +11,13 @@ listed in the account menu under its own name and used for `Accept-Language` mat
 finds `de`). No code, list or setting names the languages; the source language `en` needs no
 catalogue. Catalogues are read with Babel and compiled in memory, without a `.mo` build step.
 
-Which language a request gets (`middleware.py`, `negotiate.py`): the account's stored choice,
-else the browser's `Accept-Language`, else `MANAGER_DEFAULT_LOCALE`, else `en`. The choice is
-stored by OIDC `sub` in `$PAPAIA_CONFIG_DIR/manager/preferences.yaml` (`core/user_prefs.py`), so
-it follows the account to every browser and travels with a backup. The language is a
+Which language a request gets (`middleware.py`, `negotiate.py`): on a platform with Mein Bereich,
+the setting of the platform's preference service (`app.core.prefs`; `browser` follows
+`Accept-Language` with the platform's mapping, German by default). Otherwise the account's stored
+choice, else the browser's `Accept-Language`, else `MANAGER_DEFAULT_LOCALE`, else `en`. The
+choice is stored by OIDC `sub` in `$PAPAIA_CONFIG_DIR/manager/preferences.yaml`
+(`core/user_prefs.py`), so it follows the account to every browser and travels with a backup.
+The language is a
 `ContextVar` set by `LocaleMiddleware`, which is why it is also right in macros imported without
 context, in exception handlers, in HTMX partials and in `/api/*` error messages.
 
