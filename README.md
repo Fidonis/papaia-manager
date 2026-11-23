@@ -70,17 +70,22 @@ default 60 seconds); it applies to every administrator.
 **Modules and overlay.** Settings has three tabs: **Manager** (the cards above),
 **Modules** and **Overlay**. **Modules** is the one place that switches the
 optional parts of the stack on and off: LocalAI, web search, the RAG system, voice
-(local speech-to-text and text-to-speech, papAIa 1.9.0 and newer) and the mail relay.
+(local speech-to-text and text-to-speech, papAIa 1.9.0 and newer), the mail relay and
+the AI map (the core's knowledge map, papAIa 1.9.0 and newer; switching it on also
+generates its secrets on an installation set up before the module existed, and shows
+the AI map page).
 Switching a module on stores the choice with the core's own `setup`
 (`--enable-local-ai`, `--enable-web-search`, `--enable-rag`, `--enable-voice`,
-`--enable-smtp`, and for LocalAI and voice the accelerator variant, which is chosen on
+`--enable-knowledge-map`, `--enable-smtp`, and for LocalAI and voice the accelerator variant, which is chosen on
 the page because GPU detection cannot see the host from inside the container; voice
 offers CPU, NVIDIA with a driver for CUDA 12.8 or newer, and AMD ROCm) and starts the
-module's profile; the RAG system also recreates LibreChat, whose configuration lists
-the RAG tools, and voice recreates LiteLLM and LibreChat, which route speech to its
-engines and offer it in the speech panel. Voice downloads several GB of models on its
-first start, which takes longer than a switch waits: the switch finishes while they
-load, and the Services page shows when voice is ready. The
+module's profile. Switching on or off also recreates the services that read the change:
+LiteLLM for LocalAI, whose models it lists (papAIa 1.9.0 and newer), LibreChat for the RAG
+system and the AI map, whose tools its configuration lists, and both for voice, as they route
+speech to its engines and offer it in the speech panel. The chat is unavailable for a short
+while during that; a service that is switched off is left alone. Voice downloads several
+GB of models on its first start, which takes longer than a switch waits: the switch
+finishes while they load, and the Services page shows when voice is ready. The
 RAG pages and the Mail page hold those modules' settings and no longer switch
 anything. Switching a module on asks the questions `papaia-ctl setup` asks, inline under
 its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings
@@ -99,7 +104,11 @@ Deleting asks you to type the module's name, and the dialog lists the volumes th
 core reports. Settings alone are not offered: the RAG system's stored credentials are
 encrypted with a secret that belongs to its data, and a module without its settings
 but with its data would be of no use to anyone. The RAG documents folder is never
-deleted. Deleting needs a core with the module operations (papAIa 1.6.0); an older
+deleted. The AI map's own files (entries, overrides, gold set and governance records,
+edited on the AI map page) are neither data nor settings: no choice above deletes them.
+The dialog lists the ones that exist under **Your own files** with a separate,
+unticked **Also delete these files**, which also removes their edit history and the map
+built from them (papAIa 1.9.0 and newer). Deleting needs a core with the module operations (papAIa 1.6.0); an older
 core still switches modules off and keeps everything.
 
 **Native LocalAI on a Mac.** On an Apple Silicon Mac the core can run LocalAI as a
@@ -548,7 +557,7 @@ page and not an error. A reading is kept for a minute and shared between everyon
 page open.
 
 **AI map.** An admin-only page at `/knowledge-map` with its own sidebar entry, shown while the
-core runs its `knowledge-map` profile (without it, the page says how to switch it on). It shows which data the AI reaches, for whom, over which access path
+core runs its `knowledge-map` profile (without it, the page links to **Settings > Modules**, where the AI map is switched on). It shows which data the AI reaches, for whom, over which access path
 and with which model. The **Map** tab draws the rendered map as a layered graph (topics,
 sources, access paths, agents) and can show it as a chosen role; the **Entries** tab lists every
 entry with all its access paths and their roles; **Findings** lists what the core's render
@@ -612,6 +621,26 @@ add-on's `.env`. The pinned tags are read from that file, so the pages need no
 Docker. The list is also `components` in the JSON of an add-on. A catalog whose
 manifests have no `components` shows nothing new.
 
+**Requirements.** An add-on can require other add-ons (`requires.addons` in its
+manifest, by name or with a version range; papAIa 1.9.0 and newer). The gallery card
+and the add-on page show each requirement as a badge that links to the required
+add-on and says whether it is active, inactive, missing, too old or could not be
+checked. While one is not met, *Install* and *Reactivate* are disabled with the reason;
+in the core's warn mode the button stays usable, because `papaia-ctl` then installs
+anyway. The other direction is shown too: the page of a required add-on lists the
+active add-ons that require it under **Required by**, and while there are any, *Remove*
+and *Uninstall* are disabled and refused, because `papaia-ctl` would refuse them as
+well. `papaia-ctl` stays the gate: what the manager cannot read never disables a button.
+
+**Maintenance actions.** An add-on can declare maintenance actions in its manifest
+(`actions`; papAIa 1.9.0 and newer), for example a re-index or a reset. While the add-on
+is installed and active, its page lists them as buttons under **Maintenance actions**
+with their descriptions, and a click runs `papaia-ctl addon run <add-on> <action>` as a
+job. A destructive action is outlined in red and asks for confirmation first; when the
+job ends, the page reports the outcome with a link to its log. The request names the
+action only, never a command, and an action the manifest does not declare is refused.
+A distributed installation offers no actions, since the core does not run them there.
+
 **Jobs.** Installs, upgrades, and lifecycle verbs that shell out to
 `papaia-ctl` can take minutes (image pulls, container starts). These run as
 queued `Job` objects processed one at a time by a single worker; the UI
@@ -624,7 +653,9 @@ inactive; its volumes and configuration stay. `papaia-ctl addon remove` alone
 only marks it inactive and leaves the containers running, so the job stops them
 first (`addon stop --clean-up`) and leaves the add-on active if that fails. It is
 refused (409) while the add-on's `docker-compose.yml` is missing: `papaia-ctl`
-then aims its Compose call at the core project instead of the add-on's.
+then aims its Compose call at the core project instead of the add-on's. It is
+also refused (409), like *Uninstall*, while an active add-on requires it, and the
+job checks that again before it stops anything.
 
 **Backup / Restore.** A separate, admin-only section for stack-level operations,
 served at `/backup` — it was called "Maintenance" up to 0.2.0 and `/maintenance`
@@ -696,6 +727,9 @@ at the end of its start (the NPM proxy hosts or the Keycloak role sync), because
 papaia-ctl only warns about those; the result panel then lists each such step with
 the line papaia-ctl printed and the command that runs it again on the host. The
 runner logs carry stderr as well as stdout, so these warnings reach the panel.
+The panel reads the end of the runner's log; when the image pull fills that part,
+the phases before the first one shown count as done ("earlier than the part of the
+log shown"), and a backup skipped with `--no-backup` still reads as skipped.
 
 Upgrades leave the previous versions of the stack's Docker images behind. The
 upgrade dialog offers to remove them once the upgrade has succeeded (selected by
@@ -831,7 +865,8 @@ PUT    /api/v1/rag/ingest/catalog/raw      # {text, revision}
 GET    /api/v1/rag/ingest/catalog/defaults # the defaults every job inherits
 PUT    /api/v1/rag/ingest/catalog/defaults # {defaults}
 
-GET  /api/v1/addons                        # each add-on with its status and its bundled `components`
+GET  /api/v1/addons                        # each add-on with its status, its bundled `components`, its `requirements`
+                                           #   (`requirements_met`, `requirements_enforced`) and `required_by`
 GET  /api/v1/addons/{name}
 GET  /api/v1/addons/{name}/env-form
 POST /api/v1/addons/{name}/install         # → 202
@@ -839,7 +874,8 @@ POST /api/v1/addons/{name}/start           # → 202
 POST /api/v1/addons/{name}/stop            # {clean_up?} → 202
 POST /api/v1/addons/{name}/restart         # {clean_up?} stop then start → 202
 POST /api/v1/addons/{name}/remove          # stop and remove the containers, then deactivate → 202; 409 without its docker-compose.yml
-POST /api/v1/addons/{name}/uninstall       # → 202
+                                           #   or while an active add-on requires it
+POST /api/v1/addons/{name}/uninstall       # → 202; 409 while an active add-on requires it
 POST /api/v1/addons/{name}/actions/{action} # run an action the manifest declares → 202; 404 if undeclared or the add-on is not active, 409 in a distributed installation
 GET  /api/v1/addons/upgrades                # {supported, upgrades: [{name, installed, available, catalog}]}
 POST /api/v1/addons/{name}/upgrade-plan     # {revision?} stage the catalog's version, ask papaia-ctl what upgrading would do → {revision, plan, form}
@@ -960,11 +996,13 @@ POST   /api/v1/mail/probe                    # {host?, port?, security?, user?, 
 POST   /api/v1/mail/test-message             # {to} hand one message to the relay
 
 GET    /api/v1/config/modules                # the optional modules, their state, the LocalAI and voice variants (variants, voice_variants), the revision
-GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | voice | mail: the volumes and settings a switch-off could delete,
-                                             #   and the open setup questions (public URL) a switch-on asks
+GET    /api/v1/config/modules/{name}/info    # localai | web-search | rag | voice | mail | knowledge-map: the volumes and settings a switch-off
+                                             #   could delete, the knowledge map's operator files and whether each exists, and the open setup questions (public URL)
+                                             #   a switch-on asks
 POST   /api/v1/config/modules/{name}/enable  # {revision, variant?, public_url?, mail?} 202 with a job. variant: localai | voice; public_url: rag | localai; mail: the mail
                                              #   server when none is stored. The RAG system needs no clashing add-on
-POST   /api/v1/config/modules/{name}/disable # {revision, scope?: keep|data|all, confirm?}; 202 with a job. A deletion needs the module name in confirm, and a single host
+POST   /api/v1/config/modules/{name}/disable # {revision, scope?: keep|data|all, operator_files?, confirm?}; 202 with a job. A deletion needs the module name in
+                                             #   confirm, and a single host. operator_files: knowledge-map only, also deletes the files written on the AI map page
 GET    /api/v1/config/overlay                # the four editable overlay files and the other files under overlay/
 GET    /api/v1/config/overlay/{key}          # librechat | litellm | chatterbox | searxng: content, revision, versions
 POST   /api/v1/config/overlay/{key}/check    # {content} syntax check, nothing is written
@@ -1002,6 +1040,8 @@ papaia-manager/
 │       ├── core/           # ctl (whitelisted papaia-ctl calls), papaia_lib (core handshake),
 │       │                   # catalogs, snapshots, status, env-forms, jobs, audit, tiles,
 │       │                   # components (the software an add-on bundles),
+│       │                   # requirements (the add-ons an add-on requires, and which require it),
+│       │                   # actions (the maintenance actions an add-on declares),
 │       │                   # addon_upgrades + semver (reviewing, applying and rolling back an add-on upgrade),
 │       │                   # user_prefs (what each account chose: its language),
 │       │                   # keycloak, keycloak_users + users_service + roles_service (the Users page),

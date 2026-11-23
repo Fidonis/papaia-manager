@@ -12,6 +12,120 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [1.7.0] - 2026-11-20
+
+### Added
+- Add-on requirements. An add-on whose manifest requires other add-ons (`requires.addons`, a
+  name or a name with a SemVer range) shows them as badges on its gallery card and its page,
+  each linking to the required add-on and marked active, inactive, missing, too old or
+  unchecked. While one is not met, *Install* and *Reactivate* are disabled with "Install the
+  required add-ons first". The verdict follows `papaia-ctl`, which stays the gate: what the
+  manager cannot read is unchecked and never disables the button, and in warn mode
+  (`PAPAIA_COMPAT_MODE` or `mode:` in `deployment.yaml`) the button stays usable. The add-on
+  JSON carries `requirements`, `requirements_met` and `requirements_enforced`
+  ([#183](https://github.com/Fidonis/papaia-manager/pull/183); closes
+  [#181](https://github.com/Fidonis/papaia-manager/issues/181)).
+- The other direction: an add-on's page lists the active add-ons that require it under
+  "Required by", and while one does, *Remove* and *Uninstall* are disabled in its menu and
+  `POST /api/v1/addons/{name}/remove` and `/uninstall` answer 409, in warn mode as well, as
+  `papaia-ctl` refuses them. The remove and uninstall jobs check again before anything is
+  taken down, so a refused remove no longer leaves the required add-on active but stopped. The
+  add-on JSON carries `required_by`
+  ([#202](https://github.com/Fidonis/papaia-manager/pull/202); closes
+  [#189](https://github.com/Fidonis/papaia-manager/issues/189)).
+- Add-on maintenance actions. The actions an add-on's manifest declares (`actions`: a name,
+  a description, optionally `destructive`) are buttons in a "Maintenance actions" section of its
+  page while it is installed and active, and run as a job through `papaia-ctl addon run`. A
+  destructive action is outlined in red and asks for confirmation; the page toasts the outcome
+  with a link to the job log. API: `POST /api/v1/addons/{name}/actions/{action}`, which takes
+  a declared name and never a command or an argument (404 for an action the manifest does not
+  declare or an add-on that is not active, 409 in a distributed installation, where the core
+  does not run actions). Audited as `addon_action`
+  ([#184](https://github.com/Fidonis/papaia-manager/pull/184); closes
+  [#182](https://github.com/Fidonis/papaia-manager/issues/182)).
+- Voice in Settings > Modules: the core's local speech-to-text and text-to-speech
+  (profile `voice`) is switched on and off there, with the accelerator variant the core's
+  `setup --voice-variant` takes (CPU, NVIDIA, AMD ROCm). A switch recreates LiteLLM and
+  LibreChat, and the switch-off offers the usual three scopes. The first start downloads several
+  GB of models: a voice still starting when the switch's wait ends is reported as loading, not
+  as a failure. The speech synthesis' configuration (`ai/voice/chatterbox.yaml`) is the fourth
+  file of the Overlay tab
+  ([#209](https://github.com/Fidonis/papaia-manager/pull/209); closes
+  [#210](https://github.com/Fidonis/papaia-manager/issues/210)).
+- AI map page at `/knowledge-map` (German "KI-Landkarte") and its API at
+  `/api/v1/knowledge-map`, for the core's knowledge map: the rendered map as a layered graph
+  that can be viewed as a role, the entries with their access paths, the render's findings, a
+  routing test, usage and gold-set runs, refinement suggestions and an editor for the operator
+  files under `overlay/knowledge-map/`. An entry editor shows an entry as a form instead of YAML,
+  with a quality checklist and a probe of where example questions would land before it is
+  saved; entries an add-on declares are adjusted field by field and can be reset. The
+  **Governance** tab (`/api/v1/knowledge-map/governance`) documents owner, classification,
+  personal data, data subjects and record of processing per source and the tier of each model,
+  shows which agents reach what and lists the findings with what to change, each acceptable
+  until a date; the facts export as `facts.json` and `facts.csv`. Every change is a queued job
+  that writes the file, keeps the previous version in `manager/knowledge-map-history/` and lets
+  the core render again; a file the render refuses is put back. Admin-only. The sidebar entry
+  is shown while the core runs its `knowledge-map` profile
+  ([#211](https://github.com/Fidonis/papaia-manager/pull/211); closes
+  [#215](https://github.com/Fidonis/papaia-manager/issues/215)).
+- New optional setting `KNOWLEDGE_MAP_URL` (default `http://knowledge-map-mcp:8200`), where the
+  manager reaches the map server's admin API. Its bearer is not a setting: `KM_ADMIN_TOKEN` is
+  read from `ai/knowledge-map/.env` when a request needs it
+  ([#211](https://github.com/Fidonis/papaia-manager/pull/211)).
+- New notification event `knowledge_map_finding` ("AI map finding"): a new or changed high
+  finding of the AI map that no exception covers, while the `knowledge-map` profile runs
+  ([#211](https://github.com/Fidonis/papaia-manager/pull/211)).
+- The AI map in Settings > Modules: the knowledge map is switched on and off there like the
+  other modules (switching it on generates its secrets on an installation set up before the
+  module existed, and recreates LibreChat). The files written on the AI map page are neither
+  data nor settings: no scope deletes them, and the switch-off dialog lists the ones that exist
+  under "Your own files" with a separate, unticked choice that deletes them, their edit history
+  and the map built from them (`operator_files` in the disable request; it needs the module's
+  name typed back and a single host). While the module is off, the AI map page links to the
+  Modules tab
+  ([#218](https://github.com/Fidonis/papaia-manager/pull/218); closes
+  [#217](https://github.com/Fidonis/papaia-manager/issues/217)).
+
+### Fixed
+- The core upgrade panel no longer shows every phase as skipped next to "upgrade complete" when
+  the image pull fills the log window it reads: the phases before the first one in the window
+  count as done ("earlier than the part of the log shown"). A backup skipped with
+  `--no-backup` is read back from the runner's command line and still shows as skipped
+  ([#205](https://github.com/Fidonis/papaia-manager/pull/205),
+  [#207](https://github.com/Fidonis/papaia-manager/pull/207),
+  [#212](https://github.com/Fidonis/papaia-manager/pull/212); closes
+  [#179](https://github.com/Fidonis/papaia-manager/issues/179) and
+  [#206](https://github.com/Fidonis/papaia-manager/issues/206)).
+- On a distributed installation, switching the mail relay on no longer fails when the node that
+  only runs the proxy's hooks does not answer: that node is skipped and named with the command
+  that catches it up, as in the module and overlay jobs, while a failure on the relay's own node
+  or on Keycloak's still ends the step. A failed module start or switch-off names the skipped
+  nodes in its error as well. A node's health report stays readable while it is measured again,
+  and the relay's reading carries the node's time
+  ([#200](https://github.com/Fidonis/papaia-manager/pull/200),
+  [#213](https://github.com/Fidonis/papaia-manager/pull/213),
+  [#216](https://github.com/Fidonis/papaia-manager/pull/216); closes
+  [#198](https://github.com/Fidonis/papaia-manager/issues/198)).
+- The Overlay tab names a new file below a directory target (`ai/localai/models`,
+  `infra/keycloak/themes/papaia`) as ignored by the render, because the core ships no file of
+  that name to merge it into; a file the core ships stays "used by the render". The reason is a
+  line under the path, so it wraps on a phone
+  ([#201](https://github.com/Fidonis/papaia-manager/pull/201),
+  [#214](https://github.com/Fidonis/papaia-manager/pull/214); closes
+  [#199](https://github.com/Fidonis/papaia-manager/issues/199)).
+
+### Notes
+- **Requirements:** Add-on requirements and maintenance actions belong to add-on contract
+  generation 4, which papAIa core 1.9.0 serves; a core before it refuses such an add-on in its
+  compatibility gate, and an add-on without the two fields looks and behaves as before. Voice
+  and the AI map need papAIa core 1.9.0 as well: on an older core their rows in Settings >
+  Modules say the core is too old to switch them, and without the `knowledge-map` profile the
+  AI map has no sidebar entry. Everything else starts against the same cores as 1.6.0.
+- **Known issue:** with papAIa core 1.9.0 the Overlay tab lists an operator's own LocalAI model
+  file (a new top-level `*.yaml` below `overlay/ai/localai/models`) as ignored, although the
+  core renders it since 1.9.0
+  ([#219](https://github.com/Fidonis/papaia-manager/issues/219)).
+
 ## [1.6.0] - 2026-11-07
 
 ### Added

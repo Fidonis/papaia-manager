@@ -72,7 +72,9 @@ def distributed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[str, s
     config = tmp_path / "config"
     config.mkdir()
     (config / "deployment.yaml").write_text(yaml.safe_dump(TOPOLOGY), encoding="utf-8")
-    (config / ".env").write_text("COMPOSE_PROFILES=nginx,keycloak,librechat\n", encoding="utf-8")
+    (config / ".env").write_text(
+        "COMPOSE_PROFILES=nginx,keycloak,librechat,litellm\n", encoding="utf-8"
+    )
     monkeypatch.setattr(nodes, "_placement", _fake_placement)
     return str(config), str(tmp_path / "workspace")
 
@@ -594,6 +596,78 @@ def test_switching_a_module_on_ends_with_the_node_it_missed(
     with pytest.raises(svc.HookNodesFailedError, match="--node=edge"):
         asyncio.run(callback(_context(tmp_path)))
     assert ("start", ["--profiles=localai", "--node=internal"]) in recorder.calls
+
+
+def _switch_localai(dirs: tuple[str, str], tmp_path: Path, *, enable: bool) -> None:
+    config, workspace = dirs
+    if enable:
+        callback = svc.enable_callback(
+            module="localai",
+            variant="cpu",
+            user="admin",
+            workspace_dir=workspace,
+            config_dir=config,
+        )
+    else:
+        callback = svc.disable_callback(
+            module="localai",
+            scope=modules.SCOPE_KEEP,
+            user="admin",
+            workspace_dir=workspace,
+            config_dir=config,
+        )
+    asyncio.run(callback(_context(tmp_path)))
+
+
+@pytest.fixture
+def litellm_elsewhere(
+    distributed: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+) -> tuple[str, str]:
+    """LocalAI on gpu, LiteLLM on a node of its own, the proxy on edge, Keycloak on internal."""
+    monkeypatch.setitem(TOPOLOGY["topology"]["placement"], "litellm", "llm")
+    monkeypatch.setattr(svc, "wait_healthy", _healthy)
+    return distributed
+
+
+@pytest.mark.parametrize("enable", [True, False], ids=["on", "off"])
+def test_localai_recreates_litellm_on_litellms_node(
+    litellm_elsewhere: tuple[str, str], recorder: _Recorder, tmp_path: Path, enable: bool
+) -> None:
+    _switch_localai(litellm_elsewhere, tmp_path, enable=enable)
+    # Removed on its own node only. The start hands that node its new bundle, then runs the hooks.
+    assert recorder.calls[-4:] == [
+        ("stop", ["--clean-up", "--profiles=litellm", "--node=llm"]),
+        ("start", ["--profiles=litellm", "--node=llm"]),
+        ("start", ["--profiles=litellm", "--node=edge"]),
+        ("start", ["--profiles=litellm", "--node=internal"]),
+    ]
+
+
+@pytest.mark.parametrize("enable", [True, False], ids=["on", "off"])
+def test_localai_names_the_hook_node_the_litellm_recreate_skipped(
+    litellm_elsewhere: tuple[str, str], recorder: _Recorder, tmp_path: Path, enable: bool
+) -> None:
+    recorder.fail_on = "--node=edge"
+    with pytest.raises(svc.HookNodesFailedError) as raised:
+        _switch_localai(litellm_elsewhere, tmp_path, enable=enable)
+    assert "papaia-ctl start --profiles=litellm --node=edge" in str(raised.value)
+    assert ("start", ["--profiles=litellm", "--node=internal"]) in recorder.calls
+    assert _audit(litellm_elsewhere[0])[-1]["result"] == "partial"
+
+
+@pytest.mark.parametrize("verb", ["stop", "start"])
+@pytest.mark.parametrize("enable", [True, False], ids=["on", "off"])
+def test_litellms_own_node_is_never_skipped(
+    litellm_elsewhere: tuple[str, str],
+    recorder: _Recorder,
+    tmp_path: Path,
+    enable: bool,
+    verb: str,
+) -> None:
+    recorder.fail_if = lambda ran, flags: ran == verb and flags[-1] == "--node=llm"
+    with pytest.raises(svc.StepFailedError, match=f"papaia-ctl {verb}"):
+        _switch_localai(litellm_elsewhere, tmp_path, enable=enable)
+    assert recorder.calls[-1][1][-1] == "--node=llm"
 
 
 # ---------------------------------------------------------------------------

@@ -66,6 +66,7 @@ for _key, _value in {
     os.environ.setdefault(_key, _value)
 
 from app.core import ctl  # noqa: E402
+from app.core import knowledge_map as km  # noqa: E402
 from app.core.config import modules, overlay, preview, service  # noqa: E402
 from app.core.ctl import (  # noqa: E402
     ModuleSetup,
@@ -151,12 +152,14 @@ def test_the_flags_the_manager_passes_are_options_the_core_knows() -> None:
         "--enable-web-search",
         "--enable-rag",
         "--enable-voice",
+        "--enable-knowledge-map",
         "--enable-smtp",
         "--localai-variant",
         "--voice-variant",
         "--module",
         "--data",
         "--config",
+        "--operator-files",
     ):
         assert f'"{flag}"' in text, flag
     specs = (
@@ -164,6 +167,7 @@ def test_the_flags_the_manager_passes_are_options_the_core_knows() -> None:
         ModuleSetup("web-search", False),
         ModuleSetup("rag", True),
         ModuleSetup("voice", True, "nvidia"),
+        ModuleSetup("knowledge-map", True),
     )
     for spec in specs:
         for item in ctl.module_setup_flags(spec):
@@ -181,6 +185,27 @@ def test_the_modules_the_manager_can_delete_are_the_modules_the_core_knows(
     assert set(core["modules"].MODULES) == set(ctl.PURGE_MODULES)
     for name, definition in modules.SWITCHABLE.items():
         assert core["modules"].MODULES[name].profile == definition.profile, name
+
+
+def test_every_module_whose_data_can_be_deleted_may_be_stopped_with_its_volumes() -> None:
+    """A switch-off that deletes the data starts with `stop --clean-up --volumes`, which the
+    core limits to a list of profiles of its own; a module missing there fails at once."""
+    text = (Path(_SRC) / "tools" / "lib" / "sh" / "lifecycle.sh").read_text(encoding="utf-8")
+    match = re.search(r'^_VOLUME_DELETE_PROFILES="([^"]*)"', text, re.MULTILINE)
+    assert match is not None
+    deletable = set(match.group(1).split())
+    for name in ctl.PURGE_MODULES:
+        assert modules.SWITCHABLE[name].profile in deletable, name
+
+
+def test_the_operator_files_the_dialog_names_are_the_ones_the_core_deletes(
+    core: dict[str, ModuleType],
+) -> None:
+    with_files = {n for n, m in core["modules"].MODULES.items() if m.operator_files}
+    assert with_files == set(ctl.OPERATOR_FILE_MODULES)
+    assert set(modules.operator_file_labels()) == set(
+        core["modules"].MODULES["knowledge-map"].operator_files
+    )
 
 
 def test_the_addons_that_block_the_rag_system_are_the_ones_the_core_names(
@@ -346,6 +371,40 @@ async def test_switching_localai_off_removes_the_profile_and_keeps_the_variant(
     assert code == 0, err
     assert deployment.profiles() == before
     assert deployment.env(".env")["LOCALAI_IMAGE_VARIANT"] == "nvidia-cuda-12"
+
+
+async def test_switching_localai_changes_what_litellm_reads(deployment: _Deployment) -> None:
+    """Why the LocalAI switch recreates LiteLLM: the core renders LocalAI's models into LiteLLM's
+    `model_list` while the profile is on (papAIa 1.9.0 and newer)."""
+    example = deployment.repo / "src" / "ai" / "litellm" / ".env.example"
+    if "LOCALAI_API_KEY" not in example.read_text(encoding="utf-8"):
+        pytest.skip("this core does not generate LocalAI's entries of LiteLLM's model_list")
+    shipped = sorted((deployment.repo / "src" / "ai" / "localai" / "models").glob("*.yaml"))[0]
+    model = yaml.safe_load(shipped.read_text(encoding="utf-8"))
+    downloads = deployment.config / "overlay" / "ai" / "localai" / "models.txt"
+    downloads.parent.mkdir(parents=True, exist_ok=True)
+    downloads.write_text(f"https://models.test/{model['parameters']['model']}\n", encoding="utf-8")
+
+    async def listed() -> set[str]:
+        result = await preview.run(
+            workspace_dir=str(deployment.workspace),
+            config_dir=str(deployment.config),
+            target_path="ai/litellm/config.yaml",
+            draft="",
+        )
+        assert result.ok, result.error
+        rendered = yaml.safe_load(result.current) or {}
+        return {entry["model_name"] for entry in rendered.get("model_list") or []}
+
+    assert model["name"] not in await listed()
+    code, _, err = await _apply(deployment, ModuleSetup("localai", True, "cpu"))
+    assert code == 0, err
+    assert model["name"] in await listed()
+    assert deployment.env("ai/litellm/.env")["LOCALAI_API_KEY"]
+    assert modules.SWITCHABLE["localai"].recreate == ("litellm",)
+    code, _, err = await _apply(deployment, ModuleSetup("localai", False))
+    assert code == 0, err
+    assert model["name"] not in await listed()
 
 
 async def test_web_search_is_one_profile_and_touches_no_other(deployment: _Deployment) -> None:
@@ -634,6 +693,62 @@ async def test_every_module_answers_the_info_the_dialog_reads(deployment: _Deplo
             document
         )
         assert {"dirs", "root_keys", "files", "regenerates_secrets"} <= set(document["settings"])
+
+
+# -- the knowledge map ---------------------------------------------------------------------------
+
+
+async def test_switching_the_map_on_stores_the_profile_and_generates_its_secrets(
+    deployment: _Deployment,
+) -> None:
+    assert "knowledge-map" not in deployment.profiles()
+    code, _, err = await _apply(deployment, ModuleSetup("knowledge-map", True))
+    assert code == 0, err
+    assert "knowledge-map" in deployment.profiles()
+    secrets = deployment.env("ai/knowledge-map/.env")
+    assert secrets["KM_ADMIN_TOKEN"] and not secrets["KM_ADMIN_TOKEN"].startswith("GENERATE_")
+    # What the AI map page reads to reach the map server's admin API.
+    assert km.active(str(deployment.config)) is True
+    assert km.admin_token(str(deployment.config)) == secrets["KM_ADMIN_TOKEN"]
+
+
+async def test_the_operator_files_go_only_on_their_own_request(deployment: _Deployment) -> None:
+    await _apply(deployment, ModuleSetup("knowledge-map", True))
+    for path in modules.operator_file_labels():
+        target = deployment.config / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# mine\n", encoding="utf-8")
+    await _apply(deployment, ModuleSetup("knowledge-map", False))
+    info = await modules.module_info(
+        "knowledge-map", workspace_dir=str(deployment.workspace), config_dir=str(deployment.config)
+    )
+    assert {f["path"] for f in info["operator_files"] if f["exists"]} == set(
+        modules.operator_file_labels()
+    )
+
+    code, _, err = await run_module_purge(
+        "knowledge-map",
+        data=False,
+        config=True,
+        workspace_dir=str(deployment.workspace),
+        config_dir=str(deployment.config),
+    )
+    assert code == 0, err
+    for path in modules.operator_file_labels():
+        assert (deployment.config / path).is_file(), path
+
+    code, out, err = await run_module_purge(
+        "knowledge-map",
+        data=False,
+        config=False,
+        operator_files=True,
+        workspace_dir=str(deployment.workspace),
+        config_dir=str(deployment.config),
+    )
+    assert code == 0, err
+    for path in modules.operator_file_labels():
+        assert not (deployment.config / path).exists(), path
+        assert path in out
 
 
 async def test_a_module_that_is_still_on_is_not_purged(deployment: _Deployment) -> None:

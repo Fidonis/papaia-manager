@@ -4,17 +4,21 @@ Every change is a queued job, so it is single-flight with everything else the ma
 the stack, streams a log and leaves an audit entry.
 
 * **Module on:** the core's `setup` stores the choice, then `start --profiles=<profile>`
-  brings the module up. The RAG system also recreates LibreChat (its configuration lists the
-  RAG system's MCP server and is read once, at start), voice recreates LiteLLM and LibreChat
-  (their rendered files carry its routes, its key and the speech panel); the mail relay ends
-  with the sync that puts its mail server into Keycloak's realm. Then the job waits for the
-  group to be healthy. Voice loads its models for longer than that wait (`slow_start`): still
-  starting at the end of it is reported as loading, not as a failure.
+  brings the module up. LocalAI also recreates LiteLLM (its rendered `model_list` and its env
+  file carry LocalAI's models and their key), the RAG system recreates LibreChat (its
+  configuration lists the RAG system's MCP server and is read once, at start), voice recreates
+  LiteLLM and LibreChat (their rendered files carry its routes, its key and the speech panel);
+  the mail relay ends with the sync that puts its mail server into Keycloak's realm. A profile
+  that is not switched on is not recreated. Then the job waits for the group to be healthy.
+  Voice loads its models for longer than that wait (`slow_start`): still starting at the end
+  of it is reported as loading, not as a failure.
 * **Module off:** the module is stopped and its containers removed while its profile is still
   active (with `--volumes` when its data is to go), then `setup` takes the profile out, then
   the core deletes what was asked for (`module-purge`): nothing, the data, or the data and
-  the settings. The RAG system recreates LibreChat again; the mail relay's mail server is
-  taken out of the realm.
+  the settings, and for the knowledge map, on a separate choice, the operator files (this
+  manager then drops its history of them). Before that deletion LocalAI recreates LiteLLM
+  again, voice LiteLLM and LibreChat, the RAG system and the knowledge map LibreChat; the mail
+  relay's mail server is taken out of the realm.
 * **Overlay apply, discard and roll back** share one sequence: check that the file is still
   the one the page showed, copy the old bytes into the history, write (or remove) the file,
   then recreate the containers that read the rendered target (`stop --clean-up` and `start`
@@ -36,6 +40,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from app.core import knowledge_map as km
 from app.core import nodes, services
 from app.core.audit import write_audit_entry
 from app.core.config import history, modules, overlay
@@ -265,9 +270,14 @@ async def _recreate(
     config_dir: str,
     skipped: list[str],
 ) -> None:
-    """Recreate the containers of `profiles`: render replaces the files they read, and a
-    running container keeps the old one (see the overlay jobs)."""
+    """Recreate the containers of those `profiles` that are switched on: render replaces the
+    files they read, and a running container keeps the old one (see the overlay jobs). The
+    others are left alone: `start --profiles` starts whatever it names, switched on or not."""
+    active = modules.active(config_dir)
     for profile in profiles:
+        if profile not in active:
+            ctx.log(f"[info] {profile} is not switched on; not recreated")
+            continue
         flag = f"--profiles={profile}"
         await _verb(
             ctx, "stop", "--clean-up", flag, workspace_dir=workspace_dir, config_dir=config_dir
@@ -432,17 +442,26 @@ def enable_callback(
 
 
 def disable_callback(
-    *, module: str, scope: str, user: str, workspace_dir: str, config_dir: str
+    *,
+    module: str,
+    scope: str,
+    user: str,
+    workspace_dir: str,
+    config_dir: str,
+    operator_files: bool = False,
 ) -> JobCallback:
     """The job that switches a module off: containers removed, then what `scope` says goes.
 
     `keep` leaves the data and the settings, `data` deletes the module's volumes, `all` the
-    volumes and the settings too."""
+    volumes and the settings too. `operator_files` also deletes the files an administrator
+    wrote for the module, whatever the scope, and this manager's history of them."""
     definition = modules.SWITCHABLE[module]
     flag = f"--profiles={definition.profile}"
     delete_data = scope in (modules.SCOPE_DATA, modules.SCOPE_ALL)
     delete_config = scope == modules.SCOPE_ALL
     params: dict[str, Any] = {"module": module, "scope": scope}
+    if operator_files:
+        params["operator_files"] = True
 
     async def _callback(ctx: JobContext) -> None:
         skipped: list[str] = []
@@ -473,17 +492,22 @@ def disable_callback(
             # (voice: LiteLLM, then LibreChat). The purge never follows a skipped node: data is
             # only deleted on a single host (`modules.validate_scope`).
             raise StepFailedError(with_retries(str(exc), skipped)) from exc
-        if delete_data:
+        if delete_data or operator_files:
             await _purge(
                 ctx,
                 module,
-                data=True,
+                data=delete_data,
                 config=delete_config,
+                operator_files=operator_files,
                 user=user,
                 params=params,
                 workspace_dir=workspace_dir,
                 config_dir=config_dir,
             )
+        if operator_files and km.purge_history(config_dir):
+            # After the core deleted the files: a failed purge keeps the history as the copy
+            # to restore from.
+            ctx.log("[info] removed the edit history of the operator files")
         write_audit_entry(
             config_dir,
             user=user,
@@ -543,13 +567,19 @@ async def _purge(
     params: dict[str, Any],
     workspace_dir: str,
     config_dir: str,
+    operator_files: bool = False,
 ) -> None:
     """Delete what the operator asked for, now that the module is off. A failure leaves the
     module off with whatever was not deleted still there, and says so."""
-    what = "data and settings" if config else "data"
+    what = _purge_what(data=data, config=config, operator_files=operator_files)
     ctx.log(f"[ctl] module-purge {module}: deleting its {what}")
     code, out, err = await run_module_purge(
-        module, data=data, config=config, workspace_dir=workspace_dir, config_dir=config_dir
+        module,
+        data=data,
+        config=config,
+        operator_files=operator_files,
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
     )
     for line in (*out.splitlines(), *err.splitlines()):
         if line.strip():
@@ -573,6 +603,18 @@ async def _purge(
                 "value": refusal(code, out, err),
             }
         )
+
+
+def _purge_what(*, data: bool, config: bool, operator_files: bool) -> str:
+    """`data`, `data and settings`, `operator files`, `data, settings and operator files`, …"""
+    parts = [
+        *(["data"] if data else []),
+        *(["settings"] if config else []),
+        *(["operator files"] if operator_files else []),
+    ]
+    if len(parts) < 3:
+        return " and ".join(parts)
+    return f"{', '.join(parts[:-1])} and {parts[-1]}"
 
 
 # ---------------------------------------------------------------------------
