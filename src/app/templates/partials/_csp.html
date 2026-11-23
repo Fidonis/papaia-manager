@@ -9,3 +9,18 @@
 {% macro data_island(id, value) -%}
 <script type="application/json" id="{{ island_id(id) }}">{{ value|tojson }}</script>
 {%- endmacro %}
+
+{#
+  The page policy of a full page (app/csp.py, T-UI-03). `strict` is `strict_page()` of the
+  page's top-level template: a template tests/csp_baseline.json lists as converted carries
+  the marker the browser check reads (scripts/csp-check.sh) and runs on the CSP build of
+  Alpine; every other page runs on the standard build of the same version. Exactly one build
+  per page. base.html and the kit's specimen page (kit_specimen.html) use both macros.
+#}
+{% macro strict_marker(strict) -%}
+{% if strict %}<meta name="papaia-csp" content="strict">{% endif %}
+{%- endmacro %}
+
+{% macro alpine_build(strict) -%}
+<script src="{{ asset_url('alpine-csp.min.js' if strict else 'alpine.min.js') }}" defer></script>
+{%- endmacro %}

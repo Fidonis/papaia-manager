@@ -191,6 +191,8 @@ async function checkPage(context, baseUrl, path) {
       () => document.querySelector('meta[name="papaia-csp"]')?.getAttribute("content") === "strict",
     ),
     violations: await page.evaluate(() => window.__papaiaCsp || []),
+    // The version of the Alpine build that started on the page, null without one.
+    alpine_version: await page.evaluate(() => (window.Alpine ? String(window.Alpine.version) : null)),
     alpine: [...alpine].sort(),
     errors,
     expressions: await page.evaluate(collectExpressions),

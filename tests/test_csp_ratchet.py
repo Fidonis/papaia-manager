@@ -54,6 +54,9 @@ def test_the_baseline_is_well_formed() -> None:
         assert (TEMPLATES / name).is_file(), name
         assert "/" not in name, f"{name}: only full pages are converted"
     rows = _templates_of_baseline()
+    for name in converted:
+        # A converted page has nothing left to count.
+        assert name not in rows, f"{name}: a converted template has findings"
     for name, counts in rows.items():
         assert (TEMPLATES / name).is_file(), name
         assert set(counts) == set(csp_scan.KINDS), name

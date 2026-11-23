@@ -3,7 +3,14 @@
   papaia-kit, contract/specimen.md): the reference content of the vendored kit and nothing
   of the manager, so no stylesheet or script of the module restyles what the kit's
   conformance run measures.
+
+  It is converted from the start (tests/csp_baseline.json): the first page on the target
+  policy, with the strict marker and the CSP build of Alpine (partials/_csp.html), which
+  styles nothing. The browser check fails it on any report, refused expression or script
+  error (scripts/csp-check.sh).
 #}
 {% from "pk/shell.html" import shell %}
+{% from "partials/_csp.html" import alpine_build, strict_marker %}
 {% set pk = pk_shell(specimen_title) %}
-{% call shell(pk) %}{{ specimen }}{% endcall %}
+{% set strict = strict_page() %}
+{% call shell(pk) %}{{ strict_marker(strict) }}{{ specimen }}{{ alpine_build(strict) }}{% endcall %}

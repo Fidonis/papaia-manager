@@ -4,7 +4,9 @@
     "package": "@alpinejs/csp",
     "version": "3.17.5"
   },
-  "converted": [],
+  "converted": [
+    "kit_specimen.html"
+  ],
   "templates": {
     "addon_upgrade.html": {
       "inline_scripts": 1,

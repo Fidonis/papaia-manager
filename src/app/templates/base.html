@@ -13,6 +13,7 @@
   <title>) and may set `breadcrumb` to a list of {label, href} at its top level.
 #}
 {% from "pk/shell.html" import shell %}
+{% from "partials/_csp.html" import alpine_build, strict_marker %}
 {% set pk = pk_shell(self.page_title() | striptags | trim, breadcrumb | default([])) %}
 {% set page_actions = self.page_actions() | trim %}
 {% set page_subtitle = self.page_subtitle() | trim %}
@@ -24,10 +25,10 @@
     style (its indicator styles are in app.css); it reads this meta element when it starts.
     The core modules (static/js/core/) are ES modules served as they are. #}
 {% set strict = strict_page() %}
-{% if strict %}<meta name="papaia-csp" content="strict">{% endif %}
+{{ strict_marker(strict) }}
 <meta name="htmx-config" content="{&quot;allowEval&quot;:false,&quot;includeIndicatorStyles&quot;:false}">
 <script src="{{ asset_url('htmx.min.js') }}" defer></script>
-<script src="{{ asset_url('alpine-csp.min.js' if strict else 'alpine.min.js') }}" defer></script>
+{{ alpine_build(strict) }}
 <script type="module" src="{{ asset_url('js/core/main.js') }}"></script>
 <script>
   // ── Texts ────────────────────────────────────────────────────────────

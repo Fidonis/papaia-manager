@@ -64,7 +64,17 @@ cookie; where the appearance (light, dark, or the system setting until one is ch
 language are kept is described under **Language and appearance**. **Help** (`/help`) explains the manager's
 terms from the platform glossary and names the contact of the installation.
 `cd src && uv run python -m app.shell --input <file>` renders a shell input as the manager
-does, for the kit's markup check.
+does, for the kit's markup check. On every page the skip link to the content is the first
+element the keyboard reaches, and the browser title reads `<page> – Manager – <installation>`
+(`tests/test_page_frame_guard.py` checks every page of `ui/pages.yaml` and the state page
+"Kein Zugang").
+
+**Specimen page.** `/_kit/specimen` shows the reference content of the vendored kit inside the
+frame, for signed-in persons only (a browser without a session is sent to the sign-in). It
+carries `<meta name="papaia-kit">` with the version of `src/kit.lock` and nothing of the
+manager's own styles or scripts except the CSP build of Alpine: it is the first page on the
+strict policy (see **Content security policy**). The kit's design and conformance checks
+read this page.
 
 **Language and appearance.** The interface is available in English and German. Every account
 chooses its own language in the account menu at the bottom of the sidebar (**Language**:
@@ -973,19 +983,27 @@ below collects the reports. A response with a policy of its own keeps it (the lo
 
 - Page code is an ES module under `src/app/static/js/pages/<group>.js`, shared helpers are
   under `src/app/static/js/core/`; both are served as they are from `/static/js/`, without a
-  bundler. Every page loads `js/core/main.js`.
+  bundler. Every page built on `base.html` loads `js/core/main.js`.
 - Server values reach a module as a JSON data island, never inside a script: the macro
   `data_island(id, value)` of `templates/partials/_csp.html` writes
   `<script type="application/json">` (escaped with `tojson`, so `<`, `>`, `&` and `'` never end
   it) and `readIsland(id)` of `js/core/islands.js` reads it.
 - Alpine runs in its CSP build on a converted page: `base.html` loads exactly one build per
   page, the CSP build for the templates listed under `converted` in `tests/csp_baseline.json`
-  and the standard build of the same version otherwise.
+  and the standard build of the same version otherwise. The macros `strict_marker` and
+  `alpine_build` of `templates/partials/_csp.html` write the marker and the build; a converted
+  template has no row of findings in the baseline.
 - htmx evaluates nothing (`<meta name="htmx-config">` with `allowEval: false`) and injects no
   style (`includeIndicatorStyles: false`; the indicator rules are in the stylesheet). A poll
   that should pause while the tab is hidden carries `data-poll-visible` and the trigger
   `visibilitychange from:document` instead of an htmx trigger filter; `js/core/poll.js`
   cancels its requests while the page is hidden.
+
+**Converted pages.** `kit_specimen.html` (`/_kit/specimen`), converted from the start. It
+renders the kit's reference content only, so it loads neither `app.css`, htmx nor
+`js/core/main.js`; it loads the CSP build of Alpine, and the browser check confirms that the
+build starts on it without a report, refused expression or script error
+(`tests/test_kit_specimen.py`).
 
 **Ratchet.** `tests/test_csp_ratchet.py` counts per template the executable inline scripts,
 `on*` attributes, Alpine attributes the CSP build rejects, `<style>` blocks and `style`
