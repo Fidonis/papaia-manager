@@ -155,6 +155,31 @@
 </div>
 {% endif %}
 
+{# ── Native LocalAI ──────────────────────────────────────────────── #}
+{# A Mac with the native LocalAI runtime: the process runs on the host, outside Docker, and
+   the core's `localai_native` probes it. It says whether a service answers, not how the
+   machine is, so it has no stripe, is in none of the counts above and moves no verdict; the
+   dot only repeats running or not. The core's sentence says how to start it. #}
+{% if host.localai %}
+{% set la = host.localai %}
+{{ section_header(_("LocalAI (native)"), _("running") if la.running else _("not running")) }}
+<div class="overflow-hidden rounded-xl border border-base-300 bg-base-100 mb-8">
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 border-base-300 border-l-4 border-l-base-300">
+    {% if la.running %}
+    <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-success"></span>
+    {% else %}
+    <span class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-base-content/40"></span>
+    {% endif %}
+    <div class="min-w-0 basis-40 grow md:grow-0 md:basis-auto md:w-52">
+      <p class="text-sm font-semibold truncate">LocalAI{% if la.installed %} {{ la.installed }}{% endif %}</p>
+      {% if la.url %}<p class="font-mono text-xs opacity-50 truncate">{{ la.url }}</p>{% endif %}
+    </div>
+    <p class="min-w-0 grow basis-60 text-xs opacity-80">{{ la.summary }}</p>
+    <p class="basis-full text-xs opacity-50">{% trans %}Runs on the Mac outside Docker. Not part of the host verdict; the Services page lists it with LocalAI.{% endtrans %}</p>
+  </div>
+</div>
+{% endif %}
+
 {# ── Disk space ──────────────────────────────────────────────────── #}
 {% if host.disks %}
 {{ section_header(_("Disk space"), _("%(n)s measured", n=host.disks | length)) }}
