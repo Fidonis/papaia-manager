@@ -486,7 +486,16 @@ def test_polling_pauses_while_the_tab_is_hidden(
 ) -> None:
     _dashboard(config_dir)
 
-    assert "document.visibilityState === 'visible'" in _admin(client).get("/partials/tiles").text
+    # htmx runs without eval (T-UI-03): no trigger filter; the core listener
+    # (static/js/core/poll.js) cancels the request of a marked poll while the page is hidden,
+    # and the page being shown again triggers a catch-up request.
+    text = _admin(client).get("/partials/tiles").text
+    assert "visibilityState" not in text
+    for widget_id in ("adm1", "all1", "wide1"):
+        tag = text[text.index(f'id="widget-{widget_id}"') :]
+        tag = tag[: tag.index(">")]
+        assert "data-poll-visible" in tag
+        assert "visibilitychange from:document" in tag
 
 
 def test_a_user_is_not_handed_a_widget_for_administrators(

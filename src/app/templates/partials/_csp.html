@@ -1,0 +1,11 @@
+{#
+  Server values for page scripts without inline script (T-UI-03).
+
+  data_island(id, value) writes `value` as a JSON data island, which the browser never
+  executes; static/js/core/islands.js reads it with readIsland(id). `tojson` escapes `<`, `>`,
+  `&` and `'`, so no value ends the island or opens markup; the id must be a plain name
+  (app/csp.py, island_id).
+#}
+{% macro data_island(id, value) -%}
+<script type="application/json" id="{{ island_id(id) }}">{{ value|tojson }}</script>
+{%- endmacro %}

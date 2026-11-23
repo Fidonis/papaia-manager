@@ -163,3 +163,19 @@
 .chart-seg:last-child {
   border-radius: 3px 3px 0 0;
 }
+
+/* ── htmx request indicators ─────────────────────────────────────────────
+   htmx injects these rules as an inline <style> unless told not to; the strict content
+   security policy allows no inline style (T-UI-03), so base.html turns that off
+   (`includeIndicatorStyles: false`) and the rules live here, with htmx's default class
+   names and timing. */
+
+.htmx-indicator {
+  opacity: 0;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  opacity: 1;
+  transition: opacity 200ms ease-in;
+}

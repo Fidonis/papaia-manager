@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from app import csp
 from app.auth import roles
 from app.auth.csrf import get_csrf_token
 from app.auth.oidc import OIDCClaims
@@ -102,6 +103,9 @@ def create_app() -> FastAPI:
         https_only=settings.manager_host.startswith("https://"),
         max_age=28_800,
     )
+    # Outermost, so every HTML answer gets the page policy, the error pages of the
+    # middleware above included (app/csp.py).
+    app.add_middleware(csp.ReportOnlyPolicyMiddleware)
 
     app.include_router(health.router)
     app.include_router(auth.router)

@@ -914,6 +914,100 @@ filters drive `GET /api/v1/audit/export` (CSV or JSONL). `POST /api/v1/audit/pru
 permanently removes entries older than an operator-chosen cutoff date behind a
 dry-run preview; the prune itself is recorded as its own audit entry.
 
+## Content security policy
+
+Every HTML response carries the strict target policy in **report-only** mode:
+
+```
+Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; style-src 'self';
+  img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self';
+  form-action 'self'; frame-ancestors 'self'
+```
+
+No directive allows `unsafe-inline` or `unsafe-eval`. The browser reports what a page still
+does against the policy and blocks nothing; enforcing it follows once every page is converted.
+There is no report endpoint, so the policy adds no input to the server; the browser check
+below collects the reports. A response with a policy of its own keeps it (the logo at
+`/_kit/brand/logo`). The middleware is `src/app/csp.py`.
+
+**Converting a page.** A converted page has no inline script, no inline event handler
+(`onclick`, ...), no inline style and no Alpine expression that needs `eval`:
+
+- Page code is an ES module under `src/app/static/js/pages/<group>.js`, shared helpers are
+  under `src/app/static/js/core/`; both are served as they are from `/static/js/`, without a
+  bundler. Every page loads `js/core/main.js`.
+- Server values reach a module as a JSON data island, never inside a script: the macro
+  `data_island(id, value)` of `templates/partials/_csp.html` writes
+  `<script type="application/json">` (escaped with `tojson`, so `<`, `>`, `&` and `'` never end
+  it) and `readIsland(id)` of `js/core/islands.js` reads it.
+- Alpine runs in its CSP build on a converted page: `base.html` loads exactly one build per
+  page, the CSP build for the templates listed under `converted` in `tests/csp_baseline.json`
+  and the standard build of the same version otherwise.
+- htmx evaluates nothing (`<meta name="htmx-config">` with `allowEval: false`) and injects no
+  style (`includeIndicatorStyles: false`; the indicator rules are in the stylesheet). A poll
+  that should pause while the tab is hidden carries `data-poll-visible` and the trigger
+  `visibilitychange from:document` instead of an htmx trigger filter; `js/core/poll.js`
+  cancels its requests while the page is hidden.
+
+**Ratchet.** `tests/test_csp_ratchet.py` counts per template the executable inline scripts,
+`on*` attributes, Alpine attributes the CSP build rejects, `<style>` blocks and `style`
+attributes (`tests/csp_scan.py`) and compares them with `tests/csp_baseline.json`. A count
+above the baseline fails; a count below it fails too until the baseline is lowered in the same
+change, so it only shrinks. `python3 tests/csp_scan.py` prints the current counts. Measured
+when the ratchet was introduced: 46 inline scripts, 123 `on*` attributes, 109 Alpine
+attributes the CSP build rejects, 1 `<style>` block and 253 `style` attributes.
+
+**Browser check.** `scripts/csp-check.sh PORT REPORT [SUMMARY [LABEL=FILE ...]]` (CI job
+`csp`, after `scripts/design-tools.sh`) serves the manager in the stand-in world of the tests,
+signed in as a test administrator, and opens every page of `ui/pages.yaml` in Chromium. A
+converted page fails on any report of the policy, refused Alpine expression or script error;
+for the others the counts are written to the summary. Each `LABEL=FILE` is an Alpine build:
+every Alpine expression of every page is evaluated by that build in a blank page, and the
+expressions it cannot evaluate are counted per page.
+
+**Choice of the Alpine CSP build.** Measured on 23 November 2026 with that check over the 39
+pages of `ui/pages.yaml` (1,909 Alpine attributes in the templates): the CSP build of the
+newest release, `@alpinejs/csp` 3.17.5, needs 45 distinct expressions rewritten (53 summed
+over the pages), the CSP build of the release the manager used before, 3.14.9, needs 489
+(637); the standard build 3.17.5, as a control, rejects none. 3.14.9 accepts property and
+method names only, so every comparison, assignment, call with arguments and object literal
+would have to move into a component; 3.17.5 parses expressions and refuses `x-html`, arrow
+functions, template literals, global objects, statement sequences, `new`, `typeof`, optional
+chaining and methods inside `x-data` objects. Both builds of the image are therefore 3.17.5.
+The forms `tests/csp_scan.py` counts are the ones the 3.17.5 build refused; over all 1,909
+attributes of the templates the scanner and the build agree on all but one, an index the
+measurement's stand-in values cannot resolve.
+
+| Page | `@alpinejs/csp` 3.14.9 | `@alpinejs/csp` 3.17.5 |
+|---|---:|---:|
+| `/services` | 33 | 3 |
+| `/addons` | 3 | 1 |
+| `/addons/{name}` | 1 | 0 |
+| `/addons/{name}/upgrade` | 37 | 0 |
+| `/modules` | 5 | 0 |
+| `/catalogs` | 6 | 2 |
+| `/embedding` | 15 | 3 |
+| `/ingest/jobs` | 39 | 8 |
+| `/ingest/new` | 189 | 1 |
+| `/ingest/runs` | 39 | 8 |
+| `/ingest/secrets` | 11 | 0 |
+| `/ingest/orphans` | 7 | 2 |
+| `/ingest/catalog` | 11 | 1 |
+| `/backup` | 17 | 4 |
+| `/upgrade` | 24 | 8 |
+| `/users` | 72 | 6 |
+| `/users/roles` | 35 | 3 |
+| `/mail` | 30 | 1 |
+| `/audit` | 1 | 1 |
+| `/settings/overlay` | 62 | 1 |
+| 19 other pages | 0 | 0 |
+| **Total** | **637** | **53** |
+
+**Pinned libraries.** `docker/Dockerfile` downloads htmx, both Alpine builds and Sortable
+pinned by version and checks each file against the SHA-256 written next to it
+(`docker/verify-sha256.sh`); a file that does not match fails the image build. The browser
+checks install the same versions (`scripts/design/package.json`).
+
 ## REST API
 
 All mutating routes require the `MANAGER_ADMIN_ROLE` and a CSRF header, except those of the Users page (`/api/v1/users`, `/api/v1/roles`), which require the `MANAGER_IDENTITY_ADMIN_ROLE` instead.
@@ -1221,14 +1315,17 @@ papaia-manager/
 │       │                   # api_nodes, ui_nodes (a distributed installation),
 │       │                   # stack_guard (the refusals the configuration routes share)
 │       ├── templates/      # Jinja2 pages + HTMX partials
-│       └── static/         # htmx.min.js, alpine.min.js, sortable.min.js, app.css (Tailwind build),
-│                           # icons/ (the default tiles' logos, with NOTICE.txt)
-├── tests/                  # pytest suite (sibling to src/)
+│       └── static/         # htmx.min.js, alpine.min.js, alpine-csp.min.js, sortable.min.js,
+│                           # app.css (Tailwind build), icons/ (the default tiles' logos, with
+│                           # NOTICE.txt), js/core/ and js/pages/ (ES modules, no bundler)
+├── tests/                  # pytest suite (sibling to src/); csp_baseline.json is the ratchet
+│                           # of the content security policy
 └── docker/
     ├── Dockerfile          # multi-stage build; installs Docker CLI + compose plugin and an SSH client
     ├── entrypoint.sh       # names the host's user id for OpenSSH, then runs the command
     ├── docker-compose.yml  # local development compose
     ├── git-askpass.sh      # GIT_ASKPASS helper for private catalog auth
+    ├── verify-sha256.sh    # build-time check of the pinned browser libraries
     ├── tailwind.config.js, tailwind.brand.css, tailwind.app.css   # stylesheet sources
     └── .env.example
 ```

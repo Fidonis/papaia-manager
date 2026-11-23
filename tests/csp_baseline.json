@@ -1,0 +1,528 @@
+{
+  "format": "papaia-manager.csp-baseline/1",
+  "alpine": {
+    "package": "@alpinejs/csp",
+    "version": "3.17.5"
+  },
+  "converted": [],
+  "templates": {
+    "addon_upgrade.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 10
+    },
+    "addons.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 1,
+      "style_blocks": 0,
+      "style_attributes": 1
+    },
+    "audit.html": {
+      "inline_scripts": 1,
+      "on_attributes": 6,
+      "alpine_unsupported": 1,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "backup.html": {
+      "inline_scripts": 2,
+      "on_attributes": 15,
+      "alpine_unsupported": 4,
+      "style_blocks": 0,
+      "style_attributes": 2
+    },
+    "base.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "catalogs.html": {
+      "inline_scripts": 1,
+      "on_attributes": 6,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "collections.html": {
+      "inline_scripts": 1,
+      "on_attributes": 3,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "connections.html": {
+      "inline_scripts": 1,
+      "on_attributes": 1,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "dashboard.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "embedding.html": {
+      "inline_scripts": 1,
+      "on_attributes": 3,
+      "alpine_unsupported": 4,
+      "style_blocks": 0,
+      "style_attributes": 8
+    },
+    "ingest_catalog.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 1,
+      "style_blocks": 0,
+      "style_attributes": 7
+    },
+    "ingest_job.html": {
+      "inline_scripts": 1,
+      "on_attributes": 7,
+      "alpine_unsupported": 4,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "ingest_job_edit.html": {
+      "inline_scripts": 1,
+      "on_attributes": 1,
+      "alpine_unsupported": 1,
+      "style_blocks": 0,
+      "style_attributes": 37
+    },
+    "ingest_jobs.html": {
+      "inline_scripts": 1,
+      "on_attributes": 2,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "ingest_orphans.html": {
+      "inline_scripts": 1,
+      "on_attributes": 1,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "ingest_run.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "ingest_runs.html": {
+      "inline_scripts": 1,
+      "on_attributes": 3,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "ingest_secrets.html": {
+      "inline_scripts": 1,
+      "on_attributes": 2,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "knowledge_map.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 11,
+      "style_blocks": 1,
+      "style_attributes": 0
+    },
+    "mail.html": {
+      "inline_scripts": 1,
+      "on_attributes": 4,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "modules.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "node_detail.html": {
+      "inline_scripts": 1,
+      "on_attributes": 3,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "nodes.html": {
+      "inline_scripts": 1,
+      "on_attributes": 1,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "notifications.html": {
+      "inline_scripts": 1,
+      "on_attributes": 6,
+      "alpine_unsupported": 1,
+      "style_blocks": 0,
+      "style_attributes": 7
+    },
+    "partials/_actions.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 2
+    },
+    "partials/_addon_controls.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 5,
+      "style_blocks": 0,
+      "style_attributes": 3
+    },
+    "partials/_env_fields.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 2,
+      "style_blocks": 0,
+      "style_attributes": 1
+    },
+    "partials/_group_controls.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 4,
+      "style_blocks": 0,
+      "style_attributes": 8
+    },
+    "partials/_ingest_credential_dialog.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 3
+    },
+    "partials/_ingest_dialogs.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 8,
+      "style_blocks": 0,
+      "style_attributes": 25
+    },
+    "partials/_ingest_js.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/_rag_js.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/_settings_branding.html": {
+      "inline_scripts": 1,
+      "on_attributes": 5,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/_settings_host.html": {
+      "inline_scripts": 1,
+      "on_attributes": 2,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/addon_detail_content.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 6,
+      "style_blocks": 0,
+      "style_attributes": 7
+    },
+    "partials/addon_gallery.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 1
+    },
+    "partials/audit_list.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/backup_job_status.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/backup_schedule.html": {
+      "inline_scripts": 0,
+      "on_attributes": 1,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/catalog_list.html": {
+      "inline_scripts": 0,
+      "on_attributes": 1,
+      "alpine_unsupported": 2,
+      "style_blocks": 0,
+      "style_attributes": 1
+    },
+    "partials/collection_list.html": {
+      "inline_scripts": 0,
+      "on_attributes": 1,
+      "alpine_unsupported": 3,
+      "style_blocks": 0,
+      "style_attributes": 6
+    },
+    "partials/config_job_status.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/connection_list.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 6,
+      "style_blocks": 0,
+      "style_attributes": 11
+    },
+    "partials/embedding_body.html": {
+      "inline_scripts": 0,
+      "on_attributes": 1,
+      "alpine_unsupported": 2,
+      "style_blocks": 0,
+      "style_attributes": 12
+    },
+    "partials/embedding_status.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/embedding_tree.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 1
+    },
+    "partials/host_list.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/ingest_job_files.html": {
+      "inline_scripts": 0,
+      "on_attributes": 3,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/ingest_job_list.html": {
+      "inline_scripts": 0,
+      "on_attributes": 10,
+      "alpine_unsupported": 4,
+      "style_blocks": 0,
+      "style_attributes": 1
+    },
+    "partials/ingest_job_overview.html": {
+      "inline_scripts": 0,
+      "on_attributes": 2,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/ingest_orphan_list.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 2,
+      "style_blocks": 0,
+      "style_attributes": 2
+    },
+    "partials/ingest_run_detail.html": {
+      "inline_scripts": 0,
+      "on_attributes": 1,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/ingest_secret_list.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 1,
+      "style_blocks": 0,
+      "style_attributes": 2
+    },
+    "partials/mail_job_status.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/models_body.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 7,
+      "style_blocks": 0,
+      "style_attributes": 6
+    },
+    "partials/restore_point_list.html": {
+      "inline_scripts": 0,
+      "on_attributes": 3,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/restore_status.html": {
+      "inline_scripts": 0,
+      "on_attributes": 1,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/service_list.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/service_status_chip.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/stack_runner.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 1,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/tile_editor.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 7,
+      "style_blocks": 0,
+      "style_attributes": 16
+    },
+    "partials/tile_gallery.html": {
+      "inline_scripts": 0,
+      "on_attributes": 3,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/upgrade_check.html": {
+      "inline_scripts": 0,
+      "on_attributes": 1,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/upgrade_images.html": {
+      "inline_scripts": 0,
+      "on_attributes": 5,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/upgrade_runner.html": {
+      "inline_scripts": 1,
+      "on_attributes": 2,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "partials/upgrade_status.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "roles.html": {
+      "inline_scripts": 1,
+      "on_attributes": 1,
+      "alpine_unsupported": 3,
+      "style_blocks": 0,
+      "style_attributes": 22
+    },
+    "services.html": {
+      "inline_scripts": 0,
+      "on_attributes": 0,
+      "alpine_unsupported": 2,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "settings.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "settings_modules.html": {
+      "inline_scripts": 1,
+      "on_attributes": 12,
+      "alpine_unsupported": 0,
+      "style_blocks": 0,
+      "style_attributes": 0
+    },
+    "settings_overlay.html": {
+      "inline_scripts": 1,
+      "on_attributes": 0,
+      "alpine_unsupported": 2,
+      "style_blocks": 0,
+      "style_attributes": 12
+    },
+    "upgrade.html": {
+      "inline_scripts": 1,
+      "on_attributes": 2,
+      "alpine_unsupported": 8,
+      "style_blocks": 0,
+      "style_attributes": 5
+    },
+    "users.html": {
+      "inline_scripts": 1,
+      "on_attributes": 2,
+      "alpine_unsupported": 6,
+      "style_blocks": 0,
+      "style_attributes": 34
+    }
+  },
+  "totals": {
+    "inline_scripts": 46,
+    "on_attributes": 123,
+    "alpine_unsupported": 109,
+    "style_blocks": 1,
+    "style_attributes": 253
+  }
+}

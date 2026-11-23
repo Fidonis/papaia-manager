@@ -493,6 +493,11 @@ def test_the_logo_is_served_only_while_its_digest_matches(
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/svg+xml")
     assert "default-src 'none'" in response.headers["content-security-policy"]
+    # The page policy of the manager (app/csp.py) leaves the logo's own policy alone.
+    assert response.headers.get_list("content-security-policy") == [
+        "default-src 'none'; style-src 'unsafe-inline'"
+    ]
+    assert "content-security-policy-report-only" not in response.headers
     (config_dir / "platform" / "brand-logo").write_text("<svg>changed</svg>", "utf-8")
     assert client.get("/_kit/brand/logo").status_code == 404
 

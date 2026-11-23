@@ -20,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from papaia_kit.ui import extend_environment, shell_context
 
-from app import shell
+from app import csp, shell
 from app.auth.csrf import get_csrf_token
 from app.auth.oidc import OIDCClaims
 from app.auth.roles import is_admin, is_identity_admin
@@ -87,6 +87,10 @@ def asset_url(name: str) -> str:
 
 
 templates.env.globals["asset_url"] = asset_url
+
+# The page policy (app/csp.py): which Alpine build a page loads, and the ids of data islands.
+templates.env.globals["strict_page"] = csp.strict_page
+templates.env.globals["island_id"] = csp.island_id
 
 # `_()`, `{% trans %}` and the language helpers. Not part of the brand layer above.
 install_i18n(templates.env)

@@ -6,14 +6,17 @@
 .github
 .dockerignore
 
-# Tests and documentation are not part of the server image.
+# Tests and documentation are not part of the server image; the page list of the content
+# security policy is (app/csp.py).
 tests
+!tests/csp_baseline.json
 *.md
 
 # Exclude docker/ orchestration files, but keep files the Dockerfile COPYs.
 docker
 !docker/entrypoint.sh
 !docker/git-askpass.sh
+!docker/verify-sha256.sh
 !docker/tailwind.config.js
 !docker/tailwind.brand.css
 !docker/tailwind.app.css

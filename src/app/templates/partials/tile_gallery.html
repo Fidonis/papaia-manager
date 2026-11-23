@@ -73,13 +73,15 @@
     {% if tile.kind == 'widget' %}
     {# The card is fetched by the browser on its own interval (`ui_widgets.py`), so a slow
        widget never holds up the page and each one refreshes alone. Polling pauses while the
-       tab is hidden. The wrapper keeps the tile's width, so a swap never reflows the grid.
+       tab is hidden (`data-poll-visible`, static/js/core/poll.js) and catches up when it is
+       shown again. The wrapper keeps the tile's width, so a swap never reflows the grid.
        Width classes are spelled out in full because app.css is built by scanning templates. #}
     {% set slot = widget_slot(tile) %}
     <div id="widget-{{ slot.id }}"
          class="{% if tile.size == 'm' %}sm:col-span-2{% elif tile.size == 'l' %}sm:col-span-2 xl:col-span-3 2xl:col-span-4{% endif %}"
          hx-get="/partials/widgets/{{ slot.id }}"
-         hx-trigger="load, every {{ slot.interval }}s [document.visibilityState === 'visible']"
+         hx-trigger="load, every {{ slot.interval }}s, visibilitychange from:document"
+         data-poll-visible
          hx-swap="innerHTML">
       <div class="card bg-base-100 border border-base-300 h-full" aria-busy="true">
         <div class="card-body p-5 gap-3">

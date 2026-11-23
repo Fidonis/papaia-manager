@@ -18,8 +18,17 @@
 {% set page_subtitle = self.page_subtitle() | trim %}
 {% call shell(pk) %}
 <link rel="stylesheet" href="{{ asset_url('app.css') }}">
+{#- The page policy (app/csp.py, T-UI-03). A page whose template tests/csp_baseline.json lists
+    as converted runs on the CSP build of Alpine, every other page on the standard build of
+    the same version: exactly one of them per page. htmx evaluates nothing and injects no
+    style (its indicator styles are in app.css); it reads this meta element when it starts.
+    The core modules (static/js/core/) are ES modules served as they are. #}
+{% set strict = strict_page() %}
+{% if strict %}<meta name="papaia-csp" content="strict">{% endif %}
+<meta name="htmx-config" content="{&quot;allowEval&quot;:false,&quot;includeIndicatorStyles&quot;:false}">
 <script src="{{ asset_url('htmx.min.js') }}" defer></script>
-<script src="{{ asset_url('alpine.min.js') }}" defer></script>
+<script src="{{ asset_url('alpine-csp.min.js' if strict else 'alpine.min.js') }}" defer></script>
+<script type="module" src="{{ asset_url('js/core/main.js') }}"></script>
 <script>
   // ── Texts ────────────────────────────────────────────────────────────
   // The sentences the helpers below put on the page, in the language of the page. A whole

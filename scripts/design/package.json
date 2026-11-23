@@ -5,7 +5,8 @@
   "license": "MIT",
   "private": true,
   "dependencies": {
-    "alpinejs": "3.14.9",
+    "@alpinejs/csp": "3.17.5",
+    "alpinejs": "3.17.5",
     "axe-core": "4.14.1",
     "daisyui": "4.12.23",
     "htmx.org": "2.0.4",
