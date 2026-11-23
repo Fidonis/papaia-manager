@@ -8,7 +8,7 @@ Docker, LiteLLM or Qdrant show their "unreachable" state. A test tool, never par
 
 Usage (from the repository root):
   uv run --project src python tests/design_serve.py --port PORT \
-      --storage-state [PERSON=]FILE [--storage-state PERSON=FILE ...]
+      --storage-state [PERSON=]FILE [--storage-state PERSON=FILE ...] [--rag-catalog]
   uv run --project src python tests/design_serve.py --port PORT --storage-state FILE \
       [--mail-relay] [--with-backups]
   uv run --project src python tests/design_serve.py --list-persons
@@ -112,6 +112,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--with-backups", action="store_true", help="give the world restore points to list"
     )
+    parser.add_argument(
+        "--rag-catalog", action="store_true", help="make the connection store writable"
+    )
     args = parser.parse_args(argv)
     if args.list_persons:
         print("\n".join(design_persons()))
@@ -123,7 +126,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--port and --storage-state are required")
 
     root = Path(tempfile.mkdtemp(prefix="papaia-manager-design-"))
-    config, workspace = design_world.make_world(root)
+    config, workspace = design_world.make_world(root, rag_catalog=args.rag_catalog)
     if args.mail_relay:
         design_world.add_mail_relay(config, workspace)
     if args.with_backups:

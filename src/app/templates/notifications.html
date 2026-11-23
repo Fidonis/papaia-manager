@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% from "partials/_mail_tabs.html" import tabs %}
 {% from "partials/_actions.html" import row_actions, overflow_menu %}
+{% from "partials/_csp.html" import data_island %}
+
+{#- The page's script is static/js/pages/notifications.js (T-UI-03): no inline script, no
+    event attribute. It registers the dialogs as Alpine components before Alpine starts and
+    binds the ticks, the test buttons and the settings form; the recipients, the events and
+    the sentences come from the island at the end, in the language of the page. #}
+{% block page_modules %}{% if not doc.error %}
+<script type="module" src="{{ asset_url('js/pages/notifications.js') }}"></script>
+{% endif %}{% endblock %}
 
 {% block page_title %}{% trans %}Mail{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Who is told when something needs attention, and what each of them receives{% endtrans %}</p>{% endblock %}
@@ -11,7 +20,7 @@
 {% if not doc.error %}
 <button type="button"
         class="btn btn-primary btn-sm"
-        onclick="window.dispatchEvent(new CustomEvent('recipient-new'))">
+        @click="$dispatch('recipient-new')">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
   </svg>
@@ -108,20 +117,19 @@
                 <input type="checkbox" class="checkbox checkbox-primary checkbox-sm"
                        data-event="{{ ev.id }}"
                        aria-label="{{ r.name }}: {{ ev.label }}"
-                       {% if ev.id in r.events %}checked{% endif %}
-                       onchange="toggleEvent(this)">
+                       {% if ev.id in r.events %}checked{% endif %}>
               </td>
               {% endfor %}
               <td class="whitespace-nowrap">
                 {# Tier 2: two visible buttons; deleting confirms in a dialog behind the kebab. #}
                 {% call row_actions() %}
                   <button type="button" class="btn btn-outline btn-xs"
-                          onclick='testRecipient({{ r.id|tojson }}, {{ r.name|tojson }}, this)'>{% trans %}Send test{% endtrans %}</button>
+                          data-recipient-test data-name="{{ r.name }}">{% trans %}Send test{% endtrans %}</button>
                   <button type="button" class="btn btn-outline btn-xs"
-                          onclick='window.dispatchEvent(new CustomEvent("recipient-open", {detail: {{ {"id": r.id}|tojson }}}))'>{% trans %}Edit{% endtrans %}</button>
+                          @click='$dispatch("recipient-open", {{ {"id": r.id}|tojson }})'>{% trans %}Edit{% endtrans %}</button>
                   {% call overflow_menu(size='xs', label=_('More actions for %(name)s', name=r.name), float=True) %}
                     <li><a class="text-error"
-                           onclick='window.dispatchEvent(new CustomEvent("recipient-delete", {detail: {{ {"id": r.id, "name": r.name}|tojson }}}))'>{% trans %}Delete…{% endtrans %}</a></li>
+                           @click='$dispatch("recipient-delete", {{ {"id": r.id, "name": r.name}|tojson }})'>{% trans %}Delete…{% endtrans %}</a></li>
                   {% endcall %}
                 {% endcall %}
               </td>
@@ -140,7 +148,7 @@
         <h2 class="font-brand text-lg font-bold">{% trans %}Events{% endtrans %}</h2>
         <p class="text-sm text-pk-text-muted">{% trans %}These apply to every recipient. A failed job is always reported at once.{% endtrans %}</p>
       </div>
-      <form id="notify-settings" class="space-y-4" onsubmit="saveSettings(event)" novalidate>
+      <form id="notify-settings" class="space-y-4" novalidate>
         <div class="grid items-center gap-x-6 gap-y-4 sm:grid-cols-[1fr_11rem]">
           <div>
             <label for="set-interval" class="text-sm font-medium">{% trans %}Check interval{% endtrans %}</label>
@@ -204,13 +212,13 @@
 
 {% if not doc.error %}
 <!-- Add or change a recipient -->
-<dialog id="recipient-modal" class="modal" x-data="recipientDialog()"
+<dialog id="recipient-modal" class="modal" x-data="recipientDialog"
         @recipient-new.window="openNew()" @recipient-open.window="openRecipient($event.detail)">
   <div class="modal-box max-w-lg">
     <h3 class="text-lg font-bold" x-text="mode === 'create' ? {{ _('Add recipient')|tojson|forceescape }} : {{ _('Edit recipient')|tojson|forceescape }}"></h3>
 
     <form @submit.prevent="submit()" class="mt-3">
-      <div class="join mb-3 w-full" x-show="mode === 'create'" style="display:none">
+      <div class="join mb-3 w-full" x-show="mode === 'create'" x-cloak>
         <button type="button" class="btn btn-outline btn-sm join-item flex-1"
                 :class="kind === 'email' ? 'btn-active' : ''"
                 :aria-pressed="kind === 'email'"
@@ -220,7 +228,7 @@
                 :aria-pressed="kind === 'webhook'"
                 @click="kind = 'webhook'">{% trans %}Webhook{% endtrans %}</button>
       </div>
-      <p class="mb-3 text-xs text-pk-text-muted" x-show="mode === 'create' && !mailSupported" style="display:none">
+      <p class="mb-3 text-xs text-pk-text-muted" x-show="mode === 'create' && !mailSupported" x-cloak>
         {% trans %}This papAIa core has no mail relay, so there is no email. A webhook works.{% endtrans %}
       </p>
 
@@ -238,10 +246,10 @@
                x-model="target" maxlength="2048" autocomplete="off" spellcheck="false"
                :placeholder="kind === 'email' ? 'ops@customer.example' : (mode === 'edit' ? fmt({{ _('Leave empty to keep {target}')|tojson|forceescape }}, { target: maskedTarget }) : 'https://hooks.example.com/papaia')">
       </div>
-      <p class="mb-3 text-xs text-pk-text-muted" x-show="kind === 'email'" style="display:none">
+      <p class="mb-3 text-xs text-pk-text-muted" x-show="kind === 'email'" x-cloak>
         {% trans %}One address per recipient. Sent through the Mail Server.{% endtrans %}
       </p>
-      <p class="mb-3 text-xs text-pk-text-muted" x-show="kind === 'webhook'" style="display:none">
+      <p class="mb-3 text-xs text-pk-text-muted" x-show="kind === 'webhook'" x-cloak>
         {% trans %}Receives a JSON post with event, severity, message, timestamp and details. The URL is stored and never shown again; leave the field empty when editing to keep it.{% endtrans %}
       </p>
 
@@ -270,11 +278,11 @@
         <span class="text-sm">{% trans %}Active{% endtrans %} <span class="text-pk-text-muted">{% trans %}— untick to pause without losing the choices{% endtrans %}</span></span>
       </label>
 
-      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" role="alert" x-text="error"></p>
+      <p x-cloak x-show="error" class="mb-2 text-sm text-error" role="alert" x-text="error"></p>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-primary" :disabled="busy">
-          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
           <span x-text="mode === 'create' ? {{ _('Add recipient')|tojson|forceescape }} : {{ _('Save changes')|tojson|forceescape }}"></span>
         </button>
       </div>
@@ -284,14 +292,14 @@
 </dialog>
 
 <!-- Delete a recipient -->
-<dialog id="recipient-delete-modal" class="modal" x-data="deleteRecipient()"
+<dialog id="recipient-delete-modal" class="modal" x-data="deleteRecipient"
         @recipient-delete.window="open($event.detail)">
   <div class="modal-box">
-    <h3 class="text-lg font-bold"><span x-html="fmtHtml({{ _('Delete {name}?')|tojson|forceescape }}, { name: name })"></span></h3>
+    <h3 class="text-lg font-bold"><span>{{ bound(_('Delete {name}?'), name='name') }}</span></h3>
     <p class="mt-2 text-sm text-pk-text-muted">
       {% trans %}It stops receiving notifications at once, and what you ticked for it is gone with it. This cannot be undone.{% endtrans %}
     </p>
-    <p style="display:none" x-show="error" class="mt-2 text-sm text-error" role="alert" x-text="error"></p>
+    <p x-cloak x-show="error" class="mt-2 text-sm text-error" role="alert" x-text="error"></p>
     <div class="modal-action">
       <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
       <button type="button" class="btn btn-error" :disabled="busy" @click="submit()">{% trans %}Delete{% endtrans %}</button>
@@ -300,184 +308,20 @@
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
-<script>
-  const NOTIFY = {{ doc | tojson }};
-  const NOTIFY_API = '/api/v1/notifications';
-  let notifyRevision = NOTIFY.revision;
-
-  // One request at a time: each change carries the revision the one before it produced, so
-  // two ticks in a row must not be in flight together (the second would be refused as stale).
-  let notifyChain = Promise.resolve();
-  function notifySerial(task) {
-    const next = notifyChain.then(task);
-    notifyChain = next.catch(function () {});
-    return next;
-  }
-
-  function notifyReload(delay) {
-    setTimeout(function () { window.location.reload(); }, delay || 700);
-  }
-
-  let savedTimer = null;
-  function flashSaved() {
-    const el = document.getElementById('notify-saved');
-    if (!el) return;
-    el.textContent = {{ _('Saved')|tojson }};
-    clearTimeout(savedTimer);
-    savedTimer = setTimeout(function () { el.textContent = ''; }, 1800);
-  }
-
-  function toggleEvent(box) {
-    const row = box.closest('tr');
-    const events = Array.prototype.map.call(
-      row.querySelectorAll('input[data-event]:checked'), function (b) { return b.dataset.event; });
-    return notifySerial(async function () {
-      box.disabled = true;
-      const res = await _ragRequest('PUT', NOTIFY_API + '/recipients/' + encodeURIComponent(row.dataset.recipient) + '/events',
-        { revision: notifyRevision, events: events });
-      box.disabled = false;
-      if (res.handled) return;
-      if (!res.ok) {
-        box.checked = !box.checked;
-        showToast('error', _ragEscape(res.error));
-        return;
-      }
-      notifyRevision = res.data.revision;
-      flashSaved();
-    });
-  }
-
-  async function testRecipient(id, name, button) {
-    button.disabled = true;
-    const res = await _ragRequest('POST', NOTIFY_API + '/recipients/' + encodeURIComponent(id) + '/test');
-    button.disabled = false;
-    if (res.handled) return;
-    if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
-    if (res.data.ok) {
-      showToast('success', fmtHtml({{ _('Test sent to <b>{name}</b>.')|tojson }}, { name: name }));
-    } else {
-      showToast('error', fmtHtml({{ _('The test to <b>{name}</b> failed: {reason}.')|tojson }}, { name: name, reason: res.data.reason }));
-    }
-    notifyReload(1200);
-  }
-
-  function saveSettings(event) {
-    event.preventDefault();
-    const button = document.getElementById('set-save');
-    const number = function (id) { return Number(document.getElementById(id).value); };
-    return notifySerial(async function () {
-      button.disabled = true;
-      const res = await _ragRequest('PUT', NOTIFY_API + '/settings', {
-        revision: notifyRevision,
-        check_interval_minutes: number('set-interval'),
-        debounce_minutes: number('set-debounce'),
-        cert_lead_days: number('set-lead'),
-      });
-      button.disabled = false;
-      if (res.handled) return;
-      if (!res.ok) { showToast('error', _ragEscape(res.error)); return; }
-      notifyRevision = res.data.revision;
-      showToast('success', {{ _('Settings saved.')|tojson }});
-    });
-  }
-
-  function recipientDialog() {
-    return {
-      mode: 'create', id: '', kind: NOTIFY.mail.supported ? 'email' : 'webhook',
-      name: '', target: '', maskedTarget: '', enabled: true, picked: {},
-      events: NOTIFY.events, mailSupported: NOTIFY.mail.supported,
-      busy: false, error: '',
-      reset() {
-        this.id = ''; this.name = ''; this.target = ''; this.maskedTarget = ''; this.enabled = true;
-        this.kind = NOTIFY.mail.supported ? 'email' : 'webhook'; this.picked = {};
-        this.error = ''; this.busy = false;
-      },
-      openNew() {
-        this.reset(); this.mode = 'create';
-        this.$root.showModal();
-      },
-      openRecipient(detail) {
-        const r = NOTIFY.recipients.find(function (x) { return x.id === detail.id; });
-        if (!r) return;
-        this.reset(); this.mode = 'edit';
-        this.id = r.id; this.kind = r.kind; this.name = r.name; this.enabled = r.enabled;
-        // An address is shown as it is; a webhook URL is not sent back, so the field stays empty.
-        this.target = r.kind === 'email' ? r.target : '';
-        this.maskedTarget = r.target;
-        const picked = {};
-        r.events.forEach(function (e) { picked[e] = true; });
-        this.picked = picked;
-        this.$root.showModal();
-      },
-      chosen() {
-        const self = this;
-        return this.events.map(function (e) { return e.id; }).filter(function (id) { return self.picked[id]; });
-      },
-      allChosen() { return this.chosen().length === this.events.length; },
-      toggleAll() {
-        const on = !this.allChosen();
-        const picked = {};
-        this.events.forEach(function (e) { picked[e.id] = on; });
-        this.picked = picked;
-      },
-      async submit() {
-        this.error = '';
-        if (!this.name.trim()) { this.error = {{ _('Enter a name.')|tojson }}; return; }
-        if (this.mode === 'create' && !this.target.trim()) {
-          this.error = this.kind === 'email' ? {{ _('Enter an email address.')|tojson }} : {{ _('Enter the webhook URL.')|tojson }};
-          return;
-        }
-        this.busy = true;
-        const self = this;
-        const create = this.mode === 'create';
-        const res = await notifySerial(function () {
-          const body = { revision: notifyRevision, name: self.name.trim(), enabled: self.enabled, events: self.chosen() };
-          if (create) {
-            body.kind = self.kind;
-            body.target = self.target.trim();
-            return _ragRequest('POST', NOTIFY_API + '/recipients', body);
-          }
-          if (self.target.trim()) body.target = self.target.trim();
-          return _ragRequest('PUT', NOTIFY_API + '/recipients/' + encodeURIComponent(self.id), body);
-        });
-        this.busy = false;
-        if (res.handled) return;
-        if (!res.ok) { this.error = res.error; return; }
-        notifyRevision = res.data.revision;
-        this.$root.close();
-        showToast('success', fmtHtml(create
-          ? {{ _('Recipient <b>{name}</b> added. Send a test to check that it arrives.')|tojson }}
-          : {{ _('Recipient <b>{name}</b> saved.')|tojson }}, { name: this.name.trim() }));
-        notifyReload(900);
-      },
-    };
-  }
-
-  function deleteRecipient() {
-    return {
-      id: '', name: '', busy: false, error: '',
-      open(detail) {
-        this.id = detail.id; this.name = detail.name; this.error = ''; this.busy = false;
-        this.$root.showModal();
-      },
-      async submit() {
-        this.error = '';
-        this.busy = true;
-        const self = this;
-        const res = await notifySerial(function () {
-          return _ragRequest('DELETE', NOTIFY_API + '/recipients/' + encodeURIComponent(self.id),
-            { revision: notifyRevision });
-        });
-        this.busy = false;
-        if (res.handled) return;
-        if (!res.ok) { this.error = res.error; return; }
-        notifyRevision = res.data.revision;
-        this.$root.close();
-        showToast('success', fmtHtml({{ _('Recipient <b>{name}</b> deleted.')|tojson }}, { name: this.name }));
-        notifyReload(700);
-      },
-    };
-  }
-</script>
+{{ data_island("mgr-notifications", {
+  "doc": doc,
+  "texts": {
+    "saved": _('Saved'),
+    "testSent": _('Test sent to <b>{name}</b>.'),
+    "testFailed": _('The test to <b>{name}</b> failed: {reason}.'),
+    "settingsSaved": _('Settings saved.'),
+    "enterName": _('Enter a name.'),
+    "enterAddress": _('Enter an email address.'),
+    "enterUrl": _('Enter the webhook URL.'),
+    "added": _('Recipient <b>{name}</b> added. Send a test to check that it arrives.'),
+    "changed": _('Recipient <b>{name}</b> saved.'),
+    "deleted": _('Recipient <b>{name}</b> deleted.'),
+  },
+}) }}
 {% endif %}
 {% endblock %}

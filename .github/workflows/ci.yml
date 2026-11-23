@@ -119,6 +119,7 @@ jobs:
           uv run --frozen pytest -q -rs ../tests/test_csp_browser.py ../tests/test_toast_browser.py
           ../tests/test_settings_scripts.py ../tests/test_settings_mail_browser.py
           ../tests/test_dashboard_browser.py ../tests/test_backup_browser.py
+          ../tests/test_connections_notifications_scripts.py
       - name: Every page of the manager
         run: >-
           scripts/csp-check.sh 57882 "${RUNNER_TEMP}/csp-report.json" "${GITHUB_STEP_SUMMARY}"

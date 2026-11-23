@@ -303,8 +303,8 @@ groups:
       - W1 i18n/export/en.json#text.e6365ed65d05b36c updates
       - W1 i18n/export/en.json#text.f025cebcb94c8ecc updates
       - W1 i18n/export/en.json#text.ff8b555d818f0b25 Update
-      - W1 src/app/templates/notifications.html:147 updates
-      - W1 src/app/templates/notifications.html:196 updates
+      - W1 src/app/templates/notifications.html:155 updates
+      - W1 src/app/templates/notifications.html:204 updates
       - W1 src/app/templates/partials/_ingest_dialogs.html:29 update
       - W1 src/app/templates/partials/embedding_body.html:180 update
       - W1 src/app/templates/partials/upgrade_status.html:155 Update
@@ -619,9 +619,6 @@ groups:
       - W5 i18n/export/de.json#text.71765b8cb4cd39b1 <
       - W5 i18n/export/de.json#text.71765b8cb4cd39b1 >
       - W5 i18n/export/de.json#text.71765b8cb4cd39b1 s="
-      - W5 i18n/export/de.json#text.72bdc69b58da6eae <
-      - W5 i18n/export/de.json#text.72bdc69b58da6eae >
-      - W5 i18n/export/de.json#text.72bdc69b58da6eae s="
       - W5 i18n/export/de.json#text.72fe9dad00bd779b <
       - W5 i18n/export/de.json#text.72fe9dad00bd779b >
       - W5 i18n/export/de.json#text.75158aa64b02e7a3 <
@@ -1053,9 +1050,6 @@ groups:
       - W5 i18n/export/en.json#text.71765b8cb4cd39b1 <
       - W5 i18n/export/en.json#text.71765b8cb4cd39b1 >
       - W5 i18n/export/en.json#text.71765b8cb4cd39b1 s="
-      - W5 i18n/export/en.json#text.72bdc69b58da6eae <
-      - W5 i18n/export/en.json#text.72bdc69b58da6eae >
-      - W5 i18n/export/en.json#text.72bdc69b58da6eae s="
       - W5 i18n/export/en.json#text.72fe9dad00bd779b <
       - W5 i18n/export/en.json#text.72fe9dad00bd779b >
       - W5 i18n/export/en.json#text.75158aa64b02e7a3 <

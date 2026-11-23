@@ -1080,6 +1080,23 @@ of its graph are in the stylesheet. `tests/test_knowledge_map_browser.py` walks 
 Chromium in both themes (map, "View as", search, detail by click and keyboard, every tab)
 and measures each of its Alpine expressions against the CSP build.
 
+**Connections** (`connections.html` with the list it swaps in, `partials/connection_list.html`)
+and **Mail → Notifications** (`notifications.html`, `/mail`) run `js/pages/connections.js` and
+`js/pages/notifications.js`. Their dialogs and the Test button of a connection row are
+`Alpine.data` components of these modules; the sentences come from the islands
+`mgr-connections` and `mgr-notifications` (which also carries the recipients and events), the
+connection types from the island `mgr-connection-types` of the list. A translated sentence with
+markup around a value is rendered by the server with `bound(sentence, name='expression')`
+(`src/app/csp.py`): the value becomes `<span x-text="...">` and is filled in as text, which
+replaces `x-html`. An element hidden until Alpine starts carries `x-cloak` (rule in
+`docker/tailwind.app.css`) instead of `style="display:none"`, and the floating row menu of
+`overflow_menu(float=True)` gets `position: fixed` from the stylesheet.
+`tests/test_connections_notifications_scripts.py` checks the templates, islands and modules,
+runs the browser check on both pages and walks the paths in
+`tests/connections_notifications_browser.mjs`: add, test, edit and delete a connection; add,
+tick, edit, test (to a webhook on the loopback) and delete a recipient, and save the event
+settings, in light and dark.
+
 `backup.html` (`/backup`) with the partials it swaps in (`backup_job_status.html`,
 `backup_schedule.html`, `backup_schedule_preview.html`, `restore_point_list.html`,
 `restore_status.html`): its script is `js/pages/backup.js`, with the restore wizard's

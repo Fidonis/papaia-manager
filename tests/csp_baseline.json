@@ -7,6 +7,7 @@
   "converted": [
     "audit.html",
     "backup.html",
+    "connections.html",
     "dashboard.html",
     "error.html",
     "help.html",
@@ -17,6 +18,7 @@
     "knowledge_map.html",
     "mail.html",
     "me.html",
+    "notifications.html",
     "person_requests.html",
     "roles.html",
     "settings.html",
@@ -50,13 +52,6 @@
     "collections.html": {
       "inline_scripts": 1,
       "on_attributes": 3,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "connections.html": {
-      "inline_scripts": 1,
-      "on_attributes": 1,
       "alpine_unsupported": 0,
       "style_blocks": 0,
       "style_attributes": 0
@@ -145,13 +140,6 @@
       "style_blocks": 0,
       "style_attributes": 0
     },
-    "notifications.html": {
-      "inline_scripts": 1,
-      "on_attributes": 6,
-      "alpine_unsupported": 1,
-      "style_blocks": 0,
-      "style_attributes": 7
-    },
     "partials/_addon_controls.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
@@ -221,13 +209,6 @@
       "alpine_unsupported": 3,
       "style_blocks": 0,
       "style_attributes": 6
-    },
-    "partials/connection_list.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 6,
-      "style_blocks": 0,
-      "style_attributes": 11
     },
     "partials/embedding_body.html": {
       "inline_scripts": 0,
@@ -371,10 +352,10 @@
     }
   },
   "totals": {
-    "inline_scripts": 26,
-    "on_attributes": 68,
-    "alpine_unsupported": 75,
+    "inline_scripts": 24,
+    "on_attributes": 61,
+    "alpine_unsupported": 68,
     "style_blocks": 0,
-    "style_attributes": 181
+    "style_attributes": 163
   }
 }

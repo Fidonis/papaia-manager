@@ -10,9 +10,15 @@
    No api-key is ever rendered, not even masked: a row says whether one is stored and
    whether it can still be read.
 
+   No inline script, event attribute or style attribute (T-UI-03): the dialogs and the Test
+   button of a row are Alpine components of static/js/pages/connections.js, which the page
+   registers before Alpine starts; the registered types reach the dialog through the data
+   island `mgr-connection-types`.
+
    Classes are spelled out per branch rather than assembled from a variable:
    app.css is built by scanning these templates. #}
 {% from "partials/_actions.html" import row_actions, overflow_menu %}
+{% from "partials/_csp.html" import data_island %}
 
 {% set can_write = state.writable and not state.structural_error %}
 
@@ -124,14 +130,14 @@
         {# Tier 2: Edit and Test stay in the open. Resetting and deleting replace or
            remove something, so they sit behind the kebab and confirm in a dialog.
            The default connection has no Delete at all. #}
-        {% call row_actions("{ testing: false }") %}
+        {% call row_actions("connectionRow") %}
           {% if can_write %}
           <button type="button" class="btn btn-outline btn-xs"
                   @click='$dispatch("connection-edit", {{ {"name": c.name, "type": c.type, "fields": c.fields, "hasKey": c.has_key, "etag": c.etag, "usedBy": c.used_by}|tojson }})'>{% trans %}Edit{% endtrans %}</button>
           {% endif %}
           <button type="button" class="btn btn-outline btn-xs" :disabled="testing"
-                  @click="testing = true; testConnection('{{ c.name }}').then(() => testing = false)">
-            <span x-show="testing" style="display:none" class="loading loading-spinner loading-xs"></span>
+                  data-connection="{{ c.name }}" @click="test($el)">
+            <span x-show="testing" x-cloak class="loading loading-spinner loading-xs"></span>
             <span>{% trans %}Test{% endtrans %}</span>
           </button>
           {% if can_write %}
@@ -164,8 +170,10 @@
 
 {% if can_write %}
 
+{{ data_island("mgr-connection-types", types) }}
+
 <!-- New and edit -->
-<dialog id="connection-modal" class="modal" x-data='connectionDialog({{ types|tojson }})'
+<dialog id="connection-modal" class="modal" x-data="connectionDialog"
         @connection-new.window="openNew()"
         @connection-edit.window="openEdit($event.detail)"
         @close="reset()">
@@ -183,7 +191,7 @@
         </p>
       </div>
 
-      <div class="form-control mb-3" style="display:none" x-show="types.length > 1 && mode === 'create'">
+      <div class="form-control mb-3" x-cloak x-show="types.length > 1 && mode === 'create'">
         <label class="label"><span class="label-text">{% trans %}Type{% endtrans %}</span></label>
         <select class="select select-bordered" x-model="type">
           <template x-for="t in types" :key="t.id">
@@ -212,41 +220,41 @@
                  :disabled="clearKey"
                  :placeholder="mode === 'edit' && hasKey ? 'unchanged' : ''">
           <p class="mt-1 text-xs text-pk-text-muted">
-            <span x-html="fmtHtml({{ _('{help} It is stored encrypted and never shown again.')|tojson|forceescape }}, { help: secret().help })"></span>
+            <span x-text="fmt({{ _('{help} It is stored encrypted and never shown again.')|tojson|forceescape }}, { help: secret().help })"></span>
           </p>
-          <label class="label cursor-pointer justify-start gap-2" style="display:none"
+          <label class="label cursor-pointer justify-start gap-2" x-cloak
                  x-show="mode === 'edit' && hasKey">
-            <input type="checkbox" class="checkbox checkbox-sm" x-model="clearKey" @change="if (clearKey) apiKey = ''">
+            <input type="checkbox" class="checkbox checkbox-sm" x-model="clearKey" @change="keyCleared()">
             <span class="label-text">{% trans %}Remove the stored key{% endtrans %}</span>
           </label>
-          <p class="mt-1 text-xs text-warning" style="display:none"
+          <p class="mt-1 text-xs text-warning" x-cloak
              x-show="moved() && hasKey && !apiKey && !clearKey">
             {% trans %}The stored key is never sent to a different address. Enter the key for the new address, or remove the stored one.{% endtrans %}
           </p>
         </div>
       </template>
 
-      <div class="form-control mb-3" style="display:none" x-show="moved() && usedBy.length > 0">
+      <div class="form-control mb-3" x-cloak x-show="moved() && usedBy.length > 0">
         <label class="label cursor-pointer justify-start gap-2">
           <input type="checkbox" class="checkbox checkbox-sm" x-model="confirmJobs">
           <span class="label-text">
-            <span x-html="fmtHtml({{ _('The jobs <span class="font-mono">{usedBy}</span> write to this connection and will write to the new address.')|tojson|forceescape }}, { usedBy: usedBy.join(', ') })"></span>
+            <span>{{ bound(_('The jobs <span class="font-mono">{usedBy}</span> write to this connection and will write to the new address.'), usedBy='usedByText()') }}</span>
           </span>
         </label>
       </div>
 
-      <p style="display:none" x-show="result" class="mb-2 text-sm"
+      <p x-cloak x-show="result" class="mb-2 text-sm"
          :class="result && result.ok ? 'text-success' : 'text-error'" x-text="result && result.detail"></p>
-      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
 
       <div class="modal-action">
         <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="button" class="btn btn-outline" :disabled="testing || busy" @click="test()">
-          <span x-show="testing" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="testing" x-cloak class="loading loading-spinner loading-xs"></span>
           {% trans %}Test{% endtrans %}
         </button>
         <button type="submit" class="btn btn-primary" :disabled="busy">
-          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
           {% trans %}Save{% endtrans %}
         </button>
       </div>
@@ -256,15 +264,15 @@
 </dialog>
 
 <!-- Delete a connection -->
-<dialog id="delete-connection-modal" class="modal" x-data="deleteConnection()"
+<dialog id="delete-connection-modal" class="modal" x-data="deleteConnection"
         @connection-delete.window="open($event.detail)">
   <div class="modal-box">
-    <h3 class="mb-2 text-lg font-bold"><span x-html="fmtHtml({{ _('Delete <span class="font-mono">{name}</span>?')|tojson|forceescape }}, { name: name })"></span></h3>
+    <h3 class="mb-2 text-lg font-bold"><span>{{ bound(_('Delete <span class="font-mono">{name}</span>?'), name='name') }}</span></h3>
     <p class="mb-3 text-sm">
       {% trans %}The connection is removed from the ingester's store. The database itself and its collections are not touched. A connection that ingest jobs write to cannot be deleted.{% endtrans %}
     </p>
     <form @submit.prevent="submit()">
-      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-error" :disabled="busy">{% trans %}Delete{% endtrans %}</button>
@@ -275,15 +283,15 @@
 </dialog>
 
 <!-- Reset the default connection -->
-<dialog id="reset-connection-modal" class="modal" x-data="resetConnection()"
+<dialog id="reset-connection-modal" class="modal" x-data="resetConnection"
         @connection-reset.window="open($event.detail)">
   <div class="modal-box">
-    <h3 class="mb-2 text-lg font-bold"><span x-html="fmtHtml({{ _('Reset <span class="font-mono">{name}</span>?')|tojson|forceescape }}, { name: name })"></span></h3>
+    <h3 class="mb-2 text-lg font-bold"><span>{{ bound(_('Reset <span class="font-mono">{name}</span>?'), name='name') }}</span></h3>
     <p class="mb-3 text-sm">
       {% trans %}The connection points at the integrated Qdrant again, with the stack's current api-key. Changes made to its address or key are replaced.{% endtrans %}
     </p>
     <form @submit.prevent="submit()">
-      <p style="display:none" x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="mb-2 text-sm text-error" x-text="error"></p>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-primary" :disabled="busy">{% trans %}Reset{% endtrans %}</button>

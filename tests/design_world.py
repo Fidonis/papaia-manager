@@ -47,8 +47,13 @@ SAMPLES = {
 }
 
 
-def make_world(root: Path) -> tuple[Path, Path]:
-    """Create the configuration and workspace directories under `root`."""
+def make_world(root: Path, *, rag_catalog: bool = False) -> tuple[Path, Path]:
+    """Create the configuration and workspace directories under `root`.
+
+    With `rag_catalog` the catalog directory of the RAG module exists, so the connection store
+    of the Connections page can be changed (the paths of
+    tests/test_connections_notifications_scripts.py); without it the page is read-only.
+    """
     config = root / "config"
     workspace = root / "workspace"
     config.mkdir(parents=True, exist_ok=True)
@@ -70,6 +75,8 @@ def make_world(root: Path) -> tuple[Path, Path]:
         "      executor: local\n",
         encoding="utf-8",
     )
+    if rag_catalog:
+        (config / "ai" / "rag" / "catalog").mkdir(parents=True, exist_ok=True)
     return config, workspace
 
 
