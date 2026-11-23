@@ -240,7 +240,8 @@ def test_the_page_and_sidebar_follow_the_profile(client: TestClient, config_dir:
     (config_dir / ".env").write_text("COMPOSE_PROFILES=librechat\n", encoding="utf-8")
     page = _as(client, "admin").get("/knowledge-map")
     assert 'href="/knowledge-map"' not in page.text
-    assert "papaia-ctl setup" in page.text
+    # The way to switch it on is the Modules tab.
+    assert 'href="/settings/modules"' in page.text
 
 
 def test_a_generated_placeholder_is_no_token(config_dir: Path) -> None:

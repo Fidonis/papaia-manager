@@ -57,6 +57,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from app.core import localai_runtime
 from app.core.envfile import load_env_file
 from app.core.inventory import (
     LINK_PROFILE,
@@ -67,6 +68,7 @@ from app.core.inventory import (
     core_inventory,
     module_display_name,
 )
+from app.core.localai_runtime import NativeCheck
 from app.core.state import deployment_addons_by_name, load_deployment_yaml
 from app.i18n import N_, gettext, ngettext
 
@@ -126,6 +128,13 @@ _HOST_PORT_RE = re.compile(r":(\d+)->")
 _MISSING_STATE = "missing"
 _MISSING_STATUS_TEXT = N_("not deployed")
 
+# A service that runs as a process on the host rather than in a container: LocalAI with the
+# native runtime of a Mac. Its state is the core's doctor check `localai_native`, read from
+# the host reading (see `app.core.localai_runtime`).
+NATIVE_STATE = "native"
+_NATIVE_TITLE = N_("LocalAI (native)")
+_NATIVE_NOT_CHECKED = N_("not checked yet")
+
 
 class ServiceHealth(StrEnum):
     """Derived state of a container or of a whole module."""
@@ -181,10 +190,24 @@ class ServiceContainer:
         return self.name or self.service
 
     @property
+    def native(self) -> bool:
+        """Whether this is a process on the host, which no Compose verb starts or stops."""
+        return self.state == NATIVE_STATE
+
+    @property
+    def title(self) -> str:
+        """What the row is called: the Compose service, or what runs in its place."""
+        return gettext(_NATIVE_TITLE) if self.native else self.service
+
+    @property
     def status_display(self) -> str:
         """What the page shows: Docker's own text, except for a container that does not exist,
-        whose text is ours and so is translated."""
-        return gettext(_MISSING_STATUS_TEXT) if self.state == _MISSING_STATE else self.status_text
+        whose text is ours and so is translated. A native process shows the core's sentence."""
+        if self.state == _MISSING_STATE:
+            return gettext(_MISSING_STATUS_TEXT)
+        if self.native and not self.status_text:
+            return gettext(_NATIVE_NOT_CHECKED)
+        return self.status_text
 
 
 @dataclass
@@ -485,18 +508,25 @@ def build_groups(modules: Iterable[ServiceModule]) -> list[ServiceGroup]:
     A profile with no module behind it cannot appear here at all, which is the
     intended behaviour: an operator offered a group with nothing in it would
     rightly distrust the page.
+
+    A native process is left out of its group: `papaia-ctl start` and `stop` act on
+    containers, and a group whose health waited for a process they never start
+    could not become healthy through them (`config.service.wait_healthy`).
     """
     members: dict[str, list[ServiceModule]] = {}
     for module in modules:
         for profile in module.profiles:
             members.setdefault(profile, []).append(module)
 
+    def containers(found: list[ServiceModule]) -> list[ServiceContainer]:
+        return [c for m in found for c in m.containers if not c.native]
+
     groups = [
         ServiceGroup(
             name=profile,
             modules=tuple(sorted(m.name for m in found)),
-            containers=sum(len(m.containers) for m in found),
-            health=worst(m.health for m in found),
+            containers=len(containers(found)),
+            health=worst(c.health for c in containers(found)),
             selectable=profile not in (SELF_PROFILE, LINK_PROFILE),
         )
         for profile, found in members.items()
@@ -679,11 +709,57 @@ def addon_projects(config_dir: str, workspace_dir: str) -> dict[str, list[Expect
     return projects
 
 
-def build_snapshot(config_dir: str, workspace_dir: str, output: str) -> StackSnapshot:
+def native_health(check: NativeCheck | None) -> ServiceHealth:
+    """A native process's health from the doctor check: running or stopped, and unknown
+    while there is no reading (or the check itself failed)."""
+    if check is None or check.status not in ("pass", "warn"):
+        return ServiceHealth.UNKNOWN
+    return ServiceHealth.HEALTHY if check.running else ServiceHealth.STOPPED
+
+
+def add_native(
+    modules: list[ServiceModule],
+    skipped: Iterable[ExpectedService],
+    check: NativeCheck | None,
+) -> list[ServiceModule]:
+    """A row for every declared service that runs as a host process instead of a container.
+
+    It joins the module the service is labelled with, so LocalAI's model-init job and the
+    process read as one module, and takes its state from the doctor check. Nothing is
+    reported missing for it: Docker has no container to report."""
+    by_name = {m.name: m for m in modules}
+    for item in skipped:
+        module = by_name.get(item.module)
+        if module is None:
+            module = ServiceModule(name=item.module, profiles=tuple(sorted(item.profiles)))
+            by_name[item.module] = module
+        module.containers.append(
+            ServiceContainer(
+                name="",
+                service=item.service,
+                role=item.role,
+                state=NATIVE_STATE,
+                status_text=check.summary if check is not None else "",
+                health=native_health(check),
+            )
+        )
+        module.containers.sort(key=lambda c: c.sort_key)
+    return _worst_first(by_name.values())
+
+
+def build_snapshot(
+    config_dir: str,
+    workspace_dir: str,
+    output: str,
+    native_check: NativeCheck | None = None,
+) -> StackSnapshot:
     """Turn one `docker ps` reading plus the declared state into a snapshot.
 
     Split out from `load_snapshot` so the whole merge is testable without a
     Docker daemon -- which is also the state CI runs in.
+
+    With the native LocalAI runtime no `localai` container is expected; the
+    process is listed in its place with the state `native_check` gives it.
     """
     by_project = parse_ps_output(output)
     running = {
@@ -694,8 +770,12 @@ def build_snapshot(config_dir: str, workspace_dir: str, output: str) -> StackSna
     }
 
     core_project = compose_project(config_dir)
-    expected_core = core_inventory(workspace_dir, active_profiles(config_dir))
+    skip = localai_runtime.skipped_services(config_dir)
+    expected_core = core_inventory(workspace_dir, active_profiles(config_dir), skip)
     core = merge_expected(by_project.get(core_project, []), expected_core)
+    if skip:
+        declared = core_inventory(workspace_dir, active_profiles(config_dir))
+        core = add_native(core, [i for i in declared if i.service in skip], native_check)
 
     addons: list[ServiceModule] = []
     for project, expected in sorted(addon_projects(config_dir, workspace_dir).items()):
@@ -904,7 +984,7 @@ def load_snapshot(config_dir: str, workspace_dir: str) -> StackSnapshot:
     if output is None:
         return StackSnapshot()
 
-    snapshot = build_snapshot(config_dir, workspace_dir, output)
+    snapshot = build_snapshot(config_dir, workspace_dir, output, _native_check(config_dir))
     completed = [
         c.name
         for section in (snapshot.core, snapshot.addons)
@@ -921,6 +1001,18 @@ def load_snapshot(config_dir: str, workspace_dir: str) -> StackSnapshot:
 
     _CACHE = (now, snapshot)
     return snapshot
+
+
+def _native_check(config_dir: str) -> NativeCheck | None:
+    """The last doctor reading of the native LocalAI, without running one: the host reading
+    is kept fresh by the pages that poll it (`host_health.ensure_fresh`). None for the
+    container runtime, and while there is no reading to show."""
+    if not localai_runtime.is_native(config_dir):
+        return None
+    from app.core import host_health  # noqa: PLC0415 - host_health imports this module
+
+    health = host_health.cached_host_health()
+    return health.localai if health is not None else None
 
 
 def invalidate_snapshot() -> None:
