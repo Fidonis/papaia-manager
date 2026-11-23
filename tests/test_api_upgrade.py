@@ -181,16 +181,16 @@ def test_a_release_found_locally_still_warns_that_the_fetch_failed() -> None:
 
 
 def test_the_header_button_learns_the_check_failed() -> None:
-    assert "checkFailed: true" in _render_status(_unreachable())
+    assert '"checkFailed": true' in _render_status(_unreachable())
 
 
 def test_a_reachable_remote_leaves_the_button_alone() -> None:
     check = _unreachable()
     check.fetch_error = ""
-    assert "checkFailed: false" in _render_status(check)
+    assert '"checkFailed": false' in _render_status(check)
 
 
 def test_a_release_on_offer_is_not_a_failed_check() -> None:
     # The button says "Install 1.2.0" there; "Check failed" is only for the case
     # where it would otherwise claim there is nothing to install.
-    assert "checkFailed: false" in _render_status(_unreachable(up_to_date=False))
+    assert '"checkFailed": false' in _render_status(_unreachable(up_to_date=False))

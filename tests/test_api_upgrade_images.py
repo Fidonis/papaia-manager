@@ -51,6 +51,10 @@ from app.main import create_app  # noqa: E402
 from app.routers import api_upgrade  # noqa: E402
 
 _CSRF = "test-csrf-token-value"
+# The header cluster of the upgrade page (T-UI-03: its script is a page module).
+_UPGRADE_COMPONENT = (
+    Path(__file__).resolve().parents[1] / "src/app/static/js/pages/upgrade/component.js"
+)
 _OUTDATED = "sha256:" + "a" * 64
 _OTHER = "sha256:" + "b" * 64
 
@@ -185,9 +189,9 @@ def test_the_images_section_is_part_of_the_upgrade_page(client: TestClient) -> N
     html = _admin(client).get("/upgrade").text
     assert 'hx-get="/partials/upgrade/images"' in html
     assert 'id="prune-images-modal"' in html
-    # The dialog offers the cleanup, and offers it selected.
+    # The dialog offers the cleanup, and offers it selected (the header cluster's component).
     assert 'x-model="pruneImages"' in html
-    assert "pruneImages: true" in html
+    assert "pruneImages: true" in _UPGRADE_COMPONENT.read_text(encoding="utf-8")
 
 
 def test_the_install_button_names_an_undismissed_result_as_the_reason(
@@ -195,7 +199,10 @@ def test_the_install_button_names_an_undismissed_result_as_the_reason(
 ) -> None:
     html = _admin(client).get("/upgrade").text
     # The button listens for what the runner partial announces ...
-    assert "runnerFinished = $event.detail.finished" in html
+    assert '@papaia-upgrade-runner.window="applyRunner($event.detail)"' in html
+    assert "this.runnerFinished = detail.finished" in _UPGRADE_COMPONENT.read_text(
+        encoding="utf-8"
+    )
     # ... and a finished run is told apart from one still in flight.
     assert "Dismiss the previous upgrade first" in html
     assert "The result of the previous upgrade has not been dismissed yet" in html
@@ -502,16 +509,16 @@ def test_a_finished_runner_is_announced_as_finished() -> None:
     # The header button tells a result nobody dismissed from a run that is still
     # going: the first needs the operator to act, the second to wait.
     html = _render_runner(_status(running=False, prune=False), _LOG)
-    assert "active: true" in html
-    assert "running: false" in html
-    assert "finished: true" in html
+    assert 'data-active="true"' in html
+    assert 'data-running="false"' in html
+    assert 'data-finished="true"' in html
 
 
 def test_a_running_runner_is_not_announced_as_finished() -> None:
     html = _render_runner(_status(running=True, prune=False), _LOG)
-    assert "active: true" in html
-    assert "running: true" in html
-    assert "finished: false" in html
+    assert 'data-active="true"' in html
+    assert 'data-running="true"' in html
+    assert 'data-finished="false"' in html
 
 
 # ---------------------------------------------------------------------------

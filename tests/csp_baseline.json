@@ -5,6 +5,7 @@
     "version": "3.17.5"
   },
   "converted": [
+    "addon_upgrade.html",
     "audit.html",
     "backup.html",
     "connections.html",
@@ -31,16 +32,10 @@
     "settings_installation.html",
     "settings_modules.html",
     "settings_overlay.html",
+    "upgrade.html",
     "users.html"
   ],
   "templates": {
-    "addon_upgrade.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 10
-    },
     "addons.html": {
       "inline_scripts": 1,
       "on_attributes": 0,
@@ -223,54 +218,19 @@
       "style_blocks": 0,
       "style_attributes": 16
     },
-    "partials/upgrade_check.html": {
-      "inline_scripts": 0,
-      "on_attributes": 1,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/upgrade_images.html": {
-      "inline_scripts": 0,
-      "on_attributes": 5,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/upgrade_runner.html": {
-      "inline_scripts": 1,
-      "on_attributes": 2,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/upgrade_status.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "services.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
       "alpine_unsupported": 2,
       "style_blocks": 0,
       "style_attributes": 0
-    },
-    "upgrade.html": {
-      "inline_scripts": 1,
-      "on_attributes": 2,
-      "alpine_unsupported": 8,
-      "style_blocks": 0,
-      "style_attributes": 5
     }
   },
   "totals": {
-    "inline_scripts": 17,
-    "on_attributes": 32,
-    "alpine_unsupported": 49,
+    "inline_scripts": 13,
+    "on_attributes": 22,
+    "alpine_unsupported": 41,
     "style_blocks": 0,
-    "style_attributes": 128
+    "style_attributes": 113
   }
 }

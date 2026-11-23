@@ -1,4 +1,9 @@
 {% extends "base.html" %}
+{% from "partials/_csp.html" import data_island %}
+
+{% block page_modules %}
+<script type="module" src="{{ asset_url('js/pages/upgrade.js') }}"></script>
+{% endblock %}
 
 {% block page_title %}{% trans %}Upgrade{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Move this deployment to a newer papAIa release{% endtrans %}</p>{% endblock %}
@@ -12,39 +17,14 @@
    default for an action that takes the whole stack down. #}
 {% block page_actions %}
 <div class="flex items-center gap-2"
-     x-data="{
-       ready: false, target: null, checkFailed: false, forceable: false, gatePassed: true,
-       hasBackupDir: false, current: '', runnerActive: false, runnerFinished: false,
-       checking: true, starting: false,
-       force: false, noBackup: false, pruneImages: true, confirmed: false,
-       get blocked() { return this.runnerActive || this.checking || this.starting },
-       open() {
-         this.force = false; this.noBackup = !this.hasBackupDir; this.pruneImages = true;
-         this.confirmed = false;
-         $refs.upgradeModal.showModal();
-       },
-       run() {
-         $refs.upgradeModal.close();
-         this.starting = true;
-         startUpgrade(this.target, this.force, this.noBackup, this.pruneImages)
-           .then(ok => { if (!ok) this.starting = false });
-       }
-     }"
-     @papaia-upgrade-state.window="ready = $event.detail.ready;
-                                   target = $event.detail.target;
-                                   checkFailed = $event.detail.checkFailed;
-                                   forceable = $event.detail.forceable;
-                                   gatePassed = $event.detail.gatePassed;
-                                   hasBackupDir = $event.detail.hasBackupDir;
-                                   current = $event.detail.current;
-                                   checking = false"
-     @papaia-upgrade-runner.window="runnerActive = $event.detail.active;
-                                    runnerFinished = $event.detail.finished">
+     x-data="upgradeActions"
+     @papaia-upgrade-state.window="applyState($event.detail)"
+     @papaia-upgrade-runner.window="applyRunner($event.detail)">
 
   <button class="btn btn-ghost btn-sm btn-square" aria-label="{{ _('Check for upgrades') }}"
           :disabled="checking || starting"
-          @click="checking = true; runCheck(null).finally(() => checking = false)">
-    <span style="display:none" x-show="checking" class="loading loading-spinner loading-xs"></span>
+          @click="check()">
+    <span x-cloak x-show="checking" class="loading loading-spinner loading-xs"></span>
     <svg x-show="!checking" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
          viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
@@ -57,10 +37,8 @@
                   : (checkFailed ? {{ _('The remote could not be reached, so it is not known whether a newer release exists')|tojson|forceescape }}
                   : (!ready ? {{ _('Nothing to install, or something in the list below has to be fixed first')|tojson|forceescape }} : '')))"
           @click="open()">
-    <span style="display:none" x-show="starting" class="loading loading-spinner loading-xs"></span>
-    <span x-show="!starting"
-          x-text="target ? (runnerFinished ? {{ _('Dismiss the previous upgrade first')|tojson|forceescape }} : fmt({{ _('Install {version}')|tojson|forceescape }}, { version: target }))
-                         : (checkFailed ? {{ _('Check failed')|tojson|forceescape }} : {{ _('Up to date')|tojson|forceescape }})"></span>
+    <span x-cloak x-show="starting" class="loading loading-spinner loading-xs"></span>
+    <span x-show="!starting" x-text="installLabel"></span>
   </button>
 
   {# The confirmation. Everything it says is what papaia-ctl is about to do, in
@@ -69,10 +47,10 @@
   <dialog x-ref="upgradeModal" class="modal">
     <div class="modal-box max-w-lg">
       <h3 class="font-bold text-base mb-1">
-        <span x-html="fmtHtml({{ _('Upgrade to {target}?')|tojson|forceescape }}, { target: target })"></span>
+        <span data-sentence="upgradeTitle" x-effect="fill($el)"></span>
       </h3>
       <p class="text-sm text-pk-text-muted mb-4 leading-relaxed">
-        <span x-html="fmtHtml({{ _('papAIa moves from <span class="font-mono">{current}</span> to <span class="font-mono">{target}</span>. It runs in its own container, so it finishes even once this panel is gone.')|tojson|forceescape }}, { current: current, target: target })"></span>
+        <span data-sentence="upgradeIntro" x-effect="fill($el)"></span>
       </p>
 
       {# A real <ol>, so the browser does the numbering. Skipping the restore
@@ -82,10 +60,10 @@
       <ol class="text-sm space-y-1.5 mb-4 list-decimal list-inside">
         <li x-show="!noBackup">{% trans %}A restore point is written first{% endtrans %}</li>
         <li>{% trans %}All containers are removed &mdash; volumes are kept{% endtrans %}</li>
-        <li><span x-html="fmtHtml({{ _('The checkout moves to <span class="font-mono">{target}</span>')|tojson|forceescape }}, { target: 'v' + target })"></span></li>
+        <li><span data-sentence="upgradeCheckout" x-effect="fill($el)"></span></li>
         <li>{% trans %}The release migrations run against the configuration{% endtrans %}</li>
         <li>{% trans %}The stack and every active add-on start again{% endtrans %}</li>
-        <li style="display:none" x-show="pruneImages">{% trans %}Outdated Docker images are removed{% endtrans %}</li>
+        <li x-cloak x-show="pruneImages">{% trans %}Outdated Docker images are removed{% endtrans %}</li>
       </ol>
 
       <div class="alert alert-warning py-2 mb-4">
@@ -97,7 +75,7 @@
       {# Offered only where the gate actually failed on an incompatibility. The
          API refuses it otherwise -- confirming an override that overrode
          nothing is worse than not offering it. #}
-      <label class="flex items-start gap-2 text-sm mb-3" style="display:none" x-show="forceable">
+      <label class="flex items-start gap-2 text-sm mb-3" x-cloak x-show="forceable">
         <input type="checkbox" class="checkbox checkbox-sm checkbox-warning mt-0.5" x-model="force">
         <span>
           {% trans %}Upgrade despite the incompatible add-ons{% endtrans %}
@@ -117,7 +95,7 @@
           <span class="block text-xs text-pk-text-muted" x-show="hasBackupDir">
             {% trans %}Faster, and the only recovery path is gone with it.{% endtrans %}
           </span>
-          <span class="block text-xs text-pk-text-muted" style="display:none" x-show="!hasBackupDir">
+          <span class="block text-xs text-pk-text-muted" x-cloak x-show="!hasBackupDir">
             {% trans %}Forced on: this deployment has no reachable backup directory.{% endtrans %}
           </span>
         </span>
@@ -142,7 +120,7 @@
         <span>
           {% trans %}I understand the stack &mdash; and this page &mdash; will be unavailable{% endtrans %}
           <span class="block text-xs text-pk-text-muted">
-            <span x-html="fmtHtml({{ _('If the panel does not come back, the output is still readable on the host with <span class="font-mono">docker logs papaia-upgrade-{target}</span>.')|tojson|forceescape }}, { target: target })"></span>
+            <span data-sentence="upgradeLogs" x-effect="fill($el)"></span>
           </span>
         </span>
       </label>
@@ -180,8 +158,8 @@
   </div>
 </div>
 
-{# Loaded declaratively rather than from the script below: htmx is a deferred
-   bundle, so an inline script in the body runs before it exists. Whatever a
+{# Loaded declaratively rather than from the page module: htmx is a deferred
+   bundle that runs after the module. Whatever a
    previous check found appears immediately; the fresh one replaces it when it
    returns. #}
 <div id="upgrade-check-slot" class="mb-6"
@@ -204,7 +182,8 @@
 {# Plain DOM rather than Alpine, and outside the slot above: the slot is swapped
    after every removal and must not rebuild a dialog that is open. The list is
    filled with textContent nodes, never innerHTML -- image names come from the
-   daemon. #}
+   daemon. The page module (js/pages/upgrade/component.js) drives it; its buttons
+   and those of the partials name what they do in `data-upgrade-action`. #}
 <dialog id="prune-images-modal" class="modal">
   <div class="modal-box max-w-md">
     <h3 id="prune-images-title" class="font-bold text-base mb-1"></h3>
@@ -214,9 +193,8 @@
     <ul id="prune-images-list"
         class="rounded-lg border border-base-300 px-4 py-2 mb-4 max-h-48 overflow-y-auto text-xs font-mono"></ul>
     <div class="modal-action mt-0">
-      <button class="btn btn-ghost btn-sm"
-              onclick="document.getElementById('prune-images-modal').close()">{% trans %}Cancel{% endtrans %}</button>
-      <button class="btn btn-error btn-sm" onclick="confirmPruneImages()">{% trans %}Remove{% endtrans %}</button>
+      <button class="btn btn-ghost btn-sm" data-upgrade-action="prune-cancel">{% trans %}Cancel{% endtrans %}</button>
+      <button class="btn btn-error btn-sm" data-upgrade-action="prune-confirm">{% trans %}Remove{% endtrans %}</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
@@ -231,218 +209,36 @@
      hx-trigger="load"
      hx-swap="innerHTML"></div>
 
-<script>
-// The check is not run by any GET: it fetches from the remote and materialises a
-// git worktree of the target tag. So the page asks for one explicitly on load,
-// which is what makes "open the page" mean "look for upgrades".
-function _csrfToken() {
-  return csrfToken();
-}
-
-async function _upgradeError(r) {
-  try {
-    const e = await r.json();
-    return e.detail || JSON.stringify(e);
-  } catch (_) {
-    return String(r.status);
-  }
-}
-
-function refreshUpgradeStatus() {
-  htmx.ajax('GET', '/partials/upgrade/status',
-            { target: '#upgrade-status-slot', swap: 'innerHTML' });
-  htmx.ajax('GET', '/partials/upgrade/check',
-            { target: '#upgrade-check-slot', swap: 'innerHTML' });
-}
-
-function refreshUpgradeRunner() {
-  htmx.ajax('GET', '/partials/upgrade/runner',
-            { target: '#upgrade-runner-slot', swap: 'innerHTML' });
-}
-
-// runCheck: POST because it reaches the network and writes into .git/worktrees.
-// `version` is null for "the newest release", which is what papaia-ctl resolves
-// on its own.
-function runCheck(version) {
-  return fetch('/api/v1/upgrade/check', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken() },
-    body: JSON.stringify({ version: version }),
-  }).then(async function (r) {
-    if (_authGuard(r)) return false;
-    if (!r.ok) {
-      showToast('error', {{ _('Upgrade check failed:')|tojson }} + " " + (await _upgradeError(r)));
-      refreshUpgradeStatus();
-      return false;
-    }
-    refreshUpgradeStatus();
-    return true;
-  }).catch(function () {
-    showToast('error', {{ _('Upgrade check failed: the manager could not be reached')|tojson }});
-    return false;
-  });
-}
-
-function recheckVersion(version) {
-  runCheck(version);
-}
-
-// startUpgrade: 202 and then nothing to poll in this request -- the runner
-// outlives us. #upgrade-runner picks the outcome back up, here and after the
-// reload that follows the manager being recreated.
-function startUpgrade(version, force, noBackup, pruneImages) {
-  return fetch('/api/v1/upgrade', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken() },
-    body: JSON.stringify({
-      version: version, force: force, no_backup: noBackup, prune_images: pruneImages,
-    }),
-  }).then(async function (r) {
-    if (_authGuard(r)) return false;
-    if (!r.ok) {
-      showToast('error', {{ _('Upgrade refused:')|tojson }} + " " + (await _upgradeError(r)));
-      refreshUpgradeRunner();
-      return false;
-    }
-    refreshUpgradeRunner();
-    showToast('info', {{ _('Upgrade started — this panel will go down with the stack')|tojson }});
-    return true;
-  });
-}
-
-// acknowledgeUpgrade: drop the finished runner so the next upgrade can start.
-// The record of what it did stays in upgrade.log, which is why this is safe to
-// offer as a single click. A run that was started with the image cleanup gets a
-// second pass here, because the runner container itself held the previous
-// panel image until now -- the response says what that pass did.
-function acknowledgeUpgrade() {
-  fetch('/api/v1/upgrade/runner/clear', {
-    method: 'POST',
-    headers: { 'X-CSRF-Token': _csrfToken() },
-  }).then(async function (r) {
-    if (_authGuard(r)) return;
-    if (!r.ok) {
-      showToast('error', {{ _('Could not dismiss the upgrade:')|tojson }} + " " + (await _upgradeError(r)));
-      return;
-    }
-    var data = await r.json();
-    if (data.images) {
-      if (data.images.error) {
-        showToast('warning', {{ _('Dismissed, but outdated images could not be removed:')|tojson }} + " " + _esc(data.images.error));
-      } else if (data.images.removed.length) {
-        showToast('success', fmtPlural(data.images.removed.length,
-                  {{ _('Dismissed; removed {count} more image, {size} reclaimed')|tojson }},
-                  {{ _('Dismissed; removed {count} more images, {size} reclaimed')|tojson }}, { size: data.images.reclaimed_human }));
-      }
-    }
-    refreshUpgradeRunner();
-    refreshUpgradeStatus();
-    refreshUpgradeImages();
-    htmx.ajax('GET', '/partials/upgrade/log',
-              { target: '#upgrade-log-slot', swap: 'innerHTML' });
-  });
-}
-
-// showToast() assigns innerHTML, and image names and daemon error text come from
-// Docker rather than from this page.
-function _esc(text) {
-  var div = document.createElement('div');
-  div.textContent = String(text);
-  return div.innerHTML;
-}
-
-function refreshUpgradeImages() {
-  htmx.ajax('GET', '/partials/upgrade/images',
-            { target: '#upgrade-images-slot', swap: 'innerHTML' });
-}
-
-// The rows the operator is looking at, read back from the DOM: what the dialog
-// lists and what the request names are the same set, so a row that became
-// outdated between render and click is not removed on their behalf.
-function _imageRows(onlyChecked) {
-  var sel = onlyChecked ? '.prune-image-check:checked' : '.prune-image-check';
-  return Array.prototype.map.call(document.querySelectorAll(sel), function (box) {
-    return { id: box.value, name: box.getAttribute('data-name') };
-  });
-}
-
-// Bound to the list's checkboxes: keeps the bulk button and the master box honest.
-function updatePruneSelection() {
-  var all = document.querySelectorAll('.prune-image-check');
-  var picked = document.querySelectorAll('.prune-image-check:checked');
-  var button = document.getElementById('prune-selected-button');
-  if (button) {
-    button.disabled = picked.length === 0;
-    button.textContent = picked.length ? fmt({{ _('Remove selected ({count})')|tojson }}, { count: picked.length }) : {{ _('Remove selected')|tojson }};
-  }
-  var master = document.getElementById('prune-master-check');
-  if (master) {
-    master.checked = all.length > 0 && picked.length === all.length;
-    master.indeterminate = picked.length > 0 && picked.length < all.length;
-  }
-}
-
-function togglePruneAll(checked) {
-  document.querySelectorAll('.prune-image-check').forEach(function (box) {
-    box.checked = checked;
-  });
-  updatePruneSelection();
-}
-
-var _pendingPrune = [];
-
-function openPruneImagesModal(onlyChecked) {
-  _pendingPrune = _imageRows(onlyChecked);
-  if (_pendingPrune.length === 0) return;
-  document.getElementById('prune-images-title').textContent = fmtPlural(_pendingPrune.length,
-    {{ _('Remove {count} image?')|tojson }}, {{ _('Remove {count} images?')|tojson }});
-  var list = document.getElementById('prune-images-list');
-  list.textContent = '';
-  _pendingPrune.forEach(function (row) {
-    var li = document.createElement('li');
-    li.textContent = row.name;
-    list.appendChild(li);
-  });
-  document.getElementById('prune-images-modal').showModal();
-}
-
-function confirmPruneImages() {
-  var ids = _pendingPrune.map(function (row) { return row.id; });
-  document.getElementById('prune-images-modal').close();
-  if (ids.length === 0) return;
-  return fetch('/api/v1/upgrade/images/prune', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken() },
-    body: JSON.stringify({ images: ids }),
-  }).then(async function (r) {
-    if (_authGuard(r)) return;
-    if (!r.ok) {
-      showToast('error', {{ _('Could not remove images:')|tojson }} + " " + (await _upgradeError(r)));
-      refreshUpgradeImages();
-      return;
-    }
-    var data = await r.json();
-    if (data.failed.length) {
-      showToast('warning', fmt({{ _('Removed {removed}, kept {kept}: {name} — {error}')|tojson }},
-                { removed: data.removed.length, kept: data.failed.length, name: _esc(data.failed[0].name), error: _esc(data.failed[0].error) }));
-    } else {
-      showToast('success', fmtPlural(data.removed.length,
-                {{ _('Removed {count} image, {size} reclaimed')|tojson }},
-                {{ _('Removed {count} images, {size} reclaimed')|tojson }}, { size: data.reclaimed_human }));
-    }
-    refreshUpgradeImages();
-  });
-}
-
-// Opening the page is what means "look for upgrades". The cached result is
-// rendered declaratively above, so the page is never empty while this runs.
-//
-// DOMContentLoaded rather than the bare script body: htmx and Alpine are
-// deferred bundles, and deferred scripts all execute before this event -- so
-// this is the earliest point where `htmx` is defined for the refresh that
-// follows.
-document.addEventListener('DOMContentLoaded', function () {
-  runCheck(null);
-});
-</script>
+{#- The values of static/js/pages/upgrade.js: the sentences the page puts together in the
+    browser, in the language of the page (`{name}` marks a value). The four sentences of the
+    dialog carry `<span class="font-mono">`; the module builds them as DOM nodes and sets every
+    value as text. #}
+{{ data_island("mgr-upgrade", {
+  "texts": {
+    "upgradeTitle": _('Upgrade to {target}?'),
+    "upgradeIntro": _('papAIa moves from <span class="font-mono">{current}</span> to <span class="font-mono">{target}</span>. It runs in its own container, so it finishes even once this panel is gone.'),
+    "upgradeCheckout": _('The checkout moves to <span class="font-mono">{target}</span>'),
+    "upgradeLogs": _('If the panel does not come back, the output is still readable on the host with <span class="font-mono">docker logs papaia-upgrade-{target}</span>.'),
+    "install": _('Install {version}'),
+    "dismissFirst": _('Dismiss the previous upgrade first'),
+    "checkFailed": _('Check failed'),
+    "upToDate": _('Up to date'),
+    "checkFailedBecause": _('Upgrade check failed:'),
+    "checkUnreachable": _('Upgrade check failed: the manager could not be reached'),
+    "refused": _('Upgrade refused:'),
+    "started": _('Upgrade started — this panel will go down with the stack'),
+    "dismissFailed": _('Could not dismiss the upgrade:'),
+    "dismissedImagesFailed": _('Dismissed, but outdated images could not be removed:'),
+    "dismissedImagesOne": _('Dismissed; removed {count} more image, {size} reclaimed'),
+    "dismissedImagesOther": _('Dismissed; removed {count} more images, {size} reclaimed'),
+    "removeSelectedCount": _('Remove selected ({count})'),
+    "removeSelected": _('Remove selected'),
+    "removeTitleOne": _('Remove {count} image?'),
+    "removeTitleOther": _('Remove {count} images?'),
+    "removeFailed": _('Could not remove images:'),
+    "removedPartly": _('Removed {removed}, kept {kept}: {name} — {error}'),
+    "removedOne": _('Removed {count} image, {size} reclaimed'),
+    "removedOther": _('Removed {count} images, {size} reclaimed'),
+  },
+}) }}
 {% endblock %}

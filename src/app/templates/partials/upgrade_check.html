@@ -57,8 +57,8 @@
   {% if check.available | length > 1 %}
   <div class="rounded-xl border border-base-300 px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
     <label for="upgrade-version" class="text-sm font-medium">{% trans %}Release{% endtrans %}</label>
-    <select id="upgrade-version" class="select select-bordered select-sm font-mono"
-            onchange="recheckVersion(this.value)">
+    {# The page module re-runs the check when the choice changes (js/pages/upgrade.js). #}
+    <select id="upgrade-version" class="select select-bordered select-sm font-mono">
       {% for version in check.available %}
       <option value="{{ version }}" {% if version == check.target %}selected{% endif %}>
         {{ version }}{% if loop.first %} {% trans %}— newest{% endtrans %}{% endif %}

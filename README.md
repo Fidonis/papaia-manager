@@ -1081,6 +1081,17 @@ a module on and off in `tests/settings_browser.mjs`).
 of its graph are in the stylesheet. `tests/test_knowledge_map_browser.py` walks the page in
 Chromium in both themes (map, "View as", search, detail by click and keyboard, every tab)
 and measures each of its Alpine expressions against the CSP build.
+The release upgrade (`upgrade.html` with the partials it swaps in: status, check, runner,
+images) runs `js/pages/upgrade.js`. The header button is the component `upgradeActions`; the
+status partial announces what it found in the data island `upgrade-state` and the runner in
+`data-active`, `data-running` and `data-finished` of `#upgrade-runner`, and the module turns
+both into the window events the button listens for. The buttons of the partials name what
+they do in `data-upgrade-action`, and the sentences of the confirmation are built as DOM nodes
+with text, never as markup. The add-on upgrade (`addon_upgrade.html`) runs
+`js/pages/addon-upgrade.js` with the island `mgr-addon-upgrade`; both use `x-cloak`.
+`tests/test_upgrade_scripts.py` walks both pages in Chromium in
+both themes: check for upgrades, start and follow an upgrade, dismiss it, choose a release,
+remove outdated images, and review and apply an add-on upgrade.
 
 **Connections** (`connections.html` with the list it swaps in, `partials/connection_list.html`)
 and **Mail → Notifications** (`notifications.html`, `/mail`) run `js/pages/connections.js` and

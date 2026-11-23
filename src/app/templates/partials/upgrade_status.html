@@ -220,18 +220,21 @@
      `ready` also requires a gate the operator can get past. A gate that failed
      on an INCOMPATIBLE is passable, from the modal, with --force; one that
      failed on an ERROR is not, at any price, so an enabled button there could
-     only ever produce a 409. The row above already says which it is. #}
-  <script>
-    window.dispatchEvent(new CustomEvent("papaia-upgrade-state", { detail: {
-      target: {{ (check.target | tojson) if (check and not check.up_to_date) else "null" }},
-      ready: {{ "true" if (checkout.upgradable and check and not check.up_to_date
-                           and (check.gate.passed or check.gate.forceable)) else "false" }},
-      checkFailed: {{ "true" if (check and check.up_to_date and check.fetch_error) else "false" }},
-      forceable: {{ "true" if (check and check.gate.forceable) else "false" }},
-      gatePassed: {{ "true" if (not check or check.gate.passed) else "false" }},
-      hasBackupDir: {{ "true" if (backup_dir and backup_dir_reachable) else "false" }},
-      available: {{ (check.available | tojson) if check else "[]" }},
-      current: {{ (version.current | tojson) }},
-    }}));
-  </script>
+     only ever produce a 409. The row above already says which it is.
+
+     The answer is a data island, never script: after every swap the page module
+     (js/pages/upgrade/component.js) reads it and dispatches the window event
+     `papaia-upgrade-state` the button listens for. #}
+  {%- from "partials/_csp.html" import data_island %}
+  {{ data_island("upgrade-state", {
+    "target": check.target if (check and not check.up_to_date) else none,
+    "ready": true if (checkout.upgradable and check and not check.up_to_date
+                      and (check.gate.passed or check.gate.forceable)) else false,
+    "checkFailed": true if (check and check.up_to_date and check.fetch_error) else false,
+    "forceable": true if (check and check.gate.forceable) else false,
+    "gatePassed": true if (not check or check.gate.passed) else false,
+    "hasBackupDir": true if (backup_dir and backup_dir_reachable) else false,
+    "available": check.available if check else [],
+    "current": version.current,
+  }) }}
 </div>
