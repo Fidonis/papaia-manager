@@ -292,9 +292,10 @@ def test_the_page_lists_the_actions_and_marks_destructive_ones() -> None:
         request=None,
     )
     assert "Maintenance actions" in html
-    assert "addonMaintenanceAction('n8n', 'reset')" in html
+    # The component of static/js/pages/addons.js asks first when the action is destructive.
+    assert "maintain('n8n', &#34;reset&#34;, true, &#34;Run \&#34;reset\&#34; on n8n?" in html
+    assert "maintain('n8n', &#34;check&#34;, false, " in html
     assert "btn-error" in html
-    assert "confirm(" in html
 
 
 @pytest.mark.usefixtures("addon_dir")
@@ -320,7 +321,7 @@ def test_the_page_runs_an_action_through_the_helper_that_reports_its_outcome() -
         },
         request=None,
     )
-    assert "addonMaintenanceAction('n8n', 'check')" in html
+    assert "maintain('n8n', &#34;check&#34;, false, " in html
     assert templates.env.loader is not None
     base = templates.env.loader.get_source(templates.env, "base.html")[0]
     assert '"maintenanceActionFailed": _(' in base
@@ -328,7 +329,8 @@ def test_the_page_runs_an_action_through_the_helper_that_reports_its_outcome() -
     actions = (core / "actions.js").read_text(encoding="utf-8")
     assert "function addonMaintenanceAction(" in actions
     assert "texts.maintenanceActionFailed" in actions
-    assert '"addonMaintenanceAction",' in (core / "legacy.js").read_text(encoding="utf-8")
+    page = (core.parent / "pages" / "addons.js").read_text(encoding="utf-8")
+    assert "actions.addonMaintenanceAction(name, action)" in page
 
 
 @pytest.mark.parametrize(

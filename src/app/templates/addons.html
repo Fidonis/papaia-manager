@@ -3,14 +3,18 @@
 {% block page_title %}{% trans %}Add-Ons{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Manage all the add-ons in your AI stack{% endtrans %}</p>{% endblock %}
 
+{% block page_modules %}
+<script type="module" src="{{ asset_url('js/pages/addons.js') }}"></script>
+{% endblock %}
+
 {# Tier 1. This page has no primary action of its own -- installing happens per
    add-on, on the card -- so the catalog link is the secondary, and it moves here
    out of the gallery's section heading, where it was the only mid-page action
    button in the panel. #}
 {% block page_actions %}
-<button class="btn btn-ghost btn-sm" x-data="{ busy: false }" :disabled="busy"
-        @click="busy = true; refreshAllCatalogs().finally(() => busy = false)">
-  <span style="display:none" x-show="busy" class="loading loading-spinner loading-xs"></span>
+<button class="btn btn-ghost btn-sm" x-data="catalogRefresh" :disabled="busy"
+        @click="refreshAll()">
+  <span x-cloak x-show="busy" class="loading loading-spinner loading-xs"></span>
   <svg x-show="!busy" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
   </svg>
@@ -36,18 +40,4 @@
     <span class="loading loading-spinner loading-lg text-primary"></span>
   </div>
 </div>
-
-<script>
-  // Fetches every git catalog again, then redraws the gallery: a version a catalog published
-  // since the last refresh only shows up as an upgrade after this. catalogAction (core/actions.js)
-  // tells each outcome; a refusal in three parts with its reference.
-  function refreshAllCatalogs() {
-    return fetch("/api/v1/catalogs")
-      .then(r => (_authGuard(r) || !r.ok ? [] : r.json()))
-      .then(catalogs => Promise.all(
-        catalogs.filter(c => c.type === "git" && c.enabled).map(c => catalogAction(c.name, "refresh"))
-      ))
-      .then(() => htmx.ajax("GET", "/partials/addons", { target: "#addon-gallery", swap: "innerHTML" }));
-  }
-</script>
 {% endblock %}

@@ -9,10 +9,12 @@ test("the list is sorted, without repeats, and frozen", () => {
   assert.deepEqual([...LEGACY_NAMES], [...new Set(LEGACY_NAMES)].sort());
   assert.ok(Object.isFrozen(LEGACY_NAMES));
   assert.ok(LEGACY_NAMES.includes("showToast"));
-  assert.ok(LEGACY_NAMES.includes("addonAction"));
-  assert.ok(LEGACY_NAMES.includes("stackAction"));
-  assert.ok(LEGACY_NAMES.includes("catalogAction"));
   assert.ok(LEGACY_NAMES.includes("fmt"));
+  // The add-on, stack and catalog pages import their actions (pages/addons.js, services.js,
+  // catalogs.js), so these are no globals any more.
+  for (const name of ["addonAction", "galleryAction", "stackAction", "stackGroupAction", "catalogAction"]) {
+    assert.ok(!LEGACY_NAMES.includes(name), name);
+  }
 });
 
 test("exactly the listed names are assigned", () => {

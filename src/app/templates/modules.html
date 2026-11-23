@@ -1,7 +1,14 @@
 {% extends "base.html" %}
+{% from "partials/_csp.html" import data_island %}
 
 {% block page_title %}{% trans %}Modules{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}The modules of this suite, in the version of its bill of materials{% endtrans %}</p>{% endblock %}
+
+{% block page_modules %}
+{% if show_delegations %}
+<script type="module" src="{{ asset_url('js/pages/modules.js') }}"></script>
+{% endif %}
+{% endblock %}
 
 {% block page_actions %}
 <a href="/addons" class="btn btn-outline btn-sm">{% trans %}Add-Ons{% endtrans %}</a>
@@ -121,43 +128,10 @@
   </template>
 </section>
 
-<script>
-  function delegationOverview() {
-    const T = {
-      confirm: {{ _("End every delegation of {person} at {module}?")|tojson|forceescape }},
-      revoked: {{ _("The delegations of {person} at {module} are revoked.")|tojson|forceescape }},
-      failed: {{ _("The overview could not be loaded: {detail}")|tojson|forceescape }},
-    };
-    return {
-      modules: [],
-      error: "",
-      load() {
-        return fetch("/api/v1/delegations")
-          .then(r => {
-            if (_authGuard(r)) return null;
-            return r.json().then(body => (r.ok ? body : Promise.reject(body.detail || r.status)));
-          })
-          .then(body => { if (body) { this.modules = body.modules; this.error = ""; } })
-          .catch(detail => { this.error = fmt(T.failed, { detail: String(detail) }); });
-      },
-      revoke(m, p) {
-        const values = { person: p.username || p.user_id, module: m.title };
-        if (!window.confirm(fmt(T.confirm, values))) return;
-        fetch("/api/v1/delegations/" + encodeURIComponent(m.module) + "/persons/" + encodeURIComponent(p.user_id), {
-          method: "DELETE",
-          headers: { "X-CSRF-Token": csrfToken() },
-        }).then(r => {
-          if (_authGuard(r)) return;
-          if (r.ok) {
-            showToast("success", fmtHtml(T.revoked, values));
-          } else {
-            r.json().then(body => showToast("error", fmtHtml(I18N.requestRefused, { detail: body.detail || r.status })));
-          }
-          this.load();
-        });
-      },
-    };
-  }
-</script>
+{{ data_island("delegation-texts", {
+  "confirm": _("End every delegation of {person} at {module}?"),
+  "revoked": _("The delegations of {person} at {module} are revoked."),
+  "failed": _("The overview could not be loaded: {detail}"),
+}) }}
 {% endif %}
 {% endblock %}

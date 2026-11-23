@@ -5,13 +5,17 @@
     "version": "3.17.5"
   },
   "converted": [
+    "addon_detail.html",
     "addon_upgrade.html",
+    "addons.html",
     "audit.html",
     "backup.html",
+    "catalogs.html",
     "connections.html",
     "dashboard.html",
     "error.html",
     "help.html",
+    "host.html",
     "ingest_catalog.html",
     "ingest_job.html",
     "ingest_jobs.html",
@@ -25,9 +29,13 @@
     "knowledge_map.html",
     "mail.html",
     "me.html",
+    "modules.html",
+    "node_detail.html",
+    "nodes.html",
     "notifications.html",
     "person_requests.html",
     "roles.html",
+    "services.html",
     "settings.html",
     "settings_installation.html",
     "settings_modules.html",
@@ -36,20 +44,6 @@
     "users.html"
   ],
   "templates": {
-    "addons.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 1,
-      "style_blocks": 0,
-      "style_attributes": 1
-    },
-    "catalogs.html": {
-      "inline_scripts": 1,
-      "on_attributes": 6,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "collections.html": {
       "inline_scripts": 1,
       "on_attributes": 3,
@@ -78,75 +72,12 @@
       "style_blocks": 0,
       "style_attributes": 0
     },
-    "modules.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "node_detail.html": {
-      "inline_scripts": 1,
-      "on_attributes": 3,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "nodes.html": {
-      "inline_scripts": 1,
-      "on_attributes": 1,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/_addon_controls.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 5,
-      "style_blocks": 0,
-      "style_attributes": 3
-    },
-    "partials/_env_fields.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 2,
-      "style_blocks": 0,
-      "style_attributes": 1
-    },
-    "partials/_group_controls.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 4,
-      "style_blocks": 0,
-      "style_attributes": 8
-    },
     "partials/_ingest_credential_dialog.html": {
       "inline_scripts": 1,
       "on_attributes": 0,
       "alpine_unsupported": 0,
       "style_blocks": 0,
       "style_attributes": 3
-    },
-    "partials/addon_detail_content.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 6,
-      "style_blocks": 0,
-      "style_attributes": 7
-    },
-    "partials/addon_gallery.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 1
-    },
-    "partials/catalog_list.html": {
-      "inline_scripts": 0,
-      "on_attributes": 1,
-      "alpine_unsupported": 2,
-      "style_blocks": 0,
-      "style_attributes": 1
     },
     "partials/collection_list.html": {
       "inline_scripts": 0,
@@ -176,13 +107,6 @@
       "style_blocks": 0,
       "style_attributes": 1
     },
-    "partials/host_list.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "partials/ingest_secret_list.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
@@ -197,40 +121,19 @@
       "style_blocks": 0,
       "style_attributes": 6
     },
-    "partials/service_list.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/stack_runner.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 1,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "partials/tile_editor.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
       "alpine_unsupported": 0,
       "style_blocks": 0,
       "style_attributes": 16
-    },
-    "services.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 2,
-      "style_blocks": 0,
-      "style_attributes": 0
     }
   },
   "totals": {
-    "inline_scripts": 13,
-    "on_attributes": 22,
-    "alpine_unsupported": 41,
+    "inline_scripts": 6,
+    "on_attributes": 11,
+    "alpine_unsupported": 18,
     "style_blocks": 0,
-    "style_attributes": 113
+    "style_attributes": 91
   }
 }

@@ -1,10 +1,13 @@
 {# ── Reusable macros for addon lifecycle buttons and confirmation modals.
-   Requires the caller to wrap its usage in an Alpine component:
-     x-data="{ busy: false, activeVerb: '' }"
+   Requires the caller to wrap its usage in the Alpine component of
+   static/js/pages/addons.js:
+     x-data="addonControls"
    Arguments:
      addon  – addon model object
      s      – addon.status (pre-computed by caller)
-     fn     – JS function to call: 'addonAction' (detail) or 'galleryAction' (dashboard)
+     fn     – where the verbs run: 'detail' (the add-on's page, which redraws its
+              panel) or 'gallery' (the dashboard, which redraws the gallery); the
+              component accepts no other value
 
    The verbs are split across the two tiers of the action contract in
    _actions.html: `primary_action` is the one filled button that follows from the
@@ -70,19 +73,19 @@
   {% elif s in ("available", "inactive") and addon.catalog %}
     <button class="btn btn-primary btn-sm" :disabled="busy"
             @click="$refs.installModal.showModal()">
-      <span style="display:none" x-show="activeVerb === 'install'" class="loading loading-dots loading-xs"></span>
+      <span x-cloak x-show="activeVerb === 'install'" class="loading loading-dots loading-xs"></span>
       <span x-show="activeVerb !== 'install'">{% if s == "inactive" %}{% trans %}Reactivate{% endtrans %}{% else %}{% trans %}Install{% endtrans %}{% endif %}</span>
     </button>
   {% elif s == "installed" %}
     <button class="btn btn-success btn-sm" :disabled="busy"
-            @click="busy = true; activeVerb = 'start'; {{ fn }}('{{ addon.name }}', 'start', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-      <span style="display:none" x-show="activeVerb === 'start'" class="loading loading-dots loading-xs"></span>
+            @click="run('{{ fn }}', '{{ addon.name }}', 'start')">
+      <span x-cloak x-show="activeVerb === 'start'" class="loading loading-dots loading-xs"></span>
       <span x-show="activeVerb !== 'start'">{% trans %}Start{% endtrans %}</span>
     </button>
   {% elif s == "running" %}
     <button class="btn btn-warning btn-sm" :disabled="busy"
-            @click="busy = true; activeVerb = 'stop'; {{ fn }}('{{ addon.name }}', 'stop', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-      <span style="display:none" x-show="activeVerb === 'stop'" class="loading loading-dots loading-xs"></span>
+            @click="run('{{ fn }}', '{{ addon.name }}', 'stop')">
+      <span x-cloak x-show="activeVerb === 'stop'" class="loading loading-dots loading-xs"></span>
       <span x-show="activeVerb !== 'stop'">{% trans %}Stop{% endtrans %}</span>
     </button>
   {% endif %}
@@ -169,7 +172,7 @@
     <div class="modal-action mt-0">
       <button class="btn btn-ghost btn-sm" @click="$refs.removeModal.close()">{% trans %}Cancel{% endtrans %}</button>
       <button class="btn btn-error btn-sm"
-              @click="$refs.removeModal.close(); busy = true; activeVerb = 'remove'; {{ fn }}('{{ addon.name }}', 'remove', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
+              @click="confirmRun('removeModal', '{{ fn }}', '{{ addon.name }}', 'remove')">
         {% trans %}Remove{% endtrans %}
       </button>
     </div>
@@ -216,7 +219,7 @@
     <div class="modal-action mt-0">
       <button class="btn btn-ghost btn-sm" @click="$refs.uninstallModal.close()">{% trans %}Cancel{% endtrans %}</button>
       <button class="btn btn-error btn-sm"
-              @click="$refs.uninstallModal.close(); busy = true; activeVerb = 'uninstall'; {{ fn }}('{{ addon.name }}', 'uninstall', {}).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
+              @click="confirmRun('uninstallModal', '{{ fn }}', '{{ addon.name }}', 'uninstall')">
         {% trans %}Uninstall{% endtrans %}
       </button>
     </div>
@@ -234,22 +237,7 @@
 <dialog x-ref="installModal" class="modal">
   <div class="modal-box">
     <h3 class="text-lg font-bold mb-4">{% trans name=addon.name %}Install {{ name }}{% endtrans %}</h3>
-    <form
-      @submit.prevent="
-        const env = {};
-        $el.querySelectorAll('[data-env-key]').forEach(el => {
-          const val = el.value.trim();
-          const omit = el.dataset.omitIfEmpty === '1';
-          const send = omit ? val !== '' : val !== (el.dataset.example || '');
-          if (send) env[el.dataset.envKey] = val;
-        });
-        const start = $el.querySelector('[name=start]').checked;
-        $refs.installModal.close();
-        busy = true; activeVerb = 'install';
-        {{ fn }}('{{ addon.name }}', 'install', { catalog: '{{ addon.catalog }}', env, start })
-          .then(ok => { if (!ok) { busy = false; activeVerb = '' } });
-      "
-    >
+    <form @submit.prevent="install($el, '{{ fn }}', '{{ addon.name }}', '{{ addon.catalog }}')">
 
       {# Primary fields — required, auto-generated, or explicitly annotated #}
       {% for f in primary_fields %}

@@ -122,6 +122,7 @@ jobs:
           ../tests/test_connections_notifications_scripts.py
           ../tests/test_ingest_browser.py
           ../tests/test_upgrade_scripts.py
+          ../tests/test_addons_services_scripts.py
       - name: Every page of the manager
         run: >-
           scripts/csp-check.sh 57882 "${RUNNER_TEMP}/csp-report.json" "${GITHUB_STEP_SUMMARY}"

@@ -25,8 +25,8 @@
       <p class="text-xs text-pk-text-muted font-mono">{% trans exit_code=stack.exit_code %}exit {{ exit_code }}{% endtrans %}</p>
     {% endif %}
     {% if not stack.running %}
-      <button class="btn btn-ghost btn-xs ml-auto"
-              @click="fetch('/api/v1/stack/runner/clear', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() } }).then((r) => { if (!_authGuard(r)) refreshStackRunner(); })">
+      <button class="btn btn-ghost btn-xs ml-auto" x-data="stackRunner"
+              @click="dismiss()">
         {% trans %}Dismiss{% endtrans %}
       </button>
     {% endif %}

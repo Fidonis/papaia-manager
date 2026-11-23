@@ -1,6 +1,13 @@
 {% extends "base.html" %}
+{% from "partials/_csp.html" import data_island %}
 {% block page_title %}{% trans %}Nodes{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}The machines of this distributed installation{% endtrans %}</p>{% endblock %}
+
+{% block page_modules %}
+{% if stepped_up %}
+<script type="module" src="{{ asset_url('js/pages/nodes.js') }}"></script>
+{% endif %}
+{% endblock %}
 
 {% block page_actions %}
 <button class="btn btn-outline btn-sm"
@@ -18,7 +25,7 @@
   <div class="card-body p-5 gap-3">
     <h2 class="text-sm font-semibold">{% trans %}Add a node{% endtrans %}</h2>
     {% if stepped_up %}
-    <form id="add-node" class="grid gap-3 sm:grid-cols-2" onsubmit="addNode(event)">
+    <form id="add-node" class="grid gap-3 sm:grid-cols-2">
       <label class="form-control">
         <span class="label-text">{% trans %}Name{% endtrans %}</span>
         <input class="input input-bordered input-sm" name="name" required pattern="[a-z][a-z0-9\-]{0,30}">
@@ -39,33 +46,10 @@
         <button class="btn btn-primary btn-sm" type="submit">{% trans %}Add node{% endtrans %}</button>
       </div>
     </form>
-    <script>
-      function addNode(event) {
-        event.preventDefault();
-        var form = event.target;
-        fetch('/api/v1/nodes', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken(),
-          },
-          body: JSON.stringify({
-            name: form.elements['name'].value,
-            address: form.elements['address'].value,
-            ssh_user: form.elements['ssh_user'].value,
-            ssh_port: Number(form.elements['ssh_port'].value) || 0,
-          }),
-        }).then(async function(r) {
-          var data = {};
-          try { data = await r.json(); } catch (_) {}
-          if (!r.ok) {
-            alert({{ _('Adding the node failed:')|tojson }} + " " + (data.detail || r.status));
-            return;
-          }
-          window.location.href = '/nodes/' + encodeURIComponent(data.name);
-        });
-      }
-    </script>
+    {{ data_island("nodes-init", {
+      "name": "",
+      "texts": {"addFailed": _('Adding the node failed:')},
+    }) }}
     {% else %}
     <p class="text-sm text-pk-text-muted">{% trans %}Changing the nodes needs a fresh sign-in.{% endtrans %}</p>
     <div><a class="btn btn-outline btn-sm" href="/auth/step-up?next=/nodes">{% trans %}Confirm your sign-in{% endtrans %}</a></div>

@@ -296,15 +296,7 @@
 <p class="text-xs text-pk-text-muted mb-2">{{ note }}</p>
 {% endfor %}
 
-{# The server sends UTC; the reader wants their own clock. No interval here on
-   purpose -- the surrounding element is replaced by the poll, and a ticker
-   started per swap would keep running against a detached node. #}
-<script>
-  (function () {
-    document.querySelectorAll("[data-checked-at]").forEach(function (el) {
-      var when = new Date(el.dataset.checkedAt);
-      el.textContent = isNaN(when.getTime()) ? {{ _('just now')|tojson }} : when.toLocaleTimeString();
-    });
-  })();
-</script>
+{# The server sends UTC; the reader wants their own clock: static/js/core/format.js writes
+   the local time into [data-checked-at] after each swap (localizeCheckedAt). No interval on
+   purpose -- the surrounding element is replaced by the poll. #}
 {% endif %}

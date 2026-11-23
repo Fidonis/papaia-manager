@@ -5,30 +5,16 @@
 // templates still use.
 
 export const LEGACY_NAMES = Object.freeze([
-  "I18N",
-  "_addonPost",
   "_authGuard",
-  "_pollJob",
   "_ragDetail",
   "_ragError",
   "_ragEscape",
   "_ragRequest",
-  "_stackBody",
-  "addonAction",
-  "addonMaintenanceAction",
-  "catalogAction",
-  "catalogDelete",
-  "catalogUpdate",
   "csrfToken",
   "fmt",
   "fmtHtml",
   "fmtPlural",
-  "galleryAction",
-  "refreshStackRunner",
-  "serviceAddonAction",
   "showToast",
-  "stackAction",
-  "stackGroupAction",
 ]);
 
 export function installLegacy(target, api) {

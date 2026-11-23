@@ -95,8 +95,14 @@ async function main() {
     await page.mouse.move(5, 5);
     check("it leaves once the pointer has left", (await page.evaluate(regions)).status.length === 0);
 
-    // input invalid: the manager itself refuses a malformed group request.
-    await page.evaluate(() => window.stackGroupAction("start", "not-a-list"));
+    // input invalid: the manager itself refuses a malformed group request. The shared actions
+    // are no globals; the page's own instances come from core/runtime.js, which main.js loaded
+    // under the same URL.
+    const runAction = (name, ...values) => page.evaluate(async ([n, v]) => {
+      const { actions } = await import("/static/js/core/runtime.js");
+      return actions[n](...v);
+    }, [name, values]);
+    await runAction("stackGroupAction", "start", "not-a-list");
     // connection stopped, right missing, session expired: answers routed in the browser.
     const routed = {
       "**/api/v1/catalogs/routed-stopped/refresh": [503, { detail: "upstream down" }, "0190f3a2-0000-7000-8000-000000000503"],
@@ -109,7 +115,7 @@ async function main() {
       );
     }
     for (const name of ["routed-stopped", "routed-forbidden", "routed-session"]) {
-      await page.evaluate((n) => window.catalogAction(n, "refresh"), name);
+      await runAction("catalogAction", name, "refresh");
     }
     now = await page.evaluate(regions);
     const errors = now.alert;

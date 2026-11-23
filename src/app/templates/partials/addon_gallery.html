@@ -69,7 +69,7 @@
     {# Narrows the cards below to the add-ons in this list; the choice is not kept across a refresh. #}
     <button type="button" class="btn btn-ghost btn-xs" :aria-pressed="onlyUpgrades" @click="onlyUpgrades = !onlyUpgrades">
       <span x-show="!onlyUpgrades">{% trans %}Show only these{% endtrans %}</span>
-      <span x-show="onlyUpgrades" style="display:none">{% trans %}Show all add-ons{% endtrans %}</span>
+      <span x-show="onlyUpgrades" x-cloak>{% trans %}Show all add-ons{% endtrans %}</span>
     </button>
   </div>
   <ul class="text-sm space-y-1">
@@ -100,7 +100,7 @@
 {# ── Add-on card grid ───────────────────────────────────────────── #}
 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
   {% for addon in addons %}
-  <div x-data="{ busy: false, activeVerb: '' }"
+  <div x-data="addonControls"
        x-show="!onlyUpgrades || $el.hasAttribute('data-has-upgrade')"
        {% if addon.update_available %}data-has-upgrade{% endif %}
        class="card bg-base-100 border border-base-300 hover:border-base-content/25 transition-colors flex flex-col">
@@ -171,7 +171,7 @@
          without a scope so `$refs` keeps resolving to the card's component,
          where the dialogs below are rendered. #}
       <div class="flex items-center gap-1.5 pt-2 border-t border-base-300 mt-auto">
-        {{ primary_action(addon, s, 'galleryAction') }}
+        {{ primary_action(addon, s, 'gallery') }}
 
         <div class="flex-1"></div>
 
@@ -184,15 +184,15 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
           </svg>
         </a>
-        {{ overflow_actions(addon, s, 'galleryAction') }}
+        {{ overflow_actions(addon, s, 'gallery') }}
         {% endcall %}
       </div>
 
     </div>
 
-    {{ remove_modal(addon, s, 'galleryAction') }}
-    {{ uninstall_modal(addon, 'galleryAction') }}
-    {{ install_modal(addon, s, 'galleryAction') }}
+    {{ remove_modal(addon, s, 'gallery') }}
+    {{ uninstall_modal(addon, 'gallery') }}
+    {{ install_modal(addon, s, 'gallery') }}
 
   </div>
   {% endfor %}

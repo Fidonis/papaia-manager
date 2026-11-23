@@ -1227,6 +1227,21 @@ The job strips of the configuration and mail pages (`partials/config_job_status.
 (`pages/settings-overlay.js`, component `overlayEditor`) and Mail › Server (`pages/mail.js`,
 listeners on the form instead of `on*` attributes).
 
+**Add-ons, catalogs, nodes and services.** The add-on pages (`pages/addons.js`) register
+`catalogRefresh` and `addonControls`; the macros of `partials/_addon_controls.html` call its
+methods (`run`, `confirmRun`, `install`, `maintain`, `rollback`, `saveConfig`) and name the
+view a verb redraws (`detail` or `gallery`), which the component maps to the shared action and
+refuses any other. The catalogs page (`pages/catalogs.js`) binds its dialogs by id and
+`data-dialog-open` / `data-dialog-close` and registers `catalogRow` for the swapped-in list.
+Services (`pages/services.js`) register `stackControls`, `serviceGroups`, `serviceAddon` and
+`stackRunner`; the 15 s swap of the list hands the group map to the selection through
+`x-init="setGroups($el)"` and `data-group-map`. Nodes (`pages/nodes.js`, after a fresh sign-in
+only) bind the form "Add a node" and the buttons marked `data-node-action`. Modules
+(`pages/modules.js`) register `delegationOverview`. The Host page needs no module: the local
+time of `[data-checked-at]` comes from `core/format.js`. A floating row menu
+(`overflow_menu(float=True)`) is fixed by a rule of `app.css` instead of an inline style. The
+shared add-on, stack and catalog actions are no globals any more.
+
 **Messages.** Toasts go to the frame's live regions `#pk-toasts` (one `role="status"`, one
 `role="alert"`, both present before the first message) and are the kit's toasts. Success,
 info and warning messages stand at least 6 s and as long as the pointer rests on them or the

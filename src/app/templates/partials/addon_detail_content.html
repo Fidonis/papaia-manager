@@ -12,13 +12,13 @@
      from the menu item that opens it. `showModal()` puts them in the top layer
      regardless of where in the document they sit. -->
 <div id="addon-actions" hx-swap-oob="true" class="flex items-center gap-2"
-     x-data="{ busy: false, activeVerb: '' }">
-  {{ primary_action(addon, s, 'addonAction') }}
-  {{ upgrade_action(addon, 'addonAction') }}
-  {{ overflow_actions(addon, s, 'addonAction', include_upgrade=False) }}
-  {{ remove_modal(addon, s, 'addonAction') }}
-  {{ uninstall_modal(addon, 'addonAction') }}
-  {{ install_modal(addon, s, 'addonAction') }}
+     x-data="addonControls">
+  {{ primary_action(addon, s, 'detail') }}
+  {{ upgrade_action(addon, 'detail') }}
+  {{ overflow_actions(addon, s, 'detail', include_upgrade=False) }}
+  {{ remove_modal(addon, s, 'detail') }}
+  {{ uninstall_modal(addon, 'detail') }}
+  {{ install_modal(addon, s, 'detail') }}
 </div>
 
 <!-- Status bar -->
@@ -62,7 +62,7 @@
 {% if addon.actions %}
 {# Maintenance actions the add-on declares. The request carries only the action name;
    papaia-ctl looks it up in the manifest and runs it. Destructive ones ask first. #}
-<div class="mb-6" x-data="{ busy: false, activeVerb: '' }">
+<div class="mb-6" x-data="addonControls">
   <h2 class="text-sm font-semibold text-pk-text-muted mb-2">{% trans %}Maintenance actions{% endtrans %}</h2>
   <div class="flex flex-wrap gap-2">
     {% for a in addon.actions %}
@@ -70,10 +70,8 @@
     <button class="btn btn-sm {% if a.destructive %}btn-outline btn-error{% else %}btn-outline{% endif %}"
             :disabled="busy"
             title="{{ a.description }}"
-            @click="if ({{ 'true' if a.destructive else 'false' }} && !confirm({{ confirm_text | tojson | forceescape }})) return;
-                    busy = true; activeVerb = {{ a.name | tojson | forceescape }};
-                    addonMaintenanceAction('{{ addon.name }}', '{{ a.name }}').then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
-      <span style="display:none" x-show="activeVerb === {{ a.name | tojson | forceescape }}" class="loading loading-dots loading-xs"></span>
+            @click="maintain('{{ addon.name }}', {{ a.name | tojson | forceescape }}, {{ 'true' if a.destructive else 'false' }}, {{ confirm_text | tojson | forceescape }})">
+      <span x-cloak x-show="activeVerb === {{ a.name | tojson | forceescape }}" class="loading loading-dots loading-xs"></span>
       <span>{{ a.name }}</span>
     </button>
     {% endfor %}
@@ -103,7 +101,7 @@
 <!-- Versions: where a rollback would go, and what the add-on ran before -->
 {% if addon.installed_version and (addon.previous or addon.history or addon.update_available) %}
 <div class="card bg-base-100 border border-base-300 mb-6"
-     x-data="{ mode: '', busy: false }">
+     x-data="addonControls">
   <div class="card-body">
     <h3 class="card-title text-base mb-2">{% trans %}Versions{% endtrans %}</h3>
     <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-sm">
@@ -136,8 +134,8 @@
     {% if addon.previous and addon.upgrades_supported %}
     <div class="mt-3">
       <button class="btn btn-outline btn-sm" :disabled="busy || {{ 'false' if addon.previous.available else 'true' }}"
-              @click="mode = ''; $refs.rollbackModal.showModal()">
-        <span style="display:none" x-show="busy" class="loading loading-dots loading-xs"></span>
+              @click="openRollback()">
+        <span x-cloak x-show="busy" class="loading loading-dots loading-xs"></span>
         <span x-show="!busy">{% trans version=addon.previous.version %}Roll back to {{ version }}…{% endtrans %}</span>
       </button>
     </div>
@@ -168,13 +166,13 @@
             </span>
           </span>
         </label>
-        <div class="alert alert-warning py-2 mb-4" x-show="mode === 'data'" style="display:none">
+        <div class="alert alert-warning py-2 mb-4" x-show="mode === 'data'" x-cloak>
           <span class="text-xs">{% trans %}The add-on is stopped while its data is replaced. This cannot be undone.{% endtrans %}</span>
         </div>
         <div class="modal-action mt-0">
           <button class="btn btn-ghost btn-sm" @click="$refs.rollbackModal.close()">{% trans %}Cancel{% endtrans %}</button>
           <button class="btn btn-error btn-sm" :disabled="!mode"
-                  @click="$refs.rollbackModal.close(); busy = true; addonAction('{{ addon.name }}', 'rollback', { restore_data: mode === 'data' }).then(ok => { if (!ok) busy = false })">
+                  @click="rollback('{{ addon.name }}')">
             {% trans %}Roll back{% endtrans %}
           </button>
         </div>
@@ -260,7 +258,7 @@
 <!-- Configuration -->
 {% if addon.env_fields %}
 {% set editable = s in ("running", "installed", "inactive") and addon.installed_version %}
-<div class="card bg-base-100 border border-base-300 mb-6" x-data="{ editMode: false, dirty: false, busy: false }">
+<div class="card bg-base-100 border border-base-300 mb-6" x-data="addonControls" @input="noteInput($event)">
   <div class="card-body">
     <div class="flex items-center justify-between mb-2">
       <h3 class="card-title text-base">{% trans %}Configuration{% endtrans %}</h3>
@@ -268,17 +266,12 @@
       <div class="flex gap-2">
         <button class="btn btn-outline btn-sm" x-show="!editMode"
                 @click="editMode = true">{% trans %}Edit{% endtrans %}</button>
-        <button class="btn btn-ghost btn-sm" x-show="editMode" style="display:none"
-                @click="
-                  $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
-                    el.value = el.dataset.isSecret === '1' ? '' : (el.dataset.initial ?? '');
-                  });
-                  editMode = false; dirty = false;
-                ">{% trans %}Cancel{% endtrans %}</button>
-        <button class="btn btn-primary btn-sm" x-show="editMode" style="display:none"
+        <button class="btn btn-ghost btn-sm" x-show="editMode" x-cloak
+                @click="cancelEdit()">{% trans %}Cancel{% endtrans %}</button>
+        <button class="btn btn-primary btn-sm" x-show="editMode" x-cloak
                 :disabled="!dirty || busy"
                 @click="$refs.saveConfigModal.showModal()">
-          <span style="display:none" x-show="busy" class="loading loading-dots loading-xs"></span>
+          <span x-cloak x-show="busy" class="loading loading-dots loading-xs"></span>
           <span x-show="!busy">{% trans %}Save{% endtrans %}</span>
         </button>
       </div>
@@ -314,7 +307,7 @@
                 {% if f.hint %}<br><span class="text-pk-text-muted">{{ f.hint }}</span>{% endif %}
               </div>
               <!-- edit input (all fields, including auto-handled) -->
-              <div x-show="editMode" style="display:none">
+              <div x-show="editMode" x-cloak>
                 {% set cur = f.current_value or '' %}
                 {{ env_input(f, display_value=cur, initial=cur) }}
                 {% if f.hint %}<br><span class="text-pk-text-muted text-xs">{{ f.hint }}</span>{% endif %}
@@ -346,35 +339,9 @@
           <button class="btn btn-ghost btn-sm"
                   @click="$refs.saveConfigModal.close()">{% trans %}Cancel{% endtrans %}</button>
           <button class="btn btn-outline btn-sm"
-                  @click="
-                    const env = {};
-                    $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
-                      const val = el.value.trim();
-                      const send = el.dataset.isSecret === '1' ? val !== '' : (val !== '' || el.dataset.initial !== '');
-                      if (send) env[el.dataset.envKey] = val;
-                    });
-                    $refs.saveConfigModal.close();
-                    busy = true;
-                    _addonPost('{{ addon.name }}', 'save-config', { env, restart: false }).then(data => {
-                      if (!data) { busy = false; return; }
-                      _pollJob(data.job_id, () => htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' }));
-                    });
-                  ">{% trans %}No{% endtrans %}</button>
+                  @click="saveConfig('{{ addon.name }}', false)">{% trans %}No{% endtrans %}</button>
           <button class="btn btn-primary btn-sm"
-                  @click="
-                    const env = {};
-                    $el.closest('[x-data]').querySelectorAll('[data-env-key]').forEach(el => {
-                      const val = el.value.trim();
-                      const send = el.dataset.isSecret === '1' ? val !== '' : (val !== '' || el.dataset.initial !== '');
-                      if (send) env[el.dataset.envKey] = val;
-                    });
-                    $refs.saveConfigModal.close();
-                    busy = true;
-                    _addonPost('{{ addon.name }}', 'save-config', { env, restart: true }).then(data => {
-                      if (!data) { busy = false; return; }
-                      _pollJob(data.job_id, () => htmx.ajax('GET', '/partials/addons/{{ addon.name }}', { target: '#addon-detail', swap: 'innerHTML' }));
-                    });
-                  ">{% trans %}Yes, restart{% endtrans %}</button>
+                  @click="saveConfig('{{ addon.name }}', true)">{% trans %}Yes, restart{% endtrans %}</button>
         </div>
       </div>
       <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>

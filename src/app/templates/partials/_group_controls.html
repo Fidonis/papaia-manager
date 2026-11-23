@@ -1,11 +1,13 @@
 {# ── Controls for starting, stopping and restarting service groups.
 
    Two Alpine scopes, not one. `stack_menu` and `stack_modal` read the scope
-   declared in services.html's `page_actions` block (`stackPending`,
-   `stackCleanUp`, `askStack`, `runStack`) because the whole-stack verbs are a
-   Tier-1 page action and live in the header. Everything else reads the
-   selection scope on `#service-controls` (`sel`, `groups`, `busy`, `pending`,
-   `cleanUp`, `toggle`, `ask`, `run`). A macro only works inside its own scope.
+   declared in services.html's `page_actions` block (`stackControls`:
+   `stackPending`, `stackCleanUp`, `stackTitle`, `askStack`, `runStack`) because
+   the whole-stack verbs are a Tier-1 page action and live in the header.
+   Everything else reads the selection scope on `#service-controls`
+   (`serviceGroups`: `sel`, `groups`, `busy`, `pending`, `cleanUp`, `toggle`,
+   `selected`, `ask`, `run`, ...). A macro only works inside its own scope. Both
+   components and their sentences are in static/js/pages/services.js.
 
    The selection macros sit outside #service-list, which is swapped every 15 s —
    see the comment there.
@@ -54,21 +56,21 @@
 {% macro action_bar() %}
 {% call bulk_bar("sel.length") %}
   <span class="text-sm flex-1 min-w-48">
-    <span x-text="fmtPlural(sel.length, {{ _('{count} group selected')|tojson|forceescape }}, {{ _('{count} groups selected')|tojson|forceescape }}) + ' · ' + fmtPlural(modules, {{ _('{count} module')|tojson|forceescape }}, {{ _('{count} modules')|tojson|forceescape }})"></span>
+    <span x-text="selectionText"></span>
   </span>
   <button class="btn btn-success btn-sm" :disabled="busy" @click="ask('start')">
-    <span style="display:none" x-show="busy && pending === 'start'" class="loading loading-dots loading-xs"></span>
+    <span x-cloak x-show="busy && pending === 'start'" class="loading loading-dots loading-xs"></span>
     <span x-show="!(busy && pending === 'start')">{% trans %}Start{% endtrans %}</span>
   </button>
   <button class="btn btn-warning btn-sm" :disabled="busy" @click="ask('stop')">
-    <span style="display:none" x-show="busy && pending === 'stop'" class="loading loading-dots loading-xs"></span>
+    <span x-cloak x-show="busy && pending === 'stop'" class="loading loading-dots loading-xs"></span>
     <span x-show="!(busy && pending === 'stop')">{% trans %}Stop{% endtrans %}</span>
   </button>
   <button class="btn btn-outline btn-sm" :disabled="busy" @click="ask('restart')">
-    <span style="display:none" x-show="busy && pending === 'restart'" class="loading loading-dots loading-xs"></span>
+    <span x-cloak x-show="busy && pending === 'restart'" class="loading loading-dots loading-xs"></span>
     <span x-show="!(busy && pending === 'restart')">{% trans %}Restart{% endtrans %}</span>
   </button>
-  <button class="btn btn-ghost btn-sm" :disabled="busy" @click="sel = []">{% trans %}Clear{% endtrans %}</button>
+  <button class="btn btn-ghost btn-sm" :disabled="busy" @click="clear()">{% trans %}Clear{% endtrans %}</button>
 {% endcall %}
 {% endmacro %}
 
@@ -77,11 +79,7 @@
 <dialog x-ref="confirmModal" class="modal">
   <div class="modal-box max-w-md">
     <h3 class="font-bold text-base mb-1">
-      <span x-text="{
-        start: fmtPlural(sel.length, {{ _('Start {count} service group?')|tojson|forceescape }}, {{ _('Start {count} service groups?')|tojson|forceescape }}),
-        stop: fmtPlural(sel.length, {{ _('Stop {count} service group?')|tojson|forceescape }}, {{ _('Stop {count} service groups?')|tojson|forceescape }}),
-        restart: fmtPlural(sel.length, {{ _('Restart {count} service group?')|tojson|forceescape }}, {{ _('Restart {count} service groups?')|tojson|forceescape }}),
-      }[pending] || ''"></span>
+      <span x-text="confirmTitle"></span>
     </h3>
     <p class="text-sm text-pk-text-muted mb-4" x-show="pending === 'stop'">
       {% trans %}Containers are stopped. Volumes and configuration are untouched.{% endtrans %}
@@ -92,7 +90,7 @@
     <p class="text-sm text-pk-text-muted mb-4" x-show="pending === 'restart'">
       {% trans %}Stops the selected profiles, then starts them again. One job, one log.{% endtrans %}
     </p>
-    <p class="text-sm text-pk-text-muted mb-4" style="display:none" x-show="pending === 'restart' && cleanUp">
+    <p class="text-sm text-pk-text-muted mb-4" x-cloak x-show="pending === 'restart' && cleanUp">
       {% trans %}With the containers removed in between, this is a full recreate.{% endtrans %}
     </p>
 
@@ -100,7 +98,7 @@
       <template x-for="g in sel" :key="g">
         <div class="mb-2 last:mb-0">
           <p class="text-xs font-mono text-pk-text-muted" x-text="g"></p>
-          <p class="text-sm" x-text="(groups[g] || []).join(' · ')"></p>
+          <p class="text-sm" x-text="members(g)"></p>
         </div>
       </template>
     </div>
@@ -108,7 +106,7 @@
     {# Nothing in the stack guards a cross-profile dependency: librechat declares
        `depends_on: litellm` without `required: false`, and nginx is the ingress
        for everything. Compose will not warn, so the dialog does. #}
-    <div class="alert alert-warning py-2 mb-4" x-show="pending !== 'start' && sel.some(g => ['keycloak', 'nginx', 'litellm'].includes(g))">
+    <div class="alert alert-warning py-2 mb-4" x-show="pending !== 'start' && touchesShared">
       <span class="text-xs leading-snug">
         {% trans %}Other profiles depend on this one — Keycloak issues the tokens, nginx is the public ingress, and LiteLLM backs LibreChat. They stay up but stop working until it is back.{% endtrans %}
       </span>
@@ -122,7 +120,7 @@
         {% trans %}Also remove the containers{% endtrans %}
         <span class="text-pk-text-muted font-mono text-xs">{% trans %}--clean-up{% endtrans %}</span>
         <span class="block text-xs text-pk-text-muted" x-show="pending === 'stop'">{% trans %}Volumes are kept. The page will read “not deployed” afterwards.{% endtrans %}</span>
-        <span class="block text-xs text-pk-text-muted" style="display:none" x-show="pending === 'restart'">{% trans %}Volumes are kept. They are created again by the start that follows.{% endtrans %}</span>
+        <span class="block text-xs text-pk-text-muted" x-cloak x-show="pending === 'restart'">{% trans %}Volumes are kept. They are created again by the start that follows.{% endtrans %}</span>
       </span>
     </label>
 
@@ -145,11 +143,7 @@
 <dialog x-ref="stackModal" class="modal">
   <div class="modal-box max-w-md">
     <h3 class="font-bold text-base mb-1">
-      <span x-text="{
-        start: {{ _('Start the whole stack?')|tojson|forceescape }},
-        stop: {{ _('Stop the whole stack?')|tojson|forceescape }},
-        restart: {{ _('Restart the whole stack?')|tojson|forceescape }},
-      }[stackPending] || ''"></span>
+      <span x-text="stackTitle"></span>
     </h3>
     <p class="text-sm text-pk-text-muted mb-4">
       {% trans %}Every profile, including the one serving this page. It runs in a separate container, so it finishes even once this panel is gone — the result appears here again afterwards. Add-ons keep running.{% endtrans %}
@@ -205,7 +199,7 @@
   {% else %}
     <input type="checkbox" class="checkbox checkbox-sm shrink-0"
            aria-label="{{ _('select %(profile)s', profile=profile) }}"
-           :checked="sel.includes('{{ profile }}')"
+           :checked="selected('{{ profile }}')"
            :disabled="busy"
            @change.prevent="toggle('{{ profile }}')">
   {% endif %}
@@ -216,7 +210,7 @@
 {% macro group_badge(module) %}
 {% for profile in module.profiles %}
   <span class="badge badge-sm font-mono text-xs"
-        :class="sel.includes('{{ profile }}') ? 'badge-primary' : 'badge-ghost'">{{ profile }}</span>
+        :class="selected('{{ profile }}') ? 'badge-primary' : 'badge-ghost'">{{ profile }}</span>
 {% endfor %}
 {% endmacro %}
 
@@ -225,22 +219,22 @@
    Nothing here is destructive -- the add-on's own remove and uninstall verbs
    live on the add-ons page, not in this list -- so both fit in the open. #}
 {% macro addon_buttons(name, running) %}
-{% call row_actions("{ busy: false, verb: '' }") %}
+{% call row_actions("serviceAddon") %}
   {% if running %}
     <button class="btn btn-warning btn-xs" :disabled="busy"
-            @click="busy = true; verb = 'stop'; serviceAddonAction('{{ name }}', 'stop', {}).then(ok => { if (!ok) { busy = false; verb = '' } })">
-      <span style="display:none" x-show="verb === 'stop'" class="loading loading-dots loading-xs"></span>
+            @click="run('{{ name }}', 'stop')">
+      <span x-cloak x-show="verb === 'stop'" class="loading loading-dots loading-xs"></span>
       <span x-show="verb !== 'stop'">{% trans %}Stop{% endtrans %}</span>
     </button>
     <button class="btn btn-outline btn-xs" :disabled="busy"
-            @click="busy = true; verb = 'restart'; serviceAddonAction('{{ name }}', 'restart', {}).then(ok => { if (!ok) { busy = false; verb = '' } })">
-      <span style="display:none" x-show="verb === 'restart'" class="loading loading-dots loading-xs"></span>
+            @click="run('{{ name }}', 'restart')">
+      <span x-cloak x-show="verb === 'restart'" class="loading loading-dots loading-xs"></span>
       <span x-show="verb !== 'restart'">{% trans %}Restart{% endtrans %}</span>
     </button>
   {% else %}
     <button class="btn btn-success btn-xs" :disabled="busy"
-            @click="busy = true; verb = 'start'; serviceAddonAction('{{ name }}', 'start', {}).then(ok => { if (!ok) { busy = false; verb = '' } })">
-      <span style="display:none" x-show="verb === 'start'" class="loading loading-dots loading-xs"></span>
+            @click="run('{{ name }}', 'start')">
+      <span x-cloak x-show="verb === 'start'" class="loading loading-dots loading-xs"></span>
       <span x-show="verb !== 'start'">{% trans %}Start{% endtrans %}</span>
     </button>
   {% endif %}

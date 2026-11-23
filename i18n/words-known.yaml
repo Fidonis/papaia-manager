@@ -107,15 +107,15 @@ groups:
       - W1 i18n/export/en.json#title.release-per-node node
       - W1 src/app/templates/backup.html:58 nodes
       - W1 src/app/templates/backup.html:63 nodes
-      - W1 src/app/templates/node_detail.html:106 nodes
-      - W1 src/app/templates/node_detail.html:2 Node
-      - W1 src/app/templates/node_detail.html:41 node
-      - W1 src/app/templates/node_detail.html:42 node
-      - W1 src/app/templates/node_detail.html:66 node
-      - W1 src/app/templates/nodes.html:19 node
-      - W1 src/app/templates/nodes.html:2 Nodes
-      - W1 src/app/templates/nodes.html:39 node
-      - W1 src/app/templates/nodes.html:70 nodes
+      - W1 src/app/templates/node_detail.html:3 Node
+      - W1 src/app/templates/node_detail.html:48 node
+      - W1 src/app/templates/node_detail.html:49 node
+      - W1 src/app/templates/node_detail.html:73 node
+      - W1 src/app/templates/node_detail.html:84 nodes
+      - W1 src/app/templates/nodes.html:26 node
+      - W1 src/app/templates/nodes.html:3 Nodes
+      - W1 src/app/templates/nodes.html:46 node
+      - W1 src/app/templates/nodes.html:54 nodes
       - W1 src/app/templates/partials/mail_status.html:29 node
       - W1 src/app/templates/partials/nodes_list.html:9 Node
       - W1 src/app/templates/partials/service_list.html:185 Node
@@ -196,7 +196,7 @@ groups:
       - W1 src/app/templates/knowledge_map.html:598 LLM
       - W1 src/app/templates/models.html:11 LLM
       - W1 src/app/templates/models.html:4 LLM
-      - W1 src/app/templates/partials/_group_controls.html:113 LLM
+      - W1 src/app/templates/partials/_group_controls.html:111 LLM
       - W1 src/app/templates/partials/embedding_body.html:207 LLM
       - W1 src/app/templates/partials/models_body.html:171 LLM
       - W1 src/app/templates/partials/models_body.html:210 LLM

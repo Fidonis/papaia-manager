@@ -34,16 +34,14 @@
            kebab -- Delete used to be a red button one mis-click away from
            dropping a catalogue. One shared `busy` for the whole cluster, so a
            refresh in flight also locks the menu. #}
-        {% call row_actions("{ busy: false, jobId: null }") %}
+        {% call row_actions("catalogRow") %}
           {% if c.type == "git" %}
           <button class="btn btn-outline btn-xs" :disabled="busy"
-                  @click="busy = true;
-                          catalogAction('{{ c.name }}', 'refresh', id => jobId = id)
-                            .then(() => { busy = false; jobId = null })">
+                  @click="refresh('{{ c.name }}')">
             <span x-show="busy" class="loading loading-spinner loading-xs"></span>
             <span x-show="!busy">{% trans %}Refresh{% endtrans %}</span>
           </button>
-          <a style="display:none" x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
+          <a x-cloak x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
              class="link link-hover text-xs text-pk-text-muted">{% trans %}view log{% endtrans %}</a>
           {% else %}
           <button class="btn btn-outline btn-xs"
@@ -53,15 +51,12 @@
           {% endif %}
 
           {% call overflow_menu(size='xs', label=_('More actions for catalog %(name)s', name=c.name)) %}
-            <li><a onclick='openEditCatalogModal(
-                    {{ c.name|tojson }}, {{ c.type|tojson }},
-                    {{ (c.url or "")|tojson }}, {{ c.ref|tojson }},
-                    {{ (c.path or "")|tojson }}, {{ c.enabled|tojson }}
-                  )'>{% trans %}Edit{% endtrans %}</a></li>
+            <li><a @click="edit($el)"
+                   data-name="{{ c.name }}" data-type="{{ c.type }}"
+                   data-url="{{ c.url or '' }}" data-ref="{{ c.ref or '' }}"
+                   data-path="{{ c.path or '' }}" data-enabled="{{ 'true' if c.enabled else 'false' }}">{% trans %}Edit{% endtrans %}</a></li>
             <li><a class="text-error"
-                   @click="if (!confirm({{ _('Delete catalog {{ c.name }}?')|tojson|forceescape }})) return;
-                           busy = true;
-                           catalogDelete('{{ c.name }}').then(() => busy = false)">{% trans %}Delete{% endtrans %}</a></li>
+                   @click="remove('{{ c.name }}', {{ _('Delete catalog {{ c.name }}?')|tojson|forceescape }})">{% trans %}Delete{% endtrans %}</a></li>
           {% endcall %}
         {% endcall %}
       </div>

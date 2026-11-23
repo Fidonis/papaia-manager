@@ -1,11 +1,15 @@
 {% extends "base.html" %}
+{% from "partials/_csp.html" import data_island %}
 
 {% block page_title %}{% trans %}Add-on catalogs{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Manage your add-on sources{% endtrans %}</p>{% endblock %}
+{% block page_modules %}
+<script type="module" src="{{ asset_url('js/pages/catalogs.js') }}"></script>
+{% endblock %}
 {% block page_actions %}
 <button
   class="btn btn-primary btn-sm"
-  onclick="document.getElementById('add-catalog-modal').showModal()"
+  data-dialog-open="add-catalog-modal"
 >
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -30,7 +34,7 @@
 <dialog id="add-catalog-modal" class="modal">
   <div class="modal-box">
     <h3 class="text-lg font-bold mb-4">{% trans %}Add catalog{% endtrans %}</h3>
-    <form id="add-catalog-form" onsubmit="submitAddCatalog(event)">
+    <form id="add-catalog-form">
       <div class="form-control mb-3">
         <label class="label" for="add-name"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
         <input id="add-name" name="name" type="text" class="input input-bordered" required
@@ -38,8 +42,7 @@
       </div>
       <div class="form-control mb-3">
         <label class="label" for="catalog-type-select"><span class="label-text">{% trans %}Type{% endtrans %}</span></label>
-        <select id="catalog-type-select" name="type" class="select select-bordered"
-                onchange="toggleCatalogFields(this.value)">
+        <select id="catalog-type-select" name="type" class="select select-bordered">
           <option value="git">{% trans %}Git{% endtrans %}</option>
           <option value="local">{% trans %}Local{% endtrans %}</option>
         </select>
@@ -61,7 +64,7 @@
       </div>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost"
-                onclick="document.getElementById('add-catalog-modal').close()">{% trans %}Cancel{% endtrans %}</button>
+                data-dialog-close="add-catalog-modal">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-primary">{% trans %}Add{% endtrans %}</button>
       </div>
     </form>
@@ -73,7 +76,7 @@
 <dialog id="edit-catalog-modal" class="modal">
   <div class="modal-box">
     <h3 class="text-lg font-bold mb-4">{% trans %}Edit catalog{% endtrans %}</h3>
-    <form id="edit-catalog-form" onsubmit="submitEditCatalog(event)">
+    <form id="edit-catalog-form">
       <div class="form-control mb-3">
         <label class="label" for="edit-name"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
         <input id="edit-name" type="text" class="input input-bordered" disabled>
@@ -103,120 +106,14 @@
       </div>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost"
-                onclick="document.getElementById('edit-catalog-modal').close()">{% trans %}Cancel{% endtrans %}</button>
+                data-dialog-close="edit-catalog-modal">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-primary">{% trans %}Save{% endtrans %}</button>
       </div>
     </form>
   </div>
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
-<script>
-function submitAddCatalog(event) {
-  event.preventDefault();
-  var form = document.getElementById('add-catalog-form');
-  var type = form.elements['type'].value;
-  var body = { name: form.elements['name'].value, type: type };
-  if (type === 'git') {
-    body.url = form.elements['url'].value;
-    body.ref = form.elements['ref'].value;
-  } else {
-    body.path = form.elements['path'].value;
-  }
-  fetch('/api/v1/catalogs', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRF-Token': csrfToken(),
-    },
-    body: JSON.stringify(body),
-  }).then(async function(r) {
-    if (_authGuard(r)) return;
-    if (!r.ok) {
-      var detail = r.status;
-      try { var e = await r.json(); detail = e.detail || JSON.stringify(e); } catch (_) {}
-      alert({{ _('Add catalog failed:')|tojson }} + " " + detail);
-      return;
-    }
-    document.getElementById('add-catalog-modal').close();
-    htmx.ajax('GET', '/partials/catalogs', { target: '#catalog-list', swap: 'innerHTML' });
-  });
-}
-function toggleCatalogFields(type) {
-  var urlField = document.getElementById('field-url');
-  var refField = document.getElementById('field-ref');
-  var pathField = document.getElementById('field-path');
-  var urlInput = urlField.querySelector('input');
-  var refInput = refField.querySelector('input');
-  var pathInput = pathField.querySelector('input');
-  if (type === 'local') {
-    urlField.classList.add('hidden');
-    urlInput.required = false;
-    urlInput.disabled = true;
-    refField.classList.add('hidden');
-    refInput.required = false;
-    refInput.disabled = true;
-    pathField.classList.remove('hidden');
-    pathInput.required = true;
-    pathInput.disabled = false;
-  } else {
-    pathField.classList.add('hidden');
-    pathInput.required = false;
-    pathInput.disabled = true;
-    urlField.classList.remove('hidden');
-    urlInput.required = true;
-    urlInput.disabled = false;
-    refField.classList.remove('hidden');
-    refInput.required = true;
-    refInput.disabled = false;
-  }
-}
-document.getElementById('add-catalog-modal').addEventListener('close', function () {
-  document.getElementById('catalog-type-select').value = 'git';
-  toggleCatalogFields('git');
-});
-
-function openEditCatalogModal(name, type, url, ref, path, enabled) {
-  document.getElementById('edit-name').value = name;
-  document.getElementById('edit-type').value = type;
-  document.getElementById('edit-url').value = url || '';
-  document.getElementById('edit-ref').value = ref || 'main';
-  document.getElementById('edit-path').value = path || '';
-  document.getElementById('edit-enabled').checked = !!enabled;
-
-  var urlField = document.getElementById('edit-field-url');
-  var refField = document.getElementById('edit-field-ref');
-  var pathField = document.getElementById('edit-field-path');
-  if (type === 'local') {
-    urlField.classList.add('hidden');
-    refField.classList.add('hidden');
-    pathField.classList.remove('hidden');
-  } else {
-    pathField.classList.add('hidden');
-    urlField.classList.remove('hidden');
-    refField.classList.remove('hidden');
-  }
-
-  var form = document.getElementById('edit-catalog-form');
-  form.dataset.name = name;
-  form.dataset.type = type;
-  document.getElementById('edit-catalog-modal').showModal();
-}
-
-function submitEditCatalog(event) {
-  event.preventDefault();
-  var form = document.getElementById('edit-catalog-form');
-  var name = form.dataset.name;
-  var type = form.dataset.type;
-  var body = { enabled: document.getElementById('edit-enabled').checked };
-  if (type === 'git') {
-    body.url = document.getElementById('edit-url').value;
-    body.ref = document.getElementById('edit-ref').value;
-  } else {
-    body.path = document.getElementById('edit-path').value;
-  }
-  catalogUpdate(name, body).then(function (ok) {
-    if (ok) document.getElementById('edit-catalog-modal').close();
-  });
-}
-</script>
+{{ data_island("catalogs-texts", {
+  "addFailed": _('Add catalog failed:'),
+}) }}
 {% endblock %}

@@ -6,7 +6,7 @@
 // `texts`, the sentences of the shared actions, and `errors`, the kit's three-part texts per
 // error class (app/client_texts.py). runtime.js builds the instances main.js and the page
 // modules share from it.
-import { ragDetail, stackBody } from "./actions.js";
+import { ragDetail } from "./actions.js";
 import { installAnnouncements } from "./announce.js";
 import { csrfToken } from "./csrf.js";
 import { escapeHtml, fmt, fmtHtml, fmtPlural, localizeCheckedAt } from "./format.js";
@@ -17,30 +17,16 @@ import { actions, report, showToast, texts } from "./runtime.js";
 import { installSessionGuard } from "./session.js";
 
 installLegacy(window, {
-  I18N: texts,
-  _addonPost: actions.addonPost,
   _authGuard: actions.authGuard,
-  _pollJob: actions.pollJob,
   _ragDetail: ragDetail,
   _ragError: actions.ragError,
   _ragEscape: escapeHtml,
   _ragRequest: actions.ragRequest,
-  _stackBody: stackBody,
-  addonAction: actions.addonAction,
-  addonMaintenanceAction: actions.addonMaintenanceAction,
-  catalogAction: actions.catalogAction,
-  catalogDelete: actions.catalogDelete,
-  catalogUpdate: actions.catalogUpdate,
   csrfToken: () => csrfToken(document),
   fmt,
   fmtHtml,
   fmtPlural,
-  galleryAction: actions.galleryAction,
-  refreshStackRunner: actions.refreshStackRunner,
-  serviceAddonAction: actions.serviceAddonAction,
   showToast,
-  stackAction: actions.stackAction,
-  stackGroupAction: actions.stackGroupAction,
 });
 
 installFloatMenus(window, document);

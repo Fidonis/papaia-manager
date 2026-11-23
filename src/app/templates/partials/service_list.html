@@ -196,13 +196,6 @@
 {# Hand the current group map to the scope that owns the selection. It lives
    outside this partial, so the swap cannot carry it — and the selection has to
    be pruned against it, or a group that left the deployment would stay ticked
-   and be sent on the next action. #}
-<script>
-  (function () {
-    const host = document.getElementById("service-controls");
-    const scope = host && window.Alpine && Alpine.$data(host);
-    if (!scope) return;
-    scope.groups = {{ (group_map or {}) | tojson }};
-    scope.prune();
-  })();
-</script>
+   and be sent on the next action. Alpine initialises the swapped-in element in
+   the scope of #service-controls, whose `setGroups` reads the map. #}
+<div hidden x-init="setGroups($el)" data-group-map="{{ (group_map or {}) | tojson | forceescape }}"></div>

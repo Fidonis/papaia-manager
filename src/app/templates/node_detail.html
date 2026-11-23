@@ -1,5 +1,12 @@
 {% extends "base.html" %}{% set pk_lang = pk_frame_lang() %}{% import "pk/components.html" as kit with context %}
+{% from "partials/_csp.html" import data_island %}
 {% block page_title %}{% trans %}Node {{ name }}{% endtrans %}{% endblock %}
+
+{% block page_modules %}
+{% if node and stepped_up %}
+<script type="module" src="{{ asset_url('js/pages/nodes.js') }}"></script>
+{% endif %}
+{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -48,7 +55,7 @@
       <li class="flex items-center gap-3 py-1">
         <span class="font-mono text-xs break-all">{{ key.kind }} {{ key.fingerprint }}</span>
         {% if stepped_up %}
-        <button class="btn btn-outline btn-xs" onclick="pinKey({{ key.fingerprint|tojson|forceescape }})">{% trans %}Trust this key{% endtrans %}</button>
+        <button class="btn btn-outline btn-xs" data-node-action="pinKey" data-fingerprint="{{ key.fingerprint }}">{% trans %}Trust this key{% endtrans %}</button>
         {% endif %}
       </li>
       {% endfor %}
@@ -60,47 +67,18 @@
 
 {% if stepped_up %}
   {% if node.no_bundle %}
-  <button class="btn btn-primary btn-sm" onclick="sendBundle()">{% trans %}Send its release and bundle{% endtrans %}</button>
+  <button class="btn btn-primary btn-sm" data-node-action="sendBundle">{% trans %}Send its release and bundle{% endtrans %}</button>
   {% endif %}
   {% if not node.controller %}
-  <button class="btn btn-error btn-outline btn-sm" onclick="removeNode()">{% trans %}Remove this node{% endtrans %}</button>
+  <button class="btn btn-error btn-outline btn-sm" data-node-action="removeNode">{% trans %}Remove this node{% endtrans %}</button>
   {% endif %}
-  <script>
-    function nodeRequest(method, url, body) {
-      return fetch(url, {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken(),
-        },
-        body: body ? JSON.stringify(body) : undefined,
-      }).then(async function(r) {
-        var data = {};
-        try { data = await r.json(); } catch (_) {}
-        if (r.ok) return data;
-        alert({{ _('That did not work:')|tojson }} + " " + (data.detail || r.status));
-        return null;
-      });
-    }
-    function removeNode() {
-      if (!confirm({{ _('Remove this node? Its SSH key and link certificate are deleted.')|tojson }})) return;
-      nodeRequest('DELETE', '/api/v1/nodes/{{ name }}').then(function(done) {
-        if (!done) return;
-        if (done.notes && done.notes.length) alert(done.notes.join("\n\n"));
-        window.location.href = '/nodes';
-      });
-    }
-    function sendBundle() {
-      nodeRequest('POST', '/api/v1/nodes/{{ name }}/bundle').then(function(done) {
-        if (done) window.location.reload();
-      });
-    }
-    function pinKey(fingerprint) {
-      nodeRequest('POST', '/api/v1/nodes/{{ name }}/pin', { fingerprint: fingerprint }).then(function(ok) {
-        if (ok) window.location.reload();
-      });
-    }
-  </script>
+  {{ data_island("nodes-init", {
+    "name": name,
+    "texts": {
+      "failed": _('That did not work:'),
+      "removeQuestion": _('Remove this node? Its SSH key and link certificate are deleted.'),
+    },
+  }) }}
 {% else %}
 <div>
   <p class="text-sm text-pk-text-muted mb-2">{% trans %}Changing the nodes needs a fresh sign-in.{% endtrans %}</p>
