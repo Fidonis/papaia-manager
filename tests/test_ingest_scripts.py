@@ -184,12 +184,14 @@ def test_the_failure_panels_have_their_titles(client: TestClient, deployment: De
         assert f'<p class="text-lg font-semibold">{title}</p>' in body, path
 
 
-def test_the_job_editor_keeps_the_helpers_it_shared_with_the_lists(
+def test_the_job_editor_imports_the_helpers_it_shares_with_the_lists(
     client: TestClient, deployment: Deployment
 ) -> None:
     deployment.write_catalog(_job())
 
     body = _body(client, "/ingest/jobs/handbook/edit")
 
-    assert "const _ING = '/api/v1/rag/ingest';" in body
-    assert "function _ingJob(id)" in body and "function ingestOutcome(result, what)" in body
+    # The copies of the request helpers that waited in the editor's inline script are gone; its
+    # module imports them from the lists' components (tests/test_ingest_editor_scripts.py).
+    assert "const _ING" not in body and "function ingestOutcome" not in body
+    assert '<script type="module" src="/static/js/pages/ingest-editor.js' in body

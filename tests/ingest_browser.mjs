@@ -1,10 +1,13 @@
-// Browser path of the ingest lists on the CSP build of Alpine (T-UI-03), run by
+// Browser path of the ingest pages on the CSP build of Alpine (T-UI-03), run by
 // tests/test_ingest_browser.py against tests/design_serve.py --with-ingest.
 //
 // In Chromium (playwright-core of .pk/), in one colour scheme: list and filter the jobs, disable
 // and enable one, start a run and abort it, filter the runs and delete runs of a job, switch the
 // tabs of a job, delete a job, remove a leftover, save the defaults of the job file and check
-// the file, and see the panel of a list that cannot be loaded. The pages, their partials and the
+// the file, and see the panel of a list that cannot be loaded; then, in the job editor, create a
+// job and edit one (with the dialog that asks before unsaved changes are left), store a
+// credential from the editor, and on the Credentials page store, replace and delete one and see
+// the panel of a list that cannot be loaded. The pages, their partials and the
 // manager's API are the real ones; behind them answers the fake ingester of the page tests. Every
 // step is checked, and the run fails on any report of the policy, refused Alpine expression or
 // script error on any page it opened. With --shots DIR it first renders each page of the group
@@ -219,6 +222,106 @@ async function walk(page, base, sent, steps) {
     await page.locator("#orphan-list [data-reason]").getByText("<b>down</b>").waitFor({ timeout: STEP_MS });
     await page.unroute("**/partials/ingest/orphans");
   });
+
+  await step("create a job in the editor", async () => {
+    await open(page, base, "/ingest/new");
+    await page.fill("#field-id", "fresh");
+    await page.locator("#field-id").blur();
+    check(await page.inputValue("#field-source-label") === "fresh", "the label does not follow the id");
+    await page.getByPlaceholder("/data/local/handbook").fill("/data/local/fresh");
+    await page.fill("#field-target-collection", "kb");
+    await page.fill("#field-embedding-model", "nomic-embed-text");
+    await page.getByRole("tab", { name: "Daily" }).click();
+    await page.locator("#schedule-daily-time").waitFor({ state: "visible", timeout: STEP_MS });
+    await page.fill("#schedule-daily-time", "02:30");
+    await page.getByText(/^Next: /).waitFor({ timeout: STEP_MS });
+    await page.locator('[data-ingest-editor-action="save"]').click();
+    // The page goes to the saved job; the toast of the save goes with the page it was shown on.
+    await page.waitForURL(/\/ingest\/jobs\/fresh$/, { timeout: STEP_MS });
+    await page.getByText("What it does").waitFor({ timeout: STEP_MS });
+  });
+
+  await step("edit a job and keep the changes when a link would leave", async () => {
+    await open(page, base, "/ingest/jobs/handbook/edit");
+    check(await page.inputValue("#field-id") === "handbook", "the editor does not start from the job");
+    await page.fill("#field-description", "The staff handbook, revised");
+    await page.locator("header, .pk-content").getByRole("link", { name: "Cancel" }).first().click();
+    const leave = page.locator("#leave-editor[open]");
+    await leave.waitFor({ timeout: STEP_MS });
+    await leave.getByRole("button", { name: "Keep editing" }).click();
+    await leave.waitFor({ state: "detached", timeout: STEP_MS });
+    check(new URL(page.url()).pathname === "/ingest/jobs/handbook/edit", "the page left with unsaved changes");
+    await page.locator("#job-editor").getByRole("button", { name: "Save", exact: true }).click();
+    await page.waitForURL(/\/ingest\/jobs\/handbook$/, { timeout: STEP_MS });
+    await open(page, base, "/ingest/jobs/handbook/edit");
+    check(await page.inputValue("#field-description") === "The staff handbook, revised", "the change was not saved");
+  });
+
+  await step("store a credential from the editor", async () => {
+    await open(page, base, "/ingest/new");
+    await page.locator("#job-editor").getByRole("button", { name: /^WebDAV/ }).click();
+    await page.getByRole("button", { name: "Advanced options" }).click();
+    await page.locator("#field-source-rclone-flags").waitFor({ state: "visible", timeout: STEP_MS });
+    await page.getByRole("button", { name: "Hide advanced options" }).click();
+    await page.locator("#field-source-rclone-flags").waitFor({ state: "hidden", timeout: STEP_MS });
+    await page.getByRole("button", { name: "New…" }).click();
+    const dialog = page.locator("#ingest-credential[open]");
+    await dialog.waitFor({ timeout: STEP_MS });
+    await dialog.getByText("New credential", { exact: true }).waitFor({ timeout: STEP_MS });
+    await page.fill("#credential-name", "DAV");
+    await page.fill("#credential-value", "synthetic-value");
+    await dialog.getByRole("button", { name: "Store" }).click();
+    await toast(page, "Credential QI_SECRET_DAV stored");
+    await dialog.waitFor({ state: "detached", timeout: STEP_MS });
+    check(await page.locator('select[aria-label="Password"]').inputValue() === "QI_SECRET_DAV",
+      "the stored credential is not chosen");
+    check(await page.inputValue("#credential-value") === "", "the value stays in the page");
+  });
+
+  await step("store, replace and delete a credential", async () => {
+    await open(page, base, "/ingest/secrets");
+    await page.locator("#secret-list").getByText("QI_SECRET_DAV", { exact: true }).waitFor({ timeout: STEP_MS });
+    await page.locator('[data-ingest-editor-action="credential-new"]').click();
+    const dialog = page.locator("#ingest-credential[open]");
+    await dialog.waitFor({ timeout: STEP_MS });
+    await page.fill("#credential-name", "S3_KEY");
+    await page.fill("#credential-value", "synthetic-key");
+    await dialog.getByRole("button", { name: "Store" }).click();
+    await toast(page, "Credential QI_SECRET_S3_KEY stored");
+    const row = page.locator("#secret-list tr", { has: page.getByText("QI_SECRET_S3_KEY", { exact: true }) });
+    await row.waitFor({ timeout: STEP_MS });
+    await row.getByRole("button", { name: "Replace" }).click();
+    await dialog.waitFor({ timeout: STEP_MS });
+    await dialog.getByText("Replace the value", { exact: true }).waitFor({ timeout: STEP_MS });
+    check(await page.inputValue("#credential-name") === "S3_KEY", "Replace does not keep the name");
+    await dialog.getByRole("button", { name: "Several lines (key, JSON)" }).click();
+    await page.fill("#credential-value-multi", "synthetic\nkey");
+    // Mark the list on the page, to know when the one reloaded after the store has replaced it.
+    await page.locator("#secret-list table").evaluate((table) => table.setAttribute("data-before-store", ""));
+    await dialog.getByRole("button", { name: "Store" }).click();
+    await toast(page, "Credential QI_SECRET_S3_KEY stored");
+    await dialog.waitFor({ state: "detached", timeout: STEP_MS });
+    // The list reloads after a store; open the row menu of the list that came back.
+    await page.locator("#secret-list table:not([data-before-store])").waitFor({ timeout: STEP_MS });
+    await page.waitForLoadState("networkidle");
+    await row.locator('.dropdown [role="button"]').focus();
+    await row.getByText("Delete", { exact: true }).click();
+    const remove = page.locator("#ingest-credential-delete[open]");
+    await remove.waitFor({ timeout: STEP_MS });
+    await remove.getByText("Delete QI_SECRET_S3_KEY?").waitFor({ timeout: STEP_MS });
+    await remove.getByRole("button", { name: "Delete", exact: true }).click();
+    await toast(page, "Credential QI_SECRET_S3_KEY deleted");
+    await row.waitFor({ state: "detached", timeout: STEP_MS });
+  });
+
+  await step("a credentials list that cannot be loaded says why", async () => {
+    await page.route("**/partials/ingest/secrets", (route) =>
+      route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: "<b>locked</b>" }) }));
+    await open(page, base, "/ingest/secrets");
+    await page.getByText("Credentials are not available").waitFor({ timeout: STEP_MS });
+    await page.locator("#secret-list [data-reason]").getByText("<b>locked</b>").waitFor({ timeout: STEP_MS });
+    await page.unroute("**/partials/ingest/secrets");
+  });
 }
 
 // The pages of the group, as they are before the walk changes anything.
@@ -228,6 +331,8 @@ const SHOTS = [
   ["runs", "/ingest/runs", "#ingest-run-rows"],
   ["orphans", "/ingest/orphans", "#orphan-list table"],
   ["catalog", "/ingest/catalog", "#catalog-embedding-model"],
+  ["editor", "/ingest/jobs/handbook/edit", "#field-id"],
+  ["secrets", "/ingest/secrets", "#secret-list .alert-info"],
 ];
 
 async function shots(browser, args) {
@@ -252,6 +357,11 @@ async function shots(browser, args) {
       // The modal fades in.
       await page.waitForTimeout(500);
       await page.screenshot({ path: resolve(args.shots, `run-dialog-${width}-${args.scheme}.png`) });
+      await page.goto(new URL("/ingest/secrets", args.base_url).href, { waitUntil: "networkidle" });
+      await page.locator('[data-ingest-editor-action="credential-new"]').click();
+      await page.locator("#ingest-credential[open]").waitFor({ timeout: STEP_MS });
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: resolve(args.shots, `credential-dialog-${width}-${args.scheme}.png`) });
     }
     await context.close();
   }
@@ -274,6 +384,8 @@ async function run(browser, args) {
     if (text.startsWith("Alpine Expression Error") || text.startsWith("Alpine Warning")) alpine.push(text.split("\n")[0]);
   });
   page.on("pageerror", (error) => errors.push(String(error.message).split("\n")[0]));
+  // The browser's own prompt before an edited editor is left by navigation: leave.
+  page.on("dialog", (dialog) => dialog.accept());
   const sent = {};
   const steps = [];
   let failure = null;

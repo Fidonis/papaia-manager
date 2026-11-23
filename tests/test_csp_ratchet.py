@@ -280,7 +280,7 @@ def test_the_accounts_pages_run_on_the_csp_build() -> None:
 # -- the ingest helpers and lists --------------------------------------------------------------
 
 # The pages of the ingest lists and every partial they include or htmx swaps into them. The
-# job editor and the credentials page are a group of their own.
+# job editor and the credentials page are a group of their own (below).
 _INGEST_PAGES = (
     "ingest_catalog.html",
     "ingest_job.html",
@@ -320,3 +320,28 @@ def test_the_ingest_pages_run_on_the_csp_build() -> None:
     # The helpers of the ingest pages moved into static/js/pages/ingest*.js.
     assert not (TEMPLATES / "partials" / "_ingest_js.html").exists()
     assert "partials/_ingest_js.html" not in _templates_of_baseline()
+
+
+# -- the job editor and the credentials page ----------------------------------------------------
+
+# The two pages, the credential dialog both include and the list htmx swaps into the second.
+_INGEST_EDITOR_PAGES = ("ingest_job_edit.html", "ingest_secrets.html")
+_INGEST_EDITOR_GROUP = (
+    *_INGEST_EDITOR_PAGES,
+    "partials/_ingest_credential_dialog.html",
+    "partials/ingest_secret_list.html",
+)
+
+
+@pytest.mark.parametrize("name", _INGEST_EDITOR_GROUP)
+def test_the_ingest_editor_group_has_no_inline_script_handler_or_rejected_expression(
+    name: str,
+) -> None:
+    counts = csp_scan.count_markup((TEMPLATES / name).read_text(encoding="utf-8"))
+    assert counts == dict.fromkeys(csp_scan.KINDS, 0), name
+    assert name not in _templates_of_baseline(), name
+
+
+def test_the_ingest_editor_pages_run_on_the_csp_build() -> None:
+    converted = set(_baseline()["converted"])  # type: ignore[arg-type]
+    assert set(_INGEST_EDITOR_PAGES) <= converted

@@ -51,6 +51,57 @@
 }) }}
 {%- endmacro %}
 
+{#- What the job editor and the Credentials page hand their page module
+    (static/js/pages/ingest-editor.js): which page this is (`editor` or `secrets`), the editor's
+    start values, and the sentences of the editor and the credential dialogs. The four outcome
+    sentences are those of the lists: the editor tells a save with the same ingestOutcome(). #}
+{% macro editor_island(page, values={}) -%}
+{{ data_island("ingest-editor", {
+  "page": page,
+  "values": values,
+  "texts": {
+    "outcomeNotAskedNote": _('{what} (the ingester could not be asked: {note})'),
+    "outcomeNotAsked": _('{what} (the ingester could not be asked)'),
+    "outcomeNotActive": _('{what}. It is saved but not active yet: {why}'),
+    "outcomeNotApplied": _('the ingester did not apply the catalog'),
+    "scheduleModes": [
+      {"value": "manual", "label": _('Only when started')},
+      {"value": "interval", "label": _('Every…')},
+      {"value": "hourly", "label": _('Hourly')},
+      {"value": "daily", "label": _('Daily')},
+      {"value": "weekly", "label": _('Weekly')},
+      {"value": "monthly", "label": _('Monthly')},
+      {"value": "cron", "label": _('Custom')},
+    ],
+    "problemsToFix": [_('{count} problem to fix'), _('{count} problems to fix')],
+    "advancedShow": _('Advanced options'),
+    "advancedHide": _('Hide advanced options'),
+    "notFound": _('{name} (not found)'),
+    "credentialFromStore": _('{name} (stored)'),
+    "credentialFromEnvironment": _('{name} (environment)'),
+    "collectionWithPoints": _('An existing collection with {points} points.'),
+    "collectionExisting": _('An existing collection.'),
+    "collectionNew": _('Not there yet: the first run creates it.'),
+    "collectionChoose": _('Choose an existing collection or name a new one.'),
+    "catalogDefault": _('catalog default: {value}'),
+    "nextRuns": _('Next: {runs} ({timezone})'),
+    "jobSaved": _('Job <b>{id}</b> saved'),
+    "dryRunFailed": _('The dry run could not be started:'),
+    "credentialReplaceTitle": _('Replace the value'),
+    "credentialNewTitle": _('New credential'),
+    "credentialOneLine": _('One line (password, token)'),
+    "credentialSeveralLines": _('Several lines (key, JSON)'),
+    "credentialStored": _('Credential <b>{name}</b> stored'),
+    "credentialDeleted": _('Credential <b>{name}</b> deleted'),
+  },
+}) }}
+{%- endmacro %}
+
+{#- The module of the job editor and the Credentials page, loaded like ingest_module(). #}
+{% macro editor_module() -%}
+<script type="module" src="{{ asset_url('js/pages/ingest-editor.js') }}"></script>
+{%- endmacro %}
+
 {#- The module loaded in base.html's block `page_modules`, before Alpine starts. #}
 {% macro ingest_module() -%}
 <script type="module" src="{{ asset_url('js/pages/ingest.js') }}"></script>

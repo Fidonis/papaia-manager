@@ -1174,8 +1174,20 @@ colour schemes (filter the jobs, disable and enable one, start a run and abort i
 switch the tabs of a job, delete a job, remove a leftover, save the defaults and check the job
 file, a list that cannot be loaded) against the fake ingester of the page tests
 (`tests/design_serve.py --with-ingest`) and fails on any report of the policy, refused Alpine
-expression or script error. The job editor (`ingest_job_edit.html`) and the credentials page
-are not converted yet.
+expression or script error.
+
+The job editor (`ingest_job_edit.html`, `/ingest/new` and `/ingest/jobs/{id}/edit`) and the
+credentials page (`ingest_secrets.html`, `/ingest/secrets`, with the list
+`partials/ingest_secret_list.html`), which share the credential dialog
+`partials/_ingest_credential_dialog.html`: their script is `js/pages/ingest-editor.js`, with
+the editor and the two credential dialogs in `js/pages/ingest-editor-components.js` (unit tests
+in `tests/js/ingest-editor.test.mjs`); the request helpers and the save outcome are imported
+from `js/pages/ingest-components.js`. Each page hands its module the data island
+`ingest-editor` (macro `editor_island` of `partials/_ingest_texts.html`): which page it is, the
+editor's start values and the sentences. The buttons of the page frame name their verb in
+`data-ingest-editor-action`. The same browser walk then creates a job in the editor, edits one
+(a link out of unsaved changes asks in the app's dialog), stores a credential from the editor,
+and stores, replaces and deletes one on the credentials page.
 
 Embedding (`embedding.html` with the body, tree, uploads and run strip partials), Collections
 (`collections.html` with `partials/collection_list.html`) and Models & Usage (`models.html` with

@@ -6,23 +6,18 @@
 // `texts`, the sentences of the shared actions, and `errors`, the kit's three-part texts per
 // error class (app/client_texts.py). runtime.js builds the instances main.js and the page
 // modules share from it.
-import { ragDetail } from "./actions.js";
 import { installAnnouncements } from "./announce.js";
 import { csrfToken } from "./csrf.js";
-import { escapeHtml, fmt, fmtHtml, fmtPlural, localizeCheckedAt } from "./format.js";
+import { fmt, fmtPlural, localizeCheckedAt } from "./format.js";
 import { installLegacy } from "./legacy.js";
 import { installFloatMenus } from "./menus.js";
 import { installPollGuard } from "./poll.js";
-import { actions, report, showToast, texts } from "./runtime.js";
+import { report, showToast, texts } from "./runtime.js";
 import { installSessionGuard } from "./session.js";
 
 installLegacy(window, {
-  _ragDetail: ragDetail,
-  _ragEscape: escapeHtml,
-  _ragRequest: actions.ragRequest,
   csrfToken: () => csrfToken(document),
   fmt,
-  fmtHtml,
   fmtPlural,
   showToast,
 });

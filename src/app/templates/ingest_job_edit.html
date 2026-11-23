@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% from "partials/_ingest_macros.html" import tabs %}
+{% from "partials/_ingest_texts.html" import editor_island, editor_module %}
+
+{% block page_modules %}{{ editor_module() }}{% endblock %}
 
 {% set breadcrumb = [{"label": _("Ingest Jobs") if job_id is none else job_id, "href": "/ingest/jobs" if job_id is none else "/ingest/jobs/" ~ job_id}] %}
 {% block page_title %}{% if job_id is none %}{{ _('New job') if not copy_of else _('Copy of %(job)s', job=copy_of) }}{% else %}{% trans %}Edit <span class="font-mono">{{ job_id }}</span>{% endtrans %}{% endif %}{% endblock %}
@@ -10,8 +13,7 @@
 {% block page_actions %}
 {% if not problem %}
 <a href="{{ '/ingest/jobs' if job_id is none else '/ingest/jobs/' ~ job_id }}" class="btn btn-outline btn-sm">{% trans %}Cancel{% endtrans %}</a>
-<button type="button" class="btn btn-primary btn-sm"
-        onclick="window.dispatchEvent(new CustomEvent('ingest-save', { detail: { run: false } }))">{% trans %}Save{% endtrans %}</button>
+<button type="button" class="btn btn-primary btn-sm" data-ingest-editor-action="save">{% trans %}Save{% endtrans %}</button>
 {% endif %}
 {% endblock %}
 
@@ -19,11 +21,11 @@
 <div class="form-control">
   <label class="label py-1" for="field-{{ path | replace('.', '-') | replace('_', '-') }}">
     <span class="label-text">{{ label }}{% if required %}<span class="text-error"> *</span>{% endif %}</span>
-    <span class="label-text-alt text-pk-text-muted" style="display:none" x-show="inheritedNote('{{ path }}')" x-text="inheritedNote('{{ path }}')"></span>
+    <span class="label-text-alt text-pk-text-muted" x-cloak x-show="inheritedNote('{{ path }}')" x-text="inheritedNote('{{ path }}')"></span>
   </label>
   {{ caller() }}
   {% if help %}<p class="mt-1 text-xs text-pk-text-muted">{{ help }}</p>{% endif %}
-  <p class="mt-1 text-xs text-error" style="display:none" x-show="err('{{ path }}')" x-text="err('{{ path }}')"></p>
+  <p class="mt-1 text-xs text-error" x-cloak x-show="err('{{ path }}')" x-text="err('{{ path }}')"></p>
 </div>
 {% endmacro %}
 
@@ -36,21 +38,21 @@
 </div>
 {% else %}
 
-<div id="job-editor" class="mx-auto flex max-w-4xl flex-col gap-4" x-data='jobEditor({{ boot|tojson }})'
+<div id="job-editor" class="mx-auto flex max-w-4xl flex-col gap-4" x-data="jobEditor()"
      @ingest-save.window="save($event.detail.run)"
      @credential-saved.window="credentialSaved($event.detail)">
 
-  <div class="alert alert-error text-sm" role="alert" style="display:none" x-show="summary.length">
+  <div class="alert alert-error text-sm" role="alert" x-cloak x-show="summary.length">
     <div>
-      <p class="font-semibold" x-text="fmtPlural(summary.length, {{ _('{count} problem to fix')|tojson|forceescape }}, {{ _('{count} problems to fix')|tojson|forceescape }})"></p>
+      <p class="font-semibold" x-text="summaryTitle()"></p>
       <ul class="mt-1 list-disc pl-5">
-        <template x-for="issue in summary.slice(0, 6)" :key="issue.field + issue.message">
+        <template x-for="issue in shownIssues()" :key="issue.field + issue.message">
           <li><span class="font-mono" x-text="issue.field"></span>: <span x-text="issue.message"></span></li>
         </template>
       </ul>
     </div>
   </div>
-  <p class="text-sm text-error" style="display:none" x-show="saveError" x-text="saveError"></p>
+  <p class="text-sm text-error" x-cloak x-show="saveError" x-text="saveError"></p>
 
   {# ---- 1. identity ---- #}
   <section class="card bg-base-100 border border-base-300">
@@ -88,7 +90,7 @@
           </button>
         </template>
       </div>
-      <p class="text-xs text-error" style="display:none" x-show="err('source.type')" x-text="err('source.type')"></p>
+      <p class="text-xs text-error" x-cloak x-show="err('source.type')" x-text="err('source.type')"></p>
 
       <div class="grid gap-4 sm:grid-cols-2">
         {% call field(_('Label'), 'source.label', _('How results name this source (it is the first part of their address). Short, lowercase; it has to differ between jobs that write to the same collection.'), True) %}
@@ -101,7 +103,7 @@
         <template x-for="f in fields()" :key="job.source.type + f.key">
           <div class="form-control" :class="f.kind === 'folder' || f.kind === 'url' ? 'sm:col-span-2' : ''">
             <label class="label py-1">
-              <span class="label-text"><span x-text="f.label"></span><span class="text-error" x-show="f.required" style="display:none"> *</span></span>
+              <span class="label-text"><span x-text="f.label"></span><span class="text-error" x-show="f.required" x-cloak> *</span></span>
             </label>
 
             <template x-if="f.kind === 'secret'">
@@ -146,20 +148,20 @@
                      :placeholder="f.placeholder" autocomplete="off">
             </template>
 
-            <p class="mt-1 text-xs text-pk-text-muted" x-show="f.help && f.kind !== 'bool'" style="display:none" x-text="f.help"></p>
-            <p class="mt-1 text-xs text-error" style="display:none" x-show="err('source.' + f.key)" x-text="err('source.' + f.key)"></p>
+            <p class="mt-1 text-xs text-pk-text-muted" x-show="f.help && f.kind !== 'bool'" x-cloak x-text="f.help"></p>
+            <p class="mt-1 text-xs text-error" x-cloak x-show="err('source.' + f.key)" x-text="err('source.' + f.key)"></p>
           </div>
         </template>
       </div>
 
-      <p class="text-xs text-pk-text-muted" x-show="form().remote" style="display:none">
+      <p class="text-xs text-pk-text-muted" x-show="form().remote" x-cloak>
         {% trans %}Credentials are chosen, not typed: a typed value would end up in <span class="font-mono">jobs.yaml</span>. <b>New…</b> stores one encrypted. Manage them on the <a class="link" href="/ingest/secrets" target="_blank" rel="noopener">Credentials</a> page.{% endtrans %}
       </p>
 
-      <div x-show="form().remote" style="display:none">
-        <button type="button" class="link link-hover text-xs text-pk-text-muted" @click="advancedSource = !advancedSource"
-                x-text="advancedSource ? {{ _('Hide advanced options')|tojson|forceescape }} : {{ _('Advanced options')|tojson|forceescape }}"></button>
-        <div x-show="advancedSource" style="display:none" class="mt-2">
+      <div x-show="form().remote" x-cloak>
+        <button type="button" class="link link-hover text-xs text-pk-text-muted" @click="toggleAdvancedSource()"
+                x-text="advancedLabel()"></button>
+        <div x-show="advancedSource" x-cloak class="mt-2">
           {% call field(_('Extra rclone options'), 'source.rclone_flags', _('One option per line, for example --s3-no-check-bucket. Passed on to the tool that fetches the files.')) %}
           <textarea id="field-source-rclone-flags" rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="text.rclone" spellcheck="false"></textarea>
           {% endcall %}
@@ -178,7 +180,7 @@
                 x-effect="sync($el, job.target.connection, connections.length)"
                 :class="err('target.connection') ? 'select-error' : ''">
           <template x-for="c in connections" :key="c"><option :value="c" x-text="c"></option></template>
-          <option x-show="connections.indexOf(job.target.connection) === -1" style="display:none" :value="job.target.connection" x-text="fmt({{ _('{name} (not found)')|tojson|forceescape }}, { name: job.target.connection })"></option>
+          <option x-show="connectionMissing()" x-cloak :value="job.target.connection" x-text="connectionLabel()"></option>
         </select>
         {% endcall %}
         {% call field(_('Collection'), 'target.collection', '', True) %}
@@ -187,17 +189,17 @@
         <datalist id="editor-collections">
           <template x-for="c in collections" :key="c.name"><option :value="c.name"></option></template>
         </datalist>
-        <p class="mt-1 text-xs text-pk-text-muted" x-show="collectionNote()" style="display:none" x-text="collectionNote()"></p>
+        <p class="mt-1 text-xs text-pk-text-muted" x-show="collectionNote()" x-cloak x-text="collectionNote()"></p>
         {% endcall %}
       </div>
       <div class="grid gap-4 sm:grid-cols-2">
         {% call field(_('Embedding model'), 'embedding.model', '', True) %}
         <input id="field-embedding-model" type="text" class="input input-bordered input-sm font-mono" x-model="job.embedding.model" :readonly="modelLocked()"
                :class="err('embedding.model') ? 'input-error' : ''" placeholder="{{ _('nomic-embed-text') }}" autocomplete="off">
-        <p class="mt-1 text-xs text-pk-text-muted" x-show="modelLocked()" style="display:none">
+        <p class="mt-1 text-xs text-pk-text-muted" x-show="modelLocked()" x-cloak>
           {% trans %}The collection records this model. Every job that writes to it has to use it.{% endtrans %}
         </p>
-        <p class="mt-1 text-xs text-pk-text-muted" x-show="!modelLocked()" style="display:none">
+        <p class="mt-1 text-xs text-pk-text-muted" x-show="!modelLocked()" x-cloak>
           {% trans %}The model your embeddings service offers. A collection embeds with exactly one model, recorded at its first run.{% endtrans %}
         </p>
         {% endcall %}
@@ -267,16 +269,16 @@
           </label>
         </template>
       </div>
-      <p class="text-xs text-error" style="display:none" x-show="err('mode')" x-text="err('mode')"></p>
-      <div class="grid gap-4 sm:grid-cols-2" x-show="job.mode === 'full' || job.mode === 'append'" style="display:none">
-        <div class="form-control" x-show="job.mode === 'full'" style="display:none">
+      <p class="text-xs text-error" x-cloak x-show="err('mode')" x-text="err('mode')"></p>
+      <div class="grid gap-4 sm:grid-cols-2" x-show="job.mode === 'full' || job.mode === 'append'" x-cloak>
+        <div class="form-control" x-show="job.mode === 'full'" x-cloak>
           <label class="label py-1" for="editor-full-scope"><span class="label-text">{% trans %}What a rebuild replaces{% endtrans %}</span></label>
           <select id="editor-full-scope" class="select select-bordered select-sm" x-model="job.full_scope">
             <option value="job">{% trans %}Only this job's content{% endtrans %}</option>
             <option value="collection">{% trans %}The whole collection (other jobs lose theirs){% endtrans %}</option>
           </select>
         </div>
-        <div class="form-control" x-show="job.mode === 'append'" style="display:none">
+        <div class="form-control" x-show="job.mode === 'append'" x-cloak>
           <label class="label py-1" for="editor-append-probe"><span class="label-text">{% trans %}How "new" is decided{% endtrans %}</span></label>
           <select id="editor-append-probe" class="select select-bordered select-sm" x-model="job.append_probe">
             <option value="auto">{% trans %}Automatically{% endtrans %}</option>
@@ -295,26 +297,26 @@
       <div class="flex flex-wrap gap-2" role="tablist">
         <template x-for="m in scheduleModes" :key="m.value">
           <button type="button" role="tab" class="btn btn-sm" :class="job.schedule.mode === m.value ? 'btn-primary' : 'btn-outline'"
-                  @click="job.schedule.mode = m.value" x-text="m.label"></button>
+                  @click="setScheduleMode(m.value)" x-text="m.label"></button>
         </template>
       </div>
 
-      <div x-show="job.schedule.mode === 'interval'" style="display:none" class="flex flex-wrap items-center gap-2">
+      <div x-show="job.schedule.mode === 'interval'" x-cloak class="flex flex-wrap items-center gap-2">
         <label class="text-sm" for="schedule-every-n">{% trans %}Every{% endtrans %}</label>
         <input id="schedule-every-n" type="number" min="1" class="input input-bordered input-sm w-24" x-model.number="job.schedule.every_n">
         <select class="select select-bordered select-sm" aria-label="{{ _('Unit') }}" x-model="job.schedule.every_unit">
           <option value="s">{% trans %}seconds{% endtrans %}</option><option value="m">{% trans %}minutes{% endtrans %}</option><option value="h">{% trans %}hours{% endtrans %}</option><option value="d">{% trans %}days{% endtrans %}</option>
         </select>
       </div>
-      <div x-show="job.schedule.mode === 'hourly'" style="display:none" class="flex flex-wrap items-center gap-2">
+      <div x-show="job.schedule.mode === 'hourly'" x-cloak class="flex flex-wrap items-center gap-2">
         <label class="text-sm" for="schedule-minute">{% trans %}Every hour, at minute{% endtrans %}</label>
         <input id="schedule-minute" type="number" min="0" max="59" class="input input-bordered input-sm w-24" x-model.number="job.schedule.minute">
       </div>
-      <div x-show="job.schedule.mode === 'daily'" style="display:none" class="flex flex-wrap items-center gap-2">
+      <div x-show="job.schedule.mode === 'daily'" x-cloak class="flex flex-wrap items-center gap-2">
         <label class="text-sm" for="schedule-daily-time">{% trans %}Every day at{% endtrans %}</label>
         <input id="schedule-daily-time" type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
       </div>
-      <div x-show="job.schedule.mode === 'weekly'" style="display:none" class="flex flex-col gap-2">
+      <div x-show="job.schedule.mode === 'weekly'" x-cloak class="flex flex-col gap-2">
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-sm">{% trans %}On{% endtrans %}</span>
           <template x-for="d in weekdays" :key="d.key">
@@ -325,25 +327,25 @@
           <input id="schedule-weekly-time" type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
         </div>
       </div>
-      <div x-show="job.schedule.mode === 'monthly'" style="display:none" class="flex flex-wrap items-center gap-2">
+      <div x-show="job.schedule.mode === 'monthly'" x-cloak class="flex flex-wrap items-center gap-2">
         <label class="text-sm" for="schedule-day-of-month">{% trans %}On day{% endtrans %}</label>
         <input id="schedule-day-of-month" type="number" min="1" max="31" class="input input-bordered input-sm w-20" x-model.number="job.schedule.day_of_month">
         <label class="text-sm" for="schedule-monthly-time">{% trans %}of every month at{% endtrans %}</label>
         <input id="schedule-monthly-time" type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
       </div>
-      <div x-show="job.schedule.mode === 'cron'" style="display:none" class="flex flex-col gap-1">
+      <div x-show="job.schedule.mode === 'cron'" x-cloak class="flex flex-col gap-1">
         <input type="text" aria-label="{{ _('Cron expression') }}" class="input input-bordered input-sm w-full max-w-md font-mono" x-model="job.schedule.cron" placeholder="{{ _('0 2 * * mon-fri') }}" spellcheck="false">
         <p class="text-xs text-pk-text-muted">{% trans %}Five fields: minute, hour, day of the month, month, weekday. Weekdays by name (mon-fri) mean the same everywhere; numbers count from Monday here.{% endtrans %}</p>
       </div>
 
-      <div class="rounded-lg bg-base-200 p-3 text-sm" style="display:none" x-show="preview">
+      <div class="rounded-lg bg-base-200 p-3 text-sm" x-cloak x-show="preview">
         <template x-if="preview && preview.ok">
           <div>
             <p class="font-semibold" x-text="preview.description"></p>
             <template x-if="preview.runs.length">
-              <p class="mt-1 text-xs text-pk-text-muted"><span x-html="fmtHtml({{ _('Next: {runs} ({timezone})')|tojson|forceescape }}, { runs: preview.runs.join('  ·  '), timezone: preview.timezone })"></span></p>
+              <p class="mt-1 text-xs text-pk-text-muted"><span x-text="nextRunsText()"></span></p>
             </template>
-            <p class="mt-1 text-xs text-pk-text-muted" x-show="preview.counts_from_load" style="display:none">{% trans %}An interval counts from the moment the ingester loads the job, so no clock time is promised.{% endtrans %}</p>
+            <p class="mt-1 text-xs text-pk-text-muted" x-show="preview.counts_from_load" x-cloak>{% trans %}An interval counts from the moment the ingester loads the job, so no clock time is promised.{% endtrans %}</p>
             <template x-for="n in preview.notes" :key="n"><p class="mt-1 text-xs text-warning" x-text="n"></p></template>
           </div>
         </template>
@@ -394,7 +396,7 @@
         <input id="field-chunking-overlap" type="number" min="0" class="input input-bordered input-sm" x-model.number="job.chunking.overlap" :class="err('chunking') || err('chunking.overlap') ? 'input-error' : ''">
         {% endcall %}
       </div>
-      <p class="text-xs text-error" style="display:none" x-show="err('chunking')" x-text="err('chunking')"></p>
+      <p class="text-xs text-error" x-cloak x-show="err('chunking')" x-text="err('chunking')"></p>
       <div class="grid gap-4 sm:grid-cols-3">
         {% call field(_('Files per embedding request'), 'embedding.batch_size', _('Empty uses the ingester\'s setting.')) %}
         <input id="field-embedding-batch-size" type="number" min="1" class="input input-bordered input-sm" x-model.number="job.embedding.batch_size">
@@ -416,13 +418,13 @@
        floating over the fields; one primary button ---- #}
   <div class="flex flex-wrap items-center gap-3 border-t border-base-300 pt-4">
     <button type="button" class="btn btn-primary btn-sm" :disabled="busy" @click="save(false)">
-      <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+      <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
       {% trans %}Save{% endtrans %}
     </button>
     <button type="button" class="btn btn-outline btn-sm" :disabled="busy" @click="save(true)">{% trans %}Save and dry run{% endtrans %}</button>
     <a href="{{ '/ingest/jobs' if job_id is none else '/ingest/jobs/' ~ job_id }}" class="btn btn-ghost btn-sm">{% trans %}Cancel{% endtrans %}</a>
-    <span class="ml-auto text-xs text-pk-text-muted" x-show="validating" style="display:none">{% trans %}Checking…{% endtrans %}</span>
-    <span class="ml-auto text-xs text-pk-text-muted" x-show="!validating && dirty && !summary.length" style="display:none">{% trans %}Unsaved changes{% endtrans %}</span>
+    <span class="ml-auto text-xs text-pk-text-muted" x-show="validating" x-cloak>{% trans %}Checking…{% endtrans %}</span>
+    <span class="ml-auto text-xs text-pk-text-muted" x-show="!validating && dirty && !summary.length" x-cloak>{% trans %}Unsaved changes{% endtrans %}</span>
   </div>
 
   {# ---- leaving with unsaved changes (the browser's own prompt cannot be styled or worded) ---- #}
@@ -445,21 +447,21 @@
     <div class="modal-box max-w-xl">
       <h3 class="mb-1 text-lg font-bold">{% trans %}Choose a folder{% endtrans %}</h3>
       <p class="mb-2 text-sm text-pk-text-muted">{% trans %}The documents folder of the RAG module. The job reads everything below the folder you choose.{% endtrans %}</p>
-      <p class="mb-2 break-all font-mono text-xs">/data/local<span x-text="pick.path ? '/' + pick.path : ''"></span></p>
+      <p class="mb-2 break-all font-mono text-xs">/data/local<span x-text="pickedPath()"></span></p>
       <div class="max-h-72 overflow-y-auto rounded-lg border border-base-300">
         <ul class="menu menu-sm">
-          <li x-show="pick.path" style="display:none"><a @click="browse(parentOf(pick.path))">{% trans %}.. (up){% endtrans %}</a></li>
+          <li x-show="pick.path" x-cloak><a @click="browse(parentOf(pick.path))">{% trans %}.. (up){% endtrans %}</a></li>
           <template x-for="e in pick.entries" :key="e.path">
             <li>
-              <a x-show="e.dir" style="display:none" @click="browse(e.path)">📁 <span x-text="e.name"></span></a>
-              <span x-show="!e.dir" style="display:none" class="text-pk-text-muted" x-text="e.name"></span>
+              <a x-show="e.dir" x-cloak @click="browse(e.path)">📁 <span x-text="e.name"></span></a>
+              <span x-show="!e.dir" x-cloak class="text-pk-text-muted" x-text="e.name"></span>
             </li>
           </template>
         </ul>
-        <p class="p-3 text-sm text-pk-text-muted" x-show="!pick.loading && !pick.entries.length" style="display:none">{% trans %}Nothing here.{% endtrans %}</p>
-        <p class="p-3 text-sm text-pk-text-muted" x-show="pick.loading" style="display:none">{% trans %}Loading…{% endtrans %}</p>
+        <p class="p-3 text-sm text-pk-text-muted" x-show="!pick.loading && !pick.entries.length" x-cloak>{% trans %}Nothing here.{% endtrans %}</p>
+        <p class="p-3 text-sm text-pk-text-muted" x-show="pick.loading" x-cloak>{% trans %}Loading…{% endtrans %}</p>
       </div>
-      <p class="mt-2 text-sm text-error" style="display:none" x-show="pick.error" x-text="pick.error"></p>
+      <p class="mt-2 text-sm text-error" x-cloak x-show="pick.error" x-text="pick.error"></p>
       <div class="modal-action">
         <button type="button" class="btn btn-ghost" @click="$refs.picker.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="button" class="btn btn-primary" @click="choose()">{% trans %}Use this folder{% endtrans %}</button>
@@ -470,237 +472,6 @@
 </div>
 
 {% include "partials/_ingest_credential_dialog.html" %}
-<script>
-{#- The request helpers the editor shares with the ingest lists, until the editor moves into a
-    page module as well (static/js/pages/ingest-components.js holds the lists' copy). #}
-const _ING = '/api/v1/rag/ingest';
-
-function _ingJob(id) { return _ING + '/jobs/' + encodeURIComponent(id); }
-
-// What a save did, in a sentence for a toast.
-function ingestOutcome(result, what) {
-  let text = what;
-  let level = 'success';
-  if (!result.verified) {
-    level = 'warning';
-    text = result.note
-      ? fmt({{ _('{what} (the ingester could not be asked: {note})')|tojson }}, { what: what, note: _ragEscape(result.note) })
-      : fmt({{ _('{what} (the ingester could not be asked)')|tojson }}, { what: what });
-  } else if (!result.applied) {
-    level = 'warning';
-    text = fmt({{ _('{what}. It is saved but not active yet: {why}')|tojson }}, {
-      what: what,
-      why: result.elsewhere.length ? _ragEscape(result.elsewhere.join('; ')) : {{ _('the ingester did not apply the catalog')|tojson }},
-    });
-  }
-  return { level: level, text: text };
-}
-
-const _SCHEDULE_MODES = [
-  { value: 'manual', label: {{ _('Only when started')|tojson }} },
-  { value: 'interval', label: {{ _('Every…')|tojson }} },
-  { value: 'hourly', label: {{ _('Hourly')|tojson }} },
-  { value: 'daily', label: {{ _('Daily')|tojson }} },
-  { value: 'weekly', label: {{ _('Weekly')|tojson }} },
-  { value: 'monthly', label: {{ _('Monthly')|tojson }} },
-  { value: 'cron', label: {{ _('Custom')|tojson }} },
-];
-
-function jobEditor(boot) {
-  const lines = function (list) { return (list || []).join('\n'); };
-  return {
-    job: boot.state, etag: boot.etag, isNew: boot.isNew, originalId: boot.originalId,
-    sources: boot.sources, credentials: boot.credentials, connections: boot.connections,
-    modes: boot.modes, strategies: boot.strategies, startups: boot.startups, presets: boot.presets,
-    timezones: boot.timezones, weekdays: boot.weekdays, defaults: boot.defaults, inherited: boot.inherited,
-    ingestTz: boot.timezone, scheduleModes: _SCHEDULE_MODES,
-    text: { rclone: lines(boot.state.source.rclone_flags), acl: lines(boot.state.target.acl_tags), include: lines(boot.state.filters.include), exclude: lines(boot.state.filters.exclude) },
-    maxMb: boot.state.filters.max_file_bytes ? boot.state.filters.max_file_bytes / 1048576 : '',
-    errors: {}, summary: [], busy: false, saveError: '', dirty: false, validating: false, saving: false,
-    advancedSource: false, collections: [], preview: null, pendingKey: '',
-    pick: { path: '', entries: [], loading: false, error: '' },
-    timers: { validate: null, preview: null }, leaving: '',
-
-    init() {
-      this.loadCollections();
-      this.refreshPreview();
-      this.syncModel();
-      // A job that is already saved may have a problem the ingester refused it for; say so at once.
-      if (!this.isNew) this.validate();
-      this.$watch('job', () => { this.dirty = true; this.later('validate', 700, () => this.validate()); this.later('preview', 400, () => this.refreshPreview()); });
-      this.$watch('text', () => { this.dirty = true; this.later('validate', 700, () => this.validate()); });
-      this.$watch('maxMb', () => { this.dirty = true; this.later('validate', 700, () => this.validate()); });
-      this.$watch('job.target.collection', () => this.syncModel());
-      // A link that leaves the page asks in the app's own dialog. Only a reload, closing the tab, the
-      // back button or a typed address still reach the browser's prompt, which a page cannot replace.
-      document.addEventListener('click', (event) => this.guardLink(event), true);
-      window.addEventListener('beforeunload', (event) => {
-        if (this.dirty && !this.saving) { event.preventDefault(); event.returnValue = ''; }
-      });
-    },
-    guardLink(event) {
-      if (!this.dirty || this.saving || event.defaultPrevented || event.button !== 0) return;
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
-      if (!link || (link.target && link.target !== '_self') || link.hasAttribute('download')) return;
-      const url = new URL(link.href, window.location.href);
-      if (url.origin === window.location.origin && url.pathname === window.location.pathname
-          && url.search === window.location.search) return;
-      event.preventDefault();
-      this.leaving = url.href;
-      this.$refs.leave.showModal();
-    },
-    leaveNow() {
-      const target = this.leaving;
-      this.dirty = false;
-      if (target) window.location.href = target;
-    },
-    later(name, ms, fn) { clearTimeout(this.timers[name]); this.timers[name] = setTimeout(fn, ms); },
-
-    // -- source
-    form() { return this.sources.find((s) => s.type === this.job.source.type) || this.sources[0]; },
-    fields() { return this.form().fields; },
-    setType(type) {
-      const form = this.sources.find((s) => s.type === type);
-      const next = { type: type, label: this.job.source.label, rclone_flags: this.job.source.rclone_flags };
-      form.fields.forEach((f) => { next[f.key] = f.default === undefined || f.default === null ? '' : f.default; });
-      this.job.source = next;
-    },
-    // x-model fills a select before its x-for options exist, so the first option would show
-    // whatever the model holds; this puts the shown option right once they are there.
-    sync(el, value) { this.$nextTick(() => { el.value = value === undefined || value === null ? '' : value; }); },
-    labelFromId() { if (this.isNew && !this.job.source.label && this.job.id) this.job.source.label = this.job.id; },
-    credentialOptions(key) {
-      const out = this.credentials.map((c) => ({ name: c.name, label: fmt(c.origin === 'store' ? {{ _('{name} (stored)')|tojson }} : {{ _('{name} (environment)')|tojson }}, { name: c.name }) }));
-      const current = this.job.source[key];
-      if (current && !out.some((c) => c.name === current)) out.push({ name: current, label: fmt({{ _('{name} (not found)')|tojson }}, { name: current }) });
-      return out;
-    },
-    newCredential(key) {
-      this.pendingKey = key;
-      window.dispatchEvent(new CustomEvent('credential-new', { detail: {} }));
-    },
-    credentialSaved(detail) {
-      if (!this.credentials.some((c) => c.name === detail.name)) this.credentials.push({ name: detail.name, origin: 'store' });
-      if (this.pendingKey) this.job.source[this.pendingKey] = detail.name;
-      this.pendingKey = '';
-    },
-
-    // -- folder picker
-    openPicker() {
-      const current = String(this.job.source.path || '');
-      const start = current.indexOf('/data/local/') === 0 ? current.slice('/data/local/'.length) : '';
-      this.pick = { path: '', entries: [], loading: false, error: '' };
-      this.$refs.picker.showModal();
-      this.browse(start.replace(/\/+$/, ''));
-    },
-    parentOf(path) { const i = path.lastIndexOf('/'); return i === -1 ? '' : path.slice(0, i); },
-    async browse(path) {
-      this.pick.loading = true; this.pick.error = '';
-      const res = await _ragRequest('GET', _ING + '/tree?source=folder&path=' + encodeURIComponent(path));
-      this.pick.loading = false;
-      if (res.handled) return;
-      if (!res.ok) { this.pick.error = res.error; return; }
-      this.pick.path = path;
-      this.pick.entries = res.data.entries;
-    },
-    choose() {
-      this.job.source.path = '/data/local' + (this.pick.path ? '/' + this.pick.path : '');
-      this.$refs.picker.close();
-    },
-
-    // -- target
-    async loadCollections() {
-      this.collections = [];
-      const res = await _ragRequest('GET', _ING + '/collections?connection=' + encodeURIComponent(this.job.target.connection));
-      if (res.handled || !res.ok) return;
-      this.collections = res.data.collections || [];
-      this.syncModel();
-    },
-    currentCollection() { return this.collections.find((c) => c.name === this.job.target.collection) || null; },
-    collectionNote() {
-      const c = this.currentCollection();
-      if (c) {
-        return c.points !== null
-          ? fmt({{ _('An existing collection with {points} points.')|tojson }}, { points: c.points.toLocaleString(document.documentElement.lang) })
-          : {{ _('An existing collection.')|tojson }};
-      }
-      return this.job.target.collection ? {{ _('Not there yet: the first run creates it.')|tojson }} : {{ _('Choose an existing collection or name a new one.')|tojson }};
-    },
-    modelLocked() { const c = this.currentCollection(); return !!(c && c.embedding_model); },
-    syncModel() { const c = this.currentCollection(); if (c && c.embedding_model && this.job.embedding.model !== c.embedding_model) this.job.embedding.model = c.embedding_model; },
-
-    // -- files
-    lineSet(text) { return text.split('\n').map((l) => l.trim()).filter((l) => l); },
-    presetOn(p) { const have = this.lineSet(this.text.include); return p.include.every((x) => have.indexOf(x) !== -1); },
-    togglePreset(p) {
-      const have = this.lineSet(this.text.include);
-      this.text.include = (this.presetOn(p) ? have.filter((x) => p.include.indexOf(x) === -1) : have.concat(p.include.filter((x) => have.indexOf(x) === -1))).join('\n');
-    },
-
-    // -- schedule
-    toggleDay(day) {
-      const days = this.job.schedule.weekdays.slice();
-      const at = days.indexOf(day);
-      if (at === -1) days.push(day); else days.splice(at, 1);
-      this.job.schedule.weekdays = days;
-    },
-    async refreshPreview() {
-      const res = await _ragRequest('POST', _ING + '/schedule/preview', { schedule: this.job.schedule });
-      if (res.handled || !res.ok) return;
-      this.preview = res.data;
-    },
-    inheritedNote(path) {
-      const value = this.defaults[path];
-      return value === undefined || value === null ? '' : fmt({{ _('catalog default: {value}')|tojson }}, { value: Array.isArray(value) ? value.join(', ') : value });
-    },
-
-    // -- validation and saving
-    payload() {
-      const job = JSON.parse(JSON.stringify(this.job));
-      job.source.rclone_flags = this.text.rclone;
-      job.target.acl_tags = this.text.acl;
-      job.filters.include = this.text.include;
-      job.filters.exclude = this.text.exclude;
-      job.filters.max_file_bytes = this.maxMb === '' || this.maxMb === null ? null : Math.round(Number(this.maxMb) * 1048576);
-      return job;
-    },
-    err(field) { return this.errors[field] || ''; },
-    setIssues(issues) {
-      const map = {};
-      issues.forEach((i) => { if (!map[i.field]) map[i.field] = i.message; });
-      this.errors = map;
-      this.summary = issues;
-    },
-    async validate() {
-      this.validating = true;
-      const res = await _ragRequest('POST', _ING + '/jobs/validate', { job: this.payload(), create: this.isNew, original_id: this.originalId || null });
-      this.validating = false;
-      if (res.handled || !res.ok) return;
-      this.setIssues(res.data.issues);
-    },
-    async save(thenRun) {
-      if (this.busy) return;
-      this.saveError = ''; this.busy = true;
-      const job = this.payload();
-      const res = this.isNew
-        ? await _ragRequest('POST', _ING + '/jobs', { job: job })
-        : await _ragRequest('PUT', _ingJob(this.originalId), { job: job, etag: this.etag || null, original_id: this.originalId });
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) { this.saveError = res.error; await this.validate(); return; }
-      this.saving = true; this.dirty = false;
-      const out = ingestOutcome(res.data, fmtHtml({{ _('Job <b>{id}</b> saved')|tojson }}, { id: job.id }));
-      showToast(out.level, out.text);
-      if (thenRun) {
-        const run = await _ragRequest('POST', _ingJob(job.id) + '/run', { dry_run: true });
-        if (run.ok) { window.location.href = '/ingest/runs/' + encodeURIComponent(run.data.run_id); return; }
-        showToast('error', {{ _('The dry run could not be started:')|tojson }} + " " + _ragEscape(run.error || ''));
-      }
-      window.location.href = '/ingest/jobs/' + encodeURIComponent(job.id);
-    },
-  };
-}
-</script>
 {% endif %}
+{{ editor_island("editor", boot) }}
 {% endblock %}

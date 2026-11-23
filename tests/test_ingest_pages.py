@@ -53,6 +53,15 @@ _CSRF = "test-csrf-token-value"
 _PAGES_JS = Path(__file__).resolve().parents[1] / "src" / "app" / "static" / "js" / "pages"
 
 
+def _editor_module() -> str:
+    """The page module of the job editor and the credentials page."""
+    return (_PAGES_JS / "ingest-editor.js").read_text(encoding="utf-8")
+
+
+def _editor_components() -> str:
+    return (_PAGES_JS / "ingest-editor-components.js").read_text(encoding="utf-8")
+
+
 def _ingest_module() -> str:
     """The page module of the ingest lists; the pages load it instead of an inline script."""
     return (_PAGES_JS / "ingest.js").read_text(encoding="utf-8")
@@ -632,12 +641,12 @@ def test_the_preview_lists_files_or_says_why_there_are_none(
 
 
 def _boot(body: str) -> dict[str, Any]:
-    """The JSON the editor starts from, as the browser would read it."""
-    import html
-
-    match = re.search(r"x-data='jobEditor\((.*?)\)'\s", body, re.S)
+    """The JSON the editor starts from, as the browser would read it (data island)."""
+    match = re.search(
+        r'<script type="application/json" id="ingest-editor">(.*?)</script>', body, re.S
+    )
     assert match, "the editor has no boot data"
-    return json.loads(html.unescape(match.group(1)))  # type: ignore[no-any-return]
+    return json.loads(match.group(1))["values"]  # type: ignore[no-any-return]
 
 
 def test_a_new_job_opens_a_blank_editor_with_everything_it_needs(client: TestClient) -> None:
@@ -677,9 +686,11 @@ def test_leaving_the_editor_with_unsaved_changes_asks_in_an_app_dialog(
         assert dialog, path
         assert "Discard your changes?" in dialog.group(0)
         assert "Keep editing" in dialog.group(0) and "Discard changes" in dialog.group(0)
-        assert "guardLink(event)" in body and "$refs.leave.showModal()" in body
-        # The browser's prompt stays as the last resort: a reload, a closed tab, the back button.
-        assert "addEventListener('beforeunload'" in body
+        assert "/static/js/pages/ingest-editor.js" in body
+    components = _editor_components()
+    assert "guardLink(event)" in components and "$refs.leave.showModal()" in components
+    # The browser's prompt stays as the last resort: a reload, a closed tab, the back button.
+    assert 'addEventListener("beforeunload"' in _editor_module()
 
 
 def test_an_existing_job_opens_with_its_values_and_its_etag(

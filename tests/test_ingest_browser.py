@@ -1,12 +1,15 @@
-"""The ingest lists in a real browser on the CSP build of Alpine (T-UI-03).
+"""The ingest pages in a real browser on the CSP build of Alpine (T-UI-03).
 
 Serves the manager with the fake ingester (tests/design_serve.py --with-ingest) on 127.0.0.1
 and walks the pages with tests/ingest_browser.mjs, once per colour scheme on a fresh world: list
 and filter the jobs, disable and enable one, start a run and abort it, filter the runs and
 delete runs of a job, switch the tabs of a job, delete a job, remove a leftover, save the
-defaults and check the job file, and see the panel of a list that cannot be loaded. Fails on any
-step, any report of the policy, refused Alpine expression or script error. Needs the browser
-tools of scripts/design-tools.sh.
+defaults and check the job file, and see the panel of a list that cannot be loaded; then create
+a job in the editor, edit one (the app's dialog asks before a link leaves unsaved changes),
+store a credential from the editor, store, replace and delete one on the Credentials page, and
+see the panel of that list when it cannot be loaded. Fails on any step, any report of the
+policy, refused Alpine expression or script error. Needs the browser tools of
+scripts/design-tools.sh.
 """
 
 from __future__ import annotations
@@ -43,6 +46,11 @@ STEPS = [
     "remove a leftover",
     "save the defaults and check the file",
     "a list that cannot be loaded says why",
+    "create a job in the editor",
+    "edit a job and keep the changes when a link would leave",
+    "store a credential from the editor",
+    "store, replace and delete a credential",
+    "a credentials list that cannot be loaded says why",
 ]
 
 

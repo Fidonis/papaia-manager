@@ -21,10 +21,12 @@
     "host.html",
     "ingest_catalog.html",
     "ingest_job.html",
+    "ingest_job_edit.html",
     "ingest_jobs.html",
     "ingest_orphans.html",
     "ingest_run.html",
     "ingest_runs.html",
+    "ingest_secrets.html",
     "inventory.html",
     "job_log.html",
     "jobs.html",
@@ -48,34 +50,6 @@
     "users.html"
   ],
   "templates": {
-    "ingest_job_edit.html": {
-      "inline_scripts": 1,
-      "on_attributes": 1,
-      "alpine_unsupported": 1,
-      "style_blocks": 0,
-      "style_attributes": 37
-    },
-    "ingest_secrets.html": {
-      "inline_scripts": 1,
-      "on_attributes": 2,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/_ingest_credential_dialog.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 3
-    },
-    "partials/ingest_secret_list.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 1,
-      "style_blocks": 0,
-      "style_attributes": 2
-    },
     "partials/tile_editor.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
@@ -85,10 +59,10 @@
     }
   },
   "totals": {
-    "inline_scripts": 3,
-    "on_attributes": 3,
-    "alpine_unsupported": 2,
+    "inline_scripts": 0,
+    "on_attributes": 0,
+    "alpine_unsupported": 0,
     "style_blocks": 0,
-    "style_attributes": 58
+    "style_attributes": 16
   }
 }
