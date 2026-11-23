@@ -4,7 +4,7 @@
 {% from "partials/_ingest_macros.html" import file_badge %}
 
 {% if not result["items"] %}
-<p class="py-6 text-center text-sm opacity-60">
+<p class="py-6 text-center text-sm text-pk-text-muted">
   {% if selected_status or query or selected_run %}{% trans %}No file matches.{% endtrans %}{% else %}{% trans %}Nothing is tracked yet. A run records every file it reads.{% endtrans %}{% endif %}
 </p>
 {% else %}
@@ -18,16 +18,16 @@
         <td class="align-top">
           {{ file_badge(item.status, status_text) }}
           {% if item.last_error %}<p class="mt-1 max-w-sm break-words text-xs text-error">{{ item.last_error }}</p>
-          {% elif status_help.get(item.status) %}<p class="mt-1 max-w-sm text-xs opacity-60">{{ status_help[item.status] }}</p>{% endif %}
+          {% elif status_help.get(item.status) %}<p class="mt-1 max-w-sm text-xs text-pk-text-muted">{{ status_help[item.status] }}</p>{% endif %}
         </td>
         <td class="align-top text-sm">{{ item.chunk_count }}</td>
-        <td class="align-top text-xs opacity-70" title="{{ item.indexed_at }}">{{ item.indexed_at | ingest_ago }}</td>
+        <td class="align-top text-xs text-pk-text-muted" title="{{ item.indexed_at }}">{{ item.indexed_at | ingest_ago }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
-<div class="flex items-center justify-between text-xs opacity-70">
+<div class="flex items-center justify-between text-xs text-pk-text-muted">
   <span>{% trans offset=offset + 1, count=(offset + (result["items"] | length)), value='{:,}'.format(result.total) %}{{ offset }}–{{ count }} of {{ value }}{% endtrans %}</span>
   <span class="flex gap-1">
     {% set base = '/partials/ingest/jobs/' ~ row.id ~ '/files?rows=1&status=' ~ (selected_status | urlencode) ~ '&q=' ~ (query | urlencode) ~ '&run=' ~ (selected_run | urlencode) %}

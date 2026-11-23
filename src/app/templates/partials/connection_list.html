@@ -82,7 +82,7 @@
   {% endfor %}
 
   {% if not state.connections %}
-  <div class="flex flex-col items-center py-16 gap-3 opacity-60">
+  <div class="flex flex-col items-center py-16 gap-3 text-pk-text-muted">
     <p class="text-lg font-medium">{% trans %}No connections yet{% endtrans %}</p>
     <p class="text-sm">{% trans %}Add one, or let the default connection be created.{% endtrans %}</p>
   </div>
@@ -147,17 +147,17 @@
         {% endcall %}
       </div>
 
-      <div class="mt-1 text-sm opacity-60">
+      <div class="mt-1 text-sm text-pk-text-muted">
         <span class="font-mono">{{ c.address }}</span>
         {% if c.reach_address %}
-        <span class="ml-2 text-xs opacity-80">{% trans %}The manager connects to{% endtrans %} <span class="font-mono">{{ c.reach_address }}</span></span>
+        <span class="ml-2 text-xs text-pk-text-muted">{% trans %}The manager connects to{% endtrans %} <span class="font-mono">{{ c.reach_address }}</span></span>
         {% endif %}
       </div>
     </div>
   </div>
   {% endfor %}
 
-  <p class="text-xs opacity-50">
+  <p class="text-xs text-pk-text-muted">
     {% trans %}The ingester picks up a change within about 30 seconds. A test runs from the manager, which may reach an address differently than the ingester does.{% endtrans %}
   </p>
 </div>
@@ -178,7 +178,7 @@
         <input type="text" class="input input-bordered font-mono" x-model="name" required
                :disabled="mode === 'edit'" maxlength="64"
                pattern="[a-z0-9][a-z0-9_\-]{0,63}" placeholder="{{ _('archive') }}">
-        <p class="mt-1 text-xs opacity-60">
+        <p class="mt-1 text-xs text-pk-text-muted">
           {% trans %}Lowercase letters, digits, '-' and '_'. Ingest jobs refer to a connection by its name, so it cannot be changed later.{% endtrans %}
         </p>
       </div>
@@ -200,7 +200,7 @@
           <input type="text" class="input input-bordered font-mono" inputmode="url"
                  x-model="fields[spec.name]" :required="spec.required"
                  :placeholder="spec.placeholder" maxlength="2048" spellcheck="false">
-          <p class="mt-1 text-xs opacity-60" x-text="spec.help"></p>
+          <p class="mt-1 text-xs text-pk-text-muted" x-text="spec.help"></p>
         </div>
       </template>
 
@@ -211,7 +211,7 @@
                  autocomplete="new-password" spellcheck="false"
                  :disabled="clearKey"
                  :placeholder="mode === 'edit' && hasKey ? 'unchanged' : ''">
-          <p class="mt-1 text-xs opacity-60">
+          <p class="mt-1 text-xs text-pk-text-muted">
             <span x-html="fmtHtml({{ _('{help} It is stored encrypted and never shown again.')|tojson|forceescape }}, { help: secret().help })"></span>
           </p>
           <label class="label cursor-pointer justify-start gap-2" style="display:none"

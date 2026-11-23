@@ -16,7 +16,7 @@
   {% endif %}
 
   {% if not runs and not problem %}
-  <div class="flex flex-col items-center py-16 gap-2 opacity-70 text-center">
+  <div class="flex flex-col items-center py-16 gap-2 text-pk-text-muted text-center">
     <p class="text-lg font-medium">{% trans %}No runs{% endtrans %}</p>
     <p class="max-w-md text-sm">{% trans %}The ingester keeps the latest 200 runs of every job. A run appears here when it starts.{% endtrans %}</p>
   </div>
@@ -37,7 +37,7 @@
             <a href="/ingest/runs/{{ run.run_id }}" class="inline-flex flex-wrap items-center gap-1" title="{{ _('Run %(run_id)s', run_id=run.run_id | short_id) }}">{{ run_badge(run) }}</a>
             {% if run.active %}
             <div class="mt-1 w-36">{{ progress(run) }}</div>
-            {% if run.phase_label %}<p class="text-xs opacity-60">{{ run.phase_label }}</p>{% endif %}
+            {% if run.phase_label %}<p class="text-xs text-pk-text-muted">{{ run.phase_label }}</p>{% endif %}
             {% endif %}
           </td>
           {% if show_job %}
@@ -47,19 +47,19 @@
           {% endif %}
           <td class="align-top text-sm">
             {{ run.job_mode_label }}
-            <span class="block text-xs opacity-60">{{ {'cron': _('On schedule'), 'manual_rest': _('Started by hand'), 'manual_ui': _('Started by hand'), 'manual_mcp': _('Started by an assistant'), 'startup': _('At start of the ingester')}.get(run.trigger, run.trigger) }}</span>
+            <span class="block text-xs text-pk-text-muted">{{ {'cron': _('On schedule'), 'manual_rest': _('Started by hand'), 'manual_ui': _('Started by hand'), 'manual_mcp': _('Started by an assistant'), 'startup': _('At start of the ingester')}.get(run.trigger, run.trigger) }}</span>
           </td>
           <td class="align-top text-sm" title="{{ run.started_at }}">
             {{ run.started_at | ingest_when(tz) }}
-            <span class="block text-xs opacity-60">{{ run.started_at | ingest_ago }}</span>
+            <span class="block text-xs text-pk-text-muted">{{ run.started_at | ingest_ago }}</span>
           </td>
           <td class="align-top text-sm">{{ run.started_at | ingest_duration(run.finished_at) }}</td>
           <td class="align-top text-sm">
             {% if run.active %}
-              {% if run.files_done is not none and run.counters.files_seen %}{{ run.files_done }} / {{ run.counters.files_seen }}{% else %}<span class="opacity-50">…</span>{% endif %}
+              {% if run.files_done is not none and run.counters.files_seen %}{{ run.files_done }} / {{ run.counters.files_seen }}{% else %}<span class="text-pk-text-muted">…</span>{% endif %}
             {% else %}
               <span title="{{ _('Files seen') }}">{{ run.counters.files_seen }}</span>
-              <span class="block text-xs opacity-60">{% trans docs_indexed=run.counters.docs_indexed %}{{ docs_indexed }} embedded{% endtrans %}{% if run.counters.docs_failed %} {% trans docs_failed=run.counters.docs_failed %}· <span class="text-error">{{ docs_failed }} failed</span>{% endtrans %}{% endif %}</span>
+              <span class="block text-xs text-pk-text-muted">{% trans docs_indexed=run.counters.docs_indexed %}{{ docs_indexed }} embedded{% endtrans %}{% if run.counters.docs_failed %} {% trans docs_failed=run.counters.docs_failed %}· <span class="text-error">{{ docs_failed }} failed</span>{% endtrans %}{% endif %}</span>
             {% endif %}
           </td>
         </tr>

@@ -71,7 +71,7 @@
       <h3 class="font-bold text-base mb-1">
         <span x-html="fmtHtml({{ _('Upgrade to {target}?')|tojson|forceescape }}, { target: target })"></span>
       </h3>
-      <p class="text-sm opacity-60 mb-4 leading-relaxed">
+      <p class="text-sm text-pk-text-muted mb-4 leading-relaxed">
         <span x-html="fmtHtml({{ _('papAIa moves from <span class="font-mono">{current}</span> to <span class="font-mono">{target}</span>. It runs in its own container, so it finishes even once this panel is gone.')|tojson|forceescape }}, { current: current, target: target })"></span>
       </p>
 
@@ -101,8 +101,8 @@
         <input type="checkbox" class="checkbox checkbox-sm checkbox-warning mt-0.5" x-model="force">
         <span>
           {% trans %}Upgrade despite the incompatible add-ons{% endtrans %}
-          <span class="opacity-50 font-mono text-xs">{% trans %}--force{% endtrans %}</span>
-          <span class="block text-xs opacity-50">
+          <span class="text-pk-text-muted font-mono text-xs">{% trans %}--force{% endtrans %}</span>
+          <span class="block text-xs text-pk-text-muted">
             {% trans %}They will be started against a core they declare they do not support.{% endtrans %}
           </span>
         </span>
@@ -113,11 +113,11 @@
                :disabled="!hasBackupDir">
         <span>
           {% trans %}Skip the restore point{% endtrans %}
-          <span class="opacity-50 font-mono text-xs">{% trans %}--no-backup{% endtrans %}</span>
-          <span class="block text-xs opacity-50" x-show="hasBackupDir">
+          <span class="text-pk-text-muted font-mono text-xs">{% trans %}--no-backup{% endtrans %}</span>
+          <span class="block text-xs text-pk-text-muted" x-show="hasBackupDir">
             {% trans %}Faster, and the only recovery path is gone with it.{% endtrans %}
           </span>
-          <span class="block text-xs opacity-50" style="display:none" x-show="!hasBackupDir">
+          <span class="block text-xs text-pk-text-muted" style="display:none" x-show="!hasBackupDir">
             {% trans %}Forced on: this deployment has no reachable backup directory.{% endtrans %}
           </span>
         </span>
@@ -131,7 +131,7 @@
         <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="pruneImages">
         <span>
           {% trans %}Remove outdated Docker images afterwards{% endtrans %}
-          <span class="block text-xs opacity-50">
+          <span class="block text-xs text-pk-text-muted">
             {% trans %}Images of the core stack and the installed add-ons that the new release no longer uses. Only after a successful upgrade; volumes are never touched.{% endtrans %}
           </span>
         </span>
@@ -141,7 +141,7 @@
         <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="confirmed">
         <span>
           {% trans %}I understand the stack &mdash; and this page &mdash; will be unavailable{% endtrans %}
-          <span class="block text-xs opacity-50">
+          <span class="block text-xs text-pk-text-muted">
             <span x-html="fmtHtml({{ _('If the panel does not come back, the output is still readable on the host with <span class="font-mono">docker logs papaia-upgrade-{target}</span>.')|tojson|forceescape }}, { target: target })"></span>
           </span>
         </span>
@@ -208,7 +208,7 @@
 <dialog id="prune-images-modal" class="modal">
   <div class="modal-box max-w-md">
     <h3 id="prune-images-title" class="font-bold text-base mb-1"></h3>
-    <p class="text-sm opacity-60 mb-3 leading-relaxed">
+    <p class="text-sm text-pk-text-muted mb-3 leading-relaxed">
       {% trans %}No container uses them and the deployed release does not declare them. Volumes are not touched, and an image that is needed again is pulled again on the next start.{% endtrans %}
     </p>
     <ul id="prune-images-list"

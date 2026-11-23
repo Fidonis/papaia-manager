@@ -8000,8 +8000,8 @@ msgid "Latest run"
 msgstr "Letzter Lauf"
 
 #, python-format
-msgid "%(run_badge)s <span class=\"text-sm opacity-70\">started %(started_at)s</span>"
-msgstr "%(run_badge)s <span class=\"text-sm opacity-70\">gestartet %(started_at)s</span>"
+msgid "%(run_badge)s <span class=\"text-sm text-pk-text-muted\">started %(started_at)s</span>"
+msgstr "%(run_badge)s <span class=\"text-sm text-pk-text-muted\">gestartet %(started_at)s</span>"
 
 msgid "Follow this run"
 msgstr "Diesem Lauf folgen"
@@ -8782,16 +8782,16 @@ msgid "All healthy"
 msgstr "Alles gesund"
 
 #, python-format
-msgid "%(dot)s <span class=\"flex-1 font-medium\">Core stack</span> <span class=\"text-xs opacity-60\">%(core_running)s / %(core_total)s running</span>"
-msgstr "%(dot)s <span class=\"flex-1 font-medium\">Core-Stack</span> <span class=\"text-xs opacity-60\">%(core_running)s / %(core_total)s laufen</span>"
+msgid "%(dot)s <span class=\"flex-1 font-medium\">Core stack</span> <span class=\"text-xs text-pk-text-muted\">%(core_running)s / %(core_total)s running</span>"
+msgstr "%(dot)s <span class=\"flex-1 font-medium\">Core-Stack</span> <span class=\"text-xs text-pk-text-muted\">%(core_running)s / %(core_total)s laufen</span>"
 
 #, python-format
-msgid "%(dot)s <span class=\"flex-1 font-medium\">Add-ons</span> <span class=\"text-xs opacity-60\">%(addon_running)s / %(addon_total)s running</span>"
-msgstr "%(dot)s <span class=\"flex-1 font-medium\">Add-ons</span> <span class=\"text-xs opacity-60\">%(addon_running)s / %(addon_total)s laufen</span>"
+msgid "%(dot)s <span class=\"flex-1 font-medium\">Add-ons</span> <span class=\"text-xs text-pk-text-muted\">%(addon_running)s / %(addon_total)s running</span>"
+msgstr "%(dot)s <span class=\"flex-1 font-medium\">Add-ons</span> <span class=\"text-xs text-pk-text-muted\">%(addon_running)s / %(addon_total)s laufen</span>"
 
 #, python-format
-msgid "%(dot)s <span class=\"flex-1 font-medium\">Host</span> <span class=\"text-xs opacity-60\">%(host_ok)s / %(host_total)s ok</span>"
-msgstr "%(dot)s <span class=\"flex-1 font-medium\">Host</span> <span class=\"text-xs opacity-60\">%(host_ok)s / %(host_total)s in Ordnung</span>"
+msgid "%(dot)s <span class=\"flex-1 font-medium\">Host</span> <span class=\"text-xs text-pk-text-muted\">%(host_ok)s / %(host_total)s ok</span>"
+msgstr "%(dot)s <span class=\"flex-1 font-medium\">Host</span> <span class=\"text-xs text-pk-text-muted\">%(host_ok)s / %(host_total)s in Ordnung</span>"
 
 msgid "checked"
 msgstr "geprüft"

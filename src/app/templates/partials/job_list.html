@@ -11,7 +11,7 @@
 {% if not jobs %}
 <div class="rounded-xl border border-base-300 px-5 py-10 text-center">
   <p class="text-sm font-semibold">{% trans %}No jobs yet{% endtrans %}</p>
-  <p class="mt-1 text-sm opacity-60">
+  <p class="mt-1 text-sm text-pk-text-muted">
     {% trans %}Installing an add-on, controlling a service group or creating a backup runs as a job and appears here. The list is kept in memory and starts over when the manager restarts.{% endtrans %}
   </p>
 </div>
@@ -46,16 +46,16 @@
           {% endif %}
         </td>
         <td class="font-medium">{{ job.action }}</td>
-        <td class="font-mono text-xs opacity-70 max-w-xs truncate">{{ job.target }}{% if job.action == "addon_action" and job.params.action %} &middot; {{ job.params.action }}{% endif %}</td>
-        <td class="text-xs opacity-70">{{ job.user }}</td>
-        <td class="text-xs opacity-50 whitespace-nowrap">
+        <td class="font-mono text-xs text-pk-text-muted max-w-xs truncate">{{ job.target }}{% if job.action == "addon_action" and job.params.action %} &middot; {{ job.params.action }}{% endif %}</td>
+        <td class="text-xs text-pk-text-muted">{{ job.user }}</td>
+        <td class="text-xs text-pk-text-muted whitespace-nowrap">
           {{ job.started_at.strftime("%H:%M:%S") if job.started_at else "—" }}
         </td>
-        <td class="text-xs opacity-50 whitespace-nowrap">
+        <td class="text-xs text-pk-text-muted whitespace-nowrap">
           {{ job.finished_at.strftime("%H:%M:%S") if job.finished_at else "—" }}
         </td>
         <td class="text-right">
-          <a href="/jobs/{{ job.id }}" class="link link-hover text-xs opacity-60 whitespace-nowrap">{% trans %}View log{% endtrans %}</a>
+          <a href="/jobs/{{ job.id }}" class="link link-hover text-xs text-pk-text-muted whitespace-nowrap">{% trans %}View log{% endtrans %}</a>
         </td>
       </tr>
       {% endfor %}

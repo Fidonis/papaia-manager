@@ -11,7 +11,7 @@
 <p class="text-sm text-warning">{{ reason }}</p>
 {% elif listing is not none %}
 {% if not listing.entries %}
-<p class="text-sm opacity-60">{% trans %}Nothing here.{% endtrans %}</p>
+<p class="text-sm text-pk-text-muted">{% trans %}Nothing here.{% endtrans %}</p>
 {% endif %}
 <ul class="flex flex-col">
   {% for e in listing.entries %}
@@ -37,7 +37,7 @@
                :disabled='covered({{ e.rel | tojson }})'
                @change='toggle({{ e.rel | tojson }}, $event.target.checked)'>
         <span class="truncate font-mono text-sm">{{ e.name }}{% if e.is_dir %}/{% endif %}</span>
-        {% if not e.is_dir %}<span class="shrink-0 text-xs opacity-50">{{ e.size | filesizeformat }}</span>{% endif %}
+        {% if not e.is_dir %}<span class="shrink-0 text-xs text-pk-text-muted">{{ e.size | filesizeformat }}</span>{% endif %}
       </label>
     </div>
     {% if e.is_dir %}
@@ -47,6 +47,6 @@
   {% endfor %}
 </ul>
 {% if listing.truncated %}
-<p class="mt-1 text-xs opacity-60">{% trans %}Only the first entries are shown. Select the folder to take all of it.{% endtrans %}</p>
+<p class="mt-1 text-xs text-pk-text-muted">{% trans %}Only the first entries are shown. Select the folder to take all of it.{% endtrans %}</p>
 {% endif %}
 {% endif %}

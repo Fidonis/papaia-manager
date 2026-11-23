@@ -24,7 +24,7 @@
     </p>
 
     {% if on and relay and relay.available %}
-    <p class="text-xs opacity-70">
+    <p class="text-xs text-pk-text-muted">
       {% if relay.relay %}{% trans relay=relay.relay %}relay {{ relay }}{% endtrans %}{% else %}{% trans %}relay not created{% endtrans %}{% endif %}
       {% if relay_node %} · {% trans node=relay_node %}on node {{ node }}{% endtrans %}{% endif %}
       {% if relay.queued is not none %}
@@ -46,7 +46,7 @@
   </div>
 
   {% if not on %}
-  <p class="mt-1 text-xs opacity-60">
+  <p class="mt-1 text-xs text-pk-text-muted">
     {% if mail.configured %}
     {% trans %}The settings below are stored. Switch the relay on to use them.{% endtrans %}
     {% else %}
@@ -54,8 +54,8 @@
     {% endif %}
   </p>
   {% elif relay and relay.available %}
-    {% if relay.summary %}<p class="mt-1 text-xs opacity-70">{{ relay.summary }}</p>{% endif %}
+    {% if relay.summary %}<p class="mt-1 text-xs text-pk-text-muted">{{ relay.summary }}</p>{% endif %}
   {% elif relay %}
-  <p class="mt-1 text-xs opacity-70">{% trans reason=relay.reason %}The relay's state could not be read: {{ reason }}{% endtrans %}</p>
+  <p class="mt-1 text-xs text-pk-text-muted">{% trans reason=relay.reason %}The relay's state could not be read: {{ reason }}{% endtrans %}</p>
   {% endif %}
 </div>

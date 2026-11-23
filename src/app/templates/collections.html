@@ -37,7 +37,7 @@
       hx-target="#collection-list"
       hx-swap="innerHTML"
       onsubmit="return false">
-  <label class="text-sm opacity-60" for="collection-connection">{% trans %}Connection{% endtrans %}</label>
+  <label class="text-sm text-pk-text-muted" for="collection-connection">{% trans %}Connection{% endtrans %}</label>
   <select id="collection-connection" name="connection"
           class="select select-bordered select-sm font-mono"
           onchange="history.replaceState(null, '', '/collections?connection=' + encodeURIComponent(this.value))">
@@ -45,7 +45,7 @@
     <option value="{{ option }}"{% if option == selected_connection %} selected{% endif %}>{{ option }}{% if option == default_connection %} {% trans %}(default){% endtrans %}{% endif %}</option>
     {% endfor %}
   </select>
-  <a href="/connections" class="link link-hover text-xs opacity-60">{% trans %}Manage vector databases{% endtrans %}</a>
+  <a href="/connections" class="link link-hover text-xs text-pk-text-muted">{% trans %}Manage vector databases{% endtrans %}</a>
 </form>
 
 <div
@@ -89,7 +89,7 @@ document.body.addEventListener('htmx:responseError', function (event) {
   let reason = {{ _('The list could not be loaded.')|tojson }};
   try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
   detail.target.innerHTML =
-    '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
+    '<div class="flex flex-col items-center py-24 gap-3 text-pk-text-muted text-center">' +
     '<p class="text-lg font-semibold">' + _ragEscape({{ _('Collections are not available')|tojson }}) + '</p>' +
     '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p>' +
     '<a class="link" href="/collections">' + _ragEscape({{ _('Reload the page')|tojson }}) + '</a></div>';

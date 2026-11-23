@@ -271,6 +271,18 @@ def pk_shell(
 
 templates.env.globals["pk_shell"] = pk_shell
 
+
+def pk_frame_lang() -> str:
+    """The frame's language (de, en) for a partial that uses the kit's macros on its own.
+
+    A full page takes it from the frame (`pk.lang` in base.html); an htmx partial has no
+    frame, so it asks for the same value: the interface language of the request.
+    """
+    return shell.frame_language(i18n_runtime.locale_state().locale)
+
+
+templates.env.globals["pk_frame_lang"] = pk_frame_lang
+
 # Times, spans and sizes of the ingest pages. The zone is passed in by the page, because it
 # is the ingester's and not the manager's.
 templates.env.filters["ingest_when"] = display.local_time

@@ -25,50 +25,50 @@
     <div class="card-body gap-4 p-5">
       <div>
         <h2 class="font-semibold">{% trans %}Defaults{% endtrans %}</h2>
-        <p class="text-sm opacity-70">
+        <p class="text-sm text-pk-text-muted">
           {% trans %}What a job gets for a setting it does not make itself. Changing one moves every job that does not set it. The embedding model is the one worth setting here: a job needs one, from itself or from here.{% endtrans %}
         </p>
       </div>
       <div class="grid gap-4 sm:grid-cols-2">
         <div class="form-control">
-          <label class="label py-1"><span class="label-text">{% trans %}Embedding model{% endtrans %}</span></label>
-          <input type="text" class="input input-bordered input-sm font-mono" x-model="d.embedding.model" placeholder="{{ _('nomic-embed-text') }}">
+          <label class="label py-1" for="catalog-embedding-model"><span class="label-text">{% trans %}Embedding model{% endtrans %}</span></label>
+          <input id="catalog-embedding-model" type="text" class="input input-bordered input-sm font-mono" x-model="d.embedding.model" placeholder="{{ _('nomic-embed-text') }}">
         </div>
         <div class="form-control">
-          <label class="label py-1"><span class="label-text">{% trans %}Files per embedding request{% endtrans %}</span></label>
-          <input type="number" min="1" class="input input-bordered input-sm" x-model="d.embedding.batch_size">
+          <label class="label py-1" for="catalog-embedding-batch-size"><span class="label-text">{% trans %}Files per embedding request{% endtrans %}</span></label>
+          <input id="catalog-embedding-batch-size" type="number" min="1" class="input input-bordered input-sm" x-model="d.embedding.batch_size">
         </div>
         <div class="form-control">
-          <label class="label py-1"><span class="label-text">{% trans %}How text is split{% endtrans %}</span></label>
-          <select class="select select-bordered select-sm" x-model="d.chunking.strategy">
+          <label class="label py-1" for="catalog-chunking-strategy"><span class="label-text">{% trans %}How text is split{% endtrans %}</span></label>
+          <select id="catalog-chunking-strategy" class="select select-bordered select-sm" x-model="d.chunking.strategy">
             <option value="">{% trans %}(the ingester's choice){% endtrans %}</option>
             {% for value in chunk_strategies %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
           </select>
         </div>
         <div class="grid grid-cols-2 gap-2">
           <div class="form-control">
-            <label class="label py-1"><span class="label-text">{% trans %}Chunk size{% endtrans %}</span></label>
-            <input type="number" min="1" class="input input-bordered input-sm" x-model="d.chunking.words" placeholder="400">
+            <label class="label py-1" for="catalog-chunking-words"><span class="label-text">{% trans %}Chunk size{% endtrans %}</span></label>
+            <input id="catalog-chunking-words" type="number" min="1" class="input input-bordered input-sm" x-model="d.chunking.words" placeholder="400">
           </div>
           <div class="form-control">
-            <label class="label py-1"><span class="label-text">{% trans %}Overlap{% endtrans %}</span></label>
-            <input type="number" min="0" class="input input-bordered input-sm" x-model="d.chunking.overlap" placeholder="50">
+            <label class="label py-1" for="catalog-chunking-overlap"><span class="label-text">{% trans %}Overlap{% endtrans %}</span></label>
+            <input id="catalog-chunking-overlap" type="number" min="0" class="input input-bordered input-sm" x-model="d.chunking.overlap" placeholder="50">
           </div>
         </div>
         <div class="form-control sm:col-span-2">
-          <label class="label py-1"><span class="label-text">{% trans %}Always skip{% endtrans %}</span></label>
-          <textarea rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="d.filters.exclude" spellcheck="false" placeholder="{{ _('**/.DS_Store&#10;**/~$*') }}"></textarea>
-          <p class="mt-1 text-xs opacity-60">{% trans %}One pattern per line, for every job that does not list its own.{% endtrans %}</p>
+          <label class="label py-1" for="catalog-filters-exclude"><span class="label-text">{% trans %}Always skip{% endtrans %}</span></label>
+          <textarea id="catalog-filters-exclude" rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="d.filters.exclude" spellcheck="false" placeholder="{{ _('**/.DS_Store&#10;**/~$*') }}"></textarea>
+          <p class="mt-1 text-xs text-pk-text-muted">{% trans %}One pattern per line, for every job that does not list its own.{% endtrans %}</p>
         </div>
         <div class="form-control">
-          <label class="label py-1"><span class="label-text">{% trans %}Time zone of schedules{% endtrans %}</span></label>
-          <input type="text" list="catalog-timezones" class="input input-bordered input-sm" x-model="d.schedule.timezone" placeholder="{{ tz }}">
+          <label class="label py-1" for="catalog-schedule-timezone"><span class="label-text">{% trans %}Time zone of schedules{% endtrans %}</span></label>
+          <input id="catalog-schedule-timezone" type="text" list="catalog-timezones" class="input input-bordered input-sm" x-model="d.schedule.timezone" placeholder="{{ tz }}">
           <datalist id="catalog-timezones">{% for zone in timezones %}<option value="{{ zone }}"></option>{% endfor %}</datalist>
-          <p class="mt-1 text-xs opacity-60">{% trans %}Empty uses the ingester's own zone ({{ tz }}).{% endtrans %}</p>
+          <p class="mt-1 text-xs text-pk-text-muted">{% trans %}Empty uses the ingester's own zone ({{ tz }}).{% endtrans %}</p>
         </div>
         <div class="form-control">
-          <label class="label py-1"><span class="label-text">{% trans %}Most that may be removed in one run{% endtrans %}</span></label>
-          <input type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm" x-model="d.safety.max_delete_ratio" placeholder="0.25">
+          <label class="label py-1" for="catalog-safety-max-delete-ratio"><span class="label-text">{% trans %}Most that may be removed in one run{% endtrans %}</span></label>
+          <input id="catalog-safety-max-delete-ratio" type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm" x-model="d.safety.max_delete_ratio" placeholder="0.25">
         </div>
       </div>
       <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
@@ -77,7 +77,7 @@
           <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
           {% trans %}Save defaults{% endtrans %}
         </button>
-        <span class="text-xs opacity-60">{% trans %}Every job is checked against the new defaults before anything is written.{% endtrans %}</span>
+        <span class="text-xs text-pk-text-muted">{% trans %}Every job is checked against the new defaults before anything is written.{% endtrans %}</span>
       </div>
     </div>
   </section>
@@ -86,12 +86,12 @@
   <section class="card bg-base-100 border border-base-300" x-data='rawEditor({{ {"text": raw.text, "revision": raw.revision}|tojson }})'>
     <div class="card-body gap-3 p-5">
       <div>
-        <h2 class="font-semibold">{% trans %}jobs.yaml{% endtrans %}</h2>
-        <p class="text-sm opacity-70">
+        <h2 class="font-semibold" id="catalog-file-heading">{% trans %}jobs.yaml{% endtrans %}</h2>
+        <p class="text-sm text-pk-text-muted">
           {% trans %}Edited exactly as typed: comments and blank lines stay. The job editor rewrites the file and drops them (the previous version is kept as <span class="font-mono">jobs.yaml.bak</span>), so keep notes here if you want them.{% endtrans %}
         </p>
       </div>
-      <textarea rows="22" class="textarea textarea-bordered w-full font-mono text-xs leading-relaxed" x-model="text"
+      <textarea rows="22" aria-labelledby="catalog-file-heading" class="textarea textarea-bordered w-full font-mono text-xs leading-relaxed" x-model="text"
                 spellcheck="false" :readonly="!writable" @input="checked = false"></textarea>
       <div style="display:none" x-show="issues.length" class="alert alert-error text-sm" role="alert">
         <div>

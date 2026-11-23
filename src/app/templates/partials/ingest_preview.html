@@ -2,7 +2,7 @@
 {% if problem %}
 <div class="alert alert-warning text-sm" role="status"><span>{{ problem }}</span></div>
 {% elif not files %}
-<p class="text-sm opacity-70">
+<p class="text-sm text-pk-text-muted">
   {% trans %}The filters match no file. For a remote source this is also what the ingester sees before the first run has fetched anything.{% endtrans %}
 </p>
 {% else %}
@@ -16,5 +16,5 @@
     </tbody>
   </table>
 </div>
-<p class="mt-1 text-xs opacity-60">{% trans count=(files | length) %}{{ count }} file shown{% pluralize count %}{{ count }} files shown{% endtrans %}{% if files | length >= 100 %} {% trans %}(the first 100){% endtrans %}{% endif %}.</p>
+<p class="mt-1 text-xs text-pk-text-muted">{% trans count=(files | length) %}{{ count }} file shown{% pluralize count %}{{ count }} files shown{% endtrans %}{% if files | length >= 100 %} {% trans %}(the first 100){% endtrans %}{% endif %}.</p>
 {% endif %}

@@ -16,7 +16,7 @@
   <div class="mb-3 flex items-center justify-between gap-3 flex-wrap">
     <div>
       <h2 class="font-brand text-lg font-bold">{% trans %}Docker images{% endtrans %}</h2>
-      <p class="text-xs opacity-50 mt-0.5">
+      <p class="text-xs text-pk-text-muted mt-0.5">
         {% trans %}Left behind by earlier upgrades: no container uses them and the installed release does not declare them.{% endtrans %}
       </p>
     </div>
@@ -57,7 +57,7 @@
   {% elif not report.outdated %}
   <div class="rounded-xl border border-base-300 px-4 py-3">
     <p class="text-sm font-medium">{% trans %}No outdated images{% endtrans %}</p>
-    <p class="text-xs opacity-60 mt-0.5">
+    <p class="text-xs text-pk-text-muted mt-0.5">
       {% trans %}Every image of the core stack and the installed add-ons is either in use or part of the installed release.{% endtrans %}
     </p>
   </div>
@@ -67,7 +67,7 @@
     <div class="flex items-center gap-3 px-4 py-2 bg-base-200 border-b border-base-300">
       <input id="prune-master-check" type="checkbox" class="checkbox checkbox-sm shrink-0"
              aria-label="{{ _('select all images') }}" onchange="togglePruneAll(this.checked)">
-      <span class="text-xs opacity-60">
+      <span class="text-xs text-pk-text-muted">
         {% trans count=(report.outdated | length), total_size_human=report.total_size_human %}{{ count }} image &middot; up to {{ total_size_human }}{% pluralize count %}{{ count }} images &middot; up to {{ total_size_human }}{% endtrans %}
       </span>
     </div>
@@ -81,14 +81,14 @@
         <span class="badge badge-ghost badge-sm">{{ image.source }}</span>
         <span class="grow"></span>
         {% if image.created %}
-        <span class="text-xs opacity-40 font-mono">{{ image.created[:10] }}</span>
+        <span class="text-xs text-pk-text-muted font-mono">{{ image.created[:10] }}</span>
         {% endif %}
-        <span class="text-xs opacity-60 font-mono w-20 text-right">{{ image.size_human }}</span>
+        <span class="text-xs text-pk-text-muted font-mono w-20 text-right">{{ image.size_human }}</span>
       </li>
       {% endfor %}
     </ul>
   </div>
-  <p class="text-xs opacity-50 mt-2 leading-relaxed">
+  <p class="text-xs text-pk-text-muted mt-2 leading-relaxed">
     {% trans %}Sizes are the images' own, so layers two of them share are counted twice &mdash; the space actually freed can be less. Images that only a stopped container still holds are kept.{% endtrans %}
   </p>
   {% endif %}

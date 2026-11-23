@@ -24,7 +24,7 @@
 {% macro required_by_list(addon) %}
   {% if addon.required_by %}
   <div class="flex flex-wrap items-center gap-1 text-sm">
-    <span class="opacity-60">{% trans %}Required by{% endtrans %}</span>
+    <span class="text-pk-text-muted">{% trans %}Required by{% endtrans %}</span>
     {% for other in addon.required_by %}
       <a href="/addons/{{ other }}" class="badge badge-info badge-outline badge-sm">{{ other }}</a>
     {% endfor %}
@@ -37,7 +37,7 @@
 {% macro requirements_list(addon, compact=False) %}
   {% if addon.requirements %}
   <div class="flex flex-wrap items-center gap-1{% if not compact %} text-sm{% endif %}">
-    <span class="opacity-60 {% if compact %}text-xs{% endif %}">{% trans %}Requires{% endtrans %}</span>
+    <span class="text-pk-text-muted {% if compact %}text-xs{% endif %}">{% trans %}Requires{% endtrans %}</span>
     {% for r in addon.requirements %}
       {% set label = r.name ~ ((' ' ~ r.range) if r.range else '') %}
       {% if r.state == "active" %}
@@ -141,7 +141,7 @@
 <dialog x-ref="removeModal" class="modal">
   <div class="modal-box max-w-sm">
     <h3 class="font-bold text-base mb-1">{% trans name=addon.name %}Remove {{ name }}{% endtrans %}</h3>
-    <p class="text-sm opacity-60 mb-4">
+    <p class="text-sm text-pk-text-muted mb-4">
       {% trans %}Disables the add-on and removes the Docker containers. The add-on can then be reactivated again via <strong>Reactivate</strong>.{% endtrans %}
     </p>
     <div class="space-y-1.5 mb-3">
@@ -157,11 +157,11 @@
     </div>
     <div class="space-y-1.5 mb-5">
       <p class="text-xs font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}What is kept{% endtrans %}</p>
-      <div class="flex items-center gap-2 text-sm opacity-70">
+      <div class="flex items-center gap-2 text-sm text-pk-text-muted">
         <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
         {% trans %}Docker volumes (database, uploads, …){% endtrans %}
       </div>
-      <div class="flex items-center gap-2 text-sm opacity-70">
+      <div class="flex items-center gap-2 text-sm text-pk-text-muted">
         <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
         {% trans %}Configuration files on the host{% endtrans %}
       </div>
@@ -184,7 +184,7 @@
 <dialog x-ref="uninstallModal" class="modal">
   <div class="modal-box max-w-sm">
     <h3 class="font-bold text-base mb-1">{% trans name=addon.name %}Uninstall {{ name }}{% endtrans %}</h3>
-    <p class="text-sm opacity-60 mb-4">
+    <p class="text-sm text-pk-text-muted mb-4">
       {% trans %}Removes the add-on completely, including its configuration package. The add-on must then be reinstalled.{% endtrans %}
     </p>
     <div class="space-y-1.5 mb-3">
@@ -204,7 +204,7 @@
     </div>
     <div class="space-y-1.5 mb-3">
       <p class="text-xs font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}What is kept{% endtrans %}</p>
-      <div class="flex items-center gap-2 text-sm opacity-70">
+      <div class="flex items-center gap-2 text-sm text-pk-text-muted">
         <svg class="h-3.5 w-3.5 shrink-0 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
         {% trans %}Docker volumes (database, uploads, …){% endtrans %}
       </div>
@@ -264,7 +264,7 @@
         </label>
         {{ env_input(f, display_value=f.prefill) }}
         {% if f.hint %}
-        <label class="label pt-0.5"><span class="label-text-alt opacity-60">{{ f.hint }}</span></label>
+        <label class="label pt-0.5"><span class="label-text-alt text-pk-text-muted">{{ f.hint }}</span></label>
         {% endif %}
       </div>
       {% endfor %}
@@ -272,7 +272,7 @@
       {# Secondary fields — plain defaults the operator rarely needs to touch #}
       {% if secondary_fields %}
       <details class="mb-3">
-        <summary class="text-sm opacity-60 cursor-pointer select-none mb-2">
+        <summary class="text-sm text-pk-text-muted cursor-pointer select-none mb-2">
           {% trans count=(secondary_fields | length) %}More settings ({{ count }}){% endtrans %}
         </summary>
         {% for f in secondary_fields %}
@@ -282,7 +282,7 @@
           </label>
           {{ env_input(f, display_value=f.prefill) }}
           {% if f.hint %}
-          <label class="label pt-0.5"><span class="label-text-alt opacity-60">{{ f.hint }}</span></label>
+          <label class="label pt-0.5"><span class="label-text-alt text-pk-text-muted">{{ f.hint }}</span></label>
           {% endif %}
         </div>
         {% endfor %}

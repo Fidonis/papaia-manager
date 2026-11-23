@@ -20,7 +20,7 @@
     <div class="card-body gap-0 p-0">
       <div class="px-6 pt-5 pb-3">
         <h2 class="font-brand text-lg font-bold">{% trans %}Optional core features{% endtrans %}</h2>
-        <p class="text-sm opacity-60">
+        <p class="text-sm text-pk-text-muted">
           {% trans %}Switch parts of the stack on or off. Switching a module off removes its containers. You choose whether its data and settings stay, so switching it on again can bring everything back.{% endtrans %}
         </p>
       </div>
@@ -41,18 +41,18 @@
             {% else %}
             <span class="badge badge-sm badge-ghost ml-1">{% trans %}Off{% endtrans %}</span>
             {% endif %}
-            {% if row.name == "manager" %}<span class="ml-1 text-xs opacity-60" aria-hidden="true">{% trans %}locked{% endtrans %}</span>{% endif %}
+            {% if row.name == "manager" %}<span class="ml-1 text-xs text-pk-text-muted" aria-hidden="true">{% trans %}locked{% endtrans %}</span>{% endif %}
           </p>
-          <p class="text-xs opacity-60">{{ row.description }}</p>
+          <p class="text-xs text-pk-text-muted">{{ row.description }}</p>
           {% if row.services %}
-          <p class="mt-1 text-xs opacity-50">
+          <p class="mt-1 text-xs text-pk-text-muted">
             {% trans count=row.services %}{{ count }} service{% pluralize %}{{ count }} services{% endtrans %}{% if row.modules > 1 %} {% trans modules=row.modules %}in {{ modules }} modules{% endtrans %}{% endif %}
             {% if row.node %} {% trans node=row.node %}· on node {{ node }}{% endtrans %}{% endif %}
             {% if row.variant and row.enabled %} {% trans variant=row.variant %}· variant {{ variant }}{% endtrans %}{% endif %}
           </p>
           {% endif %}
           {% if row.note or row.problem %}
-          <p class="mt-1 text-xs opacity-60">{{ row.problem or row.note }}</p>
+          <p class="mt-1 text-xs text-pk-text-muted">{{ row.problem or row.note }}</p>
           {% endif %}
           {% if row.name == "mail" and not row.configured %}
           <p class="mt-1 text-xs text-warning" data-mail-hint>
@@ -90,20 +90,20 @@
             <div data-questions class="space-y-3"></div>
             {% endif %}
             {% if row.name == "localai" %}
-            <p class="text-xs opacity-60">
+            <p class="text-xs text-pk-text-muted">
               {% trans %}The manager can't detect GPUs from inside its container. Pick the variant that matches this host, or start with CPU.{% endtrans %}
               {% for v in host_only_variants %}{% trans %}The {{ v }} variant is set on the host with <code>papaia-ctl setup --localai-variant={{ v }}</code>.{% endtrans %}{% endfor %}
               {% trans %}The image download can be several GB.{% endtrans %}
             </p>
             {% elif row.name == "voice" %}
-            <p class="text-xs opacity-60">
+            <p class="text-xs text-pk-text-muted">
               {% trans %}The manager can't detect GPUs from inside its container. Pick the variant that matches this host, or start with CPU.{% endtrans %}
               {% trans %}On the CPU, speech-to-text works out of the box and spoken replies use the browser's voice; a GPU makes the local voice fast enough for live playback.{% endtrans %}
               {% trans %}The first start downloads several GB of models. Switching on finishes while they load; the Services page shows when voice is ready.{% endtrans %}
             </p>
             {% elif row.name == "mail" %}
             <form id="om-form" class="space-y-3" onsubmit="event.preventDefault(); enableModule('mail')" novalidate>
-              <p class="text-xs opacity-60">
+              <p class="text-xs text-pk-text-muted">
                 {% trans %}The relay forwards every mail to this server. Enter it as <code>papaia-ctl setup</code> asks for it. The password is only used for this host, port and login and is never shown again.{% endtrans %}
               </p>
               <div class="grid gap-3 sm:grid-cols-[1fr_8rem_6rem]">
@@ -176,7 +176,7 @@
     </div>
   </section>
 
-  <p class="text-xs opacity-50">
+  <p class="text-xs text-pk-text-muted">
     {% trans %}Keycloak, Nginx Proxy Manager, oauth2-proxy, LibreChat and LiteLLM are part of every installation and can't be switched off.{% endtrans %}
   </p>
 </div>
@@ -184,7 +184,7 @@
 <dialog id="module-off-dialog" class="modal" onclose="if (offTarget) cancelOff()">
   <div class="modal-box max-w-lg">
     <h3 id="module-off-title" class="text-base font-bold"></h3>
-    <p id="module-off-text" class="mt-2 text-sm opacity-60"></p>
+    <p id="module-off-text" class="mt-2 text-sm text-pk-text-muted"></p>
 
     <fieldset id="module-off-scopes" class="mt-4 hidden space-y-2">
       <legend class="mb-1 text-sm font-medium">{% trans %}What happens to its data and settings?{% endtrans %}</legend>
@@ -194,14 +194,14 @@
        deletes them, and it starts unticked. #}
     <fieldset id="module-off-operator" class="mt-4 hidden rounded-lg border border-base-300 p-3">
       <legend class="px-1 text-sm font-medium">{% trans %}Your own files{% endtrans %}</legend>
-      <p class="text-xs opacity-60">{% trans %}Written for this module by an administrator. Neither choice above deletes them, so switching it on again finds them as they were.{% endtrans %}</p>
+      <p class="text-xs text-pk-text-muted">{% trans %}Written for this module by an administrator. Neither choice above deletes them, so switching it on again finds them as they were.{% endtrans %}</p>
       <ul id="module-off-operator-files" class="mt-2 space-y-1 text-xs"></ul>
       <label class="mt-3 flex cursor-pointer items-start gap-3">
         <input id="module-off-operator-input" type="checkbox" class="checkbox checkbox-sm checkbox-error mt-0.5"
                onchange="offOperator = this.checked; syncOffScope()">
         <span class="min-w-0 text-sm">
           <span class="block font-medium">{% trans %}Also delete these files{% endtrans %}</span>
-          <span class="block text-xs opacity-60">{% trans %}Can't be undone: their edit history and the map built from them go too.{% endtrans %}</span>
+          <span class="block text-xs text-pk-text-muted">{% trans %}Can't be undone: their edit history and the map built from them go too.{% endtrans %}</span>
         </span>
       </label>
     </fieldset>
@@ -213,7 +213,7 @@
       <p class="mt-1 text-xs text-error">{% trans %}Deleted data can't be brought back.{% endtrans %}</p>
     </div>
 
-    <p id="module-off-note" class="mt-3 hidden text-xs opacity-60"></p>
+    <p id="module-off-note" class="mt-3 hidden text-xs text-pk-text-muted"></p>
 
     <div class="modal-action">
       <button type="button" class="btn btn-ghost btn-sm" onclick="cancelOff()">{% trans %}Cancel{% endtrans %}</button>
@@ -278,7 +278,7 @@
     input.spellcheck = false;
     input.dataset.option = question.option;
     const hint = document.createElement("p");
-    hint.className = "mt-1 text-xs opacity-60";
+    hint.className = "mt-1 text-xs text-pk-text-muted";
     hint.textContent = {{ _('The same question as papaia-ctl setup. The default is derived from this stack\'s address; change it if the service is reached under another one.')|tojson }};
     wrap.append(label, input, hint);
     return wrap;
@@ -493,7 +493,7 @@
     head.className = "block font-medium";
     head.textContent = title;
     const body = document.createElement("span");
-    body.className = "block break-words text-xs opacity-60";
+    body.className = "block break-words text-xs text-pk-text-muted";
     body.textContent = detail;
     text.append(head, body);
     label.append(input, text);
@@ -545,10 +545,10 @@
       head.className = "font-medium";
       head.textContent = labels[f.path].label;
       const path = document.createElement("code");
-      path.className = "ml-1 opacity-60";
+      path.className = "ml-1 text-pk-text-muted";
       path.textContent = f.path.split("/").pop();
       const detail = document.createElement("span");
-      detail.className = "block opacity-60";
+      detail.className = "block text-pk-text-muted";
       detail.textContent = labels[f.path].description;
       item.append(head, path, detail);
       list.append(item);

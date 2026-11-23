@@ -1,10 +1,10 @@
-{% if error %}
-<div class="alert alert-warning mb-6"><span>{{ error }}</span></div>
+{% set pk_lang = pk_frame_lang() %}{% import "pk/components.html" as kit with context %}{% if error %}
+<div class="mb-6">{{ kit.alert(error, tone="warning") }}</div>
 {% elif rows %}
 <div class="card bg-base-100 border border-base-300 mb-6">
   <div class="card-body p-5 gap-2">
     <h2 class="text-sm font-semibold">{% trans %}Release per node{% endtrans %}</h2>
-    <p class="text-xs opacity-60">{% trans %}An upgrade moves every node to one release in one run, and every node has to answer before it starts.{% endtrans %}</p>
+    <p class="text-xs text-pk-text-muted">{% trans %}An upgrade moves every node to one release in one run, and every node has to answer before it starts.{% endtrans %}</p>
     <ul class="text-sm">
       {% for row in rows %}
       <li class="flex items-center gap-3 py-0.5">

@@ -12,7 +12,7 @@
   </span>
 </div>
 {% elif not restore_points %}
-<div class="flex flex-col items-center py-16 gap-3 opacity-60">
+<div class="flex flex-col items-center py-16 gap-3 text-pk-text-muted">
   <p class="text-lg font-medium">{% trans %}No restore points yet{% endtrans %}</p>
   <p class="text-sm">{% trans %}Create a backup to get one.{% endtrans %}</p>
 </div>
@@ -81,12 +81,12 @@
         {% endcall %}
       </div>
 
-      <div class="text-sm opacity-60 mt-1">
+      <div class="text-sm text-pk-text-muted mt-1">
         <span>{{ p.created_at }}</span>
         {% if p.addons %}
-        <span class="opacity-70 ml-2">{% trans addons=(p.addons|join(", ")) %}add-ons: {{ addons }}{% endtrans %}</span>
+        <span class="text-pk-text-muted ml-2">{% trans addons=(p.addons|join(", ")) %}add-ons: {{ addons }}{% endtrans %}</span>
         {% else %}
-        <span class="opacity-50 ml-2">{% trans %}no add-ons{% endtrans %}</span>
+        <span class="text-pk-text-muted ml-2">{% trans %}no add-ons{% endtrans %}</span>
         {% endif %}
       </div>
     </div>

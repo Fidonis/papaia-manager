@@ -40,7 +40,7 @@
       hx-swap="innerHTML"
       onsubmit="return false">
   <label class="input input-bordered input-sm flex w-full max-w-sm items-center gap-2" for="user-search">
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-pk-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z"/>
     </svg>
     <input id="user-search" name="search" type="search" class="grow" autocomplete="off"
@@ -64,14 +64,14 @@
         @user-new.window="open()" @close="reset()">
   <div class="modal-box max-w-xl">
     <h3 class="text-lg font-bold">{% trans %}New user{% endtrans %}</h3>
-    <p class="mb-4 text-sm opacity-60">{% trans %}The account can sign in to the manager's dashboard and the other services right away.{% endtrans %}</p>
+    <p class="mb-4 text-sm text-pk-text-muted">{% trans %}The account can sign in to the manager's dashboard and the other services right away.{% endtrans %}</p>
     <form @submit.prevent="submit()">
       <div class="form-control mb-3">
         <label class="label py-1" for="new-user-username"><span class="label-text">{% trans %}Username{% endtrans %}</span></label>
         <input id="new-user-username" type="text" class="input input-bordered font-mono" x-model="username"
                required maxlength="255" autocomplete="off" placeholder="{{ _('jane.doe') }}"
                pattern="[A-Za-z0-9][A-Za-z0-9._@+\-]{1,254}">
-        <p class="mt-1 text-xs opacity-60">{% trans %}Letters, digits and . _ @ + - . Keycloak stores it in lower case.{% endtrans %}</p>
+        <p class="mt-1 text-xs text-pk-text-muted">{% trans %}Letters, digits and . _ @ + - . Keycloak stores it in lower case.{% endtrans %}</p>
       </div>
       <div class="form-control mb-3">
         <label class="label py-1" for="new-user-email"><span class="label-text">{% trans %}Email (optional){% endtrans %}</span></label>
@@ -93,7 +93,7 @@
 
       <fieldset class="mb-4">
         <legend class="label-text mb-1 text-sm">{% trans %}Roles{% endtrans %}</legend>
-        <p class="mb-2 text-xs opacity-60">
+        <p class="mb-2 text-xs text-pk-text-muted">
           {% trans %}What the account may use. The dashboard role lets it sign in to the manager; without a role it can sign in to Keycloak and nothing else.{% endtrans %}
         </p>
         <div x-show="rolesLoading" style="display:none" class="flex justify-center py-4">
@@ -112,11 +112,11 @@
                   <span class="badge badge-primary badge-outline badge-sm" style="display:none"
                         x-show="role.default">{% trans %}dashboard{% endtrans %}</span>
                 </span>
-                <span class="block text-xs opacity-60" x-show="role.description" style="display:none" x-text="role.description"></span>
+                <span class="block text-xs text-pk-text-muted" x-show="role.description" style="display:none" x-text="role.description"></span>
               </span>
             </label>
           </template>
-          <p x-show="roles.length === 0" style="display:none" class="px-3 py-4 text-center text-sm opacity-60">{% trans %}The realm has no roles to hand out.{% endtrans %}</p>
+          <p x-show="roles.length === 0" style="display:none" class="px-3 py-4 text-center text-sm text-pk-text-muted">{% trans %}The realm has no roles to hand out.{% endtrans %}</p>
         </div>
       </fieldset>
 
@@ -129,16 +129,16 @@
                    value="temporary" x-model="credential">
             <span>
               <span class="block text-sm font-medium">{% trans %}Temporary password{% endtrans %}</span>
-              <span class="block text-xs opacity-60">{% trans %}Shown once after you create the account. The user has to choose their own at the first sign-in.{% endtrans %}</span>
+              <span class="block text-xs text-pk-text-muted">{% trans %}Shown once after you create the account. The user has to choose their own at the first sign-in.{% endtrans %}</span>
             </span>
           </label>
           <label class="flex items-start gap-3 rounded-lg border p-3"
-                 :class="[canMail() ? 'cursor-pointer' : 'cursor-not-allowed opacity-60', credential === 'email' ? 'border-primary bg-primary/5' : 'border-base-300']">
+                 :class="[canMail() ? 'cursor-pointer' : 'cursor-not-allowed text-pk-text-muted', credential === 'email' ? 'border-primary bg-primary/5' : 'border-base-300']">
             <input type="radio" class="radio radio-primary radio-sm mt-0.5" name="new-user-credential"
                    value="email" x-model="credential" :disabled="!canMail()">
             <span>
               <span class="block text-sm font-medium">{% trans %}Email a link{% endtrans %}</span>
-              <span class="block text-xs opacity-60">{% trans %}Keycloak mails the user a link to set their own password.{% endtrans %}</span>
+              <span class="block text-xs text-pk-text-muted">{% trans %}Keycloak mails the user a link to set their own password.{% endtrans %}</span>
               <span class="mt-1 block text-xs text-warning" style="display:none" x-show="!canMail()" x-text="mailBlocked()"></span>
             </span>
           </label>
@@ -148,7 +148,7 @@
                    value="none" x-model="credential">
             <span>
               <span class="block text-sm font-medium">{% trans %}Decide later{% endtrans %}</span>
-              <span class="block text-xs opacity-60">{% trans %}Create the account without a password. Set one from the user's menu when it is time.{% endtrans %}</span>
+              <span class="block text-xs text-pk-text-muted">{% trans %}Create the account without a password. Set one from the user's menu when it is time.{% endtrans %}</span>
             </span>
           </label>
         </div>
@@ -179,7 +179,7 @@
       </span>
       <div class="min-w-0">
         <h3 class="text-lg font-bold leading-tight" x-text="created ? {{ _('User created')|tojson|forceescape }} : {{ _('Temporary password')|tojson|forceescape }}"></h3>
-        <p class="truncate text-sm opacity-60"><span x-html="fmtHtml({{ _('for <span class="font-mono">{username}</span>')|tojson|forceescape }}, { username: username })"></span></p>
+        <p class="truncate text-sm text-pk-text-muted"><span x-html="fmtHtml({{ _('for <span class="font-mono">{username}</span>')|tojson|forceescape }}, { username: username })"></span></p>
       </div>
     </div>
     <div class="join w-full">
@@ -204,7 +204,7 @@
         @user-roles.window="open($event.detail)">
   <div class="modal-box max-w-lg">
     <h3 class="text-lg font-bold"><span x-html="fmtHtml({{ _('Roles of <span class="font-mono">{username}</span>')|tojson|forceescape }}, { username: username })"></span></h3>
-    <p class="mb-3 text-sm opacity-60">{% trans %}A role decides which services the account may use and how far.{% endtrans %}</p>
+    <p class="mb-3 text-sm text-pk-text-muted">{% trans %}A role decides which services the account may use and how far.{% endtrans %}</p>
 
     <div x-show="loading" style="display:none" class="flex justify-center py-10">
       <span class="loading loading-spinner loading-md text-primary"></span>
@@ -228,13 +228,13 @@
                 <span class="badge badge-warning badge-outline badge-sm" style="display:none"
                       x-show="role.locked">{% trans %}your own role{% endtrans %}</span>
               </span>
-              <span class="block text-xs opacity-60" x-show="role.description" style="display:none" x-text="role.description"></span>
+              <span class="block text-xs text-pk-text-muted" x-show="role.description" style="display:none" x-text="role.description"></span>
             </span>
           </label>
         </template>
-        <p x-show="roles.length === 0" style="display:none" class="px-3 py-6 text-center text-sm opacity-60">{% trans %}The realm has no roles to hand out.{% endtrans %}</p>
+        <p x-show="roles.length === 0" style="display:none" class="px-3 py-6 text-center text-sm text-pk-text-muted">{% trans %}The realm has no roles to hand out.{% endtrans %}</p>
       </div>
-      <p class="mt-2 text-xs opacity-60">
+      <p class="mt-2 text-xs text-pk-text-muted">
         {% trans %}A role marked <em>inherited</em> comes with another role the account holds and is taken away by changing that one. Services pick up a change at the next sign-in or token refresh.{% endtrans %}
       </p>
       <p style="display:none" x-show="error" class="mt-2 text-sm text-error" x-text="error"></p>
@@ -258,7 +258,7 @@
         @user-sessions.window="open($event.detail)">
   <div class="modal-box max-w-2xl">
     <h3 class="text-lg font-bold"><span x-html="fmtHtml({{ _('Sessions of <span class="font-mono">{username}</span>')|tojson|forceescape }}, { username: username })"></span></h3>
-    <p class="mb-3 text-sm opacity-60">{% trans %}Where this account is signed in right now.{% endtrans %}</p>
+    <p class="mb-3 text-sm text-pk-text-muted">{% trans %}Where this account is signed in right now.{% endtrans %}</p>
 
     <div x-show="loading" style="display:none" class="flex justify-center py-10">
       <span class="loading loading-spinner loading-md text-primary"></span>
@@ -269,7 +269,7 @@
       <div class="alert alert-info mb-3 text-sm" role="status" style="display:none" x-show="isSelf">
         <span>{% trans %}These are your own sessions. Ending the one you are using now signs you out of this page too.{% endtrans %}</span>
       </div>
-      <p x-show="sessions.length === 0" style="display:none" class="rounded-xl border border-base-300 px-5 py-8 text-center text-sm opacity-60">
+      <p x-show="sessions.length === 0" style="display:none" class="rounded-xl border border-base-300 px-5 py-8 text-center text-sm text-pk-text-muted">
         {% trans %}No active sessions.{% endtrans %}
       </p>
       <div x-show="sessions.length > 0" style="display:none" class="overflow-x-auto rounded-xl border border-base-300">
@@ -287,7 +287,7 @@
                   <template x-for="c in s.clients" :key="c">
                     <span class="badge badge-outline badge-sm mr-1" x-text="c"></span>
                   </template>
-                  <span x-show="s.clients.length === 0" style="display:none" class="opacity-40">—</span>
+                  <span x-show="s.clients.length === 0" style="display:none" class="text-pk-text-muted">—</span>
                 </td>
                 <td class="text-right">
                   <button type="button" class="btn btn-ghost btn-xs text-error" :disabled="busy"
@@ -298,7 +298,7 @@
           </tbody>
         </table>
       </div>
-      <p class="mt-2 text-xs opacity-60">
+      <p class="mt-2 text-xs text-pk-text-muted">
         {% trans %}A session that is ended stops working when its token is next renewed, which is within a few minutes.{% endtrans %}
       </p>
       <p style="display:none" x-show="error" class="mt-2 text-sm text-error" x-text="error"></p>
@@ -319,21 +319,21 @@
         @user-password.window="open($event.detail)">
   <div class="modal-box max-w-lg">
     <h3 class="text-lg font-bold"><span x-html="fmtHtml({{ _('Reset the password of <span class="font-mono">{username}</span>')|tojson|forceescape }}, { username: username })"></span></h3>
-    <p class="mb-4 text-sm opacity-60">{% trans %}The current password stops working once a new one is set.{% endtrans %}</p>
+    <p class="mb-4 text-sm text-pk-text-muted">{% trans %}The current password stops working once a new one is set.{% endtrans %}</p>
 
     <div class="flex flex-col gap-3">
       <div class="flex items-center justify-between gap-3 rounded-lg border border-base-300 p-3">
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans %}Temporary password{% endtrans %}</p>
-          <p class="text-xs opacity-60">{% trans %}Shown once. The user has to choose their own at the next sign-in.{% endtrans %}</p>
+          <p class="text-xs text-pk-text-muted">{% trans %}Shown once. The user has to choose their own at the next sign-in.{% endtrans %}</p>
         </div>
         <button type="button" class="btn btn-primary btn-sm shrink-0" :disabled="busy" @click="temporary()">{% trans %}Generate{% endtrans %}</button>
       </div>
       <div class="flex items-center justify-between gap-3 rounded-lg border border-base-300 p-3"
-           :class="canMail() ? '' : 'opacity-60'">
+           :class="canMail() ? '' : 'text-pk-text-muted'">
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans %}Email a link{% endtrans %}</p>
-          <p class="text-xs opacity-60">{% trans %}Keycloak mails the user a link to set a new password.{% endtrans %}</p>
+          <p class="text-xs text-pk-text-muted">{% trans %}Keycloak mails the user a link to set a new password.{% endtrans %}</p>
           <p class="mt-1 text-xs text-warning" style="display:none" x-show="!canMail()" x-text="mailBlocked()"></p>
         </div>
         <button type="button" class="btn btn-outline btn-sm shrink-0" :disabled="busy || !canMail()" @click="email()">{% trans %}Send{% endtrans %}</button>
@@ -402,7 +402,7 @@ document.body.addEventListener('htmx:responseError', function (event) {
   let reason = {{ _('The list could not be loaded.')|tojson }};
   try { reason = _ragDetail(JSON.parse(detail.xhr.responseText), detail.xhr.status); } catch (_) {}
   detail.target.innerHTML =
-    '<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">' +
+    '<div class="flex flex-col items-center py-24 gap-3 text-pk-text-muted text-center">' +
     '<p class="text-lg font-semibold">' + _ragEscape({{ _('Users are not available')|tojson }}) + '</p>' +
     '<p class="max-w-xl text-sm">' + _ragEscape(reason) + '</p>' +
     '<a class="link" href="/users">' + _ragEscape({{ _('Reload the page')|tojson }}) + '</a></div>';

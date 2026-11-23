@@ -7,7 +7,7 @@
     <div class="card-body gap-2 p-4">
       <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}As written in jobs.yaml{% endtrans %}</p>
       <pre class="overflow-x-auto rounded-lg bg-base-300 p-3 font-mono text-xs leading-relaxed">{{ yaml_text }}</pre>
-      <p class="text-xs opacity-60">
+      <p class="text-xs text-pk-text-muted">
         {% trans %}Only what differs from the defaults is written. Credentials appear as references; the values are kept on the <a class="link" href="/ingest/secrets">Credentials</a> page or in <span class="font-mono">ai/rag/.env</span>.{% endtrans %}
       </p>
     </div>
@@ -17,7 +17,7 @@
     <div class="card-body gap-2 p-4">
       <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}Inherited from the catalog defaults{% endtrans %}</p>
       <pre class="overflow-x-auto rounded-lg bg-base-300 p-3 font-mono text-xs leading-relaxed">{{ defaults_text }}</pre>
-      <p class="text-xs opacity-60">{% trans %}A job that does not set one of these values itself uses the catalog's. <a class="link" href="/ingest/catalog">Change the defaults</a>{% endtrans %}</p>
+      <p class="text-xs text-pk-text-muted">{% trans %}A job that does not set one of these values itself uses the catalog's. <a class="link" href="/ingest/catalog">Change the defaults</a>{% endtrans %}</p>
     </div>
   </div>
   {% endif %}

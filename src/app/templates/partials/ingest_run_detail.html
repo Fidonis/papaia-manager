@@ -28,13 +28,13 @@
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
       {{ run_badge(view) }}
       <a href="/ingest/jobs/{{ view.job_id }}" class="link link-hover font-mono text-sm font-semibold">{{ view.job_id }}</a>
-      <span class="text-sm opacity-70">{{ view.job_mode_label }}</span>
-      <span class="text-sm opacity-60">{{ {'cron': _('on schedule'), 'manual_rest': _('started by hand'), 'manual_ui': _('started by hand'), 'manual_mcp': _('started by an assistant'), 'startup': _('at start of the ingester')}.get(view.trigger, view.trigger) }}</span>
+      <span class="text-sm text-pk-text-muted">{{ view.job_mode_label }}</span>
+      <span class="text-sm text-pk-text-muted">{{ {'cron': _('on schedule'), 'manual_rest': _('started by hand'), 'manual_ui': _('started by hand'), 'manual_mcp': _('started by an assistant'), 'startup': _('at start of the ingester')}.get(view.trigger, view.trigger) }}</span>
       {% if view.active %}
       <button type="button" class="btn btn-outline btn-xs ml-auto" onclick="ingestAbort('{{ view.run_id }}', reloadRun)">{% trans %}Abort{% endtrans %}</button>
       {% endif %}
     </div>
-    <p class="mt-1 text-sm opacity-70">
+    <p class="mt-1 text-sm text-pk-text-muted">
       {% trans started_at=(view.started_at | ingest_when(tz)), started_at2=(view.started_at | ingest_ago) %}Started {{ started_at }} ({{ started_at2 }}){% endtrans %}
       {% if view.finished_at %}{% trans started_at=(view.started_at | ingest_duration(view.finished_at)) %}· took {{ started_at }}{% endtrans %}{% else %}{% trans started_at=(view.started_at | ingest_duration) %}· working for {{ started_at }}{% endtrans %}{% endif %}
     </p>
@@ -46,11 +46,11 @@
         {% if view.phase_label %}<b>{{ view.phase_label }}</b>{% else %}{% trans %}Working in the background.{% endtrans %}{% endif %}
         {% if view.files_done is not none and view.counters.files_seen %} {% trans files_done=view.files_done, files_seen=view.counters.files_seen %}· {{ files_done }} of {{ files_seen }} files{% endtrans %}{% endif %}
       </p>
-      {% if view.current %}<p class="truncate font-mono text-xs opacity-60" title="{{ view.current }}">{{ view.current }}</p>{% endif %}
+      {% if view.current %}<p class="truncate font-mono text-xs text-pk-text-muted" title="{{ view.current }}">{{ view.current }}</p>{% endif %}
       {% if progress_supported is sameas false %}
-      <p class="mt-1 text-xs opacity-60">{% trans %}This ingester reports its counts when a run ends; the figures fill in then.{% endtrans %}</p>
+      <p class="mt-1 text-xs text-pk-text-muted">{% trans %}This ingester reports its counts when a run ends; the figures fill in then.{% endtrans %}</p>
       {% endif %}
-      <p class="mt-1 text-xs opacity-60">{% trans %}An abort takes effect between two files, so a long file or a slow fetch finishes first.{% endtrans %}</p>
+      <p class="mt-1 text-xs text-pk-text-muted">{% trans %}An abort takes effect between two files, so a long file or a slow fetch finishes first.{% endtrans %}</p>
     </div>
     {% elif view.dry_run %}
     <p class="mt-2 text-sm">{% trans %}This was a dry run: it read and planned, but embedded and wrote nothing. “Would embed” counts the files that <i>would</i> be embedded.{% endtrans %}</p>
@@ -74,14 +74,14 @@
   <div class="card bg-base-100 border border-base-300">
     <div class="card-body p-4">
       <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
-        <div><span class="opacity-60">{% trans %}Files seen{% endtrans %}</span> <b>{{ view.counters.files_seen }}</b></div>
-        <div><span class="opacity-60">{{ _('Would embed') if view.dry_run else _('Embedded') }}</span> <b>{{ view.counters.docs_indexed }}</b></div>
-        <div><span class="opacity-60">{% trans %}Unchanged{% endtrans %}</span> <b>{{ view.counters.docs_unchanged }}</b></div>
-        <div><span class="opacity-60">{% trans %}Failed{% endtrans %}</span> <b class="{{ 'text-error' if view.counters.docs_failed else '' }}">{{ view.counters.docs_failed }}</b></div>
-        <div><span class="opacity-60">{% trans %}Removed{% endtrans %}</span> <b>{{ view.counters.docs_deleted }}</b></div>
-        <div><span class="opacity-60">{% trans %}Chunks written{% endtrans %}</span> <b>{{ '{:,}'.format(view.counters.chunks_upserted) }}</b></div>
-        <div><span class="opacity-60">{% trans %}Changed, not updated{% endtrans %}</span> <b title="{{ _('A job that only adds new files leaves changed files as they were') }}">{{ view.counters.docs_skipped_changed }}</b></div>
-        <div><span class="opacity-60">{% trans %}Data read{% endtrans %}</span> <b>{{ (view.counters.bytes_read | filesize) }}</b></div>
+        <div><span class="text-pk-text-muted">{% trans %}Files seen{% endtrans %}</span> <b>{{ view.counters.files_seen }}</b></div>
+        <div><span class="text-pk-text-muted">{{ _('Would embed') if view.dry_run else _('Embedded') }}</span> <b>{{ view.counters.docs_indexed }}</b></div>
+        <div><span class="text-pk-text-muted">{% trans %}Unchanged{% endtrans %}</span> <b>{{ view.counters.docs_unchanged }}</b></div>
+        <div><span class="text-pk-text-muted">{% trans %}Failed{% endtrans %}</span> <b class="{{ 'text-error' if view.counters.docs_failed else '' }}">{{ view.counters.docs_failed }}</b></div>
+        <div><span class="text-pk-text-muted">{% trans %}Removed{% endtrans %}</span> <b>{{ view.counters.docs_deleted }}</b></div>
+        <div><span class="text-pk-text-muted">{% trans %}Chunks written{% endtrans %}</span> <b>{{ '{:,}'.format(view.counters.chunks_upserted) }}</b></div>
+        <div><span class="text-pk-text-muted">{% trans %}Changed, not updated{% endtrans %}</span> <b title="{{ _('A job that only adds new files leaves changed files as they were') }}">{{ view.counters.docs_skipped_changed }}</b></div>
+        <div><span class="text-pk-text-muted">{% trans %}Data read{% endtrans %}</span> <b>{{ (view.counters.bytes_read | filesize) }}</b></div>
       </div>
       <p class="mt-2 text-sm">
         <a class="link" href="/ingest/jobs/{{ view.job_id }}?run={{ view.run_id }}#files">{% trans %}Files this run touched{% endtrans %}</a>
@@ -95,7 +95,7 @@
     <div class="card-body gap-1 p-4">
       <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}Output of the fetch{% endtrans %}</p>
       <pre class="max-h-72 overflow-auto rounded-lg bg-base-300 p-3 font-mono text-xs">{{ view.sync_stderr_tail }}</pre>
-      <p class="text-xs opacity-60">{% trans %}The last lines of the tool that fetches remote files. It can contain addresses.{% endtrans %}</p>
+      <p class="text-xs text-pk-text-muted">{% trans %}The last lines of the tool that fetches remote files. It can contain addresses.{% endtrans %}</p>
     </div>
   </div>
   {% endif %}
@@ -122,7 +122,7 @@
         <ul class="mt-1 max-h-72 overflow-y-auto rounded bg-base-300 p-2 text-xs">
           {% for event in view.events %}
           <li class="flex gap-2 py-0.5">
-            <span class="w-14 shrink-0 {{ 'text-error' if event.level == 'error' else 'text-warning' if event.level == 'warning' else 'opacity-60' }}">{{ event.level }}</span>
+            <span class="w-14 shrink-0 {{ 'text-error' if event.level == 'error' else 'text-warning' if event.level == 'warning' else 'text-pk-text-muted' }}">{{ event.level }}</span>
             <span class="break-all font-mono">{% if event.source %}<b>{{ event.source }}</b>: {% endif %}{{ event.message }}</span>
           </li>
           {% endfor %}
@@ -131,7 +131,7 @@
     </div>
   </div>
   {% elif not view.active %}
-  <p class="text-sm opacity-60">{% trans %}The ingester recorded no messages for this run.{% endtrans %}</p>
+  <p class="text-sm text-pk-text-muted">{% trans %}The ingester recorded no messages for this run.{% endtrans %}</p>
   {% endif %}
   {% endif %}
 </div>

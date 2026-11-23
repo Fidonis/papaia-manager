@@ -22,7 +22,7 @@
                jobId: {{ (job.id | tojson) if job_active else "null" }} }'
      @papaia-job-state.window="busy = $event.detail.active; jobId = $event.detail.jobId">
   <a style="display:none" x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
-     class="link link-hover text-xs opacity-60">{% trans %}view log{% endtrans %}</a>
+     class="link link-hover text-xs text-pk-text-muted">{% trans %}view log{% endtrans %}</a>
   <button class="btn btn-primary btn-sm" :disabled="busy"
           :title="busy ? {{ _('A job is already running')|tojson|forceescape }} : ''"
           @click="document.getElementById('backup-modal').showModal()">
@@ -33,7 +33,7 @@
   <dialog id="backup-modal" class="modal">
     <div class="modal-box max-w-md">
       <h3 class="font-bold text-base mb-1">{% trans %}Create backup{% endtrans %}</h3>
-      <p class="text-sm opacity-60 mb-4">
+      <p class="text-sm text-pk-text-muted mb-4">
         {% trans %}Archives the stack configuration, every core volume, and every active add-on's volumes and data directories. Containers keep running; each one is briefly paused while its volume is archived.{% endtrans %}
       </p>
 
@@ -45,7 +45,7 @@
                class="input input-bordered input-sm w-40">
       </div>
 
-      <p class="text-xs opacity-50 mb-4">
+      <p class="text-xs text-pk-text-muted mb-4">
         {% trans %}A retention period deletes restore points older than that many days, and their catalogue entries, after the new one is written. Leave it empty to keep every restore point.{% endtrans %}
       </p>
 
@@ -57,7 +57,7 @@
           {% for name in backup_nodes %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
         </select>
       </label>
-      <p class="text-xs opacity-60">
+      <p class="text-xs text-pk-text-muted">
         {% trans %}Archives are stored on the controller. A restore point is not one moment across nodes: they are archived one after another.{% endtrans %}
       </p>
       {% endif %}
@@ -100,7 +100,7 @@
      reported in full by restore_point_list.html; the badge here is the short
      version of the same fact. -->
 {% if backup_dir %}
-<p class="mb-6 text-sm opacity-60">
+<p class="mb-6 text-sm text-pk-text-muted">
   {% trans %}Backup target: <span class="font-mono">{{ backup_dir }}</span>{% endtrans %}
   {% if not backup_dir_reachable %}
   <span class="badge badge-warning badge-sm ml-2">{% trans %}not reachable{% endtrans %}</span>
@@ -188,7 +188,7 @@
                  onchange="setRestoreScope('all')">
           <span class="text-sm">
             <span class="font-medium">{% trans %}Everything in this restore point{% endtrans %}</span>
-            <span id="restore-everything-detail" class="block opacity-60"></span>
+            <span id="restore-everything-detail" class="block text-pk-text-muted"></span>
           </span>
         </label>
         <label class="flex items-start gap-3 cursor-pointer">
@@ -196,14 +196,14 @@
                  onchange="setRestoreScope('some')">
           <span class="text-sm">
             <span class="font-medium">{% trans %}Choose what to restore{% endtrans %}</span>
-            <span class="block opacity-60">{% trans %}Only the selected services are stopped, restored and started again. Everything else keeps running.{% endtrans %}</span>
+            <span class="block text-pk-text-muted">{% trans %}Only the selected services are stopped, restored and started again. Everything else keeps running.{% endtrans %}</span>
           </span>
         </label>
       </div>
 
       <div id="restore-picker" class="border border-base-300 rounded-lg overflow-hidden mb-3"></div>
-      <p id="restore-notes" class="text-xs opacity-50 mb-3"></p>
-      <p id="restore-tally" class="text-sm opacity-70"></p>
+      <p id="restore-notes" class="text-xs text-pk-text-muted mb-3"></p>
+      <p id="restore-tally" class="text-sm text-pk-text-muted"></p>
     </div>
 
     <!-- ── Step 2: impact ────────────────────────────────── -->
@@ -240,10 +240,10 @@
         <span class="label-text text-sm">{% trans %}I understand and want to restore this point{% endtrans %}</span>
       </label>
 
-      <p id="restore-detach-note" class="text-xs opacity-50 mb-2">
+      <p id="restore-detach-note" class="text-xs text-pk-text-muted mb-2">
         {% trans %}The restore runs in its own container, so it completes even though the manager itself is stopped and recreated on the way. Expect this page to be unreachable for a while.{% endtrans %}
       </p>
-      <p id="restore-inprocess-note" class="text-xs opacity-50 mb-2 hidden">
+      <p id="restore-inprocess-note" class="text-xs text-pk-text-muted mb-2 hidden">
         {% trans %}This runs as an ordinary job with a live log. The manager is not part of the selection, so this page stays reachable throughout.{% endtrans %}
       </p>
     </div>
@@ -281,7 +281,7 @@
 <dialog id="delete-backup-modal" class="modal">
   <div class="modal-box max-w-md">
     <h3 id="delete-backup-title" class="font-bold text-base mb-1"></h3>
-    <p id="delete-backup-text" class="text-sm opacity-60 mb-3"></p>
+    <p id="delete-backup-text" class="text-sm text-pk-text-muted mb-3"></p>
     <ul id="delete-backup-id-list"
         class="rounded-lg border border-base-300 px-4 py-2 mb-4 max-h-48 overflow-y-auto text-sm font-mono"></ul>
     <div class="alert alert-warning py-2 mb-4">
@@ -551,7 +551,7 @@ function _renderPicker() {
   // Not instead of the groups: such a snapshot still offers its configuration,
   // and the note says what it does not offer.
   if (!_scope.supported) {
-    box.appendChild(_node('p', 'px-3 py-3 text-sm opacity-70 border-t border-base-300',
+    box.appendChild(_node('p', 'px-3 py-3 text-sm text-pk-text-muted border-t border-base-300',
       {{ _('This restore point was written by an older core and carries no per-service grouping, so its volumes can only be restored as part of the whole point.')|tojson }}));
   }
 
@@ -586,10 +586,10 @@ function _groupRow(group) {
 
   var text = _node('div', 'min-w-0 flex-1');
   text.appendChild(_node('span', 'text-sm font-medium', group.label));
-  text.appendChild(_node('span', 'block text-xs opacity-60', group.summary));
+  text.appendChild(_node('span', 'block text-xs text-pk-text-muted', group.summary));
   head.appendChild(text);
 
-  head.appendChild(_node('div', 'text-xs opacity-50 text-right whitespace-nowrap',
+  head.appendChild(_node('div', 'text-xs text-pk-text-muted text-right whitespace-nowrap',
     fmtPlural(group.archives, {{ _('{count} archive')|tojson }}, {{ _('{count} archives')|tojson }})));
   wrap.appendChild(head);
 
@@ -647,7 +647,7 @@ function _itemRow(group, item) {
   });
   label.appendChild(box);
   label.appendChild(_node('span', 'text-xs', item.label));
-  label.appendChild(_node('span', 'text-xs font-mono opacity-40', item.target));
+  label.appendChild(_node('span', 'text-xs font-mono text-pk-text-muted', item.target));
   if (item.advanced) label.appendChild(_node('span', 'badge badge-ghost badge-xs', 'large'));
   return label;
 }
@@ -752,7 +752,7 @@ function _renderImpact() {
   if (full) {
     restarted.body.appendChild(_node('span', 'text-sm',
       {{ _('Every core and add-on container, this panel included.')|tojson }}));
-    running.body.appendChild(_node('span', 'text-sm opacity-60', {{ _('Nothing.')|tojson }}));
+    running.body.appendChild(_node('span', 'text-sm text-pk-text-muted', {{ _('Nothing.')|tojson }}));
   } else {
     _scope.services.forEach(function (svc) {
       var hit = (svc.profiles || []).some(function (p) { return profiles[p] === true; });
@@ -763,7 +763,7 @@ function _renderImpact() {
       restarted.body.appendChild(_node('span', 'badge badge-warning badge-sm', name));
     });
     if (!restarted.body.childNodes.length) {
-      restarted.body.appendChild(_node('span', 'text-sm opacity-60',
+      restarted.body.appendChild(_node('span', 'text-sm text-pk-text-muted',
         {{ _('Nothing — the selection touches no running container.')|tojson }}));
     }
   }
@@ -911,7 +911,7 @@ function openRestorePointDetail(id) {
       body.textContent = '';
 
       var meta = document.createElement('p');
-      meta.className = 'opacity-60 mb-3';
+      meta.className = 'text-pk-text-muted mb-3';
       meta.textContent = fmt({{ _('{created} · {size} MB · {artifacts} artifacts · result {result}')|tojson }},
                              { created: data.created_at, size: data.size_mb, artifacts: data.artifacts, result: data.result }) +
                          (data.papaia_version ? ' · ' + fmt({{ _('core {version}')|tojson }}, { version: data.papaia_version }) : '');
@@ -920,7 +920,7 @@ function openRestorePointDetail(id) {
       var list = data.artifact_list || [];
       if (!list.length) {
         var empty = document.createElement('p');
-        empty.className = 'opacity-60';
+        empty.className = 'text-pk-text-muted';
         empty.textContent = {{ _('No manifest found for this restore point.')|tojson }};
         body.appendChild(empty);
         return;
@@ -967,7 +967,7 @@ function openRestorePointDetail(id) {
 <dialog id="schedule-modal" class="modal">
   <div class="modal-box max-w-xl">
     <h3 class="font-bold text-base mb-1">{% trans %}Backup schedule{% endtrans %}</h3>
-    <p class="text-sm opacity-60 mb-4">
+    <p class="text-sm text-pk-text-muted mb-4">
       {% trans %}Starts a backup by itself at these times, the same way the Create backup button does. A run is held back while a restore, an upgrade or another job is running, and tried again a few minutes later.{% endtrans %}
     </p>
 
@@ -1056,7 +1056,7 @@ function openRestorePointDetail(id) {
       </label>
     </form>
 
-    <p class="text-xs opacity-50 mt-1">
+    <p class="text-xs text-pk-text-muted mt-1">
       {% trans %}Older restore points are deleted after each scheduled backup. The deletion is held back while the newest successful restore point is overdue, so a run of failed backups cannot wipe out the good ones.{% endtrans %}
     </p>
 

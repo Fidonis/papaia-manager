@@ -95,9 +95,9 @@
    quotes inside it; `getAttribute` hands Alpine the decoded string back. #}
 {% macro row_actions(scope='') %}
 {% if scope %}
-<div class="flex items-center gap-1.5 shrink-0" x-data="{{ scope }}">{{ caller() }}</div>
+<div class="flex items-center gap-2 shrink-0" x-data="{{ scope }}">{{ caller() }}</div>
 {% else %}
-<div class="flex items-center gap-1.5 shrink-0">{{ caller() }}</div>
+<div class="flex items-center gap-2 shrink-0">{{ caller() }}</div>
 {% endif %}
 {% endmacro %}
 

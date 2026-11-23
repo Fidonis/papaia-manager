@@ -45,7 +45,7 @@
       {% if row.active_run %}
         {% set run = row.active_run %}
         <div class="flex flex-wrap items-center gap-2">
-          {% trans run_badge=run_badge(run), started_at=(run.started_at | ingest_ago) %}{{ run_badge }} <span class="text-sm opacity-70">started {{ started_at }}</span>{% endtrans %}
+          {% trans run_badge=run_badge(run), started_at=(run.started_at | ingest_ago) %}{{ run_badge }} <span class="text-sm text-pk-text-muted">started {{ started_at }}</span>{% endtrans %}
           <a class="link ml-auto text-sm" href="/ingest/runs/{{ run.run_id }}">{% trans %}Follow this run{% endtrans %}</a>
         </div>
         {{ progress(run) }}
@@ -53,28 +53,28 @@
           {% if run.phase_label %}{{ run.phase_label }}{% else %}{% trans %}Working in the background.{% endtrans %}{% endif %}
           {% if run.files_done is not none and run.counters.files_seen %} {% trans files_done=run.files_done, files_seen=run.counters.files_seen %}· {{ files_done }} of {{ files_seen }} files{% endtrans %}{% endif %}
         </p>
-        {% if run.current %}<p class="truncate font-mono text-xs opacity-60" title="{{ run.current }}">{{ run.current }}</p>{% endif %}
+        {% if run.current %}<p class="truncate font-mono text-xs text-pk-text-muted" title="{{ run.current }}">{{ run.current }}</p>{% endif %}
       {% elif row.last_run %}
         {% set run = row.last_run %}
         <div class="flex flex-wrap items-center gap-2">
           {{ run_badge(run) }}
-          <span class="text-sm opacity-70" title="{{ run.started_at | ingest_when(tz) }}">{{ run.started_at | ingest_ago }}</span>
-          <span class="text-sm opacity-60">{% trans started_at=(run.started_at | ingest_duration(run.finished_at)) %}took {{ started_at }}{% endtrans %}</span>
+          <span class="text-sm text-pk-text-muted" title="{{ run.started_at | ingest_when(tz) }}">{{ run.started_at | ingest_ago }}</span>
+          <span class="text-sm text-pk-text-muted">{% trans started_at=(run.started_at | ingest_duration(run.finished_at)) %}took {{ started_at }}{% endtrans %}</span>
           <a class="link ml-auto text-sm" href="/ingest/runs/{{ run.run_id }}">{% trans %}Details{% endtrans %}</a>
         </div>
         <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-5">
-          <div><span class="opacity-60">{% trans %}Files seen{% endtrans %}</span> <b>{{ run.counters.files_seen }}</b></div>
-          <div><span class="opacity-60">{% trans %}Embedded{% endtrans %}</span> <b>{{ run.counters.docs_indexed }}</b></div>
-          <div><span class="opacity-60">{% trans %}Unchanged{% endtrans %}</span> <b>{{ run.counters.docs_unchanged }}</b></div>
-          <div><span class="opacity-60">{% trans %}Failed{% endtrans %}</span> <b>{{ run.counters.docs_failed }}</b></div>
-          <div><span class="opacity-60">{% trans %}Removed{% endtrans %}</span> <b>{{ run.counters.docs_deleted }}</b></div>
+          <div><span class="text-pk-text-muted">{% trans %}Files seen{% endtrans %}</span> <b>{{ run.counters.files_seen }}</b></div>
+          <div><span class="text-pk-text-muted">{% trans %}Embedded{% endtrans %}</span> <b>{{ run.counters.docs_indexed }}</b></div>
+          <div><span class="text-pk-text-muted">{% trans %}Unchanged{% endtrans %}</span> <b>{{ run.counters.docs_unchanged }}</b></div>
+          <div><span class="text-pk-text-muted">{% trans %}Failed{% endtrans %}</span> <b>{{ run.counters.docs_failed }}</b></div>
+          <div><span class="text-pk-text-muted">{% trans %}Removed{% endtrans %}</span> <b>{{ run.counters.docs_deleted }}</b></div>
         </div>
         {% if run.error %}<p class="text-sm text-error">{{ run.error }}</p>{% endif %}
         {% if run.counters.docs_failed %}
         <p class="text-sm"><a class="link" href="#files" onclick="jobTab('files', '?status=failed_extract')">{% trans %}See the files that failed{% endtrans %}</a></p>
         {% endif %}
       {% else %}
-        <p class="text-sm opacity-70">{% trans %}This job has not run yet.{% endtrans %}</p>
+        <p class="text-sm text-pk-text-muted">{% trans %}This job has not run yet.{% endtrans %}</p>
       {% endif %}
     </div>
   </div>
@@ -84,37 +84,37 @@
     <div class="card-body p-4">
       <p class="text-sm font-semibold uppercase tracking-wide text-pk-text-muted">{% trans %}What it does{% endtrans %}</p>
       <dl class="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-[10rem_1fr]">
-        <dt class="opacity-60">{% trans %}Source{% endtrans %}</dt>
+        <dt class="text-pk-text-muted">{% trans %}Source{% endtrans %}</dt>
         <dd>
           {{ row.source_title }}
-          <span class="block break-all font-mono text-xs opacity-70">{{ row.source_detail }}</span>
-          <span class="block text-xs opacity-60">{% trans %}Shown in search results as{% endtrans %} <span class="font-mono">{{ row.source_label }}</span></span>
+          <span class="block break-all font-mono text-xs text-pk-text-muted">{{ row.source_detail }}</span>
+          <span class="block text-xs text-pk-text-muted">{% trans %}Shown in search results as{% endtrans %} <span class="font-mono">{{ row.source_label }}</span></span>
         </dd>
 
-        <dt class="opacity-60">{% trans %}Goes to{% endtrans %}</dt>
+        <dt class="text-pk-text-muted">{% trans %}Goes to{% endtrans %}</dt>
         <dd>
           {% trans collection=row.collection, connection=row.connection %}<span class="font-mono">{{ collection }}</span> on <span class="font-mono">{{ connection }}</span>{% endtrans %}
-          {% if model %}<span class="block text-xs opacity-60">{% trans %}Embedded with <span class="font-mono">{{ model }}</span>{% endtrans %}</span>{% endif %}
-          {% if acl_tags %}<span class="block text-xs opacity-60">{% trans acl_tags=(acl_tags | join(', ')) %}Access tags: {{ acl_tags }}{% endtrans %}</span>{% endif %}
+          {% if model %}<span class="block text-xs text-pk-text-muted">{% trans %}Embedded with <span class="font-mono">{{ model }}</span>{% endtrans %}</span>{% endif %}
+          {% if acl_tags %}<span class="block text-xs text-pk-text-muted">{% trans acl_tags=(acl_tags | join(', ')) %}Access tags: {{ acl_tags }}{% endtrans %}</span>{% endif %}
         </dd>
 
-        <dt class="opacity-60">{% trans %}Each run{% endtrans %}</dt>
+        <dt class="text-pk-text-muted">{% trans %}Each run{% endtrans %}</dt>
         <dd>
           {{ row.mode_label }}
-          <span class="block text-xs opacity-60">{{ mode_text }}</span>
+          <span class="block text-xs text-pk-text-muted">{{ mode_text }}</span>
         </dd>
 
-        <dt class="opacity-60">{% trans %}Schedule{% endtrans %}</dt>
+        <dt class="text-pk-text-muted">{% trans %}Schedule{% endtrans %}</dt>
         <dd>
           {{ row.schedule }}
-          {% if row.next_run_at and row.enabled %}<span class="block text-xs opacity-60">{% trans next_run_at=(row.next_run_at | ingest_when(tz)), next_run_at2=(row.next_run_at | ingest_ago) %}Next run {{ next_run_at }} ({{ next_run_at2 }}){% endtrans %}</span>{% endif %}
+          {% if row.next_run_at and row.enabled %}<span class="block text-xs text-pk-text-muted">{% trans next_run_at=(row.next_run_at | ingest_when(tz)), next_run_at2=(row.next_run_at | ingest_ago) %}Next run {{ next_run_at }} ({{ next_run_at2 }}){% endtrans %}</span>{% endif %}
         </dd>
 
-        <dt class="opacity-60">{% trans %}Files{% endtrans %}</dt>
+        <dt class="text-pk-text-muted">{% trans %}Files{% endtrans %}</dt>
         <dd>
           {% if include %}{% trans %}Only{% endtrans %} <span class="font-mono text-xs">{{ (include | join(', ')) }}</span>{% else %}{% trans %}Every supported file{% endtrans %}{% endif %}
-          {% if exclude %}<span class="block text-xs opacity-60">{% trans %}Skipping{% endtrans %} <span class="font-mono">{{ (exclude | join(', ')) }}</span></span>{% endif %}
-          {% if row.documents is not none %}<span class="block text-xs opacity-60">{% trans value='{:,}'.format(row.documents), value3=('{:,}'.format(row.chunks or 0)), n=row.documents %}{{ value }} file tracked, {{ value3 }} chunks written{% pluralize n %}{{ value }} files tracked, {{ value3 }} chunks written{% endtrans %}</span>{% endif %}
+          {% if exclude %}<span class="block text-xs text-pk-text-muted">{% trans %}Skipping{% endtrans %} <span class="font-mono">{{ (exclude | join(', ')) }}</span></span>{% endif %}
+          {% if row.documents is not none %}<span class="block text-xs text-pk-text-muted">{% trans value='{:,}'.format(row.documents), value3=('{:,}'.format(row.chunks or 0)), n=row.documents %}{{ value }} file tracked, {{ value3 }} chunks written{% pluralize n %}{{ value }} files tracked, {{ value3 }} chunks written{% endtrans %}</span>{% endif %}
         </dd>
       </dl>
     </div>

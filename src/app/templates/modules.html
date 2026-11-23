@@ -19,7 +19,7 @@
   {% elif bom.error == "invalid" %}
   <div role="alert" class="alert alert-error mb-4 text-sm">{% trans %}The bill of materials cannot be read. It is not used.{% endtrans %}</div>
   {% else %}
-  <p class="mb-4 text-sm opacity-70">
+  <p class="mb-4 text-sm text-pk-text-muted">
     {% trans suite=bom.suite %}Suite {{ suite }}{% endtrans %}
     {% if bom.verified %}
     <span class="badge badge-success badge-sm ml-2">{% trans %}signature verified{% endtrans %}</span>
@@ -51,7 +51,7 @@
         <tr data-module="{{ m.name }}">
           <td>
             <div class="font-medium">{{ m.title }}</div>
-            {% if m.description %}<div class="text-xs opacity-60">{{ m.description }}</div>{% endif %}
+            {% if m.description %}<div class="text-xs text-pk-text-muted">{{ m.description }}</div>{% endif %}
             {% if m.url %}
             <div class="mt-1 flex flex-wrap gap-1">
               <a class="btn btn-outline btn-xs" href="{{ m.url }}" rel="noopener">{% trans %}Open{% endtrans %}</a>
@@ -64,7 +64,7 @@
           <td>
             <span class="font-mono">{{ m.version }}</span>
             {% if m.installed_version and m.installed_version != m.version %}
-            <div class="text-xs opacity-60">{% trans installed=m.installed_version %}installed: {{ installed }}{% endtrans %}</div>
+            <div class="text-xs text-pk-text-muted">{% trans installed=m.installed_version %}installed: {{ installed }}{% endtrans %}</div>
             {% endif %}
           </td>
           <td>
@@ -92,7 +92,7 @@
 {% if show_delegations %}
 <section x-data="delegationOverview()" x-init="load()">
   <h2 class="mb-1 text-lg font-semibold">{% trans %}Delegations{% endtrans %}</h2>
-  <p class="mb-4 text-sm opacity-60">{% trans %}How many delegations each person has granted to a module. Contents, purposes and tokens are not shown.{% endtrans %}</p>
+  <p class="mb-4 text-sm text-pk-text-muted">{% trans %}How many delegations each person has granted to a module. Contents, purposes and tokens are not shown.{% endtrans %}</p>
   <template x-if="error"><div role="alert" class="alert alert-warning text-sm" x-text="error"></div></template>
   <template x-for="m in modules" :key="m.module">
     <div class="mb-6">
@@ -100,8 +100,8 @@
         <span x-text="m.title"></span>
         <span class="badge badge-sm ml-2" x-text="m.total"></span>
       </h3>
-      <p x-show="!m.available" class="text-sm opacity-60">{% trans %}This module is not installed.{% endtrans %}</p>
-      <p x-show="m.truncated" class="text-sm opacity-60">{% trans %}Only the first delegations are counted.{% endtrans %}</p>
+      <p x-show="!m.available" class="text-sm text-pk-text-muted">{% trans %}This module is not installed.{% endtrans %}</p>
+      <p x-show="m.truncated" class="text-sm text-pk-text-muted">{% trans %}Only the first delegations are counted.{% endtrans %}</p>
       <table class="table table-sm" x-show="m.persons.length">
         <thead><tr><th>{% trans %}Person{% endtrans %}</th><th>{% trans %}Delegations{% endtrans %}</th><th></th></tr></thead>
         <tbody>

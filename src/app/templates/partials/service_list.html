@@ -57,7 +57,7 @@
     {% endif %}
     <p class="font-semibold text-sm">{{ module.name }}</p>
     {{ group_badge(module) }}
-    <p class="text-xs opacity-60">{{ module.summary }}</p>
+    <p class="text-xs text-pk-text-muted">{{ module.summary }}</p>
     {# One control set per add-on project, on its first module: the verbs act on
        the whole Compose project, so repeating them per module would offer the
        same button several times over. #}
@@ -77,9 +77,9 @@
               {% if ch == 'missing' %}bg-base-100/50{% else %}bg-base-100{% endif %}">
     <div class="col-span-2 md:col-span-1 min-w-0 truncate">
       {{ container.service }}
-      {% if container.role %}<span class="opacity-40"> · {{ container.role }}</span>{% endif %}
+      {% if container.role %}<span class="text-pk-text-muted"> · {{ container.role }}</span>{% endif %}
     </div>
-    <div class="font-mono text-xs opacity-60 truncate">{{ container.status_display }}</div>
+    <div class="font-mono text-xs text-pk-text-muted truncate">{{ container.status_display }}</div>
     <div class="text-xs">
       {% if ch == 'healthy' %}
         <span class="text-success">{% trans %}healthy{% endtrans %}</span>
@@ -90,18 +90,18 @@
       {% elif ch == 'stopped' %}
         <span class="text-error">{% trans %}stopped{% endtrans %}</span>
       {% elif ch == 'missing' %}
-        <span class="text-error opacity-70">{% trans %}not deployed{% endtrans %}</span>
+        <span class="text-error">{% trans %}not deployed{% endtrans %}</span>
       {% elif ch == 'completed' %}
-        <span class="opacity-50">{% trans %}completed{% endtrans %}</span>
+        <span class="text-pk-text-muted">{% trans %}completed{% endtrans %}</span>
       {% else %}
-        <span class="opacity-50">{% trans %}unknown{% endtrans %}</span>
+        <span class="text-pk-text-muted">{% trans %}unknown{% endtrans %}</span>
       {% endif %}
     </div>
-    <div class="text-xs opacity-60 text-right">
+    <div class="text-xs text-pk-text-muted text-right">
       {%- if container.ports -%}
         {% for port in container.ports %}:{{ port }}{% if not loop.last %} {% endif %}{% endfor %}
       {%- else -%}
-        <span class="opacity-50">—</span>
+        <span class="text-pk-text-muted">—</span>
       {%- endif -%}
     </div>
   </div>
@@ -122,7 +122,7 @@
 </div>
 {% endif %}
 {% if not core_modules and not addon_modules and not unreachable_nodes %}
-<div class="flex flex-col items-center py-24 gap-4 opacity-60">
+<div class="flex flex-col items-center py-24 gap-4 text-pk-text-muted">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
     <path stroke-linecap="round" stroke-linejoin="round" d="M5 12a2 2 0 012-2h10a2 2 0 012 2v2a2 2 0 01-2 2H7a2 2 0 01-2-2v-2zM5 5a2 2 0 012-2h10a2 2 0 012 2M7 20h10M8 13h.01"/>
   </svg>
@@ -175,7 +175,7 @@
 </div>
 
 <div class="flex justify-end mb-2">
-  <p class="text-xs opacity-40">{% trans %}Refreshes every 15 s{% endtrans %}</p>
+  <p class="text-xs text-pk-text-muted">{% trans %}Refreshes every 15 s{% endtrans %}</p>
 </div>
 
 {# A distributed installation: one section per node. An action names the group, and the

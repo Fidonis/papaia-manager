@@ -35,16 +35,16 @@
         <div class="card-body">
           <div class="flex flex-wrap items-center gap-3">
             <span class="font-mono text-lg" x-text="plan.current.version"></span>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-pk-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
             </svg>
             <span class="font-mono text-lg font-semibold" x-text="plan.candidate.version"></span>
             <template x-if="plan.direction === 'upgrade'"><span class="badge badge-accent badge-sm">{% trans %}upgrade{% endtrans %}</span></template>
             <template x-if="plan.direction === 'downgrade'"><span class="badge badge-warning badge-sm">{% trans %}older than the installed version{% endtrans %}</span></template>
             <template x-if="plan.direction === 'same'"><span class="badge badge-ghost badge-sm">{% trans %}same version{% endtrans %}</span></template>
-            <span class="text-xs opacity-50 font-mono" x-text="data.revision"></span>
+            <span class="text-xs text-pk-text-muted font-mono" x-text="data.revision"></span>
           </div>
-          <p class="text-sm opacity-70">
+          <p class="text-sm text-pk-text-muted">
             {% trans %}If the add-on is running, it is recreated from the new version.{% endtrans %}
           </p>
         </div>
@@ -106,7 +106,7 @@
            x-show="plan.env.new.length || plan.env.removed.length || plan.env.default_changed.length">
         <div class="card-body">
           <h3 class="card-title text-base mb-1">{% trans %}Configuration{% endtrans %}</h3>
-          <p class="text-xs opacity-60 mb-2">
+          <p class="text-xs text-pk-text-muted mb-2">
             {% trans %}Values that are already set stay as they are. The upgrade only adds the keys the new version brings.{% endtrans %}
           </p>
           <div class="overflow-x-auto" x-show="plan.env.new.length">
@@ -115,7 +115,7 @@
               <tbody>
                 <template x-for="k in plan.env.new" :key="k.key">
                   <tr>
-                    <td class="font-mono text-xs"><span x-text="k.key"></span><span class="block font-sans opacity-60" x-text="k.label"></span></td>
+                    <td class="font-mono text-xs"><span x-text="k.key"></span><span class="block font-sans text-pk-text-muted" x-text="k.label"></span></td>
                     <td class="text-xs">
                       <template x-if="k.class === 'generated'"><span>{% trans %}a secret is generated{% endtrans %}</span></template>
                       <template x-if="k.class === 'change_me' && plan.needs_input.includes(k.key)"><span class="badge badge-error badge-xs">{% trans %}needs a value{% endtrans %}</span></template>
@@ -130,13 +130,13 @@
             </table>
           </div>
           <div class="mt-3 text-xs" x-show="plan.env.removed.length">
-            <p class="font-semibold opacity-70">{% trans %}No longer in the new version (kept in your configuration):{% endtrans %}</p>
-            <p class="font-mono opacity-70" x-text="plan.env.removed.join(', ')"></p>
+            <p class="font-semibold text-pk-text-muted">{% trans %}No longer in the new version (kept in your configuration):{% endtrans %}</p>
+            <p class="font-mono text-pk-text-muted" x-text="plan.env.removed.join(', ')"></p>
           </div>
           <div class="mt-3 text-xs" x-show="plan.env.default_changed.length">
-            <p class="font-semibold opacity-70">{% trans %}The shipped default changed (your value stays):{% endtrans %}</p>
+            <p class="font-semibold text-pk-text-muted">{% trans %}The shipped default changed (your value stays):{% endtrans %}</p>
             <template x-for="d in plan.env.default_changed" :key="d.key">
-              <p class="font-mono opacity-70"><span x-text="d.key"></span>: <span x-text="d.from"></span> → <span x-text="d.to"></span></p>
+              <p class="font-mono text-pk-text-muted"><span x-text="d.key"></span>: <span x-text="d.from"></span> → <span x-text="d.to"></span></p>
             </template>
           </div>
         </div>
@@ -190,9 +190,9 @@
             <div class="mb-3">
               <p class="text-sm font-semibold">
                 <span class="font-mono" x-text="c.version"></span>
-                <span class="font-normal opacity-60" x-show="c.date" x-text="'· ' + c.date"></span>
+                <span class="font-normal text-pk-text-muted" x-show="c.date" x-text="'· ' + c.date"></span>
               </p>
-              <pre class="mt-1 text-xs opacity-80 whitespace-pre-wrap break-words" x-text="c.body"></pre>
+              <pre class="mt-1 text-xs text-pk-text-muted whitespace-pre-wrap break-words" x-text="c.body"></pre>
             </div>
           </template>
         </div>
@@ -209,15 +209,15 @@
                   <span x-text="f.label"></span>
                   <span class="text-error" x-show="plan.needs_input.includes(f.key)">*</span>
                 </span>
-                <span class="label-text-alt font-mono opacity-50" x-text="f.key"></span>
+                <span class="label-text-alt font-mono text-pk-text-muted" x-text="f.key"></span>
               </label>
-              <input class="input input-bordered input-sm w-full"
+              <input class="input input-bordered input-sm w-full" :aria-label="f.label"
                      :type="f.is_secret ? 'password' : 'text'"
                      :placeholder="f.default || f.placeholder"
                      autocomplete="off"
                      x-model="values[f.key]">
               <label class="label pt-0.5" x-show="f.hint">
-                <span class="label-text-alt opacity-60" x-text="f.hint"></span>
+                <span class="label-text-alt text-pk-text-muted" x-text="f.hint"></span>
               </label>
             </div>
           </template>
@@ -231,7 +231,7 @@
             <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="backup" :disabled="submitting">
             <span>
               {% trans %}Take a restore point of this add-on first{% endtrans %}
-              <span class="block text-xs opacity-60">
+              <span class="block text-xs text-pk-text-muted">
                 {% trans %}Its volumes and data directories, so that a rollback can bring the data back as well. An add-on without any gets none and the upgrade goes on.{% endtrans %}
               </span>
             </span>

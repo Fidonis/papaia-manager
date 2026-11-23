@@ -7,7 +7,7 @@
 {# The tabs do not wrap: on a narrow screen a long tab label broke into two lines and overflowed the
    fixed height of a tab, which showed as a vertical scrollbar next to a horizontal one. #}
 {% macro tabs(active) %}
-<nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="{{ _('Ingest') }}">
+<nav class="tabs tabs-bordered mb-4 gap-2 overflow-x-auto overflow-y-hidden" aria-label="{{ _('Ingest') }}">
   <a href="/ingest/jobs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'jobs' else '' }}">{% trans %}Jobs{% endtrans %}</a>
   <a href="/ingest/runs" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'runs' else '' }}">{% trans %}Runs{% endtrans %}</a>
   <a href="/ingest/secrets" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'secrets' else '' }}">{% trans %}Credentials{% endtrans %}</a>

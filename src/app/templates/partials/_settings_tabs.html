@@ -3,7 +3,7 @@
    Mail and Users sections: the tabs do not wrap, because a label that broke into two lines
    overflowed the fixed height of a tab on a narrow screen. #}
 {% macro tabs(active) %}
-<nav class="tabs tabs-bordered mb-4 overflow-x-auto overflow-y-hidden" aria-label="{{ _('Settings') }}">
+<nav class="tabs tabs-bordered mb-4 gap-2 overflow-x-auto overflow-y-hidden" aria-label="{{ _('Settings') }}">
   <a href="/settings" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'manager' else '' }}">{% trans %}Manager{% endtrans %}</a>
   <a href="/settings/installation" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'installation' else '' }}">{% trans %}Installation{% endtrans %}</a>
   <a href="/settings/modules" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if active == 'modules' else '' }}">{% trans %}Core features{% endtrans %}</a>

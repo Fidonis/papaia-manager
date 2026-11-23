@@ -29,10 +29,10 @@
       <p class="text-xs uppercase tracking-wide text-pk-text-muted">{% trans %}Last successful backup{% endtrans %}</p>
       {% if state.last_ok_text %}
       <p class="text-sm font-semibold">
-        {% trans age_text=state.age_text %}{{ age_text }} ago{% endtrans %} <span class="font-normal opacity-60">&middot; {{ state.last_ok_text }}</span>
+        {% trans age_text=state.age_text %}{{ age_text }} ago{% endtrans %} <span class="font-normal text-pk-text-muted">&middot; {{ state.last_ok_text }}</span>
       </p>
       {% else %}
-      <p class="text-sm opacity-60">{% trans %}None yet{% endtrans %}</p>
+      <p class="text-sm text-pk-text-muted">{% trans %}None yet{% endtrans %}</p>
       {% endif %}
       {% if st.overdue %}
       <p class="mt-0.5 text-xs text-warning">
@@ -50,22 +50,22 @@
       {% if s %}
       <p class="text-sm font-semibold">
         {{ state.description }}
-        <span class="font-normal opacity-60">&middot; {{ state.timezone }}</span>
+        <span class="font-normal text-pk-text-muted">&middot; {{ state.timezone }}</span>
         {% if not s.enabled %}<span class="badge badge-ghost badge-sm ml-1">{% trans %}paused{% endtrans %}</span>{% endif %}
       </p>
       {% if s.enabled %}
-      <p class="text-xs opacity-60">
+      <p class="text-xs text-pk-text-muted">
         {% if state.next_run_text %}{% trans next_run_text=state.next_run_text %}Next run {{ next_run_text }}{% endtrans %}{% else %}{% trans %}No run is planned{% endtrans %}{% endif %}
       </p>
       {% endif %}
-      <p class="text-xs opacity-60">
+      <p class="text-xs text-pk-text-muted">
         {% if s.retention_days %}{% trans retention_days=s.retention_days %}Keeps restore points for {{ retention_days }} days{% endtrans %}{% else %}{% trans %}Keeps every restore point{% endtrans %}{% endif %}
       </p>
       {% if state.retention_note %}
       <p class="text-xs text-warning">{{ state.retention_note }}</p>
       {% endif %}
       {% elif not state.load.error %}
-      <p class="text-sm opacity-60">{% trans %}No backup is scheduled.{% endtrans %}</p>
+      <p class="text-sm text-pk-text-muted">{% trans %}No backup is scheduled.{% endtrans %}</p>
       {% endif %}
     </div>
 

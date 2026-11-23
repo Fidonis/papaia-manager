@@ -14,10 +14,10 @@
       <span class="h-2.5 w-2.5 shrink-0 rounded-full bg-warning"></span>
       <p class="text-sm font-semibold">{% trans %}Could not check for new releases{% endtrans %}</p>
     </div>
-    <p class="text-xs opacity-60 mt-2 leading-relaxed">
+    <p class="text-xs text-pk-text-muted mt-2 leading-relaxed">
       {% trans %}The remote could not be reached, so this compares against the tags already in the checkout &mdash; a newer release may exist that is not visible here.{% endtrans %}
     </p>
-    <p class="font-mono text-xs opacity-60 mt-2 break-all">{{ check.fetch_error }}</p>
+    <p class="font-mono text-xs text-pk-text-muted mt-2 break-all">{{ check.fetch_error }}</p>
     {% if check.hint_text() %}
     <pre class="mt-3 max-h-56 overflow-auto rounded bg-base-300 p-3 text-xs whitespace-pre-wrap">{{ check.hint_text() }}</pre>
     {% endif %}
@@ -29,7 +29,7 @@
 {% if not check %}
   <div class="rounded-xl border border-base-300 px-5 py-8 text-center">
     <span class="loading loading-spinner loading-md text-primary"></span>
-    <p class="text-sm opacity-60 mt-3">{% trans %}Looking for newer releases&hellip;{% endtrans %}</p>
+    <p class="text-sm text-pk-text-muted mt-3">{% trans %}Looking for newer releases&hellip;{% endtrans %}</p>
   </div>
 
 {% elif check.up_to_date and check.fetch_error %}
@@ -65,7 +65,7 @@
       </option>
       {% endfor %}
     </select>
-    <span class="text-xs opacity-50">
+    <span class="text-xs text-pk-text-muted">
       {% trans %}Choosing another release re-runs the compatibility check against it.{% endtrans %}
     </span>
   </div>
@@ -76,7 +76,7 @@
   <div class="rounded-xl border border-base-300 overflow-hidden">
     <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-base-300">
       <h2 class="font-brand text-base font-bold">{% trans %}Migrations in this upgrade{% endtrans %}</h2>
-      <span class="text-xs opacity-60">
+      <span class="text-xs text-pk-text-muted">
         {% if check.migrations %}{% trans count=(check.migrations | length) %}{{ count }} to run{% endtrans %}{% else %}{% trans %}none{% endtrans %}{% endif %}
       </span>
     </div>
@@ -86,14 +86,14 @@
       {% for migration in check.migrations %}
       <li class="px-4 py-2.5">
         <p class="text-sm font-mono">{{ migration.id }}</p>
-        <p class="text-xs opacity-50 mt-0.5">
+        <p class="text-xs text-pk-text-muted mt-0.5">
           {% trans version=migration.version, kind=migration.kind %}ships with {{ version }} &middot; {{ kind }}{% endtrans %}
         </p>
       </li>
       {% endfor %}
     </ul>
     {% else %}
-    <p class="px-4 py-3 text-sm opacity-60">
+    <p class="px-4 py-3 text-sm text-pk-text-muted">
       {% trans %}This release ships no migrations. The configuration is still re-rendered against it.{% endtrans %}
     </p>
     {% endif %}

@@ -4,7 +4,7 @@
 {% if not rows %}
 <div class="rounded-xl border border-base-300 px-5 py-8 text-center">
   <p class="text-sm font-semibold">{% trans %}Nothing sent yet{% endtrans %}</p>
-  <p class="mt-1 text-sm opacity-60">{% trans %}Deliveries show up here, test notifications included.{% endtrans %}</p>
+  <p class="mt-1 text-sm text-pk-text-muted">{% trans %}Deliveries show up here, test notifications included.{% endtrans %}</p>
 </div>
 {% else %}
 <div class="overflow-x-auto rounded-xl border border-base-300">
@@ -20,9 +20,9 @@
     <tbody>
       {% for row in rows %}
       <tr>
-        <td class="whitespace-nowrap text-xs opacity-60">{{ row.ts | ingest_when }}</td>
+        <td class="whitespace-nowrap text-xs text-pk-text-muted">{{ row.ts | ingest_when }}</td>
         <td class="text-xs">
-          {{ row.event }}{% if row.subject %} <span class="opacity-60">· {{ row.subject }}</span>{% endif %}
+          {{ row.event }}{% if row.subject %} <span class="text-pk-text-muted">· {{ row.subject }}</span>{% endif %}
         </td>
         <td class="text-xs">{{ row.recipient }}</td>
         <td>
@@ -30,7 +30,7 @@
           <span class="badge badge-success badge-sm">{% trans %}Sent{% endtrans %}</span>
           {% else %}
           <span class="badge badge-error badge-sm">{% trans %}Failed{% endtrans %}</span>
-          {% if row.reason %}<span class="block text-xs opacity-60">{{ row.reason }}</span>{% endif %}
+          {% if row.reason %}<span class="block text-xs text-pk-text-muted">{{ row.reason }}</span>{% endif %}
           {% endif %}
         </td>
       </tr>
@@ -39,6 +39,6 @@
   </table>
 </div>
 {% if total > rows | length %}
-<p class="mt-2 text-xs opacity-60">{% trans count=(rows | length) %}The last {{ count }} of {{ total }}. The audit log has the rest (action “notify.”).{% endtrans %}</p>
+<p class="mt-2 text-xs text-pk-text-muted">{% trans count=(rows | length) %}The last {{ count }} of {{ total }}. The audit log has the rest (action “notify.”).{% endtrans %}</p>
 {% endif %}
 {% endif %}

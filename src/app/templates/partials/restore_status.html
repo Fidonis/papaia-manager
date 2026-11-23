@@ -35,10 +35,10 @@
           <span class="badge badge-error">{% trans %}restore failed{% endtrans %}</span>
         {% endif %}
 
-        <span class="text-sm opacity-60 font-mono">{{ restore.restore_point }}</span>
+        <span class="text-sm text-pk-text-muted font-mono">{{ restore.restore_point }}</span>
 
         {% if restore.exit_code is not none %}
-        <span class="text-xs opacity-40">{% trans exit_code=restore.exit_code %}exit code {{ exit_code }}{% endtrans %}</span>
+        <span class="text-xs text-pk-text-muted">{% trans exit_code=restore.exit_code %}exit code {{ exit_code }}{% endtrans %}</span>
         {% endif %}
 
         <span class="grow"></span>
@@ -49,12 +49,12 @@
       </div>
 
       {% if restore.is_running %}
-      <p class="text-sm opacity-60">
+      <p class="text-sm text-pk-text-muted">
         {% trans %}The stack is being stopped and recreated. This page will lose its connection to the manager for a while &mdash; that is expected, and the result appears here once it is back.{% endtrans %}
       </p>
       {% endif %}
 
-      <div x-show="offline" class="text-sm opacity-60">
+      <div x-show="offline" class="text-sm text-pk-text-muted">
         <span class="loading loading-dots loading-xs"></span>
         {% trans %}Manager not reachable &mdash; reconnecting&hellip;{% endtrans %}
       </div>

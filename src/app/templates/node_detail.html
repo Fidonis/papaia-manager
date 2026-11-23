@@ -1,18 +1,18 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% set pk_lang = pk_frame_lang() %}{% import "pk/components.html" as kit with context %}
 {% block page_title %}{% trans %}Node {{ name }}{% endtrans %}{% endblock %}
 
 {% block content %}
 {% if error %}
-<div class="alert alert-warning mb-4"><span>{{ error }}</span></div>
+<div class="mb-4">{{ kit.alert(error, tone="warning") }}</div>
 {% endif %}
 
 {% if node %}
 <div class="card bg-base-100 border border-base-300 mb-6">
   <div class="card-body p-5 gap-2 text-sm">
-    <p><span class="opacity-60">{% trans %}Address{% endtrans %}:</span> <span class="font-mono">{{ node.address }}</span></p>
-    <p><span class="opacity-60">{% trans %}Connection{% endtrans %}:</span> {{ node.executor }}</p>
-    <p><span class="opacity-60">{% trans %}Services{% endtrans %}:</span> {{ node.services|join(", ") }}</p>
-    <p><span class="opacity-60">{% trans %}Version{% endtrans %}:</span> <span class="font-mono">{{ node.version }}</span></p>
+    <p><span class="text-pk-text-muted">{% trans %}Address{% endtrans %}:</span> <span class="font-mono">{{ node.address }}</span></p>
+    <p><span class="text-pk-text-muted">{% trans %}Connection{% endtrans %}:</span> {{ node.executor }}</p>
+    <p><span class="text-pk-text-muted">{% trans %}Services{% endtrans %}:</span> {{ node.services|join(", ") }}</p>
+    <p><span class="text-pk-text-muted">{% trans %}Version{% endtrans %}:</span> <span class="font-mono">{{ node.version }}</span></p>
     {% if not node.reachable and node.reason %}
     <p class="text-error break-all">{{ node.reason }}</p>
     {% endif %}
@@ -39,10 +39,10 @@
 <div class="card bg-base-100 border border-base-300 mb-6">
   <div class="card-body p-5 gap-3 text-sm">
     <h2 class="font-semibold">{% trans %}Enrol this node{% endtrans %}</h2>
-    <p class="opacity-70">{% trans %}Copy the join archive to the node and run its install script there, as root:{% endtrans %}</p>
+    <p class="text-pk-text-muted">{% trans %}Copy the join archive to the node and run its install script there, as root:{% endtrans %}</p>
     <pre class="rounded bg-base-300 p-3 text-xs whitespace-pre-wrap overflow-x-auto">{{ join_commands }}</pre>
     {% if host_keys %}
-    <p class="opacity-70">{% trans %}Then compare the fingerprint the script printed with the ones below, and confirm the one that matches:{% endtrans %}</p>
+    <p class="text-pk-text-muted">{% trans %}Then compare the fingerprint the script printed with the ones below, and confirm the one that matches:{% endtrans %}</p>
     <ul>
       {% for key in host_keys %}
       <li class="flex items-center gap-3 py-1">
@@ -103,7 +103,7 @@
   </script>
 {% else %}
 <div>
-  <p class="text-sm opacity-60 mb-2">{% trans %}Changing the nodes needs a fresh sign-in.{% endtrans %}</p>
+  <p class="text-sm text-pk-text-muted mb-2">{% trans %}Changing the nodes needs a fresh sign-in.{% endtrans %}</p>
   <a class="btn btn-outline btn-sm" href="/auth/step-up?next=/nodes/{{ name }}">{% trans %}Confirm your sign-in{% endtrans %}</a>
 </div>
 {% endif %}

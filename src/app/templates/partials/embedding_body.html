@@ -27,7 +27,7 @@
 <div hidden x-init='loaded({{ init | tojson }})'></div>
 
 {% if not view.available %}
-<div class="flex flex-col items-center py-24 gap-4 opacity-60 text-center">
+<div class="flex flex-col items-center py-24 gap-4 text-pk-text-muted text-center">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
     <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
   </svg>
@@ -35,7 +35,7 @@
   <p class="max-w-xl text-sm">{{ view.reason }}</p>
 </div>
 {% elif not view.collections %}
-<div class="flex flex-col items-center py-24 gap-3 opacity-60 text-center">
+<div class="flex flex-col items-center py-24 gap-3 text-pk-text-muted text-center">
   <p class="text-lg font-semibold">{% trans %}There is no collection to embed into yet{% endtrans %}</p>
   <p class="max-w-xl text-sm">{% trans %}Create one first, then come back to put files into it.{% endtrans %}</p>
   <a class="btn btn-primary btn-sm" href="/collections?connection={{ connection | urlencode }}">{% trans %}Go to Collections{% endtrans %}</a>
@@ -101,7 +101,7 @@
 
       <!-- Upload -->
       <div x-show="tab === 'upload'" style="display:none" class="flex flex-col gap-3">
-        <p class="text-sm opacity-70">
+        <p class="text-sm text-pk-text-muted">
           {% trans %}Uploaded files are kept in a private folder of their own and <b>deleted after a successful run</b>. One that is left over (a failed run, a forgotten upload) is deleted after {{ ttl_hours }} hours. A file with the same path as one embedded earlier replaces it in the collection. Up to {{ max_upload_mb }} MiB per file and {{ max_batch_mb }} MiB per upload.{% endtrans %}
         </p>
 
@@ -120,7 +120,7 @@
             <span class="loading loading-spinner loading-xs"></span><span x-text="progress"></span>
           </span>
         </div>
-        <p class="text-xs opacity-60" style="display:none" x-show="batch">
+        <p class="text-xs text-pk-text-muted" style="display:none" x-show="batch">
           {% trans %}New files are added to the upload that is selected. Start a new upload to keep them apart.{% endtrans %}
         </p>
         <div style="display:none" x-show="uploadErrors.length" class="alert alert-error text-sm" role="alert">
@@ -137,14 +137,14 @@
                    :checked="isOn('')" @change="toggle('', $event.target.checked)">
             {% trans %}The whole upload{% endtrans %}
           </label>
-          <p class="mb-2 text-xs opacity-60">{% trans %}Files you do not select are not embedded. Their copies on the server are deleted together with the embedded files after a successful run. Your original files are not changed.{% endtrans %}</p>
+          <p class="mb-2 text-xs text-pk-text-muted">{% trans %}Files you do not select are not embedded. Their copies on the server are deleted together with the embedded files after a successful run. Your original files are not changed.{% endtrans %}</p>
           <div id="embed-batch-tree"></div>
         </div>
       </div>
 
       <!-- Documents folder -->
       <div x-show="tab === 'folder'" style="display:none" class="flex flex-col gap-3">
-        <p class="text-sm opacity-70">
+        <p class="text-sm text-pk-text-muted">
           {% trans %}Files that are already in the documents folder of the ingester. They belong to whoever put them there and are never deleted.{% endtrans %}
         </p>
         {% if docs_ok %}
@@ -178,7 +178,7 @@
                  {% if not supports_add %}disabled{% endif %}>
           <span>
             <span class="block text-sm font-semibold">{% trans %}Add and update{% endtrans %}</span>
-            <span class="block text-xs opacity-70">
+            <span class="block text-xs text-pk-text-muted">
               {% trans %}New files are added. A file whose path is already in the collection and whose content changed replaces its old chunks. Nothing is deleted.{% endtrans %}
             </span>
             {% if not supports_add %}
@@ -191,7 +191,7 @@
           <input type="radio" class="radio radio-sm mt-1" value="replace" x-model="mode">
           <span>
             <span class="block text-sm font-semibold">{% trans %}Replace the collection{% endtrans %}</span>
-            <span class="block text-xs opacity-70">
+            <span class="block text-xs text-pk-text-muted">
               {% trans %}Everything in the collection is deleted first, then it is filled from this selection. This is also how the embedding model is changed.{% endtrans %}
             </span>
           </span>
@@ -202,7 +202,7 @@
         <label class="label"><span class="label-text">{% trans %}Embedding model{% endtrans %}</span></label>
         <input type="text" class="input input-bordered input-sm font-mono" x-model="model" maxlength="255"
                :readonly="mode === 'add' && recorded !== ''" placeholder="{{ _('nomic-embed-text') }}">
-        <p class="mt-1 text-xs opacity-60">
+        <p class="mt-1 text-xs text-pk-text-muted">
           <span x-show="mode === 'add' && recorded !== ''" style="display:none">{% trans %}The collection records this model. Use Replace to change it.{% endtrans %}</span>
           <span x-show="!(mode === 'add' && recorded !== '')" style="display:none">{% trans %}The model the ingester embeds with, as LiteLLM names it. It is recorded for the collection.{% endtrans %}</span>
         </p>
@@ -214,7 +214,7 @@
           <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
           {% trans %}Start embedding{% endtrans %}
         </button>
-        <span style="display:none" x-show="runActive" class="text-xs opacity-60">{% trans %}A run is working on this collection.{% endtrans %}</span>
+        <span style="display:none" x-show="runActive" class="text-xs text-pk-text-muted">{% trans %}A run is working on this collection.{% endtrans %}</span>
       </div>
     </div>
   </div>

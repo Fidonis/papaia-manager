@@ -31,6 +31,8 @@
   {% endif %}
 {% endmacro %}
 
+{% set pk_lang = pk_frame_lang() %}
+{% import "pk/components.html" as kit with context %}
 {% set state = overall | string %}
 {% set label = ngettext("%(num)d issue", "%(num)d issues", issues) %}
 
@@ -39,41 +41,30 @@
    keyboard as well. It opens downwards, below the chip. #}
 <div class="dropdown dropdown-hover">
 
+  {# The verdict is the kit's badge (tone and state symbol, never colour alone); the
+     trigger around it carries the focus and the accessible name. #}
   {% if state in ("missing", "stopped") %}
-  <div tabindex="0" role="button" aria-label="{{ _('Stack status: %(label)s', label=label) }}"
-       class="flex items-center gap-2 rounded-lg bg-error/10 px-2 py-1 text-sm font-medium text-error">
-    <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-error"></span></span>
-    <span>{{ label }}</span>
-  </div>
+    {% set name, text, tone, symbol = _('Stack status: %(label)s', label=label), label, "error", "circle-x" %}
   {% elif state in ("unhealthy", "starting") %}
-  <div tabindex="0" role="button" aria-label="{{ _('Stack status: %(label)s', label=label) }}"
-       class="flex items-center gap-2 rounded-lg bg-warning/10 px-2 py-1 text-sm font-medium text-warning">
-    <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-warning"></span></span>
-    <span>{{ label }}</span>
-  </div>
+    {% set name, text, tone, symbol = _('Stack status: %(label)s', label=label), label, "warning", "warning" %}
   {% elif state == "unknown" %}
-  <div tabindex="0" role="button" aria-label="{{ _('Stack status unknown') }}"
-       class="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-base-content/70">
-    <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-neutral"></span></span>
-    <span>{% trans %}Status unknown{% endtrans %}</span>
-  </div>
+    {% set name, text, tone, symbol = _('Stack status unknown'), _('Status unknown'), "neutral", "info" %}
   {% else %}
-  <div tabindex="0" role="button" aria-label="{{ _('Stack status: all healthy') }}"
-       class="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-success">
-    <span class="flex h-4 w-4 shrink-0 items-center justify-center"><span class="h-2 w-2 rounded-full bg-success"></span></span>
-    <span>{% trans %}All healthy{% endtrans %}</span>
-  </div>
+    {% set name, text, tone, symbol = _('Stack status: all healthy'), _('All healthy'), "success", "circle-check" %}
   {% endif %}
+  <div tabindex="0" role="button" aria-label="{{ name }}" class="flex items-center rounded-lg px-1 py-1 text-sm">
+    {{ kit.badge(text, tone=tone, symbol=symbol) }}
+  </div>
 
   <div tabindex="0" class="dropdown-content z-30 mt-1 w-64 rounded-box border border-base-300 bg-base-100 p-3 shadow">
 
     <div class="flex items-center gap-2 text-sm">
-      {% trans dot=(dot(core_overall | string)) %}{{ dot }} <span class="flex-1 font-medium">Core stack</span> <span class="text-xs opacity-60">{{ core_running }} / {{ core_total }} running</span>{% endtrans %}
+      {% trans dot=(dot(core_overall | string)) %}{{ dot }} <span class="flex-1 font-medium">Core stack</span> <span class="text-xs text-pk-text-muted">{{ core_running }} / {{ core_total }} running</span>{% endtrans %}
     </div>
 
     {% if addon_total %}
     <div class="mt-2 flex items-center gap-2 text-sm">
-      {% trans dot=(dot(addon_overall | string)) %}{{ dot }} <span class="flex-1 font-medium">Add-ons</span> <span class="text-xs opacity-60">{{ addon_running }} / {{ addon_total }} running</span>{% endtrans %}
+      {% trans dot=(dot(addon_overall | string)) %}{{ dot }} <span class="flex-1 font-medium">Add-ons</span> <span class="text-xs text-pk-text-muted">{{ addon_running }} / {{ addon_total }} running</span>{% endtrans %}
     </div>
     {% endif %}
 
@@ -85,11 +76,11 @@
        failed), which is not the same as healthy. #}
     {% if host_total %}
     <div class="mt-2 flex items-center gap-2 text-sm">
-      {% trans dot=(dot(host_overall | string)) %}{{ dot }} <span class="flex-1 font-medium">Host</span> <span class="text-xs opacity-60">{{ host_ok }} / {{ host_total }} ok</span>{% endtrans %}
+      {% trans dot=(dot(host_overall | string)) %}{{ dot }} <span class="flex-1 font-medium">Host</span> <span class="text-xs text-pk-text-muted">{{ host_ok }} / {{ host_total }} ok</span>{% endtrans %}
     </div>
     {% endif %}
 
-    <div class="mt-3 flex items-center gap-2 border-t border-base-300 pt-2 text-xs opacity-60">
+    <div class="mt-3 flex items-center gap-2 border-t border-base-300 pt-2 text-xs text-pk-text-muted">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
       </svg>

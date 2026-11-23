@@ -24,7 +24,7 @@
       </span>
       <div class="flex-1 min-w-0">
         <p class="font-semibold leading-snug truncate">{{ title }}</p>
-        <p class="mt-0.5 flex items-center gap-1.5 text-xs opacity-70">
+        <p class="mt-0.5 flex items-center gap-1.5 text-xs text-pk-text-muted">
           {% if result.status == 'unavailable' %}
           <span class="h-2 w-2 shrink-0 rounded-full bg-base-content/30" aria-hidden="true"></span>{% trans %}Not available{% endtrans %}
           {% elif state == 'ok' %}
@@ -45,9 +45,9 @@
        names no path, no address and no error text. #}
     <div class="text-sm">
       {% if is_admin %}
-      <p class="opacity-80">{{ result.reason }}</p>
+      <p class="text-pk-text-muted">{{ result.reason }}</p>
       {% else %}
-      <p class="opacity-70">{% trans %}This widget cannot show its data right now.{% endtrans %}</p>
+      <p class="text-pk-text-muted">{% trans %}This widget cannot show its data right now.{% endtrans %}</p>
       {% endif %}
     </div>
 
@@ -55,20 +55,20 @@
 
     {% if payload.view == 'stat' %}
     <div>
-      <p class="text-3xl font-bold leading-none">{{ data.value }}{% if data.unit %} <span class="text-sm font-normal opacity-60">{{ data.unit }}</span>{% endif %}</p>
-      {% if data.label %}<p class="mt-2 text-sm opacity-70">{{ data.label }}</p>{% endif %}
+      <p class="text-3xl font-bold leading-none">{{ data.value }}{% if data.unit %} <span class="text-sm font-normal text-pk-text-muted">{{ data.unit }}</span>{% endif %}</p>
+      {% if data.label %}<p class="mt-2 text-sm text-pk-text-muted">{{ data.label }}</p>{% endif %}
     </div>
 
     {% elif payload.view == 'status' %}
     <div>
       <p class="text-xl font-semibold leading-tight">{{ data.message }}</p>
-      {% if data.label %}<p class="mt-2 text-sm opacity-70">{{ data.label }}</p>{% endif %}
+      {% if data.label %}<p class="mt-2 text-sm text-pk-text-muted">{{ data.label }}</p>{% endif %}
     </div>
 
     {% elif payload.view == 'progress' %}
     <div>
       <progress class="progress {{ bar }} w-full" value="{{ data.value }}" max="{{ data.max }}"></progress>
-      <p class="mt-2 text-sm opacity-70">{{ data.percent }}{{ data.unit or '' }}{% if data.label %} · {{ data.label }}{% endif %}</p>
+      <p class="mt-2 text-sm text-pk-text-muted">{{ data.percent }}{{ data.unit or '' }}{% if data.label %} · {{ data.label }}{% endif %}</p>
     </div>
 
     {% elif payload.view == 'list' %}
@@ -80,7 +80,7 @@
           <a href="{{ item.href }}" class="link link-hover"{% if item.href.startswith('http') %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ item.label }}</a>
           {% else %}{{ item.label }}{% endif %}
         </span>
-        <span class="flex shrink-0 items-center gap-1.5 opacity-80">
+        <span class="flex shrink-0 items-center gap-1.5 text-pk-text-muted">
           {{ item.value }}
           {% if item.state and item.state.value == 'ok' %}<span class="h-2 w-2 rounded-full bg-success" aria-hidden="true"></span><span class="sr-only">OK</span>
           {% elif item.state and item.state.value == 'warn' %}<span class="h-2 w-2 rounded-full bg-warning" aria-hidden="true"></span><span class="sr-only">{% trans %}Needs attention{% endtrans %}</span>
@@ -94,7 +94,7 @@
 
     {% if result.status == 'stale' %}
     {# The latest read failed and this is the last good one, so say how old it is. #}
-    <p class="text-xs opacity-60">
+    <p class="text-xs text-pk-text-muted">
       {% trans strftime=result.fetched_at.strftime('%H:%M') %}As of {{ strftime }} UTC.{% endtrans %}{% if is_admin %} {{ result.reason }}{% endif %}
     </p>
     {% endif %}
@@ -102,7 +102,7 @@
     {% set link = payload.link %}
     {% if link and (is_admin or not link.href.startswith('/')) %}
     <a href="{{ link.href }}"
-       class="link link-hover text-xs opacity-70"
+       class="link link-hover text-xs text-pk-text-muted"
        {% if link.href.startswith('http') %}target="_blank" rel="noopener noreferrer"{% endif %}>{{ link.label }} →</a>
     {% endif %}
 

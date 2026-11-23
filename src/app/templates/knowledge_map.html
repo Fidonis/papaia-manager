@@ -137,12 +137,12 @@
     <div class="card border border-base-300 bg-base-100">
       <div class="card-body gap-3 p-4">
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-sm opacity-60">{% trans %}View as{% endtrans %}</span>
+          <span class="text-sm text-pk-text-muted">{% trans %}View as{% endtrans %}</span>
           <select class="select select-bordered select-sm" x-model="viewAs" @change="draw()">
             <option value="*" x-text="T.everyone"></option>
             <template x-for="r in allRoles()" :key="r"><option :value="r" x-text="r"></option></template>
           </select>
-          <div class="ml-auto flex flex-wrap gap-3 text-xs opacity-70">
+          <div class="ml-auto flex flex-wrap gap-3 text-xs text-pk-text-muted">
             <span class="flex items-center gap-1"><span class="inline-block h-0 w-5 border-t-[3px] border-secondary"></span>{% trans %}source of truth{% endtrans %}</span>
             <span class="flex items-center gap-1"><span class="inline-block h-0 w-5 border-t-2 border-dashed border-warning"></span>{% trans %}"ask there instead"{% endtrans %}</span>
             <span class="flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full bg-error"></span>{% trans %}not described{% endtrans %}</span>
@@ -152,37 +152,37 @@
           <svg id="km-graph" class="km-graph block w-full min-w-[760px]" role="img"
                aria-label="{{ _('The AI map as a layered graph: topics, sources, access paths, agents') }}"></svg>
         </div>
-        <p x-show="!entries.length" class="text-sm opacity-60">{% trans %}The map is empty: no add-on, module or operator file declares a source yet, and no MCP server is connected.{% endtrans %}</p>
+        <p x-show="!entries.length" class="text-sm text-pk-text-muted">{% trans %}The map is empty: no add-on, module or operator file declares a source yet, and no MCP server is connected.{% endtrans %}</p>
       </div>
     </div>
     <aside class="card h-fit border border-base-300 bg-base-100 xl:sticky xl:top-4">
       <div class="card-body gap-2 p-4 text-sm">
-        <template x-if="!selected"><p class="opacity-60">{% trans %}Select a box to see the entry. Hover to follow its connections.{% endtrans %}</p></template>
+        <template x-if="!selected"><p class="text-pk-text-muted">{% trans %}Select a box to see the entry. Hover to follow its connections.{% endtrans %}</p></template>
         <template x-if="selected">
           <div class="space-y-2">
             <div class="flex items-center gap-2">
               <span class="badge badge-sm" x-text="kindLabel(selected.kind)"></span>
               <h3 class="font-brand text-base font-bold" x-text="selected.system || selected.label"></h3>
             </div>
-            <p class="font-mono text-xs opacity-60" x-text="selected.id"></p>
+            <p class="font-mono text-xs text-pk-text-muted" x-text="selected.id"></p>
             <p x-show="selected.coverage" x-text="selected.coverage"></p>
             <template x-if="selected.access && selected.access.length">
               <div><p class="text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Access paths{% endtrans %}</p>
                 <ul class="space-y-1"><template x-for="p in selected.access">
                   <li><span class="badge badge-outline badge-sm uppercase" x-text="p.via"></span>
                     <span class="font-mono text-xs" x-text="p.target || p.location"></span>
-                    <span x-show="p.collection" class="text-xs opacity-60" x-text="'/ ' + p.collection"></span>
-                    <span x-show="p.best_for" class="block text-xs opacity-70" x-text="p.best_for"></span>
-                    <span x-show="p.required_roles && p.required_roles.length" class="block text-xs opacity-60" x-text="T.roles_only + ' ' + (p.required_roles||[]).join(', ')"></span>
+                    <span x-show="p.collection" class="text-xs text-pk-text-muted" x-text="'/ ' + p.collection"></span>
+                    <span x-show="p.best_for" class="block text-xs text-pk-text-muted" x-text="p.best_for"></span>
+                    <span x-show="p.required_roles && p.required_roles.length" class="block text-xs text-pk-text-muted" x-text="T.roles_only + ' ' + (p.required_roles||[]).join(', ')"></span>
                   </li></template></ul></div>
             </template>
             <template x-if="selected.not_covered && selected.not_covered.length">
               <div><p class="text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Not here{% endtrans %}</p>
-                <ul class="list-disc pl-4"><template x-for="n in selected.not_covered"><li><span x-text="n.what"></span><span x-show="n.instead" class="opacity-60" x-text="' → ' + n.instead"></span></li></template></ul></div>
+                <ul class="list-disc pl-4"><template x-for="n in selected.not_covered"><li><span x-text="n.what"></span><span x-show="n.instead" class="text-pk-text-muted" x-text="' → ' + n.instead"></span></li></template></ul></div>
             </template>
-            <p x-show="selected.required_roles" class="text-xs opacity-70"><span class="font-semibold">{% trans %}Roles{% endtrans %}:</span> <span x-text="rolesText(selected)"></span></p>
+            <p x-show="selected.required_roles" class="text-xs text-pk-text-muted"><span class="font-semibold">{% trans %}Roles{% endtrans %}:</span> <span x-text="rolesText(selected)"></span></p>
             <p x-show="selected.delegate_when" class="text-xs"><span class="font-semibold">{% trans %}Delegate when{% endtrans %}:</span> <span x-text="selected.delegate_when"></span></p>
-            <p x-show="selected.declared_by" class="text-xs opacity-60"><span>{% trans %}Declared by{% endtrans %}:</span> <span x-text="selected.declared_by"></span></p>
+            <p x-show="selected.declared_by" class="text-xs text-pk-text-muted"><span>{% trans %}Declared by{% endtrans %}:</span> <span x-text="selected.declared_by"></span></p>
             <div class="flex flex-wrap gap-2 pt-1" x-show="selected.kind && selected.kind !== 'topic'">
               <button type="button" x-show="!selected.undeclared && selected.kind !== 'access'" class="btn btn-sm" @click="editEntry(selected.id)">{% trans %}Edit{% endtrans %}</button>
               <button type="button" x-show="selected.undeclared" class="btn btn-primary btn-sm" @click="describeServer(selected)">{% trans %}Describe the source behind it{% endtrans %}</button>
@@ -208,10 +208,10 @@
               <tr class="hover cursor-pointer" @click="selected = e; tab = 'map'; draw()">
                 <td><span class="badge badge-sm" x-text="kindLabel(e.kind)"></span>
                     <span x-show="e.undeclared" class="badge badge-error badge-sm" x-text="T.undeclared"></span></td>
-                <td><div class="font-medium" x-text="e.system"></div><div class="font-mono text-xs opacity-50" x-text="e.id"></div></td>
+                <td><div class="font-medium" x-text="e.system"></div><div class="font-mono text-xs text-pk-text-muted" x-text="e.id"></div></td>
                 <td><template x-for="p in e.access"><span class="mr-1 badge badge-outline badge-sm" x-text="p.via + (p.target ? ' · ' + p.target : '')"></span></template></td>
                 <td class="text-xs" x-text="rolesText(e)"></td>
-                <td class="text-xs opacity-70" x-text="e.declared_by"></td>
+                <td class="text-xs text-pk-text-muted" x-text="e.declared_by"></td>
                 <td class="whitespace-nowrap text-right">
                   <button type="button" x-show="!e.undeclared && e.kind !== 'mcp'" class="btn btn-ghost btn-xs" @click.stop="editEntry(e.id)">{% trans %}Edit{% endtrans %}</button>
                   <button type="button" x-show="e.undeclared" class="btn btn-ghost btn-xs" @click.stop="describeServer(e)">{% trans %}Describe{% endtrans %}</button>
@@ -230,7 +230,7 @@
     <span x-show="!isChanged('{{ key }}')" class="badge badge-ghost badge-xs" x-text="T.ed_from_declaration.replace('{origin}', ed.declared_by)"></span>
     <span x-show="isChanged('{{ key }}')" class="badge badge-info badge-xs" x-text="T.ed_changed"></span>
     <button type="button" x-show="ed.overridden.includes('{{ key }}') && !ed.reset.includes('{{ key }}')" class="link text-xs" @click="resetField('{{ key }}')">{% trans %}reset{% endtrans %}</button>
-    <span x-show="ed.reset.includes('{{ key }}')" class="text-xs opacity-70">{% trans %}back to the declaration on save{% endtrans %}</span>
+    <span x-show="ed.reset.includes('{{ key }}')" class="text-xs text-pk-text-muted">{% trans %}back to the declaration on save{% endtrans %}</span>
   </span>
   {%- endmacro %}
   <section x-show="tab==='edit'" class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -241,13 +241,13 @@
           <div class="grid gap-3 md:grid-cols-3">
             <button type="button" class="rounded-box border border-base-300 p-4 text-left hover:border-primary" @click="pickKind('server')">
               <div class="font-semibold">{% trans %}A source behind a server{% endtrans %}</div>
-              <div class="text-sm opacity-70">{% trans %}Knowledge an assistant reaches with a tool: a wiki, a CRM, a ticket system, a document index.{% endtrans %}</div></button>
+              <div class="text-sm text-pk-text-muted">{% trans %}Knowledge an assistant reaches with a tool: a wiki, a CRM, a ticket system, a document index.{% endtrans %}</div></button>
             <button type="button" class="rounded-box border border-base-300 p-4 text-left hover:border-primary" @click="pickKind('place')">
               <div class="font-semibold">{% trans %}A place without a tool{% endtrans %}</div>
-              <div class="text-sm opacity-70">{% trans %}Where people look themselves: a folder, a binder, a department. The assistant names the place instead of guessing.{% endtrans %}</div></button>
+              <div class="text-sm text-pk-text-muted">{% trans %}Where people look themselves: a folder, a binder, a department. The assistant names the place instead of guessing.{% endtrans %}</div></button>
             <button type="button" class="rounded-box border border-base-300 p-4 text-left hover:border-primary" @click="pickKind('agent')">
               <div class="font-semibold">{% trans %}An external agent{% endtrans %}</div>
-              <div class="text-sm opacity-70">{% trans %}An assistant elsewhere that takes over a task over Agent2Agent.{% endtrans %}</div></button>
+              <div class="text-sm text-pk-text-muted">{% trans %}An assistant elsewhere that takes over a task over Agent2Agent.{% endtrans %}</div></button>
           </div>
           <div><button type="button" class="btn btn-ghost btn-sm" @click="closeEditor()">{% trans %}Cancel{% endtrans %}</button></div>
         </div>
@@ -260,8 +260,8 @@
           <div class="flex flex-wrap items-center gap-2">
             <span class="badge badge-sm" x-text="kindLabel(ed.f.kind)"></span>
             <h3 class="font-brand text-base font-bold" x-text="ed.f.system || ed.id || '…'"></h3>
-            <span x-show="ed.mode === 'edit'" class="font-mono text-xs opacity-60" x-text="ed.id"></span>
-            <span x-show="ed.origin !== 'own' && ed.mode === 'edit'" class="ml-auto text-xs opacity-70">{% trans %}Changes are saved as an adjustment in overrides.yaml; the add-on's declaration stays as it is.{% endtrans %}</span>
+            <span x-show="ed.mode === 'edit'" class="font-mono text-xs text-pk-text-muted" x-text="ed.id"></span>
+            <span x-show="ed.origin !== 'own' && ed.mode === 'edit'" class="ml-auto text-xs text-pk-text-muted">{% trans %}Changes are saved as an adjustment in overrides.yaml; the add-on's declaration stays as it is.{% endtrans %}</span>
           </div>
 
           {# what is it #}
@@ -273,11 +273,11 @@
             <label class="form-control" x-show="ed.mode === 'new'"><span class="label-text">{% trans %}Id{% endtrans %}</span>
               <input class="input input-bordered input-sm font-mono" x-model="ed.id" @input="ed.idTouched = true" maxlength="120"
                      pattern="[a-z0-9][a-z0-9_\-]*(\.[a-z0-9_\-]+)*">
-              <span class="label-text-alt opacity-60">{% trans %}Fixed once saved. Lower case, dots and dashes.{% endtrans %}</span></label>
+              <span class="label-text-alt text-pk-text-muted">{% trans %}Fixed once saved. Lower case, dots and dashes.{% endtrans %}</span></label>
             <label class="form-control md:col-span-2"><span class="label-text">{% trans %}What is in it, and what for{% endtrans %} {{ mark('coverage') }}</span>
               <textarea class="textarea textarea-bordered textarea-sm" rows="3" x-model="ed.f.coverage" maxlength="2000"
                         placeholder="{{ _('e.g. Appointments of all technicians: customer visits, maintenance dates, on-call duty. Not: holidays.') }}"></textarea>
-              <span class="label-text-alt opacity-60">{% trans %}Write it the way a colleague would explain it. This text decides which questions land here.{% endtrans %}</span></label>
+              <span class="label-text-alt text-pk-text-muted">{% trans %}Write it the way a colleague would explain it. This text decides which questions land here.{% endtrans %}</span></label>
             <label class="form-control md:col-span-2" x-show="ed.f.kind === 'reference'"><span class="label-text">{% trans %}Where is it?{% endtrans %} {{ mark('location') }}</span>
               <input class="input input-bordered input-sm" x-model="ed.f.location" maxlength="500" :required="ed.f.kind === 'reference'"
                      placeholder="{{ _('e.g. Nextcloud, folder 04_Anlagen') }}"></label>
@@ -302,7 +302,7 @@
                      placeholder="{{ _('Add a topic, Enter') }}">
               <datalist id="km-topic-list"><template x-for="t in knownTopics()" :key="t.id"><option :value="t.label"></option></template></datalist>
             </div>
-            <p class="mt-1 text-xs opacity-60">{% trans %}"Authoritative": when two entries cover the topic, this one wins (e.g. prices in the ERP, not in an old offer).{% endtrans %} {{ mark('source_of_truth_for') }}</p>
+            <p class="mt-1 text-xs text-pk-text-muted">{% trans %}"Authoritative": when two entries cover the topic, this one wins (e.g. prices in the ERP, not in an old offer).{% endtrans %} {{ mark('source_of_truth_for') }}</p>
           </fieldset>
 
           {# example questions #}
@@ -319,7 +319,7 @@
             </ul>
             <input class="input input-bordered input-sm mt-2 w-full" x-model="ed.newQuestion" @keydown.enter.prevent="addQuestion()" maxlength="500"
                    placeholder="{{ _('A question someone would really ask, Enter') }}">
-            <p class="mt-1 text-xs opacity-60">{% trans %}Three to five real questions, in the words people use. No names of persons.{% endtrans %}</p>
+            <p class="mt-1 text-xs text-pk-text-muted">{% trans %}Three to five real questions, in the words people use. No names of persons.{% endtrans %}</p>
           </fieldset>
 
           {# not here #}
@@ -328,7 +328,7 @@
             <template x-for="(n, i) in ed.f.not_covered" :key="i">
               <div class="mb-2 flex flex-wrap items-center gap-2">
                 <input class="input input-bordered input-sm min-w-0 flex-1" x-model="n.what" maxlength="300" placeholder="{{ _('e.g. holidays') }}">
-                <span class="opacity-60">→</span>
+                <span class="text-pk-text-muted">→</span>
                 <select class="select select-bordered select-sm" x-model="n.instead">
                   <option value="">{% trans %}nowhere on the map{% endtrans %}</option>
                   <template x-for="e in routableOthers()" :key="e.id"><option :value="e.id" x-text="e.system" :selected="e.id === n.instead"></option></template>
@@ -375,7 +375,7 @@
                 <option value="hidden">{% trans %}does not see the entry at all{% endtrans %}</option>
                 <option value="acknowledge">{% trans %}learns that it exists and whom to ask{% endtrans %}</option>
               </select></label>
-            <p class="mt-1 text-xs opacity-60">{% trans %}This only decides what the map tells. Access to the data itself is decided by the target system.{% endtrans %}</p>
+            <p class="mt-1 text-xs text-pk-text-muted">{% trans %}This only decides what the map tells. Access to the data itself is decided by the target system.{% endtrans %}</p>
           </fieldset>
 
           <div x-show="ed.problems.length" class="alert alert-error text-sm"><ul class="list-disc pl-4"><template x-for="p in ed.problems"><li x-text="p"></li></template></ul></div>
@@ -394,7 +394,7 @@
             </template>
           </div>
           <div x-show="ed.showYaml">
-            <p class="text-xs opacity-60" x-text="ed.origin === 'own' || ed.mode === 'new' ? 'overlay/knowledge-map/sources.yaml' : 'overlay/knowledge-map/overrides.yaml'"></p>
+            <p class="text-xs text-pk-text-muted" x-text="ed.origin === 'own' || ed.mode === 'new' ? 'overlay/knowledge-map/sources.yaml' : 'overlay/knowledge-map/overrides.yaml'"></p>
             <pre class="max-h-80 overflow-auto rounded-box bg-base-200 p-3 text-xs" x-text="yamlPreview()"></pre>
           </div>
         </div>
@@ -407,14 +407,14 @@
           <h3 class="font-brand font-bold">{% trans %}Quality{% endtrans %}</h3>
           <ul class="space-y-1">
             <template x-for="c in qualityChecks()" :key="c.label">
-              <li class="flex items-start gap-2"><span x-text="c.ok ? '✓' : '○'" :class="c.ok ? 'text-success' : 'opacity-50'"></span><span x-text="c.label"></span></li>
+              <li class="flex items-start gap-2"><span x-text="c.ok ? '✓' : '○'" :class="c.ok ? 'text-success' : 'text-pk-text-muted'"></span><span x-text="c.label"></span></li>
             </template>
           </ul>
           <h3 class="font-brand font-bold">{% trans %}Probe{% endtrans %}</h3>
-          <p class="opacity-70">{% trans %}Asks the map server where each example question would land with this entry as it stands in the form. Each question is tested without itself among the examples, so it shows whether the description carries it. Nothing is saved or recorded.{% endtrans %}</p>
+          <p class="text-pk-text-muted">{% trans %}Asks the map server where each example question would land with this entry as it stands in the form. Each question is tested without itself among the examples, so it shows whether the description carries it. Nothing is saved or recorded.{% endtrans %}</p>
           <button type="button" class="btn btn-sm" :disabled="ed.probeBusy || !ed.f.example_queries.length || ed.f.kind === 'agent'" @click="runProbe()">{% trans %}Run the probe{% endtrans %}</button>
           <p x-show="ed.probe && ed.probe.degraded" class="text-xs text-warning" x-text="T.ed_degraded"></p>
-          <p x-show="ed.f.kind === 'agent'" class="text-xs opacity-60" x-text="T.ed_not_routable"></p>
+          <p x-show="ed.f.kind === 'agent'" class="text-xs text-pk-text-muted" x-text="T.ed_not_routable"></p>
           <template x-if="ed.probe && ed.probe.results">
             <ul class="space-y-2">
               <template x-for="r in ed.probe.results" :key="r.question">
@@ -430,7 +430,7 @@
   {# ── findings ────────────────────────────────────────────────────────────── #}
   <section x-show="tab==='findings'" class="card border border-base-300 bg-base-100">
     <div class="card-body gap-2 p-4">
-      <p class="text-sm opacity-60">{% trans %}What the last render found that weakens the map. High: can cause a wrong answer or a wrong "not available".{% endtrans %}</p>
+      <p class="text-sm text-pk-text-muted">{% trans %}What the last render found that weakens the map. High: can cause a wrong answer or a wrong "not available".{% endtrans %}</p>
       <p x-show="!findings.length" class="text-sm">{% trans %}Nothing found.{% endtrans %}</p>
       <ul class="divide-y divide-base-300">
         <template x-for="f in sortedFindings()">
@@ -447,7 +447,7 @@
   {# ── simulate ────────────────────────────────────────────────────────────── #}
   <section x-show="tab==='simulate'" class="card border border-base-300 bg-base-100">
     <div class="card-body gap-3 p-4">
-      <p class="text-sm opacity-60">{% trans %}Ask the map a question as a role, the way an assistant would. Nothing is recorded.{% endtrans %}</p>
+      <p class="text-sm text-pk-text-muted">{% trans %}Ask the map a question as a role, the way an assistant would. Nothing is recorded.{% endtrans %}</p>
       <form class="flex flex-wrap gap-2" @submit.prevent="simulate()">
         <input class="input input-bordered input-sm min-w-0 flex-1" x-model="sim.need" required maxlength="500" placeholder="{{ _('e.g. which customers still have open invoices') }}">
         <select class="select select-bordered select-sm" x-model="sim.role">
@@ -467,16 +467,16 @@
                 <span class="font-brand font-bold" x-text="(i+1) + '. ' + r.system"></span>
                 <span class="badge badge-sm" x-text="r.match"></span>
                 <span x-show="r.unverified" class="badge badge-error badge-sm" x-text="T.undeclared"></span>
-                <span class="ml-auto font-mono text-xs opacity-60" x-text="Number(r.confidence).toFixed(2)"></span>
+                <span class="ml-auto font-mono text-xs text-pk-text-muted" x-text="Number(r.confidence).toFixed(2)"></span>
               </div>
-              <p class="text-xs opacity-70" x-text="r.why || r.reasoning"></p>
+              <p class="text-xs text-pk-text-muted" x-text="r.why || r.reasoning"></p>
               <p x-show="r.instruction" class="text-xs" x-text="r.instruction"></p>
               <div class="mt-1 flex flex-wrap gap-1"><template x-for="p in r.access || []"><span class="badge badge-outline badge-sm" x-text="p.via + ' · ' + (p.target || p.location || '') + (p.best_for ? ' — ' + p.best_for : '')"></span></template></div>
             </div>
           </template>
           <template x-if="sim.result.agents && sim.result.agents.length">
             <div class="text-sm"><p class="text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Agents to delegate to{% endtrans %}</p>
-              <template x-for="a in sim.result.agents"><p><span class="font-medium" x-text="a.system"></span> <span class="opacity-60" x-text="a.delegate_when"></span></p></template></div>
+              <template x-for="a in sim.result.agents"><p><span class="font-medium" x-text="a.system"></span> <span class="text-pk-text-muted" x-text="a.delegate_when"></span></p></template></div>
           </template>
         </div>
       </template>
@@ -496,7 +496,7 @@
             <template x-for="(n, id) in usage.top_sources"><div class="flex items-center gap-2"><span class="w-40 truncate" x-text="nameOf(id)"></span>
               <progress class="progress progress-secondary flex-1" :value="n" :max="maxOf(usage.top_sources)"></progress><span class="w-8 text-right" x-text="n"></span></div></template>
             <p class="text-xs font-semibold uppercase text-pk-text-muted">{% trans %}Asked, but nothing fits{% endtrans %}</p>
-            <ul class="list-disc pl-4"><template x-for="u in usage.unmatched || []"><li><span x-text="u.need"></span> <span class="opacity-60" x-text="'×' + u.count"></span></li></template></ul>
+            <ul class="list-disc pl-4"><template x-for="u in usage.unmatched || []"><li><span x-text="u.need"></span> <span class="text-pk-text-muted" x-text="'×' + u.count"></span></li></template></ul>
             <template x-if="usage.telemetry">
               <div class="rounded-box bg-base-200 p-2 text-xs">
                 <p class="font-semibold">{% trans %}What the map server records{% endtrans %}</p>
@@ -533,14 +533,14 @@
   {# ── suggestions ─────────────────────────────────────────────────────────── #}
   <section x-show="tab==='suggestions'" class="card border border-base-300 bg-base-100">
     <div class="card-body gap-2 p-4 text-sm">
-      <p class="opacity-60">{% trans %}Mined from the last four weeks of use. Nothing changes until you accept; accepting writes the change into the operator files and renders the map.{% endtrans %}</p>
+      <p class="text-pk-text-muted">{% trans %}Mined from the last four weeks of use. Nothing changes until you accept; accepting writes the change into the operator files and renders the map.{% endtrans %}</p>
       <p x-show="suggestionsLoaded && !suggestions.length">{% trans %}No suggestions at the moment.{% endtrans %}</p>
       <ul class="divide-y divide-base-300">
         <template x-for="s in suggestions" :key="s.id">
           <li class="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto]">
             <div>
               <div class="flex flex-wrap items-center gap-2"><span class="badge badge-sm" x-text="s.kind"></span><span class="font-medium" x-text="s.title"></span></div>
-              <p class="text-xs opacity-60" x-text="evidenceText(s)"></p>
+              <p class="text-xs text-pk-text-muted" x-text="evidenceText(s)"></p>
               <p x-show="s.check" class="text-xs" :class="s.check && s.check.regression ? 'text-error' : 'text-success'" x-text="checkText(s)"></p>
               <pre class="mt-1 overflow-x-auto rounded bg-base-200 p-2 text-xs" x-text="yamlish(s.override || s.declaration || s.gold)"></pre>
             </div>
@@ -562,19 +562,19 @@
   <section x-show="tab==='files'" class="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
     <ul class="menu h-fit rounded-box border border-base-300 bg-base-100">
       <template x-for="f in files" :key="f.key">
-        <li><a :class="file && file.key===f.key && 'active'" @click="openFile(f)"><span x-text="f.label"></span><span class="font-mono text-xs opacity-60" x-text="f.filename"></span></a></li>
+        <li><a :class="file && file.key===f.key && 'active'" @click="openFile(f)"><span x-text="f.label"></span><span class="font-mono text-xs text-pk-text-muted" x-text="f.filename"></span></a></li>
       </template>
     </ul>
     <div class="card border border-base-300 bg-base-100" x-show="file">
       <div class="card-body gap-2 p-4">
-        <p class="text-sm opacity-70" x-text="file && file.description"></p>
+        <p class="text-sm text-pk-text-muted" x-text="file && file.description"></p>
         <textarea class="textarea textarea-bordered h-96 font-mono text-xs" x-model="draft" spellcheck="false" @input.debounce.500ms="checkDraft()"></textarea>
         <ul x-show="problems.length" class="list-disc pl-4 text-sm text-error"><template x-for="p in problems"><li x-text="p"></li></template></ul>
         <div class="flex gap-2">
           <button type="button" class="btn btn-primary btn-sm" :disabled="busy || problems.length || !file || draft === file.content" @click="saveFile()">{% trans %}Save and render{% endtrans %}</button>
           <button type="button" class="btn btn-ghost btn-sm" :disabled="!file || draft === file.content" @click="draft = file.content; problems = []">{% trans %}Discard changes{% endtrans %}</button>
         </div>
-        <p class="text-xs opacity-60">{% trans %}The previous version of each file is kept in manager/knowledge-map-history.{% endtrans %}</p>
+        <p class="text-xs text-pk-text-muted">{% trans %}The previous version of each file is kept in manager/knowledge-map-history.{% endtrans %}</p>
       </div>
     </div>
   </section>
@@ -601,16 +601,16 @@
         {# findings and exceptions #}
         <div x-show="gov.sub==='findings'" class="card border border-base-300 bg-base-100">
           <div class="card-body gap-3 p-4 text-sm">
-            <p class="opacity-60">{% trans %}Policy findings from the last render and from the live check against LiteLLM, each with what to change. An accepted finding always has an expiry; when it expires, the finding returns. New or changed findings with high action needed can be sent through Notifications.{% endtrans %}</p>
+            <p class="text-pk-text-muted">{% trans %}Policy findings from the last render and from the live check against LiteLLM, each with what to change. An accepted finding always has an expiry; when it expires, the finding returns. New or changed findings with high action needed can be sent through Notifications.{% endtrans %}</p>
             <p x-show="!gov.data.findings.length">{% trans %}Nothing found.{% endtrans %}</p>
             <ul class="divide-y divide-base-300">
               <template x-for="f in gov.data.findings" :key="f.origin + f.code + f.target">
-                <li class="flex flex-wrap items-start gap-2 py-2" :class="f.exception && 'opacity-60'">
+                <li class="flex flex-wrap items-start gap-2 py-2" :class="f.exception && 'text-pk-text-muted'">
                   <span class="badge badge-sm whitespace-nowrap" :class="{'badge-error': f.severity==='high', 'badge-warning': f.severity==='medium'}" x-text="sevLabel(f.severity)"></span>
                   <span class="badge badge-ghost badge-sm" x-text="T['origin_' + f.origin] || f.origin"></span>
                   <div class="min-w-0 flex-1"><div x-text="f.message"></div>
                     <div x-show="f.fix" class="text-xs"><span class="font-semibold">{% trans %}Fix:{% endtrans %}</span> <span x-text="f.fix"></span></div>
-                    <div class="font-mono text-xs opacity-60" x-text="f.code + (f.target ? ' · ' + f.target : '')"></div>
+                    <div class="font-mono text-xs text-pk-text-muted" x-text="f.code + (f.target ? ' · ' + f.target : '')"></div>
                     <div x-show="f.exception || f.expired_exception" class="text-xs" :class="f.expired_exception && 'text-warning'" x-text="excText(f)"></div></div>
                   <button type="button" x-show="!f.exception && f.target && canAccept(f)" class="btn btn-ghost btn-xs" @click="acceptRisk(f)">{% trans %}Accept until …{% endtrans %}</button>
                 </li>
@@ -634,7 +634,7 @@
               </form>
             </template>
             <h3 class="font-brand font-bold">{% trans %}Accepted findings{% endtrans %}</h3>
-            <p x-show="!gov.data.exceptions.length" class="opacity-60">{% trans %}None.{% endtrans %}</p>
+            <p x-show="!gov.data.exceptions.length" class="text-pk-text-muted">{% trans %}None.{% endtrans %}</p>
             <ul class="divide-y divide-base-300">
               <template x-for="(x, i) in gov.data.exceptions" :key="x.finding + x.subject + i">
                 <li class="flex flex-wrap items-start gap-2 py-2">
@@ -651,22 +651,22 @@
         {# sources #}
         <div x-show="gov.sub==='matrix'" class="card border border-base-300 bg-base-100">
           <div class="card-body gap-3 p-4">
-            <p class="text-sm opacity-60">{% trans %}One row per source, reference and server. Highlighted cells are gaps. A value the add-on suggests is never effective until you confirm it.{% endtrans %}</p>
+            <p class="text-sm text-pk-text-muted">{% trans %}One row per source, reference and server. Highlighted cells are gaps. A value the add-on suggests is never effective until you confirm it.{% endtrans %}</p>
             <div class="overflow-x-auto">
               <table class="table table-sm">
                 <thead><tr><th>{% trans %}Entry{% endtrans %}</th><th>{% trans %}Owner (role){% endtrans %}</th><th>{% trans %}Classification{% endtrans %}</th><th>{% trans %}Personal data{% endtrans %}</th><th>{% trans %}Data subjects{% endtrans %}</th><th>{% trans %}Record of processing{% endtrans %}</th><th></th></tr></thead>
                 <tbody>
                   <template x-for="r in gov.data.matrix" :key="r.id">
                     <tr class="hover align-top">
-                      <td><div class="font-medium" x-text="r.system"></div><div class="font-mono text-xs opacity-50" x-text="r.id"></div></td>
+                      <td><div class="font-medium" x-text="r.system"></div><div class="font-mono text-xs text-pk-text-muted" x-text="r.id"></div></td>
                       <td :class="has(r, 'owner') && 'bg-warning/20'" x-text="r.owner || T.not_set"></td>
                       <td :class="has(r, 'classification') && 'bg-warning/20'">
                         <span class="badge badge-sm" :class="r.classification_confirmed ? 'badge-neutral' : 'badge-ghost'" x-text="r.classification_confirmed ? lbl('classes', r.classification) : T.not_set"></span>
-                        <div x-show="r.open_proposal.classification" class="text-xs opacity-60" x-text="T.suggested + ' ' + lbl('classes', r.open_proposal.classification)"></div>
+                        <div x-show="r.open_proposal.classification" class="text-xs text-pk-text-muted" x-text="T.suggested + ' ' + lbl('classes', r.open_proposal.classification)"></div>
                       </td>
                       <td :class="has(r, 'personal_data') && 'bg-warning/20'">
                         <span x-text="lbl('personal_data', r.personal_data)"></span>
-                        <div x-show="r.open_proposal.personal_data" class="text-xs opacity-60" x-text="T.suggested + ' ' + lbl('personal_data', r.open_proposal.personal_data)"></div>
+                        <div x-show="r.open_proposal.personal_data" class="text-xs text-pk-text-muted" x-text="T.suggested + ' ' + lbl('personal_data', r.open_proposal.personal_data)"></div>
                       </td>
                       <td class="text-xs" x-text="r.data_subjects.map(x => lbl('subjects', x)).join(', ')"></td>
                       <td :class="has(r, 'ropa_ref') && 'bg-warning/20'" x-text="r.ropa_ref"></td>
@@ -689,7 +689,7 @@
                     <option value="" x-text="T.not_set" :selected="!gov.form.classification"></option>
                     <template x-for="c in gov.data.enums.classes" :key="c"><option :value="c" x-text="lbl('classes', c)" :selected="c === gov.form.classification"></option></template>
                   </select>
-                  <span x-show="gov.edit.proposal.classification" class="label-text-alt opacity-60" x-text="T.suggested + ' ' + lbl('classes', gov.edit.proposal.classification)"></span></label>
+                  <span x-show="gov.edit.proposal.classification" class="label-text-alt text-pk-text-muted" x-text="T.suggested + ' ' + lbl('classes', gov.edit.proposal.classification)"></span></label>
                 <label class="form-control"><span class="label-text">{% trans %}Personal data{% endtrans %}</span>
                   <select class="select select-bordered select-sm" x-model="gov.form.personal_data">
                     <option value="" x-text="T.not_set" :selected="!gov.form.personal_data"></option>
@@ -715,7 +715,7 @@
         {# models #}
         <div x-show="gov.sub==='models'" class="card border border-base-300 bg-base-100">
           <div class="card-body gap-3 p-4">
-            <p class="text-sm opacity-60">{% trans %}Every model LiteLLM serves, every model an agent names and the embedding model. A model without a tier is evaluated as third country.{% endtrans %}</p>
+            <p class="text-sm text-pk-text-muted">{% trans %}Every model LiteLLM serves, every model an agent names and the embedding model. A model without a tier is evaluated as third country.{% endtrans %}</p>
             <div class="overflow-x-auto">
               <table class="table table-sm">
                 <thead><tr><th>{% trans %}Model{% endtrans %}</th><th>{% trans %}Hosts{% endtrans %}</th><th>{% trans %}Evaluated as{% endtrans %}</th><th>{% trans %}Used by{% endtrans %}</th><th>{% trans %}Tier{% endtrans %}</th></tr></thead>
@@ -748,7 +748,7 @@
         {# agents #}
         <div x-show="gov.sub==='agents'" class="card border border-base-300 bg-base-100">
           <div class="card-body gap-3 p-4">
-            <p class="text-sm opacity-60">{% trans %}Each agent with the tier of its model and the entries it reaches. Whether the policy allows that tier for an entry is shown per access path.{% endtrans %}</p>
+            <p class="text-sm text-pk-text-muted">{% trans %}Each agent with the tier of its model and the entries it reaches. Whether the policy allows that tier for an entry is shown per access path.{% endtrans %}</p>
             <p x-show="!gov.data.agents.length" class="text-sm">{% trans %}No agents on the map.{% endtrans %}</p>
             <div class="overflow-x-auto" x-show="gov.data.agents.length">
               <table class="table table-sm">
@@ -756,7 +756,7 @@
                 <tbody>
                   <template x-for="a in gov.data.agents" :key="a.id">
                     <tr class="align-top">
-                      <td><div class="font-medium" x-text="a.system"></div><div class="font-mono text-xs opacity-50" x-text="a.id"></div></td>
+                      <td><div class="font-medium" x-text="a.system"></div><div class="font-mono text-xs text-pk-text-muted" x-text="a.id"></div></td>
                       <td class="font-mono text-xs" x-text="a.model || T.not_set"></td>
                       <td><span class="badge badge-sm" :class="a.tier_declared ? '' : 'badge-warning'" x-text="a.tier ? lbl('tiers', a.tier) : T.not_set"></span></td>
                       <td><div class="flex flex-wrap gap-1"><template x-for="x in a.reached">
@@ -771,7 +771,7 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2 text-sm">
-          <span class="opacity-60">{% trans %}Facts for your GRC, CMDB or wiki:{% endtrans %}</span>
+          <span class="text-pk-text-muted">{% trans %}Facts for your GRC, CMDB or wiki:{% endtrans %}</span>
           <a class="btn btn-sm" href="/api/v1/knowledge-map/governance/export/facts.json" download>JSON</a>
           <a class="btn btn-sm" href="/api/v1/knowledge-map/governance/export/facts.csv" download>CSV</a>
         </div>

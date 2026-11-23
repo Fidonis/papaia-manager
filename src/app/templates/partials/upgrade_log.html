@@ -5,7 +5,7 @@
    durable half of this page: the runner container can be dismissed and the
    record of what it did stays. #}
 {% if not entries %}
-<p class="text-sm opacity-60 px-4 py-3">
+<p class="text-sm text-pk-text-muted px-4 py-3">
   {% trans %}No upgrade has been recorded for this installation yet.{% endtrans %}
 </p>
 {% else %}
@@ -26,23 +26,23 @@
     <span class="text-sm font-mono">{{ entry.from_version }} &rarr; {{ entry.to_version }}</span>
 
     {% if entry.stage %}
-    <span class="text-xs opacity-60">{% trans stage=entry.stage %}stopped at {{ stage }}{% endtrans %}</span>
+    <span class="text-xs text-pk-text-muted">{% trans stage=entry.stage %}stopped at {{ stage }}{% endtrans %}</span>
     {% endif %}
     {% if entry.details.id %}
-    <span class="text-xs opacity-60 font-mono">{{ entry.details.id }}</span>
+    <span class="text-xs text-pk-text-muted font-mono">{{ entry.details.id }}</span>
     {% endif %}
     {% if entry.details.migrations %}
-    <span class="text-xs opacity-50">{% trans migrations=entry.details.migrations %}{{ migrations }} migration(s){% endtrans %}</span>
+    <span class="text-xs text-pk-text-muted">{% trans migrations=entry.details.migrations %}{{ migrations }} migration(s){% endtrans %}</span>
     {% endif %}
 
     <span class="grow"></span>
 
     {% if entry.restore_point %}
-    <a href="/backup" class="link link-hover text-xs opacity-60 font-mono">
+    <a href="/backup" class="link link-hover text-xs text-pk-text-muted font-mono">
       {{ entry.restore_point }}
     </a>
     {% endif %}
-    <span class="text-xs opacity-40 font-mono">{{ entry.at }}</span>
+    <span class="text-xs text-pk-text-muted font-mono">{{ entry.at }}</span>
   </li>
   {% endfor %}
 </ul>

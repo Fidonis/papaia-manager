@@ -1,19 +1,17 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% set pk_lang = pk_frame_lang() %}{% import "pk/components.html" as kit with context %}
 {% from "partials/_settings_tabs.html" import tabs %}
 
 {# The installation's settings as the core keeps them. Expects: shown (installation.show) or
    problem (why the core could not be asked), name_max, suffix_max, contact_max, mail_max.
    Every card is saved on its own and the page reloads, so the sidebar shows the new brand. #}
 {% block page_title %}{% trans %}Settings{% endtrans %}{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Settings of the whole installation. Every module shows them within a minute.{% endtrans %}</p>{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Settings of the whole installation. Every module shows them within a minute.{% endtrans %}</p>{% endblock %}
 
 {% block content %}
 {{ tabs('installation') }}
 
 {% if shown is none %}
-<div role="alert" class="alert alert-error max-w-3xl">
-  <span>{% trans %}The settings could not be read from the core.{% endtrans %} {{ problem }}</span>
-</div>
+<div class="max-w-3xl">{{ kit.alert(_("The settings could not be read from the core.") ~ " " ~ problem, tone="error") }}</div>
 {% else %}
 {% set brand = shown.branding %}
 {% set contact = shown.contact or {} %}
@@ -32,20 +30,20 @@
     <div class="card-body gap-5">
       <div>
         <h2 class="font-brand text-lg font-bold">{% trans %}Name and logo{% endtrans %}</h2>
-        <p class="text-sm opacity-60">{% trans %}Shown at the top of the sidebar of every module.{% endtrans %}</p>
+        <p class="text-sm text-pk-text-muted">{% trans %}Shown at the top of the sidebar of every module.{% endtrans %}</p>
       </div>
       <form id="brand-form" class="space-y-4">
         <label class="form-control w-full">
           <span class="label-text mb-1 text-sm font-medium">{% trans %}Name of the installation{% endtrans %}</span>
           <input id="brand-name" type="text" maxlength="{{ name_max }}" class="input input-bordered w-full"
                  value="{{ brand.name or '' }}">
-          <span class="label-text-alt mt-1 opacity-60">{% trans %}Leave empty to use the product name.{% endtrans %}</span>
+          <span class="label-text-alt mt-1 text-pk-text-muted">{% trans %}Leave empty to use the product name.{% endtrans %}</span>
         </label>
         <label class="form-control w-full">
           <span class="label-text mb-1 text-sm font-medium">{% trans %}Suffix{% endtrans %}</span>
           <input id="brand-suffix" type="text" maxlength="{{ suffix_max }}" class="input input-bordered w-full"
                  value="{{ brand.suffix or '' }}">
-          <span class="label-text-alt mt-1 opacity-60">{% trans %}A second, smaller line under the name. Leave empty for none.{% endtrans %}</span>
+          <span class="label-text-alt mt-1 text-pk-text-muted">{% trans %}A second, smaller line under the name. Leave empty for none.{% endtrans %}</span>
         </label>
         <button type="submit" class="btn btn-primary btn-sm">{% trans %}Save{% endtrans %}</button>
       </form>
@@ -55,14 +53,14 @@
       <div class="space-y-3">
         <div>
           <h3 class="text-sm font-semibold">{% trans %}Logo{% endtrans %}</h3>
-          <p class="text-sm opacity-60">{% trans %}PNG, JPEG or WebP, up to 1&nbsp;MiB.{% endtrans %}</p>
+          <p class="text-sm text-pk-text-muted">{% trans %}PNG, JPEG or WebP, up to 1&nbsp;MiB.{% endtrans %}</p>
         </div>
         <div class="flex flex-wrap items-center gap-4">
           <div class="flex h-14 w-40 items-center justify-center rounded-lg border border-base-300 bg-base-200 px-3">
             {% if brand.logo %}
             <img src="/_kit/brand/logo" alt="{{ _('Current logo') }}" class="h-8 w-auto max-w-full object-contain">
             {% else %}
-            <span class="text-xs opacity-60">{% trans %}No logo{% endtrans %}</span>
+            <span class="text-xs text-pk-text-muted">{% trans %}No logo{% endtrans %}</span>
             {% endif %}
           </div>
           <div class="flex flex-wrap gap-2">
@@ -84,7 +82,7 @@
     <div class="card-body gap-5">
       <div>
         <h2 class="font-brand text-lg font-bold">{% trans %}Contact point{% endtrans %}</h2>
-        <p class="text-sm opacity-60">{% trans %}Whom people ask when a module says they have no access or a function is not allowed. Without one, modules say that no contact point is on record.{% endtrans %}</p>
+        <p class="text-sm text-pk-text-muted">{% trans %}Whom people ask when a module says they have no access or a function is not allowed. Without one, modules say that no contact point is on record.{% endtrans %}</p>
       </div>
       <form id="contact-form" class="space-y-4">
         <label class="form-control w-full">
@@ -104,7 +102,7 @@
                    value="{{ contact.phone or '' }}">
           </label>
         </div>
-        <span class="label-text-alt opacity-60">{% trans %}Leave the name empty to remove the contact point.{% endtrans %}</span>
+        <span class="label-text-alt text-pk-text-muted">{% trans %}Leave the name empty to remove the contact point.{% endtrans %}</span>
         <div><button type="submit" class="btn btn-primary btn-sm">{% trans %}Save{% endtrans %}</button></div>
       </form>
     </div>
@@ -114,7 +112,7 @@
     <div class="card-body gap-4">
       <div>
         <h2 class="font-brand text-lg font-bold">{% trans %}Approvals{% endtrans %}</h2>
-        <p class="text-sm opacity-60">{% trans %}With the four-eyes principle on, an approval in any module needs a second person. With it off, people may approve their own changes, and each such approval is recorded as one.{% endtrans %}</p>
+        <p class="text-sm text-pk-text-muted">{% trans %}With the four-eyes principle on, an approval in any module needs a second person. With it off, people may approve their own changes, and each such approval is recorded as one.{% endtrans %}</p>
       </div>
       <label class="flex items-center gap-3 text-sm {{ '' if shown.four_eyes_fixed else 'cursor-pointer' }}">
         <input id="four-eyes" type="checkbox" class="toggle toggle-primary"
@@ -133,7 +131,7 @@
     <div class="card-body gap-5">
       <div>
         <h2 class="font-brand text-lg font-bold">{% trans %}Delegations{% endtrans %}</h2>
-        <p class="text-sm opacity-60">{% trans %}How long Flow and the assistant may act for a person after the person allowed it: days without use and days in all.{% endtrans %}</p>
+        <p class="text-sm text-pk-text-muted">{% trans %}How long Flow and the assistant may act for a person after the person allowed it: days without use and days in all.{% endtrans %}</p>
       </div>
       {% if not lifetime.within_bound %}
       <div role="alert" class="alert alert-warning text-sm">
@@ -153,7 +151,7 @@
                    class="input input-bordered w-full" value="{{ lifetime.max_days }}">
           </label>
         </div>
-        <span class="label-text-alt opacity-60">{% trans profile=shown.security_profile, idle=lifetime.idle_limit, total=lifetime.max_limit %}At most {{ idle }} days without use and {{ total }} days in all in the security profile “{{ profile }}”.{% endtrans %}</span>
+        <span class="label-text-alt text-pk-text-muted">{% trans profile=shown.security_profile, idle=lifetime.idle_limit, total=lifetime.max_limit %}At most {{ idle }} days without use and {{ total }} days in all in the security profile “{{ profile }}”.{% endtrans %}</span>
         <div><button type="submit" class="btn btn-primary btn-sm">{% trans %}Save{% endtrans %}</button></div>
       </form>
     </div>

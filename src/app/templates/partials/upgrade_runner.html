@@ -45,7 +45,7 @@
         <span class="text-sm font-medium">papAIa {{ upgrade_runner.target }}</span>
 
         {% if upgrade_runner.exit_code is not none %}
-        <span class="text-xs opacity-40">{% trans exit_code=upgrade_runner.exit_code %}exit code {{ exit_code }}{% endtrans %}</span>
+        <span class="text-xs text-pk-text-muted">{% trans exit_code=upgrade_runner.exit_code %}exit code {{ exit_code }}{% endtrans %}</span>
         {% endif %}
 
         <span class="grow"></span>
@@ -56,11 +56,11 @@
       </div>
 
       {% if upgrade_runner.is_running %}
-      <p class="text-sm opacity-60 leading-relaxed">
+      <p class="text-sm text-pk-text-muted leading-relaxed">
         {% trans %}The stack is being stopped, migrated and started again. This page will lose its connection to the manager for a while &mdash; that is expected, and the result appears here once it is back.{% endtrans %}
       </p>
       {% elif upgrade_runner.succeeded %}
-      <p class="text-sm opacity-60 leading-relaxed">
+      <p class="text-sm text-pk-text-muted leading-relaxed">
         {% trans %}papaia-manager was upgraded along with the stack, so this page is now served by a different build than the one that started the upgrade.{% endtrans %}
         <button class="link" onclick="window.location.reload()">{% trans %}Reload the page{% endtrans %}</button>
         {% trans %}to pick it up.{% endtrans %}
@@ -84,7 +84,7 @@
             <div class="min-w-0">
               <p class="text-sm">{{ phase.label }}</p>
               {% if phase.detail %}
-              <p class="text-xs opacity-50 font-mono">{{ phase.detail }}</p>
+              <p class="text-xs text-pk-text-muted font-mono">{{ phase.detail }}</p>
               {% endif %}
             </div>
           {% elif phase.state == "running" %}
@@ -92,7 +92,7 @@
             <div class="min-w-0">
               <p class="text-sm font-medium">{{ phase.label }}</p>
               {% if phase.detail %}
-              <p class="text-xs opacity-50 font-mono">{{ phase.detail }}</p>
+              <p class="text-xs text-pk-text-muted font-mono">{{ phase.detail }}</p>
               {% endif %}
             </div>
           {% elif phase.state == "failed" %}
@@ -103,21 +103,21 @@
             </svg>
             <div class="min-w-0">
               <p class="text-sm font-medium text-error">{{ phase.label }}</p>
-              <p class="text-xs opacity-60">{% trans %}stopped here{% endtrans %}</p>
+              <p class="text-xs text-pk-text-muted">{% trans %}stopped here{% endtrans %}</p>
             </div>
           {% elif phase.state == "skipped" %}
             <span class="h-1.5 w-1.5 mt-2 shrink-0 rounded-full bg-base-300"></span>
             <div class="min-w-0">
-              <p class="text-sm opacity-40">{% trans label=phase.label %}{{ label }} &mdash; skipped{% endtrans %}</p>
+              <p class="text-sm text-pk-text-muted">{% trans label=phase.label %}{{ label }} &mdash; skipped{% endtrans %}</p>
               {# The image cleanup says why it did not run. The upgrade itself
                  has succeeded by then, so this is information, not an error. #}
               {% if phase.detail %}
-              <p class="text-xs opacity-50 font-mono break-all">{{ phase.detail }}</p>
+              <p class="text-xs text-pk-text-muted font-mono break-all">{{ phase.detail }}</p>
               {% endif %}
             </div>
           {% else %}
             <span class="h-1.5 w-1.5 mt-2 shrink-0 rounded-full bg-base-300"></span>
-            <p class="text-sm opacity-40">{{ phase.label }}</p>
+            <p class="text-sm text-pk-text-muted">{{ phase.label }}</p>
           {% endif %}
         </li>
         {% endfor %}
@@ -126,12 +126,12 @@
       {% if node_progress %}
       <ul class="text-xs">
         {% for name, step in node_progress %}
-        <li class="py-0.5"><span class="font-medium">{{ name }}</span>: <span class="font-mono opacity-60">{{ step }}</span></li>
+        <li class="py-0.5"><span class="font-medium">{{ name }}</span>: <span class="font-mono text-pk-text-muted">{{ step }}</span></li>
         {% endfor %}
       </ul>
       {% endif %}
 
-      <div x-show="offline" class="text-sm opacity-60">
+      <div x-show="offline" class="text-sm text-pk-text-muted">
         <span class="loading loading-dots loading-xs"></span>
         {% trans %}Manager not reachable &mdash; reconnecting&hellip;{% endtrans %}
       </div>
@@ -146,11 +146,11 @@
           {% for problem in provisioning %}
           <li>
             {{ problem.summary }}
-            <span class="block text-xs opacity-60 font-mono break-all">{{ problem.line }}</span>
+            <span class="block text-xs text-pk-text-muted font-mono break-all">{{ problem.line }}</span>
           </li>
           {% endfor %}
         </ul>
-        <p class="text-xs opacity-70 mb-2 leading-relaxed">
+        <p class="text-xs text-pk-text-muted mb-2 leading-relaxed">
           {% trans %}Once the stack is healthy, run these on the host papaia-manager runs on:{% endtrans %}
         </p>
         <pre class="rounded bg-base-300 p-3 text-xs whitespace-pre-wrap overflow-x-auto">{% for problem in provisioning %}{{ problem.command }}
@@ -167,12 +167,12 @@
       <div class="rounded-lg border border-error bg-error/10 p-4">
         {% if recovery_generated %}
         <p class="text-sm font-semibold mb-1">{% trans %}How to get back{% endtrans %}</p>
-        <p class="text-xs opacity-70 mb-3 leading-relaxed">
+        <p class="text-xs text-pk-text-muted mb-3 leading-relaxed">
           {% trans %}The upgrade stopped between steps, before papaia-ctl could print its own way back. These commands are assembled from the recorded versions &mdash; run them on the host:{% endtrans %}
         </p>
         {% else %}
         <p class="text-sm font-semibold mb-1">{% trans %}There is no automatic rollback{% endtrans %}</p>
-        <p class="text-xs opacity-70 mb-3 leading-relaxed">
+        <p class="text-xs text-pk-text-muted mb-3 leading-relaxed">
           {% trans %}A rollback that fails after a migration failed would leave an installation nobody can reason about, so papaia-ctl stops instead and says how to get back. Run these on the host:{% endtrans %}
         </p>
         {% endif %}
@@ -182,7 +182,7 @@
 
       {% if upgrade_log %}
       <details {% if not upgrade_runner.is_running and not upgrade_runner.succeeded %}open{% endif %}>
-        <summary class="text-xs opacity-60 cursor-pointer">{% trans %}Output{% endtrans %}</summary>
+        <summary class="text-xs text-pk-text-muted cursor-pointer">{% trans %}Output{% endtrans %}</summary>
         <pre class="mt-2 max-h-96 overflow-y-auto rounded-lg bg-base-300 p-3 text-xs whitespace-pre-wrap">{{ upgrade_log }}</pre>
       </details>
       {% endif %}

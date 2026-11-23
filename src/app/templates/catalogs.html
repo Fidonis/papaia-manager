@@ -32,12 +32,12 @@
     <h3 class="text-lg font-bold mb-4">{% trans %}Add catalog{% endtrans %}</h3>
     <form id="add-catalog-form" onsubmit="submitAddCatalog(event)">
       <div class="form-control mb-3">
-        <label class="label"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
-        <input name="name" type="text" class="input input-bordered" required
+        <label class="label" for="add-name"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
+        <input id="add-name" name="name" type="text" class="input input-bordered" required
                placeholder="{{ _('my-catalog') }}" pattern="[a-z0-9][a-z0-9\-]{0,31}">
       </div>
       <div class="form-control mb-3">
-        <label class="label"><span class="label-text">{% trans %}Type{% endtrans %}</span></label>
+        <label class="label" for="catalog-type-select"><span class="label-text">{% trans %}Type{% endtrans %}</span></label>
         <select id="catalog-type-select" name="type" class="select select-bordered"
                 onchange="toggleCatalogFields(this.value)">
           <option value="git">{% trans %}Git{% endtrans %}</option>
@@ -45,18 +45,18 @@
         </select>
       </div>
       <div id="field-url" class="form-control mb-3">
-        <label class="label"><span class="label-text">URL</span></label>
-        <input name="url" type="url" class="input input-bordered" required
+        <label class="label" for="add-url"><span class="label-text">URL</span></label>
+        <input id="add-url" name="url" type="url" class="input input-bordered" required
                placeholder="{{ _('https://github.com/example/addons.git') }}">
       </div>
       <div id="field-ref" class="form-control mb-3">
-        <label class="label"><span class="label-text">{% trans %}Branch{% endtrans %}</span></label>
-        <input name="ref" type="text" class="input input-bordered" required
+        <label class="label" for="add-ref"><span class="label-text">{% trans %}Branch{% endtrans %}</span></label>
+        <input id="add-ref" name="ref" type="text" class="input input-bordered" required
                value="main" pattern="[A-Za-z0-9._/\-]{1,100}">
       </div>
       <div id="field-path" class="form-control mb-3 hidden">
-        <label class="label"><span class="label-text">{% trans %}Path{% endtrans %}</span></label>
-        <input name="path" type="text" class="input input-bordered" disabled
+        <label class="label" for="add-path"><span class="label-text">{% trans %}Path{% endtrans %}</span></label>
+        <input id="add-path" name="path" type="text" class="input input-bordered" disabled
                placeholder="{{ _('/path/to/local/addons') }}">
       </div>
       <div class="modal-action">
@@ -75,24 +75,24 @@
     <h3 class="text-lg font-bold mb-4">{% trans %}Edit catalog{% endtrans %}</h3>
     <form id="edit-catalog-form" onsubmit="submitEditCatalog(event)">
       <div class="form-control mb-3">
-        <label class="label"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
+        <label class="label" for="edit-name"><span class="label-text">{% trans %}Name{% endtrans %}</span></label>
         <input id="edit-name" type="text" class="input input-bordered" disabled>
       </div>
       <div class="form-control mb-3">
-        <label class="label"><span class="label-text">{% trans %}Type{% endtrans %}</span></label>
+        <label class="label" for="edit-type"><span class="label-text">{% trans %}Type{% endtrans %}</span></label>
         <input id="edit-type" type="text" class="input input-bordered" disabled>
       </div>
       <div id="edit-field-url" class="form-control mb-3">
-        <label class="label"><span class="label-text">URL</span></label>
+        <label class="label" for="edit-url"><span class="label-text">URL</span></label>
         <input id="edit-url" name="url" type="url" class="input input-bordered">
       </div>
       <div id="edit-field-ref" class="form-control mb-3">
-        <label class="label"><span class="label-text">{% trans %}Branch{% endtrans %}</span></label>
+        <label class="label" for="edit-ref"><span class="label-text">{% trans %}Branch{% endtrans %}</span></label>
         <input id="edit-ref" name="ref" type="text" class="input input-bordered"
                pattern="[A-Za-z0-9._/\-]{1,100}">
       </div>
       <div id="edit-field-path" class="form-control mb-3 hidden">
-        <label class="label"><span class="label-text">{% trans %}Path{% endtrans %}</span></label>
+        <label class="label" for="edit-path"><span class="label-text">{% trans %}Path{% endtrans %}</span></label>
         <input id="edit-path" name="path" type="text" class="input input-bordered">
       </div>
       <div class="form-control mb-3">

@@ -8,7 +8,7 @@
   <div class="card-body gap-5">
     <div>
       <h2 class="font-brand text-lg font-bold">{% trans %}Host Monitoring{% endtrans %}</h2>
-      <p class="text-sm opacity-60">
+      <p class="text-sm text-pk-text-muted">
         {% trans %}How often the Host page, the status row and the sidebar dot measure the machine again. Applies to all administrators. What Docker's data takes is measured less often, every tenth interval but never sooner than 5 minutes and never later than an hour, because the daemon has to size every volume to answer.{% endtrans %}
       </p>
     </div>
@@ -25,7 +25,7 @@
             <option value="min" {% if in_minutes %}selected{% endif %}>{% trans %}minutes{% endtrans %}</option>
           </select>
         </div>
-        <span id="host-interval-hint" class="label-text-alt mt-1 opacity-60">
+        <span id="host-interval-hint" class="label-text-alt mt-1 text-pk-text-muted">
           {% trans refresh_max=refresh_max // 60 %}Between {{ refresh_min }} seconds and {{ refresh_max }} minutes. The default is {{ refresh_default }} seconds. The Host page also has a Re-check button for an immediate reading.{% endtrans %}
         </span>
         <span id="host-interval-error" class="label-text-alt mt-1 hidden text-error" role="alert"></span>

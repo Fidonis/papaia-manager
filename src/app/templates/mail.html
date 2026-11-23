@@ -11,7 +11,7 @@
 {# The core predates the relay. Nothing below could work, so say what is missing and stop. #}
 <div class="max-w-3xl rounded-xl border border-warning bg-warning/10 px-5 py-4 text-sm">
   <p class="font-semibold">{% trans %}This papAIa core has no mail relay.{% endtrans %}</p>
-  <p class="mt-1 opacity-70">
+  <p class="mt-1 text-pk-text-muted">
     {% trans %}The relay (the <code>smtp</code> profile) comes with papAIa 1.6.0. Upgrade the deployment to use it; this page then sets it up.{% endtrans %}
   </p>
 </div>
@@ -35,7 +35,7 @@
     <div class="card-body gap-5">
       <div>
         <h2 class="font-brand text-lg font-bold">{% trans %}Mail Server{% endtrans %}</h2>
-        <p class="text-sm opacity-60">
+        <p class="text-sm text-pk-text-muted">
           {% trans %}The stack sends mail through one internal relay. It holds the credentials of your mail server and forwards to it, so no other service needs them. Keycloak uses it for password mails, and the Users page offers “email a link” once it is on.{% endtrans %}
         </p>
       </div>
@@ -72,7 +72,7 @@
                    value="{{ mail.port }}">
           </div>
         </div>
-        <p class="-mt-2 text-xs opacity-60">
+        <p class="-mt-2 text-xs text-pk-text-muted">
           {% trans %}STARTTLS (port 587) and TLS (port 465) verify the server's certificate. Without encryption (port 25) no login is possible: it would cross the network in the clear.{% endtrans %}
         </p>
 
@@ -111,7 +111,7 @@
                    autocomplete="off" value="{{ mail.from_name }}">
           </div>
         </div>
-        <p id="mail-from-hint" class="-mt-2 text-xs opacity-60">
+        <p id="mail-from-hint" class="-mt-2 text-xs text-pk-text-muted">
           {% trans %}Your provider may only accept addresses it knows: a verified identity, a mailbox or an alias. The relay sends only from the domain of this address.{% endtrans %}
         </p>
 
@@ -134,7 +134,7 @@
     <div class="card-body gap-4">
       <div>
         <h2 class="font-brand text-lg font-bold">{% trans %}Test Mail{% endtrans %}</h2>
-        <p class="text-sm opacity-60">
+        <p class="text-sm text-pk-text-muted">
           {% trans %}Sends one message through the relay. “Sent” means the relay took it; it is delivered, or retried for a day, from there.{% endtrans %}
         </p>
       </div>
@@ -151,7 +151,7 @@
         </button>
       </form>
       {% if not (mail.enabled and mail.configured) %}
-      <p class="text-xs opacity-60">
+      <p class="text-xs text-pk-text-muted">
         {% trans %}Switch the relay on in <a href="/settings/modules" class="link link-secondary">Settings › Modules</a>{% endtrans %}
         {% if not mail.configured %}{% trans %}(after saving the mail server above){% endtrans %} {% endif %}{% trans %}to send a test mail.{% endtrans %}
       </p>
@@ -163,7 +163,7 @@
   <section class="card bg-base-100 border border-base-300">
     <div class="card-body gap-2">
       <h2 class="font-brand text-lg font-bold">{% trans %}Good To Know{% endtrans %}</h2>
-      <ul class="list-disc space-y-1 pl-5 text-sm opacity-70">
+      <ul class="list-disc space-y-1 pl-5 text-sm text-pk-text-muted">
         <li>{% trans %}The relay accepts and queues mail. If the mail server is down, messages wait and are retried for a day; the status above shows how many are waiting.{% endtrans %}</li>
         <li>{% trans %}The password is never shown. Leave the field empty to keep the stored one, which is only used for the same server, port and login it was stored with.{% endtrans %}</li>
         <li>{% trans %}Any container on a network the relay is attached to can send mail from the sender domain without a login.{% endtrans %}</li>

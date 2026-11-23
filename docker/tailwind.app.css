@@ -186,3 +186,12 @@
   opacity: 1;
   transition: opacity 200ms ease-in;
 }
+
+/* ── Long values in kit messages ──────────────────────────────────────────
+   A message of the core can carry a path or an address with no place to break. Inside the
+   kit's alert it breaks anywhere rather than widening the page past a 320 px screen
+   (PLT-61-A6); the kit's own values (colour, space, type) are untouched. */
+
+:where(#pk-main) .pk-message-text {
+  overflow-wrap: anywhere;
+}

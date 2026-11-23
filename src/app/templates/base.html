@@ -88,7 +88,7 @@
   {% endif %}
 
   {% if is_admin %}{% set locked = nodes_lock() %}{% if locked %}
-  <div class="alert alert-warning mb-6"><span>{{ locked }}</span></div>
+  <div class="mb-6">{{ kit.alert(locked, tone="warning") }}</div>
   {% endif %}{% endif %}
   {% block content %}{% endblock %}
 </div>

@@ -28,12 +28,12 @@
      @keydown.escape="i = -1">
   <p class="text-sm font-semibold">{{ caption }}</p>
   {% if chart.empty %}
-  <div class="flex h-48 items-center justify-center text-sm opacity-60">{{ empty_text }}</div>
+  <div class="flex h-48 items-center justify-center text-sm text-pk-text-muted">{{ empty_text }}</div>
   {% else %}
   <div class="mt-4 flex gap-2">
     <div class="relative h-48 w-12 shrink-0" aria-hidden="true">
       {% for tick in chart.ticks %}
-      <span class="absolute right-0 translate-y-1/2 text-[11px] leading-none tabular-nums opacity-60" style="bottom: {{ '%.1f' | format(tick.pct) }}%">{{ tick.label }}</span>
+      <span class="absolute right-0 translate-y-1/2 text-[11px] leading-none tabular-nums text-pk-text-muted" style="bottom: {{ '%.1f' | format(tick.pct) }}%">{{ tick.label }}</span>
       {% endfor %}
     </div>
     <div class="min-w-0 grow">
@@ -83,7 +83,7 @@
       </div>
       <div class="mt-1 flex gap-px" aria-hidden="true">
         {% for column in chart.columns %}
-        <div class="flex min-w-0 flex-1 justify-center"><span class="whitespace-nowrap text-[11px] opacity-60"><span class="hidden sm:inline">{{ column.label }}</span><span class="sm:hidden">{{ column.short }}</span></span></div>
+        <div class="flex min-w-0 flex-1 justify-center"><span class="whitespace-nowrap text-[11px] text-pk-text-muted"><span class="hidden sm:inline">{{ column.label }}</span><span class="sm:hidden">{{ column.short }}</span></span></div>
         {% endfor %}
       </div>
     </div>
@@ -108,7 +108,7 @@
   <div class="bg-base-100 px-5 py-3.5">
     <p class="text-xs font-medium text-pk-text-muted uppercase tracking-wide">{{ item.label }}</p>
     <p class="mt-1 text-2xl font-bold font-brand tabular-nums">{{ item.value }}</p>
-    <p class="mt-0.5 text-xs opacity-60">{{ item.sub }}</p>
+    <p class="mt-0.5 text-xs text-pk-text-muted">{{ item.sub }}</p>
   </div>
   {% endfor %}
 </div>
@@ -154,8 +154,8 @@
 
 {# ── LiteLLM cannot be read ───────────────────────────────────────── #}
 {% if not reading.available %}
-<div class="flex flex-col items-center gap-4 py-24 text-center opacity-80">
-  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+<div class="flex flex-col items-center gap-4 py-24 text-center text-pk-text-muted">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-pk-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
   </svg>
   <p class="text-lg font-semibold">{% trans %}Models and usage are not available{% endtrans %}</p>
@@ -166,7 +166,7 @@
 
 {# ── Status and window ────────────────────────────────────────────── #}
 <div class="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-  <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs opacity-70">
+  <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-pk-text-muted">
     <span class="h-2 w-2 shrink-0 rounded-full bg-success" aria-hidden="true"></span>
     <span>{% trans %}LiteLLM is reachable{% endtrans %}</span>
     <span aria-hidden="true">·</span>
@@ -185,7 +185,7 @@
        {% if r.active %}aria-current="true"{% endif %}>{{ r.label }}</a>
     {% endfor %}
   </div>
-  <p class="text-xs opacity-60">{{ window_text }}</p>
+  <p class="text-xs text-pk-text-muted">{{ window_text }}</p>
 </div>
 
 {% if q.range == 'custom' %}
@@ -204,10 +204,10 @@
     <input type="date" name="to" value="{{ q.end }}" max="{{ today }}" required class="input input-bordered input-sm">
   </label>
   <button type="submit" class="btn btn-primary btn-sm">{% trans %}Apply{% endtrans %}</button>
-  <p class="basis-full text-xs opacity-60">{% trans days=max_days %}First and last day, both included, at most {{ days }} days.{% endtrans %}</p>
+  <p class="basis-full text-xs text-pk-text-muted">{% trans days=max_days %}First and last day, both included, at most {{ days }} days.{% endtrans %}</p>
 </form>
 {% endif %}
-<p class="mb-4 text-xs opacity-50">{% trans %}Days are UTC days. LiteLLM writes its usage in batches, so the newest requests can take a minute to show up.{% endtrans %}</p>
+<p class="mb-4 text-xs text-pk-text-muted">{% trans %}Days are UTC days. LiteLLM writes its usage in batches, so the newest requests can take a minute to show up.{% endtrans %}</p>
 
 {% if window_notice %}
 <div role="alert" class="alert alert-warning mb-4 py-2 text-sm">
@@ -239,9 +239,9 @@
   <a {{ link(model='').attrs | xmlattr }} class="btn btn-ghost btn-xs">&larr; {% trans %}All models{% endtrans %}</a>
   <h2 class="font-brand text-xl font-bold">{{ model.name }}</h2>
   {% if row.type %}<span class="badge badge-ghost badge-sm">{{ row.type }}</span>{% endif %}
-  {% if row.provider %}<span class="text-sm opacity-60">{{ row.provider }}</span>{% endif %}
+  {% if row.provider %}<span class="text-sm text-pk-text-muted">{{ row.provider }}</span>{% endif %}
 </div>
-<p class="mb-4 text-sm opacity-70">
+<p class="mb-4 text-sm text-pk-text-muted">
   {% if row.price %}
   {% trans price=row.price %}Price per million tokens, input / output: {{ price }}{% endtrans %}
   {% elif model.entry %}
@@ -269,18 +269,18 @@
     <tbody>
       {% for r in rows %}
       {% set u = r.usage %}
-      <tr class="{{ '' if u.used else 'opacity-60' }}">
+      <tr class="{{ '' if u.used else 'text-pk-text-muted' }}">
         <td class="max-w-[16rem]">
           <div class="flex items-center gap-2">
             {{ swatch(u.slot) }}
             <a {{ r.link.attrs | xmlattr }} class="link link-hover truncate font-semibold">{{ u.name }}</a>
           </div>
-          <p class="truncate pl-[1.125rem] text-xs opacity-60">
+          <p class="truncate pl-[1.125rem] text-xs text-pk-text-muted">
             {{ [r.type, r.provider] | select | join(' · ') }}{% if not u.configured %}{% trans %}no longer served by LiteLLM{% endtrans %}{% endif %}
           </p>
         </td>
         <td class="hidden whitespace-nowrap tabular-nums md:table-cell">
-          {% if r.price %}{{ r.price }}{% elif u.configured %}<span class="opacity-60">{% trans %}no price set{% endtrans %}</span>{% else %}–{% endif %}
+          {% if r.price %}{{ r.price }}{% elif u.configured %}<span class="text-pk-text-muted">{% trans %}no price set{% endtrans %}</span>{% else %}–{% endif %}
         </td>
         <td class="text-right tabular-nums">{{ fmt.count(u.totals.tokens) }}</td>
         <td class="text-right tabular-nums">
@@ -296,14 +296,14 @@
                       style="stroke: var(--chart-{{ 'other' if u.slot is none else u.slot }})"/>
           </svg>
           {% elif u.used %}
-          <span class="text-xs opacity-60">{% trans %}no tokens{% endtrans %}</span>
+          <span class="text-xs text-pk-text-muted">{% trans %}no tokens{% endtrans %}</span>
           {% else %}
-          <span class="text-xs opacity-60">{% trans %}not used{% endtrans %}</span>
+          <span class="text-xs text-pk-text-muted">{% trans %}not used{% endtrans %}</span>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="py-8 text-center text-sm opacity-60">{% trans %}LiteLLM serves no models.{% endtrans %}</td></tr>
+      <tr><td colspan="6" class="py-8 text-center text-sm text-pk-text-muted">{% trans %}LiteLLM serves no models.{% endtrans %}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -332,7 +332,7 @@
       <div class="h-1.5 rounded {{ 'chart-so' if s.slot is none else 'chart-s' ~ s.slot }}" style="width: {{ '%.1f' | format(s.pct) }}%"></div>
     </div>
     <span class="text-sm tabular-nums">{{ s.value }}</span>
-    <span class="w-12 text-right text-xs tabular-nums opacity-60">{{ '<1 %' if s.pct < 1 else ('%.0f' | format(s.pct) ~ ' %') }}</span>
+    <span class="w-12 text-right text-xs tabular-nums text-pk-text-muted">{{ '<1 %' if s.pct < 1 else ('%.0f' | format(s.pct) ~ ' %') }}</span>
   </li>
   {% endfor %}
 </ul>
@@ -341,7 +341,7 @@
 {% endif %}
 
 {% if unpriced and kind != 'detail' %}
-<p class="mt-3 text-xs opacity-60">{% trans %}A model without a price shows no spend however much it is used. A price can be set for it in LiteLLM.{% endtrans %}</p>
+<p class="mt-3 text-xs text-pk-text-muted">{% trans %}A model without a price shows no spend however much it is used. A price can be set for it in LiteLLM.{% endtrans %}</p>
 {% endif %}
 {{ day_details(day_table) }}
 

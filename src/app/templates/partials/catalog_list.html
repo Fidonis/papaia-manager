@@ -1,6 +1,6 @@
 {% from "partials/_actions.html" import row_actions, overflow_menu %}
 {% if not catalogs %}
-<div class="flex flex-col items-center py-16 gap-3 opacity-60">
+<div class="flex flex-col items-center py-16 gap-3 text-pk-text-muted">
   <p class="text-lg font-medium">{% trans %}No catalogs configured{% endtrans %}</p>
   <p class="text-sm">{% trans %}Add a catalog to browse addons.{% endtrans %}</p>
 </div>
@@ -44,7 +44,7 @@
             <span x-show="!busy">{% trans %}Refresh{% endtrans %}</span>
           </button>
           <a style="display:none" x-show="busy && jobId" :href="'/jobs/' + jobId" target="_blank"
-             class="link link-hover text-xs opacity-60">{% trans %}view log{% endtrans %}</a>
+             class="link link-hover text-xs text-pk-text-muted">{% trans %}view log{% endtrans %}</a>
           {% else %}
           <button class="btn btn-outline btn-xs"
                   hx-get="/partials/catalogs"
@@ -66,10 +66,10 @@
         {% endcall %}
       </div>
 
-      <div class="text-sm opacity-60 mt-1">
+      <div class="text-sm text-pk-text-muted mt-1">
         {% if c.type == "git" %}
           <span class="font-mono">{{ c.url }}</span>
-          <span class="opacity-50 ml-2">@ {{ c.ref }}</span>
+          <span class="text-pk-text-muted ml-2">@ {{ c.ref }}</span>
           {% if c.auth %}<span class="badge badge-warning badge-xs ml-2">{% trans %}private{% endtrans %}</span>{% endif %}
         {% else %}
           <span class="font-mono">{{ c.path }}</span>

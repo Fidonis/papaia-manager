@@ -35,7 +35,7 @@
     <li><a @click="askStack('restart')">{% trans %}Restart stack{% endtrans %}</a></li>
     <li><a @click="askStack('stop')">{% trans %}Stop stack{% endtrans %}</a></li>
     <li class="mt-1 pt-1 border-t border-base-300">
-      <span class="text-xs opacity-50 block leading-snug">
+      <span class="text-xs text-pk-text-muted block leading-snug">
         {% trans %}Runs in a separate container and keeps going after this page goes down. Add-ons keep running.{% endtrans %}
       </span>
     </li>
@@ -83,23 +83,23 @@
         restart: fmtPlural(sel.length, {{ _('Restart {count} service group?')|tojson|forceescape }}, {{ _('Restart {count} service groups?')|tojson|forceescape }}),
       }[pending] || ''"></span>
     </h3>
-    <p class="text-sm opacity-60 mb-4" x-show="pending === 'stop'">
+    <p class="text-sm text-pk-text-muted mb-4" x-show="pending === 'stop'">
       {% trans %}Containers are stopped. Volumes and configuration are untouched.{% endtrans %}
     </p>
-    <p class="text-sm opacity-60 mb-4" x-show="pending === 'start'">
+    <p class="text-sm text-pk-text-muted mb-4" x-show="pending === 'start'">
       {% trans %}Renders the active configuration and brings the selected profiles up.{% endtrans %}
     </p>
-    <p class="text-sm opacity-60 mb-4" x-show="pending === 'restart'">
+    <p class="text-sm text-pk-text-muted mb-4" x-show="pending === 'restart'">
       {% trans %}Stops the selected profiles, then starts them again. One job, one log.{% endtrans %}
     </p>
-    <p class="text-sm opacity-60 mb-4" style="display:none" x-show="pending === 'restart' && cleanUp">
+    <p class="text-sm text-pk-text-muted mb-4" style="display:none" x-show="pending === 'restart' && cleanUp">
       {% trans %}With the containers removed in between, this is a full recreate.{% endtrans %}
     </p>
 
     <div class="rounded-lg border border-base-300 px-4 py-3 mb-4 max-h-56 overflow-y-auto">
       <template x-for="g in sel" :key="g">
         <div class="mb-2 last:mb-0">
-          <p class="text-xs font-mono opacity-50" x-text="g"></p>
+          <p class="text-xs font-mono text-pk-text-muted" x-text="g"></p>
           <p class="text-sm" x-text="(groups[g] || []).join(' · ')"></p>
         </div>
       </template>
@@ -120,9 +120,9 @@
       <input type="checkbox" class="checkbox checkbox-sm" x-model="cleanUp">
       <span>
         {% trans %}Also remove the containers{% endtrans %}
-        <span class="opacity-50 font-mono text-xs">{% trans %}--clean-up{% endtrans %}</span>
-        <span class="block text-xs opacity-50" x-show="pending === 'stop'">{% trans %}Volumes are kept. The page will read “not deployed” afterwards.{% endtrans %}</span>
-        <span class="block text-xs opacity-50" style="display:none" x-show="pending === 'restart'">{% trans %}Volumes are kept. They are created again by the start that follows.{% endtrans %}</span>
+        <span class="text-pk-text-muted font-mono text-xs">{% trans %}--clean-up{% endtrans %}</span>
+        <span class="block text-xs text-pk-text-muted" x-show="pending === 'stop'">{% trans %}Volumes are kept. The page will read “not deployed” afterwards.{% endtrans %}</span>
+        <span class="block text-xs text-pk-text-muted" style="display:none" x-show="pending === 'restart'">{% trans %}Volumes are kept. They are created again by the start that follows.{% endtrans %}</span>
       </span>
     </label>
 
@@ -151,7 +151,7 @@
         restart: {{ _('Restart the whole stack?')|tojson|forceescape }},
       }[stackPending] || ''"></span>
     </h3>
-    <p class="text-sm opacity-60 mb-4">
+    <p class="text-sm text-pk-text-muted mb-4">
       {% trans %}Every profile, including the one serving this page. It runs in a separate container, so it finishes even once this panel is gone — the result appears here again afterwards. Add-ons keep running.{% endtrans %}
     </p>
 
@@ -165,8 +165,8 @@
       <input type="checkbox" class="checkbox checkbox-sm" x-model="stackCleanUp">
       <span>
         {% trans %}Also remove the containers{% endtrans %}
-        <span class="opacity-50 font-mono text-xs">{% trans %}--clean-up{% endtrans %}</span>
-        <span class="block text-xs opacity-50">{% trans %}Volumes and configuration are kept either way.{% endtrans %}</span>
+        <span class="text-pk-text-muted font-mono text-xs">{% trans %}--clean-up{% endtrans %}</span>
+        <span class="block text-xs text-pk-text-muted">{% trans %}Volumes and configuration are kept either way.{% endtrans %}</span>
       </span>
     </label>
 
@@ -196,11 +196,11 @@
   {% if profile == self_profile %}
     {# The manager's own profile. Locked rather than hidden, so the list stays a
        complete picture of what is deployed. #}
-    <svg class="h-4 w-4 shrink-0 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+    <svg class="h-4 w-4 shrink-0 text-pk-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
          aria-label="{{ profile }} controls this panel and cannot be selected"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
   {% elif link_profile and profile == link_profile %}
     {# Locked for the same reason: stopping it cuts the nodes off from each other. #}
-    <svg class="h-4 w-4 shrink-0 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+    <svg class="h-4 w-4 shrink-0 text-pk-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
          aria-label="{{ _('%(profile)s connects the nodes and cannot be selected', profile=profile) }}"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
   {% else %}
     <input type="checkbox" class="checkbox checkbox-sm shrink-0"

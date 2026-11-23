@@ -20,31 +20,34 @@
     <div class="card-body gap-0 p-0">
       <div class="px-6 pt-5 pb-3">
         <h2 class="font-brand text-lg font-bold">{% trans %}Overlay Files{% endtrans %}</h2>
-        <p class="text-sm opacity-60">
+        <p class="text-sm text-pk-text-muted">
           {% trans %}An overlay is merged last: mappings are merged, lists are appended and scalars are replaced. Applying one recreates the services that read the file.{% endtrans %}
         </p>
       </div>
+      {# One target per file, apart by the kit's minimum gap between two targets. #}
+      <div class="flex flex-col gap-2 px-3 pb-3">
       <template x-for="t in targets" :key="t.key">
         <button type="button"
-                class="flex w-full flex-wrap items-start gap-x-3 gap-y-1 border-t border-base-300 px-6 py-3 text-left hover:bg-base-300/40"
+                class="flex w-full flex-wrap items-start gap-x-3 gap-y-1 rounded-lg border border-base-300 px-3 py-3 text-left hover:bg-base-300/40"
                 :class="t.key === key ? 'bg-secondary/10' : ''"
                 @click="select(t.key)">
           <div class="min-w-0 flex-1 basis-40">
             <p class="text-sm font-semibold" x-text="t.label"></p>
-            <p class="break-all font-mono text-xs opacity-60" x-text="t.path"></p>
-            <p class="text-xs opacity-50" x-show="t.node" x-text="fmt({{ _('Recreated on node {node}')|tojson|forceescape }}, { node: t.node })"></p>
+            <p class="break-all font-mono text-xs text-pk-text-muted" x-text="t.path"></p>
+            <p class="text-xs text-pk-text-muted" x-show="t.node" x-text="fmt({{ _('Recreated on node {node}')|tojson|forceescape }}, { node: t.node })"></p>
           </div>
           <span class="badge badge-sm shrink-0" :class="t.exists ? 'badge-primary' : 'badge-ghost'"
                 x-text="t.exists ? fmtPlural(t.lines, {{ _('Overlay active · {count} line')|tojson|forceescape }}, {{ _('Overlay active · {count} lines')|tojson|forceescape }}) : {{ _('No overlay')|tojson|forceescape }}"></span>
         </button>
       </template>
+      </div>
       <template x-for="o in other" :key="o.path">
         <div class="flex flex-wrap items-start gap-x-3 gap-y-1 border-t border-base-300 px-6 py-3">
           {# The reason as a line under the path: a badge keeps its height and the longer
              notes run out of it on a phone. #}
           <div class="min-w-0 flex-1">
             <p class="break-all font-mono text-xs" x-text="o.path"></p>
-            <p class="text-xs opacity-60" x-text="o.note"></p>
+            <p class="text-xs text-pk-text-muted" x-text="o.note"></p>
           </div>
         </div>
       </template>
@@ -61,7 +64,7 @@
       {# A host-side edit between page load and Apply. The draft stays; nothing was written. #}
       <div x-show="conflict" style="display:none" class="rounded-xl border border-warning bg-warning/10 px-5 py-3 text-sm" role="alert">
         <p class="font-semibold">{% trans %}This file changed on the host after you opened it{% endtrans %}</p>
-        <p class="text-xs opacity-70">{% trans %}Your draft is kept and nothing was overwritten. Applying it saves the host's version to Versions first.{% endtrans %}</p>
+        <p class="text-xs text-pk-text-muted">{% trans %}Your draft is kept and nothing was overwritten. Applying it saves the host's version to Versions first.{% endtrans %}</p>
         <div class="mt-2 flex flex-wrap gap-2">
           <button type="button" class="btn btn-outline btn-xs" @click="reloadFile()">{% trans %}Reload file{% endtrans %}</button>
           <button type="button" class="btn btn-outline btn-xs" @click="askApplyAnyway()">{% trans %}Apply my draft anyway{% endtrans %}</button>
@@ -72,7 +75,7 @@
         <span x-text="fmt({{ _('Draft restored from the version of {when}. Review it, then apply it to make it live.')|tojson|forceescape }}, { when: restoredFrom })"></span>
       </div>
 
-      <nav class="tabs tabs-bordered overflow-x-auto overflow-y-hidden" role="tablist" aria-label="{{ _('Overlay') }}">
+      <nav class="tabs tabs-bordered gap-2 overflow-x-auto overflow-y-hidden" role="tablist" aria-label="{{ _('Overlay') }}">
         <a role="tab" class="tab whitespace-nowrap" :class="tab === 'overlay' ? 'tab-active font-semibold' : ''" @click="tab = 'overlay'">{% trans %}Overlay{% endtrans %}</a>
         <a role="tab" class="tab whitespace-nowrap" :class="tab === 'effective' ? 'tab-active font-semibold' : ''" @click="showEffective()">{% trans %}Effective Result{% endtrans %}</a>
         <a role="tab" class="tab whitespace-nowrap" :class="tab === 'versions' ? 'tab-active font-semibold' : ''" @click="tab = 'versions'">
@@ -83,9 +86,9 @@
       {# --- Overlay ------------------------------------------------------------------ #}
       <div x-show="tab === 'overlay'">
         <div class="flex overflow-hidden rounded-lg border border-base-300 bg-base-200">
-          <pre class="select-none overflow-hidden border-r border-base-300 px-2 py-3 text-right font-mono text-xs leading-relaxed opacity-40" x-ref="gutter" x-text="lineNumbers()"></pre>
+          <pre class="select-none overflow-hidden border-r border-base-300 px-2 py-3 text-right font-mono text-xs leading-relaxed text-pk-text-muted" x-ref="gutter" x-text="lineNumbers()"></pre>
           <textarea x-ref="editor" x-model="draft"
-                    class="h-72 w-full resize-y bg-transparent px-3 py-3 font-mono text-xs leading-relaxed outline-none"
+                    class="h-72 w-full resize-y bg-transparent px-3 py-3 font-mono text-xs leading-relaxed"
                     spellcheck="false" wrap="off" autocomplete="off"
                     aria-label="{{ _('Overlay file') }}"
                     placeholder="{{ _('# Nothing here yet. Add the settings that should win over the stack&#39;s, for example:&#10;# webSearch:&#10;# allowedAddresses:&#10;# - 10.0.0.5:8080') }}"
@@ -106,17 +109,17 @@
           <span class="flex-1"></span>
           <button type="button" class="btn btn-ghost btn-sm text-error" x-show="file && file.exists" style="display:none" @click="$refs.discard.showModal()">{% trans %}Discard overlay{% endtrans %}</button>
         </div>
-        <p class="mt-2 text-xs opacity-60" x-text="applyNote()"></p>
+        <p class="mt-2 text-xs text-pk-text-muted" x-text="applyNote()"></p>
       </div>
 
       {# --- Effective result --------------------------------------------------------- #}
       <div x-show="tab === 'effective'" style="display:none">
-        <p class="mb-2 text-xs opacity-60">
+        <p class="mb-2 text-xs text-pk-text-muted">
           <span x-html="fmtHtml({{ _('What <span class="font-mono">{path}</span> renders to with this draft, against what it renders to now. The core merges the layers in memory; nothing is written.')|tojson|forceescape }}, { path: current.path })"></span>
         </p>
-        <p class="text-sm opacity-60" x-show="previewing">{% trans %}Merging …{% endtrans %}</p>
+        <p class="text-sm text-pk-text-muted" x-show="previewing">{% trans %}Merging …{% endtrans %}</p>
         <p class="text-sm text-error" x-show="previewError" style="display:none" x-text="previewError"></p>
-        <p class="text-sm opacity-60" x-show="previewUnavailable" style="display:none">
+        <p class="text-sm text-pk-text-muted" x-show="previewUnavailable" style="display:none">
           {% trans %}This papAIa core can't preview the effective result yet; the syntax check is all there is.{% endtrans %}
         </p>
         <div x-show="effective" style="display:none">
@@ -124,11 +127,11 @@
             <span class="badge badge-sm badge-success" x-text="fmtPlural(effective ? effective.added : 0, {{ _('+{count} line')|tojson|forceescape }}, {{ _('+{count} lines')|tojson|forceescape }})"></span>
             <span class="badge badge-sm ml-1" x-text="fmt({{ _('{count} removed')|tojson|forceescape }}, { count: effective ? effective.removed : 0 })"></span>
           </p>
-          <p class="text-sm opacity-60" x-show="effective && !effective.changed">{% trans %}This draft doesn't change the rendered file.{% endtrans %}</p>
+          <p class="text-sm text-pk-text-muted" x-show="effective && !effective.changed">{% trans %}This draft doesn't change the rendered file.{% endtrans %}</p>
           <div class="max-h-96 overflow-auto rounded-lg border border-base-300 bg-base-200 py-2 font-mono text-xs leading-relaxed" x-show="effective && effective.changed">
             <template x-for="(line, i) in (effective ? effective.diff : [])" :key="i">
               <div class="whitespace-pre px-3"
-                   :class="line.kind === 'add' ? 'bg-success/15 text-success' : (line.kind === 'del' ? 'bg-error/15 text-error' : (line.kind === 'hunk' ? 'opacity-50' : ''))"
+                   :class="line.kind === 'add' ? 'bg-success/15 text-success' : (line.kind === 'del' ? 'bg-error/15 text-error' : (line.kind === 'hunk' ? 'text-pk-text-muted' : ''))"
                    x-text="(line.kind === 'add' ? '+ ' : (line.kind === 'del' ? '- ' : '  ')) + line.text"></div>
             </template>
           </div>
@@ -141,10 +144,10 @@
 
       {# --- Versions ----------------------------------------------------------------- #}
       <div x-show="tab === 'versions'" style="display:none">
-        <p class="mb-2 text-xs opacity-60">
+        <p class="mb-2 text-xs text-pk-text-muted">
           {% trans %}The previous file is saved here before every Apply, Discard and Roll back. The latest 20 are kept, readable by administrators only, and they are part of <code>papaia-ctl backup</code>.{% endtrans %}
         </p>
-        <p class="text-sm opacity-60" x-show="!versions.length">{% trans %}Nothing saved yet.{% endtrans %}</p>
+        <p class="text-sm text-pk-text-muted" x-show="!versions.length">{% trans %}Nothing saved yet.{% endtrans %}</p>
         <div class="overflow-x-auto" x-show="versions.length">
           <table class="table table-sm">
             <tbody>
@@ -152,7 +155,7 @@
                 <tr>
                   <td>
                     <p class="text-sm font-semibold" x-text="when(v.when)"></p>
-                    <p class="text-xs opacity-60" x-text="fmt({{ _('{size} B · rev {revision}')|tojson|forceescape }}, { size: v.size, revision: v.revision })"></p>
+                    <p class="text-xs text-pk-text-muted" x-text="fmt({{ _('{size} B · rev {revision}')|tojson|forceescape }}, { size: v.size, revision: v.revision })"></p>
                   </td>
                   <td><span class="badge badge-sm" :class="v.event === 'discard' ? 'badge-warning' : 'badge-ghost'" x-text="v.event"></span></td>
                   <td class="text-right whitespace-nowrap">
@@ -166,15 +169,15 @@
           </table>
         </div>
         <div class="mt-3" x-show="versionDiff" style="display:none">
-          <p class="mb-1 text-xs opacity-60" x-text="fmt({{ _('Difference between {when} and the file now')|tojson|forceescape }}, { when: versionDiffFor ? when(versionDiffFor.when) : '' })"></p>
+          <p class="mb-1 text-xs text-pk-text-muted" x-text="fmt({{ _('Difference between {when} and the file now')|tojson|forceescape }}, { when: versionDiffFor ? when(versionDiffFor.when) : '' })"></p>
           <div class="max-h-72 overflow-auto rounded-lg border border-base-300 bg-base-200 py-2 font-mono text-xs leading-relaxed">
             <template x-for="(line, i) in (versionDiff || [])" :key="i">
               <div class="whitespace-pre px-3"
-                   :class="line.kind === 'add' ? 'bg-success/15 text-success' : (line.kind === 'del' ? 'bg-error/15 text-error' : (line.kind === 'hunk' ? 'opacity-50' : ''))"
+                   :class="line.kind === 'add' ? 'bg-success/15 text-success' : (line.kind === 'del' ? 'bg-error/15 text-error' : (line.kind === 'hunk' ? 'text-pk-text-muted' : ''))"
                    x-text="(line.kind === 'add' ? '+ ' : (line.kind === 'del' ? '- ' : '  ')) + line.text"></div>
             </template>
           </div>
-          <p class="mt-1 text-xs opacity-60">{% trans %}Green lines are in the saved version and not in the file now.{% endtrans %}</p>
+          <p class="mt-1 text-xs text-pk-text-muted">{% trans %}Green lines are in the saved version and not in the file now.{% endtrans %}</p>
         </div>
       </div>
     </div>
@@ -184,7 +187,7 @@
   <dialog x-ref="confirm" class="modal">
     <div class="modal-box max-w-md">
       <h3 class="text-base font-bold" x-text="confirmTitle"></h3>
-      <ul class="mt-3 list-disc space-y-1 pl-5 text-sm opacity-80">
+      <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-pk-text-muted">
         <li x-show="anyway && confirmKind === 'apply'">{% trans %}The version now on the host is saved to Versions first, then replaced by your draft.{% endtrans %}</li>
         <li x-show="!anyway && file && file.exists">{% trans %}The current overlay is saved to Versions first.{% endtrans %}</li>
         <li x-show="current.group_active">
@@ -204,7 +207,7 @@
   <dialog x-ref="discard" class="modal">
     <div class="modal-box max-w-md">
       <h3 class="text-base font-bold" x-text="fmt({{ _('Discard the {label} overlay?')|tojson|forceescape }}, { label: current.label })"></h3>
-      <p class="mt-2 text-sm opacity-60">
+      <p class="mt-2 text-sm text-pk-text-muted">
         {% trans %}The file is removed after a copy is saved to Versions. The services that read it are recreated with the stack's own configuration.{% endtrans %}
       </p>
       <div class="modal-action">

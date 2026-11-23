@@ -33,16 +33,16 @@
       {% endif %}
 
       {% if job.finished_at %}
-      <p class="text-xs opacity-50">{% trans strftime=job.finished_at.strftime("%H:%M:%S") %}finished {{ strftime }}{% endtrans %}</p>
+      <p class="text-xs text-pk-text-muted">{% trans strftime=job.finished_at.strftime("%H:%M:%S") %}finished {{ strftime }}{% endtrans %}</p>
       {% elif job.started_at %}
-      <p class="text-xs opacity-50">{% trans strftime=job.started_at.strftime("%H:%M:%S") %}started {{ strftime }}{% endtrans %}</p>
+      <p class="text-xs text-pk-text-muted">{% trans strftime=job.started_at.strftime("%H:%M:%S") %}started {{ strftime }}{% endtrans %}</p>
       {% endif %}
 
-      <a href="/jobs/{{ job.id }}" class="link link-hover ml-auto text-xs opacity-60">{% trans %}View log{% endtrans %}</a>
+      <a href="/jobs/{{ job.id }}" class="link link-hover ml-auto text-xs text-pk-text-muted">{% trans %}View log{% endtrans %}</a>
     </div>
 
     {% if job_active and not job_is_mail %}
-    <p class="mt-1 text-xs opacity-60">
+    <p class="mt-1 text-xs text-pk-text-muted">
       {% trans %}The change is queued behind it and starts when that job is done.{% endtrans %}
     </p>
     {% endif %}

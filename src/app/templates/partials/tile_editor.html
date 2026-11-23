@@ -54,8 +54,8 @@
     </svg>
     <div>
       <p class="font-semibold">{% trans %}tiles.yaml could not be parsed{% endtrans %}</p>
-      <p class="text-sm opacity-80">{{ error }}</p>
-      <p class="text-sm opacity-80">
+      <p class="text-sm">{{ error }}</p>
+      <p class="text-sm">
         {% trans %}The editor started from an empty dashboard. Saving replaces the file — open the raw editor first if the current content is worth keeping.{% endtrans %}
       </p>
     </div>
@@ -71,7 +71,7 @@
 
         <div class="flex items-center gap-2 mb-4">
           <span data-group-handle
-                class="cursor-grab opacity-30 hover:opacity-70 shrink-0"
+                class="cursor-grab text-pk-text-muted hover:text-base-content shrink-0"
                 x-show="!$store.tiles.preview"
                 title="{{ _('Drag to reorder groups') }}"
                 aria-hidden="true">
@@ -91,7 +91,7 @@
             <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide" x-text="group.name"></p>
           </template>
 
-          <p class="text-sm opacity-40" x-text="$store.tiles.groupCount(group)"></p>
+          <p class="text-sm text-pk-text-muted" x-text="$store.tiles.groupCount(group)"></p>
 
           <span class="flex-1"></span>
 
@@ -157,7 +157,7 @@
                     </div>
                     {# Editing aid, not part of the card: hidden in preview so
                        what is on screen matches what the gallery renders. #}
-                    <p class="mt-1 text-xs opacity-50 truncate"
+                    <p class="mt-1 text-xs text-pk-text-muted truncate"
                        x-show="!$store.tiles.preview"
                        x-text="tile.type === 'widget' ? {{ _('Widget')|tojson|forceescape }} : tile.href"></p>
                   </div>
@@ -166,7 +166,7 @@
                        x-show="!$store.tiles.preview"
                        @click.stop>
                     <span data-tile-handle
-                          class="cursor-grab opacity-30 hover:opacity-70 px-0.5"
+                          class="cursor-grab text-pk-text-muted hover:text-base-content px-0.5"
                           title="{{ _('Drag to reorder tiles') }}"
                           aria-hidden="true">
                       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -199,7 +199,7 @@
                   </div>
                 </div>
 
-                <p class="text-sm opacity-70 line-clamp-2 min-h-[2.5rem]"
+                <p class="text-sm text-pk-text-muted line-clamp-2 min-h-[2.5rem]"
                    x-text="tile.type === 'widget'
                              ? (($store.tiles.widgetType(tile.widget) || {}).description || {{ _('No widget with this id exists.')|tojson|forceescape }})
                              : tile.description"></p>
@@ -221,12 +221,12 @@
         <div class="mt-4 flex gap-3" x-show="!$store.tiles.preview">
           <button type="button"
                   @click="$store.tiles.newTile(gi)"
-                  class="flex-1 rounded-2xl border border-dashed border-base-300 py-4 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
+                  class="flex-1 rounded-2xl border border-dashed border-base-300 py-4 text-sm text-pk-text-muted hover:text-base-content hover:border-primary transition-colors">
             <span x-html="fmtHtml({{ _('+ Add link to “{name}”')|tojson|forceescape }}, { name: group.name })"></span>
           </button>
           <button type="button"
                   @click="$store.tiles.newWidget(gi)"
-                  class="flex-1 rounded-2xl border border-dashed border-base-300 py-4 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
+                  class="flex-1 rounded-2xl border border-dashed border-base-300 py-4 text-sm text-pk-text-muted hover:text-base-content hover:border-primary transition-colors">
             {% trans %}+ Add widget{% endtrans %}
           </button>
         </div>
@@ -237,7 +237,7 @@
   <button type="button"
           x-show="!$store.tiles.preview"
           @click="$store.tiles.addGroup()"
-          class="mt-10 w-full rounded-2xl border border-dashed border-base-300 py-5 text-sm opacity-60 hover:opacity-100 hover:border-primary transition-colors">
+          class="mt-10 w-full rounded-2xl border border-dashed border-base-300 py-5 text-sm text-pk-text-muted hover:text-base-content hover:border-primary transition-colors">
     {% trans %}+ Add group{% endtrans %}
   </button>
 
@@ -249,7 +249,7 @@
        class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 mt-6 px-5 py-3 rounded-xl border border-primary bg-base-100 shadow-lg">
     <span class="text-sm">
       <span x-html="fmtPlural($store.tiles.dirty, {{ _('<span class="font-semibold">{count}</span> unsaved change')|tojson|forceescape }}, {{ _('<span class="font-semibold">{count}</span> unsaved changes')|tojson|forceescape }}, {}, true)"></span>
-      <span class="opacity-60">{% trans %}— everyone still sees the saved dashboard{% endtrans %}</span>
+      <span class="text-pk-text-muted">{% trans %}— everyone still sees the saved dashboard{% endtrans %}</span>
     </span>
     <span class="flex-1"></span>
     <button type="button" class="btn btn-ghost btn-sm" style="display:none"
@@ -298,7 +298,7 @@
                        placeholder="{{ _('https://app.example.com') }}">
                 <div class="flex flex-wrap items-center gap-1 mt-2"
                      x-show="$store.tiles.linkKeys.length" style="display:none">
-                  <span class="text-xs opacity-50">{% trans %}Insert:{% endtrans %}</span>
+                  <span class="text-xs text-pk-text-muted">{% trans %}Insert:{% endtrans %}</span>
                   <template x-for="key in $store.tiles.linkKeys" :key="key">
                     <button type="button" class="badge badge-sm badge-outline font-mono"
                             @click="$store.tiles.insertPlaceholder(key)"
@@ -320,13 +320,13 @@
 
               <div class="form-control mb-3">
                 <label class="label">
-                  <span class="label-text">{% trans %}Icon URL{% endtrans %}</span> <span class="label-text-alt opacity-60">{% trans %}optional{% endtrans %}</span>
+                  <span class="label-text">{% trans %}Icon URL{% endtrans %}</span> <span class="label-text-alt text-pk-text-muted">{% trans %}optional{% endtrans %}</span>
                 </label>
                 <input type="text" class="input input-bordered text-sm"
                        x-model="$store.tiles.dialog.tile.icon"
                        @input="$store.tiles.resolveDialog()"
                        placeholder="{{ _('https://example.com/icon.svg') }}">
-                <span class="label-text-alt opacity-60 mt-1">
+                <span class="label-text-alt text-pk-text-muted mt-1">
                   {% trans %}Left empty, a default application shows its bundled icon and any other tile a lettered badge.{% endtrans %}
                 </span>
                 <span class="label-text-alt text-error mt-1"
@@ -372,17 +372,17 @@
                     <p class="font-semibold leading-snug truncate"
                        x-text="$store.tiles.dialog.tile.name || {{ _('Untitled tile')|tojson|forceescape }}"></p>
                   </div>
-                  <p class="text-sm opacity-70 line-clamp-2 min-h-[2.5rem]"
+                  <p class="text-sm text-pk-text-muted line-clamp-2 min-h-[2.5rem]"
                      x-text="$store.tiles.dialog.tile.description"></p>
                 </div>
               </div>
 
-              <p class="text-xs opacity-50 mt-3">{% trans %}Opens{% endtrans %}</p>
+              <p class="text-xs text-pk-text-muted mt-3">{% trans %}Opens{% endtrans %}</p>
               <p class="text-xs font-mono break-all"
                  :class="$store.tiles.dialog.problem ? 'text-error' : ''"
                  x-text="$store.tiles.dialog.resolved || '—'"></p>
 
-              <p class="text-xs opacity-70 mt-3"
+              <p class="text-xs text-pk-text-muted mt-3"
                  x-text="$store.tiles.dialog.tile.visibility === 'admin'
                            ? {{ _('Visible to administrators only')|tojson|forceescape }}
                            : {{ _('Visible to everyone')|tojson|forceescape }}"></p>
@@ -390,7 +390,7 @@
           </div>
 
           <div class="modal-action">
-            <span class="text-xs opacity-50 mr-auto self-center">
+            <span class="text-xs text-pk-text-muted mr-auto self-center">
               {% trans %}Applied to the draft — the dashboard changes when you save.{% endtrans %}
             </span>
             <button type="button" class="btn btn-ghost" @click="$store.tiles.closeTile()">{% trans %}Cancel{% endtrans %}</button>
@@ -417,7 +417,7 @@
           <template x-if="$store.tiles.widgetDialog.step === 'pick'">
             <div>
               <h3 class="text-lg font-bold mb-1">{% trans %}Add a widget{% endtrans %}</h3>
-              <p class="text-sm opacity-60 mb-4">
+              <p class="text-sm text-pk-text-muted mb-4">
                 {% trans %}A widget shows live state on the dashboard and links to the page that explains it.{% endtrans %}
               </p>
               <input type="text" class="input input-bordered w-full mb-4"
@@ -427,7 +427,7 @@
                 <template x-for="type in $store.tiles.widgetChoices()" :key="type.id">
                   <button type="button"
                           class="text-left rounded-xl border border-base-300 p-4 transition-colors"
-                          :class="type.available ? 'hover:border-primary' : 'opacity-60 cursor-not-allowed'"
+                          :class="type.available ? 'hover:border-primary' : 'text-pk-text-muted cursor-not-allowed'"
                           :aria-disabled="!type.available"
                           @click="$store.tiles.pickWidget(type)">
                     <span class="flex items-center gap-3">
@@ -438,7 +438,7 @@
                       </span>
                       <span class="font-semibold" x-text="type.name"></span>
                     </span>
-                    <span class="mt-2 block text-sm opacity-70"
+                    <span class="mt-2 block text-sm text-pk-text-muted"
                           x-text="type.available ? type.description : type.reason"></span>
                     <span class="mt-2 badge badge-sm badge-ghost" x-show="!type.available" style="display:none">
                       {% trans %}Not available{% endtrans %}
@@ -446,7 +446,7 @@
                   </button>
                 </template>
               </div>
-              <p class="text-sm opacity-60 mt-2"
+              <p class="text-sm text-pk-text-muted mt-2"
                  x-show="$store.tiles.widgetChoices().length === 0" style="display:none">
                 {% trans %}No widget matches.{% endtrans %}
               </p>
@@ -470,13 +470,13 @@
 
                   <div class="form-control mb-3">
                     <label class="label">
-                      <span class="label-text">{% trans %}Title{% endtrans %}</span> <span class="label-text-alt opacity-60">{% trans %}optional{% endtrans %}</span>
+                      <span class="label-text">{% trans %}Title{% endtrans %}</span> <span class="label-text-alt text-pk-text-muted">{% trans %}optional{% endtrans %}</span>
                     </label>
                     <input type="text" class="input input-bordered"
                            x-model="$store.tiles.widgetDialog.tile.title"
                            @input="$store.tiles.previewWidget()"
                            :placeholder="$store.tiles.widgetDialog.type ? $store.tiles.widgetDialog.type.name : ''">
-                    <span class="label-text-alt opacity-60 mt-1">{% trans %}Left empty, the card is called after the widget.{% endtrans %}</span>
+                    <span class="label-text-alt text-pk-text-muted mt-1">{% trans %}Left empty, the card is called after the widget.{% endtrans %}</span>
                   </div>
 
                   <div class="form-control mb-3">
@@ -504,7 +504,7 @@
                               :class="$store.tiles.widgetDialog.tile.visibility === 'admin' ? 'btn-primary' : 'btn-outline'"
                               @click="$store.tiles.widgetDialog.tile.visibility = 'admin'">{% trans %}Administrators only{% endtrans %}</button>
                     </div>
-                    <span class="label-text-alt opacity-60 mt-1"
+                    <span class="label-text-alt text-pk-text-muted mt-1"
                           x-show="$store.tiles.widgetDialog.tile.visibility === 'all'" style="display:none">
                       {% trans %}Everyone who can sign in will see what this card shows.{% endtrans %}
                     </span>
@@ -514,9 +514,9 @@
                 <div class="rounded-xl bg-base-200 p-4">
                   <p class="text-xs uppercase tracking-wide text-pk-text-muted mb-3">{% trans %}Live preview{% endtrans %}</p>
                   <div id="widget-preview" aria-live="polite">
-                    <span class="loading loading-dots loading-sm opacity-50"></span>
+                    <span class="loading loading-dots loading-sm text-pk-text-muted"></span>
                   </div>
-                  <p class="text-xs opacity-50 mt-3"
+                  <p class="text-xs text-pk-text-muted mt-3"
                      x-show="$store.tiles.widgetDialog.type" style="display:none"
                      x-text="fmt({{ _('Refreshes about every {seconds} s')|tojson|forceescape }}, { seconds: $store.tiles.widgetDialog.type ? $store.tiles.widgetDialog.type.refresh : '' })"></p>
                 </div>
@@ -551,7 +551,7 @@
       <template x-if="$store.tiles.raw">
         <div>
           <h3 class="text-lg font-bold mb-1">{% trans %}Edit tiles.yaml{% endtrans %}</h3>
-          <p class="text-sm opacity-60 mb-4">
+          <p class="text-sm text-pk-text-muted mb-4">
             {% trans %}Saving here replaces the file and reloads the editor. Unsaved changes in the editor are discarded.{% endtrans %}
           </p>
           <textarea class="textarea textarea-bordered w-full h-96 font-mono text-xs"

@@ -18,7 +18,7 @@
 <div data-users-marker data-smtp="{{ 'true' if view.smtp else 'false' }}" data-first="{{ view.first }}" hidden></div>
 
 {% if view.state == 'forbidden' %}
-<div class="flex flex-col items-center py-24 gap-4 opacity-70 text-center">
+<div class="flex flex-col items-center py-24 gap-4 text-pk-text-muted text-center">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
   </svg>
@@ -29,7 +29,7 @@
 </div>
 
 {% elif view.state == 'unavailable' %}
-<div class="flex flex-col items-center py-24 gap-4 opacity-70 text-center">
+<div class="flex flex-col items-center py-24 gap-4 text-pk-text-muted text-center">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728M5.636 18.364a9 9 0 010-12.728M15.536 8.464a5 5 0 010 7.072M8.464 15.536a5 5 0 010-7.072M13 12a1 1 0 11-2 0 1 1 0 012 0z"/>
   </svg>
@@ -42,7 +42,7 @@
 {% else %}
 
 {% if not view.users %}
-<div class="flex flex-col items-center py-20 gap-3 opacity-70 text-center">
+<div class="flex flex-col items-center py-20 gap-3 text-pk-text-muted text-center">
   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
   </svg>
@@ -82,14 +82,14 @@
                 {% if u.enabled %}
                 <span class="font-semibold font-mono text-sm">{{ u.username }}</span>
                 {% else %}
-                <span class="font-semibold font-mono text-sm opacity-60">{{ u.username }}</span>
+                <span class="font-semibold font-mono text-sm text-pk-text-muted">{{ u.username }}</span>
                 {% endif %}
                 {% if u.is_self %}
                 <span class="badge badge-primary badge-outline badge-sm">{% trans %}You{% endtrans %}</span>
                 {% endif %}
               </div>
               {% if u.display_name or u.email %}
-              <p class="max-w-xs truncate text-xs opacity-60" title="{{ u.display_name }}{{ ' · ' if u.display_name and u.email }}{{ u.email }}">
+              <p class="max-w-xs truncate text-xs text-pk-text-muted" title="{{ u.display_name }}{{ ' · ' if u.display_name and u.email }}{{ u.email }}">
                 {{ u.display_name }}{{ ' · ' if u.display_name and u.email }}{{ u.email }}
               </p>
               {% endif %}
@@ -124,10 +124,10 @@
             {% endif %}
           </div>
           {% else %}
-          <span class="text-xs opacity-40">{% trans %}No roles{% endtrans %}</span>
+          <span class="text-xs text-pk-text-muted">{% trans %}No roles{% endtrans %}</span>
           {% endif %}
         </td>
-        <td class="hidden whitespace-nowrap text-xs opacity-70 md:table-cell">
+        <td class="hidden whitespace-nowrap text-xs text-pk-text-muted md:table-cell">
           {{ u.created.strftime('%Y-%m-%d') if u.created else '—' }}
         </td>
         <td>
@@ -157,7 +157,7 @@
 </div>
 
 <div class="mt-3 flex items-center justify-between">
-  <p class="text-xs opacity-60">
+  <p class="text-xs text-pk-text-muted">
     {% trans first=view.first + 1, count=(view.first + (view.users | length)), total=view.total %}{{ first }}–{{ count }} of {{ total }}{% endtrans %}
   </p>
   <div class="flex gap-2">

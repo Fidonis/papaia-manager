@@ -7,7 +7,7 @@
 <div class="card bg-base-100 border border-base-300">
   <div class="card-body">
     <div class="flex items-center gap-3 mb-2">
-      <h2 class="card-title text-base font-semibold">{% trans %}Job{% endtrans %} <span class="font-mono text-sm opacity-60">{{ job_id }}</span></h2>
+      <h2 class="card-title text-base font-semibold">{% trans %}Job{% endtrans %} <span class="font-mono text-sm text-pk-text-muted">{{ job_id }}</span></h2>
       <div
         id="job-status"
         hx-get="/partials/jobs/{{ job_id }}"

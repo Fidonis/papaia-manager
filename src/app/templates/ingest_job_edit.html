@@ -17,19 +17,19 @@
 
 {% macro field(label, path, help='', required=False) %}
 <div class="form-control">
-  <label class="label py-1">
+  <label class="label py-1" for="field-{{ path | replace('.', '-') | replace('_', '-') }}">
     <span class="label-text">{{ label }}{% if required %}<span class="text-error"> *</span>{% endif %}</span>
-    <span class="label-text-alt opacity-60" style="display:none" x-show="inheritedNote('{{ path }}')" x-text="inheritedNote('{{ path }}')"></span>
+    <span class="label-text-alt text-pk-text-muted" style="display:none" x-show="inheritedNote('{{ path }}')" x-text="inheritedNote('{{ path }}')"></span>
   </label>
   {{ caller() }}
-  {% if help %}<p class="mt-1 text-xs opacity-60">{{ help }}</p>{% endif %}
+  {% if help %}<p class="mt-1 text-xs text-pk-text-muted">{{ help }}</p>{% endif %}
   <p class="mt-1 text-xs text-error" style="display:none" x-show="err('{{ path }}')" x-text="err('{{ path }}')"></p>
 </div>
 {% endmacro %}
 
 {% block content %}
 {% if problem %}
-<div class="flex flex-col items-center py-20 gap-3 opacity-80 text-center">
+<div class="flex flex-col items-center py-20 gap-3 text-pk-text-muted text-center">
   <p class="text-lg font-semibold">{% trans %}This job cannot be edited{% endtrans %}</p>
   <p class="max-w-xl text-sm">{{ problem }}</p>
   <a class="btn btn-outline btn-sm" href="/ingest/jobs">{% trans %}Back to the jobs{% endtrans %}</a>
@@ -57,18 +57,18 @@
     <div class="card-body gap-4 p-5">
       <h2 class="font-semibold">{% trans %}1 · Name{% endtrans %}</h2>
       {% call field(_('Job id'), 'id', _('A short name. It is part of every point the job writes, so it cannot be changed later; duplicate the job to start under another name.'), True) %}
-      <input type="text" class="input input-bordered input-sm w-full max-w-sm font-mono" x-model="job.id"
+      <input id="field-id" type="text" class="input input-bordered input-sm w-full max-w-sm font-mono" x-model="job.id"
              :readonly="!isNew" :class="err('id') ? 'input-error' : ''" placeholder="{{ _('nextcloud-handbook') }}"
              maxlength="64" autocomplete="off" @blur="labelFromId()">
       {% endcall %}
       {% call field(_('Description'), 'description', _('For people. Shown in the list.')) %}
-      <input type="text" class="input input-bordered input-sm w-full" x-model="job.description" maxlength="200" placeholder="{{ _('Handbook from the shared drive') }}">
+      <input id="field-description" type="text" class="input input-bordered input-sm w-full" x-model="job.description" maxlength="200" placeholder="{{ _('Handbook from the shared drive') }}">
       {% endcall %}
       <label class="flex items-start gap-3">
         <input type="checkbox" class="toggle toggle-sm mt-0.5" x-model="job.enabled">
         <span>
           <span class="block text-sm font-semibold">{% trans %}Enabled{% endtrans %}</span>
-          <span class="block text-xs opacity-60">{% trans %}A disabled job does not run on its schedule and cannot be started. What it embedded stays searchable.{% endtrans %}</span>
+          <span class="block text-xs text-pk-text-muted">{% trans %}A disabled job does not run on its schedule and cannot be started. What it embedded stays searchable.{% endtrans %}</span>
         </span>
       </label>
     </div>
@@ -84,7 +84,7 @@
                   :class="job.source.type === src.type ? 'border-primary bg-primary/10' : 'border-base-300 hover:bg-base-200'"
                   @click="setType(src.type)">
             <span class="block text-sm font-semibold" x-text="src.title"></span>
-            <span class="block text-xs opacity-60" x-text="src.blurb"></span>
+            <span class="block text-xs text-pk-text-muted" x-text="src.blurb"></span>
           </button>
         </template>
       </div>
@@ -92,7 +92,7 @@
 
       <div class="grid gap-4 sm:grid-cols-2">
         {% call field(_('Label'), 'source.label', _('How results name this source (it is the first part of their address). Short, lowercase; it has to differ between jobs that write to the same collection.'), True) %}
-        <input type="text" class="input input-bordered input-sm w-full font-mono" x-model="job.source.label"
+        <input id="field-source-label" type="text" class="input input-bordered input-sm w-full font-mono" x-model="job.source.label"
                :class="err('source.label') ? 'input-error' : ''" maxlength="64" autocomplete="off">
         {% endcall %}
       </div>
@@ -106,7 +106,7 @@
 
             <template x-if="f.kind === 'secret'">
               <div class="flex items-center gap-2">
-                <select class="select select-bordered select-sm grow font-mono" x-model="job.source[f.key]"
+                <select class="select select-bordered select-sm grow font-mono" :aria-label="f.label" x-model="job.source[f.key]"
                         x-effect="sync($el, job.source[f.key], credentials.length)"
                         :class="err('source.' + f.key) ? 'select-error' : ''">
                   <option value="">{% trans %}None{% endtrans %}</option>
@@ -119,49 +119,49 @@
             </template>
             <template x-if="f.kind === 'folder'">
               <div class="flex items-center gap-2">
-                <input type="text" class="input input-bordered input-sm grow font-mono" x-model="job.source[f.key]"
+                <input type="text" class="input input-bordered input-sm grow font-mono" :aria-label="f.label" x-model="job.source[f.key]"
                        :class="err('source.' + f.key) ? 'input-error' : ''" :placeholder="f.placeholder" autocomplete="off">
                 <button type="button" class="btn btn-outline btn-sm" @click="openPicker()">{% trans %}Browse…{% endtrans %}</button>
               </div>
             </template>
             <template x-if="f.kind === 'select'">
-              <select class="select select-bordered select-sm" x-model="job.source[f.key]"
+              <select class="select select-bordered select-sm" :aria-label="f.label" x-model="job.source[f.key]"
                       x-effect="sync($el, job.source[f.key])">
                 <template x-for="o in f.options" :key="o"><option :value="o" x-text="o"></option></template>
               </select>
             </template>
             <template x-if="f.kind === 'integer'">
-              <input type="number" min="1" class="input input-bordered input-sm" x-model.number="job.source[f.key]"
+              <input type="number" min="1" class="input input-bordered input-sm" :aria-label="f.label" x-model.number="job.source[f.key]"
                      :class="err('source.' + f.key) ? 'input-error' : ''">
             </template>
             <template x-if="f.kind === 'bool'">
               <label class="flex items-center gap-2 py-1">
                 <input type="checkbox" class="checkbox checkbox-sm" x-model="job.source[f.key]">
-                <span class="text-sm opacity-70" x-text="f.help"></span>
+                <span class="text-sm text-pk-text-muted" x-text="f.help"></span>
               </label>
             </template>
             <template x-if="f.kind === 'text' || f.kind === 'url'">
-              <input :type="f.kind === 'url' ? 'url' : 'text'" class="input input-bordered input-sm w-full"
+              <input :type="f.kind === 'url' ? 'url' : 'text'" :aria-label="f.label" class="input input-bordered input-sm w-full"
                      x-model="job.source[f.key]" :class="err('source.' + f.key) ? 'input-error' : ''"
                      :placeholder="f.placeholder" autocomplete="off">
             </template>
 
-            <p class="mt-1 text-xs opacity-60" x-show="f.help && f.kind !== 'bool'" style="display:none" x-text="f.help"></p>
+            <p class="mt-1 text-xs text-pk-text-muted" x-show="f.help && f.kind !== 'bool'" style="display:none" x-text="f.help"></p>
             <p class="mt-1 text-xs text-error" style="display:none" x-show="err('source.' + f.key)" x-text="err('source.' + f.key)"></p>
           </div>
         </template>
       </div>
 
-      <p class="text-xs opacity-60" x-show="form().remote" style="display:none">
+      <p class="text-xs text-pk-text-muted" x-show="form().remote" style="display:none">
         {% trans %}Credentials are chosen, not typed: a typed value would end up in <span class="font-mono">jobs.yaml</span>. <b>New…</b> stores one encrypted. Manage them on the <a class="link" href="/ingest/secrets" target="_blank" rel="noopener">Credentials</a> page.{% endtrans %}
       </p>
 
       <div x-show="form().remote" style="display:none">
-        <button type="button" class="link link-hover text-xs opacity-70" @click="advancedSource = !advancedSource"
+        <button type="button" class="link link-hover text-xs text-pk-text-muted" @click="advancedSource = !advancedSource"
                 x-text="advancedSource ? {{ _('Hide advanced options')|tojson|forceescape }} : {{ _('Advanced options')|tojson|forceescape }}"></button>
         <div x-show="advancedSource" style="display:none" class="mt-2">
           {% call field(_('Extra rclone options'), 'source.rclone_flags', _('One option per line, for example --s3-no-check-bucket. Passed on to the tool that fetches the files.')) %}
-          <textarea rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="text.rclone" spellcheck="false"></textarea>
+          <textarea id="field-source-rclone-flags" rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="text.rclone" spellcheck="false"></textarea>
           {% endcall %}
         </div>
       </div>
@@ -174,7 +174,7 @@
       <h2 class="font-semibold">{% trans %}3 · Where do they go?{% endtrans %}</h2>
       <div class="grid gap-4 sm:grid-cols-2">
         {% call field(_('Vector database'), 'target.connection', _('A connection of the RAG system. A collection lives in exactly one of them.'), True) %}
-        <select class="select select-bordered select-sm font-mono" x-model="job.target.connection" @change="loadCollections()"
+        <select id="field-target-connection" class="select select-bordered select-sm font-mono" x-model="job.target.connection" @change="loadCollections()"
                 x-effect="sync($el, job.target.connection, connections.length)"
                 :class="err('target.connection') ? 'select-error' : ''">
           <template x-for="c in connections" :key="c"><option :value="c" x-text="c"></option></template>
@@ -182,34 +182,34 @@
         </select>
         {% endcall %}
         {% call field(_('Collection'), 'target.collection', '', True) %}
-        <input type="text" list="editor-collections" class="input input-bordered input-sm font-mono" x-model="job.target.collection"
+        <input id="field-target-collection" type="text" list="editor-collections" class="input input-bordered input-sm font-mono" x-model="job.target.collection"
                :class="err('target.collection') ? 'input-error' : ''" placeholder="{{ _('knowledge-base') }}" maxlength="128" autocomplete="off">
         <datalist id="editor-collections">
           <template x-for="c in collections" :key="c.name"><option :value="c.name"></option></template>
         </datalist>
-        <p class="mt-1 text-xs opacity-60" x-show="collectionNote()" style="display:none" x-text="collectionNote()"></p>
+        <p class="mt-1 text-xs text-pk-text-muted" x-show="collectionNote()" style="display:none" x-text="collectionNote()"></p>
         {% endcall %}
       </div>
       <div class="grid gap-4 sm:grid-cols-2">
         {% call field(_('Embedding model'), 'embedding.model', '', True) %}
-        <input type="text" class="input input-bordered input-sm font-mono" x-model="job.embedding.model" :readonly="modelLocked()"
+        <input id="field-embedding-model" type="text" class="input input-bordered input-sm font-mono" x-model="job.embedding.model" :readonly="modelLocked()"
                :class="err('embedding.model') ? 'input-error' : ''" placeholder="{{ _('nomic-embed-text') }}" autocomplete="off">
-        <p class="mt-1 text-xs opacity-60" x-show="modelLocked()" style="display:none">
+        <p class="mt-1 text-xs text-pk-text-muted" x-show="modelLocked()" style="display:none">
           {% trans %}The collection records this model. Every job that writes to it has to use it.{% endtrans %}
         </p>
-        <p class="mt-1 text-xs opacity-60" x-show="!modelLocked()" style="display:none">
+        <p class="mt-1 text-xs text-pk-text-muted" x-show="!modelLocked()" style="display:none">
           {% trans %}The model your embeddings service offers. A collection embeds with exactly one model, recorded at its first run.{% endtrans %}
         </p>
         {% endcall %}
       </div>
       {% call field(_('Access tags'), 'target.acl_tags', _('One per line. Searches can be limited to the tags a person is allowed to see (for example dept:finance).')) %}
-      <textarea rows="2" class="textarea textarea-bordered text-sm" x-model="text.acl" spellcheck="false" placeholder="{{ _('dept:finance') }}"></textarea>
+      <textarea id="field-target-acl-tags" rows="2" class="textarea textarea-bordered text-sm" x-model="text.acl" spellcheck="false" placeholder="{{ _('dept:finance') }}"></textarea>
       {% endcall %}
       <details>
-        <summary class="cursor-pointer text-xs opacity-70">{% trans %}Extra fields on every point{% endtrans %}</summary>
+        <summary class="cursor-pointer text-xs text-pk-text-muted">{% trans %}Extra fields on every point{% endtrans %}</summary>
         <div class="mt-2">
           {% call field(_('Extra payload (JSON)'), 'target.extra_payload', _('A JSON object added to the payload of every point, for filters of your own. Not text, source, ingest_job, ingest_run or acl_tags.')) %}
-          <textarea rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="job.target.extra_payload" spellcheck="false" placeholder='{{ _("{\"origin\": \"nextcloud\"}") }}'></textarea>
+          <textarea id="field-target-extra-payload" rows="3" class="textarea textarea-bordered font-mono text-xs" x-model="job.target.extra_payload" spellcheck="false" placeholder='{{ _("{\"origin\": \"nextcloud\"}") }}'></textarea>
           {% endcall %}
         </div>
       </details>
@@ -221,7 +221,7 @@
     <div class="card-body gap-4 p-5">
       <h2 class="font-semibold">{% trans %}4 · Which files?{% endtrans %}</h2>
       <div>
-        <p class="mb-1 text-xs opacity-60">{% trans %}Only these kinds of files (add or remove with a click, or write your own patterns below). Leave empty for every supported file.{% endtrans %}</p>
+        <p class="mb-1 text-xs text-pk-text-muted">{% trans %}Only these kinds of files (add or remove with a click, or write your own patterns below). Leave empty for every supported file.{% endtrans %}</p>
         <div class="flex flex-wrap gap-2">
           <template x-for="p in presets" :key="p.title">
             <button type="button" class="btn btn-xs" :class="presetOn(p) ? 'btn-primary' : 'btn-outline'" @click="togglePreset(p)" x-text="p.title"></button>
@@ -230,15 +230,15 @@
       </div>
       <div class="grid gap-4 sm:grid-cols-2">
         {% call field(_('Include'), 'filters.include', _('One pattern per line. * matches within a folder, ** across folders, ? one character.')) %}
-        <textarea rows="4" class="textarea textarea-bordered font-mono text-xs" x-model="text.include" spellcheck="false" placeholder="**/*.pdf"></textarea>
+        <textarea id="field-filters-include" rows="4" class="textarea textarea-bordered font-mono text-xs" x-model="text.include" spellcheck="false" placeholder="**/*.pdf"></textarea>
         {% endcall %}
         {% call field(_('Skip'), 'filters.exclude', _('Patterns that are never read, even when they match an include.')) %}
-        <textarea rows="4" class="textarea textarea-bordered font-mono text-xs" x-model="text.exclude" spellcheck="false" placeholder="{{ _('**/drafts/**') }}"></textarea>
+        <textarea id="field-filters-exclude" rows="4" class="textarea textarea-bordered font-mono text-xs" x-model="text.exclude" spellcheck="false" placeholder="{{ _('**/drafts/**') }}"></textarea>
         {% endcall %}
       </div>
       {% call field(_('Largest file'), 'filters.max_file_bytes', _('In megabytes. Larger files are left out. Empty uses the ingester\'s limit.')) %}
       <label class="input input-bordered input-sm flex w-40 items-center gap-2">
-        <input type="number" min="1" step="1" class="grow" x-model="maxMb" placeholder="200"><span class="opacity-50">MB</span>
+        <input id="field-filters-max-file-bytes" type="number" min="1" step="1" class="grow" x-model="maxMb" placeholder="200"><span class="text-pk-text-muted">MB</span>
       </label>
       {% endcall %}
       {% if job_id is not none %}
@@ -262,7 +262,7 @@
             <input type="radio" class="radio radio-sm mt-0.5" :value="m.value" x-model="job.mode">
             <span>
               <span class="block text-sm font-semibold" x-text="m.title"></span>
-              <span class="block text-xs opacity-70" x-text="m.text"></span>
+              <span class="block text-xs text-pk-text-muted" x-text="m.text"></span>
             </span>
           </label>
         </template>
@@ -270,15 +270,15 @@
       <p class="text-xs text-error" style="display:none" x-show="err('mode')" x-text="err('mode')"></p>
       <div class="grid gap-4 sm:grid-cols-2" x-show="job.mode === 'full' || job.mode === 'append'" style="display:none">
         <div class="form-control" x-show="job.mode === 'full'" style="display:none">
-          <label class="label py-1"><span class="label-text">{% trans %}What a rebuild replaces{% endtrans %}</span></label>
-          <select class="select select-bordered select-sm" x-model="job.full_scope">
+          <label class="label py-1" for="editor-full-scope"><span class="label-text">{% trans %}What a rebuild replaces{% endtrans %}</span></label>
+          <select id="editor-full-scope" class="select select-bordered select-sm" x-model="job.full_scope">
             <option value="job">{% trans %}Only this job's content{% endtrans %}</option>
             <option value="collection">{% trans %}The whole collection (other jobs lose theirs){% endtrans %}</option>
           </select>
         </div>
         <div class="form-control" x-show="job.mode === 'append'" style="display:none">
-          <label class="label py-1"><span class="label-text">{% trans %}How "new" is decided{% endtrans %}</span></label>
-          <select class="select select-bordered select-sm" x-model="job.append_probe">
+          <label class="label py-1" for="editor-append-probe"><span class="label-text">{% trans %}How "new" is decided{% endtrans %}</span></label>
+          <select id="editor-append-probe" class="select select-bordered select-sm" x-model="job.append_probe">
             <option value="auto">{% trans %}Automatically{% endtrans %}</option>
             <option value="state">{% trans %}By the ingester's own record{% endtrans %}</option>
             <option value="qdrant">{% trans %}By asking the collection{% endtrans %}</option>
@@ -300,19 +300,19 @@
       </div>
 
       <div x-show="job.schedule.mode === 'interval'" style="display:none" class="flex flex-wrap items-center gap-2">
-        <span class="text-sm">{% trans %}Every{% endtrans %}</span>
-        <input type="number" min="1" class="input input-bordered input-sm w-24" x-model.number="job.schedule.every_n">
-        <select class="select select-bordered select-sm" x-model="job.schedule.every_unit">
+        <label class="text-sm" for="schedule-every-n">{% trans %}Every{% endtrans %}</label>
+        <input id="schedule-every-n" type="number" min="1" class="input input-bordered input-sm w-24" x-model.number="job.schedule.every_n">
+        <select class="select select-bordered select-sm" aria-label="{{ _('Unit') }}" x-model="job.schedule.every_unit">
           <option value="s">{% trans %}seconds{% endtrans %}</option><option value="m">{% trans %}minutes{% endtrans %}</option><option value="h">{% trans %}hours{% endtrans %}</option><option value="d">{% trans %}days{% endtrans %}</option>
         </select>
       </div>
       <div x-show="job.schedule.mode === 'hourly'" style="display:none" class="flex flex-wrap items-center gap-2">
-        <span class="text-sm">{% trans %}Every hour, at minute{% endtrans %}</span>
-        <input type="number" min="0" max="59" class="input input-bordered input-sm w-24" x-model.number="job.schedule.minute">
+        <label class="text-sm" for="schedule-minute">{% trans %}Every hour, at minute{% endtrans %}</label>
+        <input id="schedule-minute" type="number" min="0" max="59" class="input input-bordered input-sm w-24" x-model.number="job.schedule.minute">
       </div>
       <div x-show="job.schedule.mode === 'daily'" style="display:none" class="flex flex-wrap items-center gap-2">
-        <span class="text-sm">{% trans %}Every day at{% endtrans %}</span>
-        <input type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
+        <label class="text-sm" for="schedule-daily-time">{% trans %}Every day at{% endtrans %}</label>
+        <input id="schedule-daily-time" type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
       </div>
       <div x-show="job.schedule.mode === 'weekly'" style="display:none" class="flex flex-col gap-2">
         <div class="flex flex-wrap items-center gap-2">
@@ -321,19 +321,19 @@
             <button type="button" class="btn btn-xs" :class="job.schedule.weekdays.indexOf(d.key) !== -1 ? 'btn-primary' : 'btn-outline'"
                     @click="toggleDay(d.key)" x-text="d.label.slice(0, 3)"></button>
           </template>
-          <span class="text-sm">{% trans %}at{% endtrans %}</span>
-          <input type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
+          <label class="text-sm" for="schedule-weekly-time">{% trans %}at{% endtrans %}</label>
+          <input id="schedule-weekly-time" type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
         </div>
       </div>
       <div x-show="job.schedule.mode === 'monthly'" style="display:none" class="flex flex-wrap items-center gap-2">
-        <span class="text-sm">{% trans %}On day{% endtrans %}</span>
-        <input type="number" min="1" max="31" class="input input-bordered input-sm w-20" x-model.number="job.schedule.day_of_month">
-        <span class="text-sm">{% trans %}of every month at{% endtrans %}</span>
-        <input type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
+        <label class="text-sm" for="schedule-day-of-month">{% trans %}On day{% endtrans %}</label>
+        <input id="schedule-day-of-month" type="number" min="1" max="31" class="input input-bordered input-sm w-20" x-model.number="job.schedule.day_of_month">
+        <label class="text-sm" for="schedule-monthly-time">{% trans %}of every month at{% endtrans %}</label>
+        <input id="schedule-monthly-time" type="time" class="input input-bordered input-sm" x-model="job.schedule.time">
       </div>
       <div x-show="job.schedule.mode === 'cron'" style="display:none" class="flex flex-col gap-1">
-        <input type="text" class="input input-bordered input-sm w-full max-w-md font-mono" x-model="job.schedule.cron" placeholder="{{ _('0 2 * * mon-fri') }}" spellcheck="false">
-        <p class="text-xs opacity-60">{% trans %}Five fields: minute, hour, day of the month, month, weekday. Weekdays by name (mon-fri) mean the same everywhere; numbers count from Monday here.{% endtrans %}</p>
+        <input type="text" aria-label="{{ _('Cron expression') }}" class="input input-bordered input-sm w-full max-w-md font-mono" x-model="job.schedule.cron" placeholder="{{ _('0 2 * * mon-fri') }}" spellcheck="false">
+        <p class="text-xs text-pk-text-muted">{% trans %}Five fields: minute, hour, day of the month, month, weekday. Weekdays by name (mon-fri) mean the same everywhere; numbers count from Monday here.{% endtrans %}</p>
       </div>
 
       <div class="rounded-lg bg-base-200 p-3 text-sm" style="display:none" x-show="preview">
@@ -341,9 +341,9 @@
           <div>
             <p class="font-semibold" x-text="preview.description"></p>
             <template x-if="preview.runs.length">
-              <p class="mt-1 text-xs opacity-70"><span x-html="fmtHtml({{ _('Next: {runs} ({timezone})')|tojson|forceescape }}, { runs: preview.runs.join('  ·  '), timezone: preview.timezone })"></span></p>
+              <p class="mt-1 text-xs text-pk-text-muted"><span x-html="fmtHtml({{ _('Next: {runs} ({timezone})')|tojson|forceescape }}, { runs: preview.runs.join('  ·  '), timezone: preview.timezone })"></span></p>
             </template>
-            <p class="mt-1 text-xs opacity-70" x-show="preview.counts_from_load" style="display:none">{% trans %}An interval counts from the moment the ingester loads the job, so no clock time is promised.{% endtrans %}</p>
+            <p class="mt-1 text-xs text-pk-text-muted" x-show="preview.counts_from_load" style="display:none">{% trans %}An interval counts from the moment the ingester loads the job, so no clock time is promised.{% endtrans %}</p>
             <template x-for="n in preview.notes" :key="n"><p class="mt-1 text-xs text-warning" x-text="n"></p></template>
           </div>
         </template>
@@ -353,23 +353,23 @@
       </div>
 
       <details>
-        <summary class="cursor-pointer text-xs opacity-70">{% trans %}Time zone and timing{% endtrans %}</summary>
+        <summary class="cursor-pointer text-xs text-pk-text-muted">{% trans %}Time zone and timing{% endtrans %}</summary>
         <div class="mt-3 grid gap-4 sm:grid-cols-2">
           {% call field(_('Time zone'), 'schedule.timezone', _('Empty uses the catalog default, else the ingester\'s own zone.')) %}
-          <input type="text" list="editor-timezones" class="input input-bordered input-sm" x-model="job.schedule.timezone" :placeholder="ingestTz" autocomplete="off">
+          <input id="field-schedule-timezone" type="text" list="editor-timezones" class="input input-bordered input-sm" x-model="job.schedule.timezone" :placeholder="ingestTz" autocomplete="off">
           <datalist id="editor-timezones"><template x-for="z in timezones" :key="z"><option :value="z"></option></template></datalist>
           {% endcall %}
           {% call field(_('If a run was missed'), 'schedule.run_on_startup', _('What the ingester does at its start for a run it slept through.')) %}
-          <select class="select select-bordered select-sm" x-model="job.schedule.run_on_startup"
+          <select id="field-schedule-run-on-startup" class="select select-bordered select-sm" x-model="job.schedule.run_on_startup"
                   x-effect="sync($el, job.schedule.run_on_startup)">
             <template x-for="(text, value) in startups" :key="value"><option :value="value" x-text="text"></option></template>
           </select>
           {% endcall %}
           {% call field(_('Random delay'), 'schedule.jitter_seconds', _('Up to this many seconds, so jobs on the same minute do not start together.')) %}
-          <input type="number" min="0" class="input input-bordered input-sm" x-model.number="job.schedule.jitter_seconds">
+          <input id="field-schedule-jitter-seconds" type="number" min="0" class="input input-bordered input-sm" x-model.number="job.schedule.jitter_seconds">
           {% endcall %}
           {% call field(_('Tolerated lateness'), 'schedule.misfire_grace_seconds', _('A run that could not start on time still starts if it is no later than this.')) %}
-          <input type="number" min="0" class="input input-bordered input-sm" x-model.number="job.schedule.misfire_grace_seconds">
+          <input id="field-schedule-misfire-grace-seconds" type="number" min="0" class="input input-bordered input-sm" x-model.number="job.schedule.misfire_grace_seconds">
           {% endcall %}
         </div>
       </details>
@@ -378,50 +378,51 @@
 
   {# ---- 7. processing ---- #}
   <details class="card bg-base-100 border border-base-300">
-    <summary class="cursor-pointer p-5 font-semibold">{% trans %}7 · Processing{% endtrans %} <span class="ml-2 text-xs font-normal opacity-60">{% trans %}chunking, safety limits and a few switches{% endtrans %}</span></summary>
+    <summary class="cursor-pointer p-5 font-semibold">{% trans %}7 · Processing{% endtrans %} <span class="ml-2 text-xs font-normal text-pk-text-muted">{% trans %}chunking, safety limits and a few switches{% endtrans %}</span></summary>
     <div class="flex flex-col gap-4 px-5 pb-5">
       <div class="grid gap-4 sm:grid-cols-3">
         {% call field(_('How text is split'), 'chunking.strategy') %}
-        <select class="select select-bordered select-sm" x-model="job.chunking.strategy"
+        <select id="field-chunking-strategy" class="select select-bordered select-sm" x-model="job.chunking.strategy"
                 x-effect="sync($el, job.chunking.strategy)">
           <template x-for="(text, value) in strategies" :key="value"><option :value="value" x-text="text"></option></template>
         </select>
         {% endcall %}
         {% call field(_('Chunk size (words)'), 'chunking.words') %}
-        <input type="number" min="1" class="input input-bordered input-sm" x-model.number="job.chunking.words" :class="err('chunking.words') ? 'input-error' : ''">
+        <input id="field-chunking-words" type="number" min="1" class="input input-bordered input-sm" x-model.number="job.chunking.words" :class="err('chunking.words') ? 'input-error' : ''">
         {% endcall %}
         {% call field(_('Overlap (words)'), 'chunking.overlap', _('Smaller than the chunk size.')) %}
-        <input type="number" min="0" class="input input-bordered input-sm" x-model.number="job.chunking.overlap" :class="err('chunking') || err('chunking.overlap') ? 'input-error' : ''">
+        <input id="field-chunking-overlap" type="number" min="0" class="input input-bordered input-sm" x-model.number="job.chunking.overlap" :class="err('chunking') || err('chunking.overlap') ? 'input-error' : ''">
         {% endcall %}
       </div>
       <p class="text-xs text-error" style="display:none" x-show="err('chunking')" x-text="err('chunking')"></p>
       <div class="grid gap-4 sm:grid-cols-3">
         {% call field(_('Files per embedding request'), 'embedding.batch_size', _('Empty uses the ingester\'s setting.')) %}
-        <input type="number" min="1" class="input input-bordered input-sm" x-model.number="job.embedding.batch_size">
+        <input id="field-embedding-batch-size" type="number" min="1" class="input input-bordered input-sm" x-model.number="job.embedding.batch_size">
         {% endcall %}
         {% call field(_('Most that may be removed in one run'), 'safety.max_delete_ratio', _('A fraction from 0 to 1. A run that would remove more stops instead.')) %}
-        <input type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm" x-model.number="job.safety.max_delete_ratio">
+        <input id="field-safety-max-delete-ratio" type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm" x-model.number="job.safety.max_delete_ratio">
         {% endcall %}
       </div>
       <label class="flex items-start gap-3"><input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="job.safety.empty_source_guard"><span class="text-sm">{% trans %}Stop a run that finds the source empty, instead of removing everything{% endtrans %}</span></label>
       <label class="flex items-start gap-3"><input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="job.mcp_allow_full"><span class="text-sm">{% trans %}An assistant may start a full rebuild of this job{% endtrans %}</span></label>
       <label class="flex items-start gap-3"><input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="job.expand_embedded"><span class="text-sm">{% trans %}Index attachments of e-mails as documents of their own{% endtrans %}</span></label>
       {% call field(_('Address pattern of results'), 'source_template', _('How the source address of a point is built. It must contain {label} and {rel_path}.')) %}
-      <input type="text" class="input input-bordered input-sm font-mono" x-model="job.source_template" spellcheck="false">
+      <input id="field-source-template" type="text" class="input input-bordered input-sm font-mono" x-model="job.source_template" spellcheck="false">
       {% endcall %}
     </div>
   </details>
 
-  {# ---- the foot ---- #}
-  <div class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-base-300 bg-base-100 px-5 py-3 shadow-lg">
+  {# ---- the foot: the form's actions after its last field (kit form pattern), not a bar
+       floating over the fields; one primary button ---- #}
+  <div class="flex flex-wrap items-center gap-3 border-t border-base-300 pt-4">
     <button type="button" class="btn btn-primary btn-sm" :disabled="busy" @click="save(false)">
       <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
       {% trans %}Save{% endtrans %}
     </button>
     <button type="button" class="btn btn-outline btn-sm" :disabled="busy" @click="save(true)">{% trans %}Save and dry run{% endtrans %}</button>
     <a href="{{ '/ingest/jobs' if job_id is none else '/ingest/jobs/' ~ job_id }}" class="btn btn-ghost btn-sm">{% trans %}Cancel{% endtrans %}</a>
-    <span class="ml-auto text-xs opacity-60" x-show="validating" style="display:none">{% trans %}Checking…{% endtrans %}</span>
-    <span class="ml-auto text-xs opacity-60" x-show="!validating && dirty && !summary.length" style="display:none">{% trans %}Unsaved changes{% endtrans %}</span>
+    <span class="ml-auto text-xs text-pk-text-muted" x-show="validating" style="display:none">{% trans %}Checking…{% endtrans %}</span>
+    <span class="ml-auto text-xs text-pk-text-muted" x-show="!validating && dirty && !summary.length" style="display:none">{% trans %}Unsaved changes{% endtrans %}</span>
   </div>
 
   {# ---- leaving with unsaved changes (the browser's own prompt cannot be styled or worded) ---- #}
@@ -443,7 +444,7 @@
   <dialog id="folder-picker" class="modal" x-ref="picker">
     <div class="modal-box max-w-xl">
       <h3 class="mb-1 text-lg font-bold">{% trans %}Choose a folder{% endtrans %}</h3>
-      <p class="mb-2 text-sm opacity-70">{% trans %}The documents folder of the RAG module. The job reads everything below the folder you choose.{% endtrans %}</p>
+      <p class="mb-2 text-sm text-pk-text-muted">{% trans %}The documents folder of the RAG module. The job reads everything below the folder you choose.{% endtrans %}</p>
       <p class="mb-2 break-all font-mono text-xs">/data/local<span x-text="pick.path ? '/' + pick.path : ''"></span></p>
       <div class="max-h-72 overflow-y-auto rounded-lg border border-base-300">
         <ul class="menu menu-sm">
@@ -451,12 +452,12 @@
           <template x-for="e in pick.entries" :key="e.path">
             <li>
               <a x-show="e.dir" style="display:none" @click="browse(e.path)">📁 <span x-text="e.name"></span></a>
-              <span x-show="!e.dir" style="display:none" class="opacity-40" x-text="e.name"></span>
+              <span x-show="!e.dir" style="display:none" class="text-pk-text-muted" x-text="e.name"></span>
             </li>
           </template>
         </ul>
-        <p class="p-3 text-sm opacity-60" x-show="!pick.loading && !pick.entries.length" style="display:none">{% trans %}Nothing here.{% endtrans %}</p>
-        <p class="p-3 text-sm opacity-60" x-show="pick.loading" style="display:none">{% trans %}Loading…{% endtrans %}</p>
+        <p class="p-3 text-sm text-pk-text-muted" x-show="!pick.loading && !pick.entries.length" style="display:none">{% trans %}Nothing here.{% endtrans %}</p>
+        <p class="p-3 text-sm text-pk-text-muted" x-show="pick.loading" style="display:none">{% trans %}Loading…{% endtrans %}</p>
       </div>
       <p class="mt-2 text-sm text-error" style="display:none" x-show="pick.error" x-text="pick.error"></p>
       <div class="modal-action">

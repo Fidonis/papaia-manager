@@ -730,8 +730,9 @@ def test_a_healthy_host_leaves_the_chip_green(
 
     assert "All healthy" in body
     assert "4 / 4 ok" in body
-    # One chip with a visible verdict; the dot repeats it in colour.
-    assert "<span>All healthy</span>" in body
+    # One kit badge with a visible verdict; tone and state symbol repeat it.
+    assert '<span class="pk-badge" data-pk-tone="success">' in body
+    assert "pk-icon-circle-check" in body
 
 
 def test_a_critical_host_turns_the_chip_red_without_touching_the_stack_rows(
@@ -741,7 +742,7 @@ def test_a_critical_host_turns_the_chip_red_without_touching_the_stack_rows(
 
     body = _as(client, "user").get("/partials/service-status").text
 
-    assert "text-error" in body
+    assert 'data-pk-tone="error"' in body
     assert "1 issue" in body
     # The core stack row still reads fully running: the host has its own row.
     assert "1 / 1 running" in body

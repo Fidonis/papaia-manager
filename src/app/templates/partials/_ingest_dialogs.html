@@ -6,7 +6,7 @@
 <dialog id="ingest-run" class="modal" x-data="runDialog()" @ingest-run.window="open($event.detail)">
   <div class="modal-box max-w-lg">
     <h3 class="mb-1 text-lg font-bold"><span x-html="fmtHtml({{ _('Run <span class="font-mono">{id}</span>')|tojson|forceescape }}, { id: job.id })"></span></h3>
-    <p class="mb-3 text-sm opacity-70">
+    <p class="mb-3 text-sm text-pk-text-muted">
       <span x-html="fmtHtml({{ _('The ingester fetches the files, embeds what is new or changed and writes it to <span class="font-mono">{collection}</span>.')|tojson|forceescape }}, { collection: job.collection })"></span>
     </p>
     <form @submit.prevent="submit()" class="flex flex-col gap-3">
@@ -15,7 +15,7 @@
         <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="dry">
         <span>
           <span class="block text-sm font-semibold">{% trans %}Dry run first{% endtrans %}</span>
-          <span class="block text-xs opacity-70">
+          <span class="block text-xs text-pk-text-muted">
             {% trans %}Fetches and reads the files and reports what would be embedded, but embeds and writes nothing.{% endtrans %} <span x-show="job.first_run" style="display:none">{% trans %}Recommended for a job that never ran.{% endtrans %}</span>
           </span>
         </span>
@@ -58,7 +58,7 @@
       </div>
 
       <div>
-        <button type="button" class="link link-hover text-xs opacity-70" @click="advanced = !advanced"
+        <button type="button" class="link link-hover text-xs text-pk-text-muted" @click="advanced = !advanced"
                 x-text="advanced ? {{ _('Hide options')|tojson|forceescape }} : {{ _('More options')|tojson|forceescape }}"></button>
         <div x-show="advanced" style="display:none" class="mt-2 flex flex-col gap-2">
           <label class="flex items-start gap-2 text-sm" x-show="job.remote" style="display:none">
@@ -96,10 +96,10 @@
         <span x-html="fmtHtml({{ _('<b>Its runs are deleted too.</b> {value} They and their logs cannot be restored.')|tojson|forceescape }}, { value: runsText() })"></span>
       </span>
     </div>
-    <p x-show="!job.can_delete_runs" style="display:none" class="mb-3 text-sm opacity-70">
+    <p x-show="!job.can_delete_runs" style="display:none" class="mb-3 text-sm text-pk-text-muted">
       {% trans %}This ingester cannot delete runs, so the runs of the job stay in its history.{% endtrans %}
     </p>
-    <p x-show="job.managed" style="display:none" class="mb-3 text-sm opacity-70">
+    <p x-show="job.managed" style="display:none" class="mb-3 text-sm text-pk-text-muted">
       {% trans %}This job belongs to the Embedding page and is created again with the next embedding. An upload that is still waiting keeps its files until the time limit.{% endtrans %}
     </p>
     <form @submit.prevent="submit()" class="flex flex-col gap-3">
@@ -107,7 +107,7 @@
         <input type="checkbox" class="checkbox checkbox-sm mt-0.5" x-model="purge">
         <span>
           <span class="block text-sm font-semibold">{% trans %}Remove what this job embedded, too{% endtrans %}</span>
-          <span class="block text-xs opacity-70">
+          <span class="block text-xs text-pk-text-muted">
             {% trans %}Deletes its points from the collection. Without this the content shows up under Leftovers, where it can be removed later.{% endtrans %}
           </span>
         </span>
@@ -137,7 +137,7 @@
     <h3 class="mb-1 text-lg font-bold">
       {% trans %}Delete runs{% endtrans %}<span x-show="!choose" style="display:none"> <span x-html="fmtHtml({{ _('of <span class="font-mono">{jobId}</span>')|tojson|forceescape }}, { jobId: jobId })"></span></span>
     </h3>
-    <p class="mb-3 text-sm opacity-70">
+    <p class="mb-3 text-sm text-pk-text-muted">
       {% trans %}Deletes the history of a job, with the log of every run, for the days you pick. This cannot be undone. What the job embedded is not touched, and a run that is still working is kept.{% endtrans %}
     </p>
     <form @submit.prevent="submit()" class="flex flex-col gap-3">
@@ -163,17 +163,17 @@
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
-        <span class="text-xs opacity-60">{% trans %}Keep the last{% endtrans %}</span>
+        <span class="text-xs text-pk-text-muted">{% trans %}Keep the last{% endtrans %}</span>
         <button type="button" class="btn btn-ghost btn-xs" @click="keep(30)">{% trans %}30 days{% endtrans %}</button>
         <button type="button" class="btn btn-ghost btn-xs" @click="keep(90)">{% trans %}90 days{% endtrans %}</button>
         <button type="button" class="btn btn-ghost btn-xs" @click="keep(180)">{% trans %}180 days{% endtrans %}</button>
         <button type="button" class="btn btn-ghost btn-xs" @click="keep(365)">{% trans %}365 days{% endtrans %}</button>
       </div>
-      <p class="text-xs opacity-60">
+      <p class="text-xs text-pk-text-muted">
         {% trans %}Both days are included{% endtrans %}<span x-show="tz" style="display:none"><span x-html="fmtHtml({{ _(', counted in <span class="font-mono">{tz}</span>')|tojson|forceescape }}, { tz: tz })"></span></span>{% trans %}. Leave both empty to delete every run of the job.{% endtrans %}
       </p>
       <p x-show="jobId && !error" style="display:none" class="text-sm font-semibold" x-text="previewText()"></p>
-      <p x-show="hasRuns()" style="display:none" class="text-xs opacity-70">
+      <p x-show="hasRuns()" style="display:none" class="text-xs text-pk-text-muted">
         {% trans %}The time of the job's last run changes. A job that is set to run when it was missed starts again at the next start of the ingester once no successful run is left.{% endtrans %}
       </p>
       <div x-show="hasRuns() && unbounded()" style="display:none" class="form-control">
