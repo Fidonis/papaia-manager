@@ -11,12 +11,13 @@
    "Preview as user" filters the draft in the browser. It is a preview of what
    the gallery will return, never a substitute for it. #}
 {% from "partials/_actions.html" import overflow_menu %}
+{% from "partials/_csp.html" import data_island %}
 
 {# Header cluster, swapped out of band into the slot dashboard.html reserves.
    One filled primary button, everything else ghost or in the overflow menu --
    tier 1 of the contract in _actions.html. #}
 <div id="dashboard-actions" hx-swap-oob="true" class="flex items-center gap-2">
-  <button class="btn btn-ghost btn-sm" @click="$store.tiles.preview = !$store.tiles.preview">
+  <button class="btn btn-ghost btn-sm" @click="$store.tiles.togglePreview()">
     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
       <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
       <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
@@ -38,14 +39,18 @@
   </button>
 </div>
 
-{# `x-data` with no expression: the state lives in the store, this only opens a
-   scope for the directives below. The draft is handed over in x-init rather
-   than fetched, so the editor comes up populated instead of blank. #}
-<div
-  x-data
-  x-init='$store.tiles.load({{ draft|tojson }}, {{ revision|tojson }}, {{ link_keys|tojson }}, {{ widget_types|tojson }}, {{ widget_icons|tojson }}, {{ default_icons|tojson }})'
-  x-effect="$store.tiles.groups.length; $store.tiles.preview; $nextTick(() => tilesInitSortable())"
->
+{# The state lives in the store; the component `tileEditor` (static/js/pages/dashboard.js)
+   hands it the draft of the island below as the partial comes in, so the editor comes up
+   populated instead of blank, and keeps drag and drop in step with the groups. #}
+{{ data_island("tiles-editor", {
+  "draft": draft,
+  "revision": revision,
+  "linkKeys": link_keys,
+  "widgetTypes": widget_types,
+  "widgetIcons": widget_icons,
+  "defaultIcons": default_icons,
+}) }}
+<div x-data="tileEditor" x-effect="layout()">
 
   {% if error %}
   <div class="alert alert-warning mb-6">
@@ -85,7 +90,7 @@
                    class="input input-bordered input-sm w-72 font-semibold uppercase tracking-wide"
                    aria-label="{{ _('Group name') }}"
                    :value="group.name"
-                   @input="group.name = $event.target.value; $store.tiles.touch()">
+                   @input="$store.tiles.renameGroup(group, $event.target.value)">
           </template>
           <template x-if="$store.tiles.preview">
             <p class="text-sm font-semibold text-pk-text-muted uppercase tracking-wide" x-text="group.name"></p>
@@ -103,7 +108,7 @@
             <li><a @click="$store.tiles.moveGroup(gi, 1)">{% trans %}Move group down{% endtrans %}</a></li>
             <li>
               <a class="text-error"
-                 @click="if (confirm(fmtPlural(group.tiles.length, {{ _('Delete the group and its {count} tile? Nothing is written until you save.')|tojson|forceescape }}, {{ _('Delete the group and its {count} tiles? Nothing is written until you save.')|tojson|forceescape }}))) $store.tiles.deleteGroup(gi)">
+                 @click="$store.tiles.confirmDeleteGroup(gi)">
                 {% trans %}Delete group{% endtrans %}
               </a>
             </li>
@@ -117,17 +122,15 @@
           <template x-for="(tile, ti) in group.tiles" :key="tile._id">
             {# `overflow-visible` because daisyUI's card clips its content and
                the overflow menu is absolutely positioned inside it. #}
-            {# A widget spans columns as it will on the dashboard. The classes are spelled
-               out in full because app.css is built by scanning the templates. #}
+            {# A widget spans columns as it will on the dashboard (cardClass). app.css is built
+               by scanning the templates, so the classes it returns are spelled out here:
+               cursor-pointer hover:border-base-content/25 transition-colors sm:col-span-2
+               xl:col-span-3 2xl:col-span-4 #}
             <div class="card bg-base-100 border border-base-300 overflow-visible relative"
-                 :class="[
-                   $store.tiles.preview ? '' : 'cursor-pointer hover:border-base-content/25 transition-colors',
-                   tile.type === 'widget' && tile.size === 'm' ? 'sm:col-span-2' : '',
-                   tile.type === 'widget' && tile.size === 'l' ? 'sm:col-span-2 xl:col-span-3 2xl:col-span-4' : '',
-                 ]"
+                 :class="$store.tiles.cardClass(tile)"
                  :data-tile-id="tile._id"
                  x-show="$store.tiles.tileVisible(tile)"
-                 @click="if (!$store.tiles.preview) $store.tiles.openTile(gi, ti)">
+                 @click="$store.tiles.clickTile(gi, ti)">
               <div class="card-body p-5 flex flex-col gap-3">
 
                 <div class="flex items-start gap-3">
@@ -138,14 +141,14 @@
                   <template x-if="tile.type !== 'widget' && !$store.tiles.iconFor(tile)">
                     <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-extrabold font-brand uppercase
                                  bg-base-300 text-base-content"
-                          x-text="(tile.name || '?').charAt(0)"></span>
+                          x-text="$store.tiles.initial(tile.name)"></span>
                   </template>
                   {# A widget shows its type's icon, from the same closed set the dashboard draws. #}
                   <template x-if="tile.type === 'widget'">
                     <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-base-300 text-base-content">
                       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round"
-                              :d="$store.tiles.widgetIconPath(($store.tiles.widgetType(tile.widget) || {}).icon)"/>
+                              :d="$store.tiles.widgetTileIcon(tile)"/>
                       </svg>
                     </span>
                   </template>
@@ -200,9 +203,7 @@
                 </div>
 
                 <p class="text-sm text-pk-text-muted line-clamp-2 min-h-[2.5rem]"
-                   x-text="tile.type === 'widget'
-                             ? (($store.tiles.widgetType(tile.widget) || {}).description || {{ _('No widget with this id exists.')|tojson|forceescape }})
-                             : tile.description"></p>
+                   x-text="tile.type === 'widget' ? $store.tiles.widgetDescription(tile) : tile.description"></p>
 
                 <div x-show="!$store.tiles.preview && tile.visibility === 'admin'" style="display:none">
                   <span class="badge badge-sm badge-ghost gap-1">
@@ -222,7 +223,7 @@
           <button type="button"
                   @click="$store.tiles.newTile(gi)"
                   class="flex-1 rounded-2xl border border-dashed border-base-300 py-4 text-sm text-pk-text-muted hover:text-base-content hover:border-primary transition-colors">
-            <span x-html="fmtHtml({{ _('+ Add link to “{name}”')|tojson|forceescape }}, { name: group.name })"></span>
+            <span x-text="$store.tiles.addLinkLabel(group)"></span>
           </button>
           <button type="button"
                   @click="$store.tiles.newWidget(gi)"
@@ -248,14 +249,14 @@
        x-show="$store.tiles.dirty > 0 && !$store.tiles.preview"
        class="sticky bottom-4 z-10 flex flex-wrap items-center gap-3 mt-6 px-5 py-3 rounded-xl border border-primary bg-base-100 shadow-lg">
     <span class="text-sm">
-      <span x-html="fmtPlural($store.tiles.dirty, {{ _('<span class="font-semibold">{count}</span> unsaved change')|tojson|forceescape }}, {{ _('<span class="font-semibold">{count}</span> unsaved changes')|tojson|forceescape }}, {}, true)"></span>
+      <span x-effect="$store.tiles.showDirty($el)"></span>
       <span class="text-pk-text-muted">{% trans %}— everyone still sees the saved dashboard{% endtrans %}</span>
     </span>
     <span class="flex-1"></span>
     <button type="button" class="btn btn-ghost btn-sm" style="display:none"
             x-show="$store.tiles.removed"
             @click="$store.tiles.undoRemove()">
-      <span x-html="fmtHtml({{ _('Undo: removed “{tiles}”')|tojson|forceescape }}, { tiles: $store.tiles.removedName() })"></span>
+      <span x-text="$store.tiles.undoLabel()"></span>
     </button>
     <button class="btn btn-outline btn-sm" @click="$store.tiles.discard()">{% trans %}Discard{% endtrans %}</button>
     <button class="btn btn-primary btn-sm" :disabled="$store.tiles.busy" @click="$store.tiles.save()">
@@ -270,7 +271,7 @@
      ref is registered, and the resulting error inside Alpine's effect leaves
      `x-show` dead across the whole page. @close covers Escape and backdrop
      clicks, which bypass the store entirely. #}
-  <dialog id="tile-editor-modal" class="modal" @close="$store.tiles.dialog = null">
+  <dialog id="tile-editor-modal" class="modal" @close="$store.tiles.tileDialogClosed()">
     <div class="modal-box max-w-3xl">
       <template x-if="$store.tiles.dialog">
         <div>
@@ -340,12 +341,12 @@
                 <div class="join">
                   <button type="button" class="btn btn-sm join-item"
                           :class="$store.tiles.dialog.tile.visibility === 'all' ? 'btn-primary' : 'btn-outline'"
-                          @click="$store.tiles.dialog.tile.visibility = 'all'">
+                          @click="$store.tiles.setTileVisibility('all')">
                     {% trans %}Everyone{% endtrans %}
                   </button>
                   <button type="button" class="btn btn-sm join-item"
                           :class="$store.tiles.dialog.tile.visibility === 'admin' ? 'btn-primary' : 'btn-outline'"
-                          @click="$store.tiles.dialog.tile.visibility = 'admin'">
+                          @click="$store.tiles.setTileVisibility('admin')">
                     {% trans %}Administrators only{% endtrans %}
                   </button>
                 </div>
@@ -367,7 +368,7 @@
                     </template>
                     <template x-if="!$store.tiles.iconFor($store.tiles.dialog.tile)">
                       <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-content text-lg font-extrabold font-brand uppercase"
-                            x-text="($store.tiles.dialog.tile.name || '?').charAt(0)"></span>
+                            x-text="$store.tiles.initial($store.tiles.dialog.tile.name)"></span>
                     </template>
                     <p class="font-semibold leading-snug truncate"
                        x-text="$store.tiles.dialog.tile.name || {{ _('Untitled tile')|tojson|forceescape }}"></p>
@@ -409,7 +410,7 @@
      closed by id for the reason given above. The preview in the second step is the real
      card: the server renders it from live data, the way the dashboard does. A type the
      installation cannot use is listed with its reason and cannot be chosen. #}
-  <dialog id="widget-modal" class="modal" @close="$store.tiles.widgetDialog = null">
+  <dialog id="widget-modal" class="modal" @close="$store.tiles.widgetDialogClosed()">
     <div class="modal-box max-w-3xl">
       <template x-if="$store.tiles.widgetDialog">
         <div>
@@ -484,13 +485,13 @@
                     <div class="join">
                       <button type="button" class="btn btn-sm join-item"
                               :class="$store.tiles.widgetDialog.tile.size === 's' ? 'btn-primary' : 'btn-outline'"
-                              @click="$store.tiles.widgetDialog.tile.size = 's'">{% trans %}Small{% endtrans %}</button>
+                              @click="$store.tiles.setWidgetSize('s')">{% trans %}Small{% endtrans %}</button>
                       <button type="button" class="btn btn-sm join-item"
                               :class="$store.tiles.widgetDialog.tile.size === 'm' ? 'btn-primary' : 'btn-outline'"
-                              @click="$store.tiles.widgetDialog.tile.size = 'm'">{% trans %}Medium{% endtrans %}</button>
+                              @click="$store.tiles.setWidgetSize('m')">{% trans %}Medium{% endtrans %}</button>
                       <button type="button" class="btn btn-sm join-item"
                               :class="$store.tiles.widgetDialog.tile.size === 'l' ? 'btn-primary' : 'btn-outline'"
-                              @click="$store.tiles.widgetDialog.tile.size = 'l'">{% trans %}Full row{% endtrans %}</button>
+                              @click="$store.tiles.setWidgetSize('l')">{% trans %}Full row{% endtrans %}</button>
                     </div>
                   </div>
 
@@ -499,10 +500,10 @@
                     <div class="join">
                       <button type="button" class="btn btn-sm join-item"
                               :class="$store.tiles.widgetDialog.tile.visibility === 'all' ? 'btn-primary' : 'btn-outline'"
-                              @click="$store.tiles.widgetDialog.tile.visibility = 'all'">{% trans %}Everyone{% endtrans %}</button>
+                              @click="$store.tiles.setWidgetVisibility('all')">{% trans %}Everyone{% endtrans %}</button>
                       <button type="button" class="btn btn-sm join-item"
                               :class="$store.tiles.widgetDialog.tile.visibility === 'admin' ? 'btn-primary' : 'btn-outline'"
-                              @click="$store.tiles.widgetDialog.tile.visibility = 'admin'">{% trans %}Administrators only{% endtrans %}</button>
+                              @click="$store.tiles.setWidgetVisibility('admin')">{% trans %}Administrators only{% endtrans %}</button>
                     </div>
                     <span class="label-text-alt text-pk-text-muted mt-1"
                           x-show="$store.tiles.widgetDialog.tile.visibility === 'all'" style="display:none">
@@ -518,7 +519,7 @@
                   </div>
                   <p class="text-xs text-pk-text-muted mt-3"
                      x-show="$store.tiles.widgetDialog.type" style="display:none"
-                     x-text="fmt({{ _('Refreshes about every {seconds} s')|tojson|forceescape }}, { seconds: $store.tiles.widgetDialog.type ? $store.tiles.widgetDialog.type.refresh : '' })"></p>
+                     x-text="$store.tiles.refreshLabel()"></p>
                 </div>
               </div>
 
@@ -546,7 +547,7 @@
      The escape hatch: bulk edits, and moving a dashboard between deployments.
      Writes through the same validation as the editor, so it cannot leave a
      document the gallery would refuse to render. #}
-  <dialog id="tiles-raw-modal" class="modal" @close="$store.tiles.raw = null">
+  <dialog id="tiles-raw-modal" class="modal" @close="$store.tiles.rawDialogClosed()">
     <div class="modal-box max-w-3xl">
       <template x-if="$store.tiles.raw">
         <div>

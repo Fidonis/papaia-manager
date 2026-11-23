@@ -5,6 +5,7 @@
     "version": "3.17.5"
   },
   "converted": [
+    "dashboard.html",
     "error.html",
     "help.html",
     "inventory.html",
@@ -65,13 +66,6 @@
     "connections.html": {
       "inline_scripts": 1,
       "on_attributes": 1,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "dashboard.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
       "alpine_unsupported": 0,
       "style_blocks": 0,
       "style_attributes": 0
@@ -380,16 +374,9 @@
     "partials/tile_editor.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
-      "alpine_unsupported": 7,
-      "style_blocks": 0,
-      "style_attributes": 16
-    },
-    "partials/tile_gallery.html": {
-      "inline_scripts": 0,
-      "on_attributes": 3,
       "alpine_unsupported": 0,
       "style_blocks": 0,
-      "style_attributes": 0
+      "style_attributes": 16
     },
     "partials/upgrade_check.html": {
       "inline_scripts": 0,
@@ -449,9 +436,9 @@
     }
   },
   "totals": {
-    "inline_scripts": 34,
-    "on_attributes": 100,
-    "alpine_unsupported": 96,
+    "inline_scripts": 33,
+    "on_attributes": 97,
+    "alpine_unsupported": 89,
     "style_blocks": 0,
     "style_attributes": 241
   }

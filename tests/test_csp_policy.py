@@ -181,8 +181,10 @@ def _alpine_scripts(body: str) -> list[str]:
     return re.findall(r'<script[^>]+src="(/static/alpine[^"?]*)', body)
 
 
-def test_a_page_not_converted_loads_the_standard_build_only(client: TestClient) -> None:
-    assert "dashboard.html" not in csp.converted_templates()
+def test_a_page_not_converted_loads_the_standard_build_only(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(csp, "converted_templates", lambda: frozenset({"jobs.html"}))
     assert _alpine_scripts(client.get("/").text) == ["/static/alpine.min.js"]
 
 

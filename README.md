@@ -984,11 +984,19 @@ below collects the reports. A response with a policy of its own keeps it (the lo
 - Page code is an ES module under `src/app/static/js/pages/<group>.js`, shared helpers are
   under `src/app/static/js/core/`; both are served as they are from `/static/js/`, without a
   bundler. Every page built on `base.html` loads `js/core/main.js`. A page loads its own
-  module in the block `page_modules` of `base.html`, which comes before htmx and Alpine:
-  modules and deferred scripts run in document order, so the module registers its components
-  with `Alpine.data` on `alpine:init` before Alpine starts. A component offers as methods
-  what the CSP build does not evaluate in a template (several statements, arrow functions,
-  globals such as `Math`, `Number`, `Object` or `Boolean`).
+  module in the block `page_modules` of `base.html`, which comes after `main.js` and before
+  htmx and Alpine: modules and deferred scripts run in document order, so the stores and
+  components a module registers on `alpine:init` exist when Alpine starts. A module imports
+  what it uses (`fmt`, `csrfToken`, `readIsland`, ...) instead of reaching for the transition
+  globals; the page's toaster, failure report and actions are the one instance of
+  `js/core/page.js` (`pageCore()`), which `main.js` uses as well through `js/core/runtime.js`.
+- Global functions become methods of an Alpine store or of an `Alpine.data` component the
+  module registers; `on*` attributes become Alpine event bindings. An expression is a plain
+  call or property (no arrow function, template literal, several statements, `window`,
+  `document`, or globals such as `Math`, `Number`, `Object`, `Boolean` or `JSON`), and
+  `x-html` gives way to `x-text` or to nodes the module builds with `textContent`. Script a
+  partial needs after an htmx swap runs from the module, through an `x-data` component's
+  `init()` or `htmx:afterSettle`, never as script in the fragment.
 - Server values reach a module as a JSON data island, never inside a script: the macro
   `data_island(id, value)` of `templates/partials/_csp.html` writes
   `<script type="application/json">` (escaped with `tojson`, so `<`, `>`, `&` and `'` never end
@@ -1004,7 +1012,17 @@ below collects the reports. A response with a policy of its own keeps it (the lo
   `visibilitychange from:document` instead of an htmx trigger filter; `js/core/poll.js`
   cancels its requests while the page is hidden.
 
-**Converted pages.** `kit_specimen.html` (`/_kit/specimen`), converted from the start. It
+**Converted pages.** The dashboard (`dashboard.html` with the partials `tile_gallery.html` and
+`tile_editor.html`): the editor is `js/pages/dashboard.js`, loaded for administrators only
+together with Sortable. Its texts come from the island `dashboard-texts`, and the draft from
+the island `tiles-editor` of the editor partial, which the component `tileEditor` hands to the
+store `tiles` as the partial comes in. The editor partial still carries inline `style`
+attributes, which the policy reports under `style-src`; they move into classes before the
+policy is enforced. `tests/test_dashboard_scripts.py` checks the templates and the islands, and
+`tests/test_dashboard_browser.py` the browser path in both colour schemes: the tiles load and
+refresh, the editor adds, moves and removes a tile, the layout is saved.
+
+`kit_specimen.html` (`/_kit/specimen`), converted from the start. It
 renders the kit's reference content only, so it loads neither `app.css`, htmx nor
 `js/core/main.js`; it loads the CSP build of Alpine, and the browser check confirms that the
 build starts on it without a report, refused expression or script error

@@ -1,10 +1,13 @@
-{# The page header lives outside this swap target, so the dashboard's own
+{# The editor's buttons call the store of static/js/pages/dashboard.js, which the dashboard
+   loads for administrators, the only ones who see them.
+
+   The page header lives outside this swap target, so the dashboard's own
    action slot is filled out of band. Always emitted, including empty for a
    non-administrator: leaving the editor swaps this partial back in, and the
    editor's cluster has to go away with it. #}
 <div id="dashboard-actions" hx-swap-oob="true" class="flex items-center gap-2">
   {% if is_admin %}
-  <button class="btn btn-primary btn-sm" onclick="tilesEnterEdit()">
+  <button class="btn btn-primary btn-sm" @click="$store.tiles.enterEdit()">
     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
       <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
     </svg>
@@ -30,7 +33,7 @@
     {% endif %}
   </div>
   {% if is_admin %}
-  <button class="btn btn-sm" onclick="tilesEnterEdit()">{% trans %}Open editor{% endtrans %}</button>
+  <button class="btn btn-sm" @click="$store.tiles.enterEdit()">{% trans %}Open editor{% endtrans %}</button>
   {% endif %}
 </div>
 
@@ -41,7 +44,7 @@
   </svg>
   <p class="text-lg font-semibold text-pk-text-muted">{% trans %}No applications configured{% endtrans %}</p>
   {% if is_admin %}
-  <button class="btn btn-primary btn-sm" onclick="tilesEnterEdit()">{% trans %}Add your first group{% endtrans %}</button>
+  <button class="btn btn-primary btn-sm" @click="$store.tiles.enterEdit()">{% trans %}Add your first group{% endtrans %}</button>
   {% else %}
   <p class="text-sm text-pk-text-muted">{% trans %}An administrator has not added any applications yet.{% endtrans %}</p>
   {% endif %}
