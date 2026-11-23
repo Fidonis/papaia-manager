@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import fake_audit
 import yaml
 from fake_keycloak import TOKEN, FakeKeycloak
 from fastapi import FastAPI
@@ -29,7 +30,8 @@ SESSION_COOKIE = "papaia_manager_session"
 # Users page needs the identity role of the bundled Keycloak).
 ROLES = ("admin", "user", "papaia-admin")
 # The test persons of ui/pages.yaml (column `person`) with their realm roles. Emil holds
-# `papaia-auditor` (KE-13) and nothing of the administration, so the inventory is his page.
+# `papaia-auditor` (KE-13) and nothing of the administration, so the inventory and the
+# permission report are his pages.
 # Erika holds `papaia-confirm` and nothing of the administration: she is the second person who
 # confirms requests for information and erasure, so the page "Data subject requests" is hers.
 PERSONS: dict[str, tuple[str, ...]] = {
@@ -231,8 +233,13 @@ def _audit_send(method: str, url: str, headers: Any) -> tuple[int, bytes]:
 
 def stand_ins(app: FastAPI) -> FakeKeycloak:
     """Answer the Users and Roles pages from the simulated Keycloak, with synthetic accounts,
-    and the page "Data subject requests" from the simulated papaia-audit."""
+    the page "Data subject requests" from the simulated papaia-audit and the permission report
+    from a stand-in papaia-audit (tests/fake_audit.py)."""
+    from papaia_kit.exchange import ClientSecret, ExchangeClient
+
     from app.core import person_requests
+    from app.core.access_report import ReportService
+    from app.routers.ui_access_report import get_report_service, get_subject_token
     from app.routers.ui_person_requests import person_token
     from app.routers.users_deps import get_keycloak_transport, get_user_token
 
@@ -251,4 +258,22 @@ def stand_ins(app: FastAPI) -> FakeKeycloak:
     keycloak.add_user("carla", first="Carla", roles=("user",), enabled=False)
     app.dependency_overrides[get_keycloak_transport] = keycloak.transport
     app.dependency_overrides[get_user_token] = lambda: TOKEN
+
+    audit = fake_audit.FakeAudit()
+    report = ReportService(
+        exchange=ExchangeClient(
+            token_endpoint="https://kc.test/realms/papaia/protocol/openid-connect/token",
+            client_id=fake_audit.CLIENT_ID,
+            auth=ClientSecret("design-check-client"),
+            transport=fake_audit.FakeIssuer(),
+        ),
+        post=audit.post,
+        base_url="https://papaia-audit:8443",
+    )
+
+    async def subject(request: object) -> str:
+        return fake_audit.session_token(fake_audit.DORA)
+
+    app.dependency_overrides[get_report_service] = lambda: report
+    app.dependency_overrides[get_subject_token] = lambda: subject
     return keycloak

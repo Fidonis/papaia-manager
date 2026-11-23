@@ -56,6 +56,7 @@ from app.routers import (
     health,
     kit,
     ui,
+    ui_access_report,
     ui_config,
     ui_ingest,
     ui_knowledge_map,
@@ -127,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(ui_widgets.router)
     app.include_router(api_audit.router)
     app.include_router(api_inventory.router)
+    app.include_router(ui_access_report.router)
     app.include_router(api_catalogs.router)
     app.include_router(api_collections.router)
     app.include_router(api_config.router)

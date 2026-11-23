@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Browser check of the content security policy of the manager (T-UI-03, oberfl 3.3).
 #
-# Serves the manager in the stand-in world of the tests on 127.0.0.1 (tests/design_serve.py,
-# signed in as a test administrator), opens every page of ui/pages.yaml in Chromium and runs
+# Serves the manager in the stand-in world of the tests on 127.0.0.1 (tests/design_serve.py),
+# opens every page of ui/pages.yaml in Chromium, signed in as the list's test person of that
+# page (Anna for the administration, Emil and Erika for the review pages), and runs
 # tests/csp_browser.mjs: a page whose template is converted (tests/csp_baseline.json) fails
 # on any report of the policy, refused Alpine expression or script error; for the others the
 # counts go to the report and, when given, to SUMMARY (the job summary in CI). Each
@@ -11,7 +12,8 @@
 #
 # Usage (from the repository root): scripts/csp-check.sh PORT REPORT [SUMMARY [CANDIDATE ...]]
 #   PORT       free port on 127.0.0.1 for the manager
-#   REPORT     where the JSON report is written
+#   REPORT     where the JSON report is written (Anna's pages; the report of every other
+#              person goes next to it as <REPORT without .json>.<person>.json)
 #   SUMMARY    file the Markdown table is appended to ("-" for none)
 #   CANDIDATE  LABEL=FILE, an Alpine build to measure the pages against
 set -euo pipefail
@@ -48,7 +50,6 @@ if ! [[ "${port}" =~ ^[0-9]{4,5}$ ]] || ((port < 1024 || port > 65535)); then
 fi
 
 work=$(mktemp -d)
-state="${work}/storage-state.json"
 server=""
 cleanup() {
   if [[ -n "${server}" ]]; then kill "${server}" 2>/dev/null || true; fi
@@ -56,11 +57,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+persons=()
+while IFS= read -r person; do persons+=("${person}"); done < <(
+  cd src && uv run --frozen python ../tests/design_serve.py --list-persons
+)
+states=()
+for person in "${persons[@]}"; do states+=(--storage-state "${person}=${work}/${person}.json"); done
+last_state="${work}/${persons[${#persons[@]}-1]}.json"
+
 (cd src && exec uv run --frozen python ../tests/design_serve.py \
-  --port "${port}" --storage-state "${state}") &
+  --port "${port}" "${states[@]}") &
 server=$!
 for _ in $(seq 1 100); do
-  if [[ -s "${state}" ]] && curl -fs -o /dev/null "http://127.0.0.1:${port}/health"; then
+  if [[ -s "${last_state}" ]] && curl -fs -o /dev/null "http://127.0.0.1:${port}/health"; then
     break
   fi
   kill -0 "${server}" 2>/dev/null || { echo "csp-check: the manager did not start" >&2; exit 2; }
@@ -71,9 +80,23 @@ curl -fsS -o /dev/null "http://127.0.0.1:${port}/health" || {
   exit 2
 }
 
-args=(--base-url "http://127.0.0.1:${port}" --storage-state "${state}" --report "${report}")
-while IFS= read -r page; do args+=(--page "${page}"); done < <(
-  cd src && uv run --frozen python ../tests/design_serve.py --list-pages
-)
-if [[ "${summary}" != "-" ]]; then args+=(--summary "${summary}"); fi
-node tests/csp_browser.mjs "${args[@]}" "${candidates[@]}"
+# Exit 1 is findings on a converted page, 2 a usage error or a page that does not load; the
+# worst exit of all persons is the result.
+result=0
+for person in "${persons[@]}"; do
+  if [[ "${person}" == anna ]]; then
+    out="${report}"
+  else
+    out="${report%.json}.${person}.json"
+  fi
+  args=(--base-url "http://127.0.0.1:${port}" --storage-state "${work}/${person}.json"
+    --report "${out}")
+  while IFS= read -r page; do args+=(--page "${page}"); done < <(
+    cd src && uv run --frozen python ../tests/design_serve.py --list-pages --person "${person}"
+  )
+  if [[ "${summary}" != "-" ]]; then args+=(--summary "${summary}"); fi
+  status=0
+  node tests/csp_browser.mjs "${args[@]}" "${candidates[@]}" || status=$?
+  if ((status > result)); then result=${status}; fi
+done
+exit "${result}"

@@ -198,6 +198,35 @@ one entry in the audit log and one `papaia.audit/1` row (`person_request.confirm
 `person_request.reject`, `object_ref` `person_request` with the request id) under the
 request's correlation id, which papaia-audit receives with the decision.
 
+**Permission report.** The page **Permission report** (`/access-report`, German
+"Berechtigungsbericht", navigation group Review) shows the platform's permission report
+(format `papaia.access-report/1`) by person or by connected system. Only
+`MANAGER_AUDITOR_ROLE` sees it; without the role page and download answer `403` before
+anything else happens, and that refusal is one `inventory_exported` row with result
+`denied`. The report is built by the core's papaia-audit, not by the manager: on every
+request the manager exchanges the signed-in person's token for the audience `papaia-audit`
+(token exchange with the manager's client, `audience=papaia-audit`, `scope=aud-papaia-audit`)
+and calls `POST /v1/access-reports/build` at `AUDIT_READ_URL` (default
+`https://papaia-audit:8443`) over mutual TLS with the client certificate of
+`AUDIT_TLS_CERT_FILE`, with the request's correlation id. The exchanged token serves that
+one call and is dropped; it never reaches the session, a log or the page. The manager holds
+no Keycloak credential and no realm right for the report and calls neither the Admin API
+nor Docker. By person a row shows realm and module roles, groups, owned and deputised
+service accounts, delegations per module, a separation-of-duties conflict and the emergency
+account; by system the clients with an exchange right and its effects, who asked for and
+confirmed it, the service accounts with that audience and `im Zielsystem geführt` for the
+rights inside the target system. Every row shows when it was last confirmed and, when the
+recertification is due, the mark "Confirmation due"; a filter shows the due rows only. The
+page shows the report's checksum. **Download (CSV)** and **Download (JSON)** hand out the
+bytes papaia-audit answered, unchanged; the manager keeps no copy and writes no audit row of
+its own for a retrieval, since papaia-audit records each one. A JSON answer is used only
+when it is valid against the published schema (`src/app/core/schemas/`), of the kind asked
+for, with sorted rows and matching row digests and checksum. A refusal of papaia-audit
+(`403`) is shown with its own message and hint; a failed exchange, an unreachable
+papaia-audit or an unusable answer shows an error state with the correlation id and no
+partial data. Confirming rows (recertification) stays on the host (`papaia-ctl report
+confirm`).
+
 **Audit rows.** Besides the local audit log, every write, send and delete of the manager
 leaves one `papaia.audit/1` row: who acted (the signed-in person, or the manager's own service
 identity for scheduled work), the operation, its result and the request's
@@ -1298,6 +1327,8 @@ GET    /api/v1/delegations                # counts per module and person; identi
 DELETE /api/v1/delegations/{module}/persons/{user_id}   # revoke; module flow|assistant
 GET    /api/v1/inventory                  # papaia.inventory/1, ?flag=&module=&data_class=&effect=&person=; auditor
 GET    /api/v1/inventory/export?format=csv|json   # same filters; inventory_exported row; auditor
+GET    /access-report?by=person|system&due=1     # permission report page (papaia-audit); auditor
+GET    /access-report/download?by=person|system&format=csv|json   # answer of papaia-audit, unchanged; auditor
 
 GET    /api/v1/catalogs
 POST   /api/v1/catalogs                   # {name, type, url|path, ref?, auth?}

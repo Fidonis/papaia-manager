@@ -246,6 +246,13 @@ pages:
     needs_neighbours: true
     person: erika
   - module: manager
+    path: /access-report
+    title_key: manager.access_report
+    nav_group: manager.review
+    kinds: [tabelle, formular, zustand]
+    needs_neighbours: true
+    person: emil
+  - module: manager
     path: /settings
     title_key: manager.settings
     nav_group: manager.system
@@ -311,3 +318,6 @@ leitweg:
   - name: confirm_a_data_subject_request
     steps:
       - {step: 1, action: "„Betroffenenanträge“ in der Navigation öffnen und Anmeldung bestätigen", path: /person-requests}
+  - name: read_the_permission_report
+    steps:
+      - {step: 1, action: "„Berechtigungsbericht“ in der Navigation öffnen, Ansicht wählen und herunterladen", path: /access-report}

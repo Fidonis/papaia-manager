@@ -151,6 +151,7 @@ def test_the_page_list_names_every_full_page_template() -> None:
         "node_detail.html", "audit.html", "settings.html", "settings_installation.html",
         "settings_modules.html", "settings_overlay.html", "help.html", "me.html",
         "kit_specimen.html", "inventory.html", "person_requests.html",
+        "access_report.html",
     }  # fmt: skip
     assert full == rendered
 
@@ -178,6 +179,7 @@ def test_the_data_subject_requests_are_a_page_of_the_confirming_person() -> None
 def test_the_inventory_is_a_page_of_the_auditor_only() -> None:
     """Separation of duties: the administrator Anna does not see it, the auditor Emil does."""
     assert ("/inventory", "emil") in page_rows()
+    assert ("/access-report", "emil") in page_rows()
     assert "papaia-auditor" in design_world.PERSONS["emil"]
     assert "papaia-auditor" not in design_world.PERSONS["anna"]
     assert not {"admin", "papaia-admin"} & set(design_world.PERSONS["emil"])
@@ -379,7 +381,7 @@ def test_the_design_check_covers_every_page_of_the_list() -> None:
     ]  # fmt: skip
     assert sorted(by_person) == sorted(design_serve.design_pages())
     assert design_serve.design_persons() == ["anna", "emil", "erika"]
-    assert design_serve.design_pages(person="emil") == ["/inventory"]
+    assert design_serve.design_pages(person="emil") == ["/inventory", "/access-report"]
     assert design_serve.design_pages(person="erika") == ["/person-requests"]
 
 

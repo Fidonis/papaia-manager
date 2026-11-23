@@ -135,13 +135,16 @@ def nav_groups(flags: NavFlags, gettext: Callable[[str], str]) -> list[tuple[str
     (`i18n/glossary-map.yaml`); the manager's places of the kit's administration map
     (`contract/admin-map.yaml`: /modules, /backup, /users, /settings, /audit) are rows here. An
     account without the admin role sees the overview only, and an auditor the review group with
-    the inventory (Bestand) as well; a confirming person the requests for information and
-    erasure (Betroffenenanträge) in the same group.
+    the inventory (Bestand) and the permission report as well; a confirming person the requests
+    for information and erasure (Betroffenenanträge) in the same group.
     """
     _ = gettext
     review_rows: list[NavRow] = []
     if flags.auditor:
         review_rows.append(NavRow("/inventory", _("Inventory"), ("/inventory",)))
+        review_rows.append(
+            NavRow("/access-report", _("Permission report"), ("/access-report",))
+        )
     if flags.confirmer:
         review_rows.append(
             NavRow("/person-requests", _("Data subject requests"), ("/person-requests",))

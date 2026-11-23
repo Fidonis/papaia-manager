@@ -5,6 +5,7 @@
     "version": "3.17.5"
   },
   "converted": [
+    "access_report.html",
     "addon_detail.html",
     "addon_upgrade.html",
     "addons.html",

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{#
+  The permission report (OPS-19) for auditors, built from the kit's patterns
+  (pk/components.html of papaia-kit 0.2.2): table, badges, alert, checkbox field and empty
+  state. papaia-audit builds the report for the auditor's own token; the page shows its
+  answer and nothing else. Nothing inline: no script, no style attribute, no handler.
+#}
+{% import "pk/components.html" as kit with context %}
+
+{% block page_title %}{% trans %}Permission report{% endtrans %}{% endblock %}
+{% block page_subtitle %}{{ kit.lead(_("Roles, groups, service accounts, delegations and exchange rights, built by the audit log service on every visit")) }}{% endblock %}
+
+{% block page_actions %}
+{% if report %}
+{% call kit.cluster() %}
+{{ kit.button(_("Download (CSV)"), href="/access-report/download?by=" ~ by ~ "&format=csv", symbol="download", id="access-report-download-csv") }}
+{{ kit.button(_("Download (JSON)"), href="/access-report/download?by=" ~ by ~ "&format=json", symbol="download", id="access-report-download-json") }}
+{% endcall %}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% macro names(values) -%}
+{% for v in values %}<code>{{ v }}</code>{% if not loop.last %}, {% endif %}{% else %}–{% endfor %}
+{%- endmacro %}
+{% macro confirmation(row) -%}
+{{ row.last_confirmed_at or _("never") }}
+{%- if row.confirmation_due %}<br>{{ kit.badge(_("Confirmation due"), tone="warning") }}{% endif %}
+{%- endmacro %}
+{% call kit.stack() %}
+<nav class="tabs tabs-bordered gap-2 overflow-x-auto overflow-y-hidden" aria-label="{{ _('Permission report') }}" id="access-report-kind">
+{% for kind in ["person", "system"] %}
+  <a href="/access-report?by={{ kind }}{% if due_only %}&amp;due=1{% endif %}" class="tab whitespace-nowrap {{ 'tab-active font-semibold' if by == kind else '' }}"{% if by == kind %} aria-current="page"{% endif %}>{{ titles.kind[kind] }}</a>
+{% endfor %}
+</nav>
+
+{% if refusal %}
+<div id="access-report-refused">
+{{ kit.alert(refusal.message ~ " " ~ refusal.hint, tone="error") }}
+</div>
+{% elif failure %}
+<div id="access-report-failed">
+{{ kit.alert(failure_text, tone="error") }}
+{% if failure.message %}<p>{{ _("The audit log service says") }}: {{ failure.message }} {{ failure.hint }}</p>{% endif %}
+<p>{% trans %}Reference{% endtrans %}: <code>{{ correlation_id }}</code></p>
+</div>
+{% else %}
+{% call kit.form(action="/access-report", method="get") %}
+<input type="hidden" name="by" value="{{ by }}">
+{{ kit.field("checkbox", "due", _("Only rows whose confirmation is due"), id="access-report-filter-due", value="1", checked=due_only) }}
+<div class="pk-form-actions">{{ kit.button(_("Filter"), type="submit", id="access-report-filter-submit") }}</div>
+{% endcall %}
+
+<p id="access-report-checksum" class="break-all">{% trans %}Checksum{% endtrans %}: <code>{{ report.checksum }}</code></p>
+{{ kit.dl([
+  (_("Rows"), total ~ " · " ~ _("confirmation due: %(count)s", count=due_count)),
+  (_("Recertification period"), _("%(days)s days", days=report.recertification_days)),
+  (_("Inputs written"), report.inputs_written_at or "–"),
+]) }}
+
+{% if total == 0 %}
+<div id="access-report-empty">{{ kit.empty(_("The report has no rows.")) }}</div>
+{% elif not rows %}
+<div id="access-report-no-match">{{ kit.empty(_("No row is due for confirmation."), symbol="search", compact=true) }}</div>
+{% elif by == "person" %}
+{% call kit.table(_("Permission report by person"), columns=[
+  {"label": _("Person")}, {"label": _("Realm roles")}, {"label": _("Module roles")},
+  {"label": _("Groups")}, {"label": _("Service accounts")}, {"label": _("Delegations")},
+  {"label": _("Marks")}, {"label": _("Last confirmed")},
+]) %}
+{% for row in rows %}
+<tr data-key="{{ row.key }}">
+  {# Account ids are long; the cell shows the start, the whole id is in the downloads. #}
+  <td><strong>{{ row.username }}</strong><br><code title="{{ row.sub }}">{{ row.sub[:8] }}{% if row.sub | length > 8 %}…{% endif %}</code></td>
+  <td>{{ names(row.realm_roles) }}</td>
+  <td>{% for client, roles in row.module_roles | dictsort %}<code>{{ client }}</code>: {{ names(roles) }}{% if not loop.last %}<br>{% endif %}{% else %}–{% endfor %}</td>
+  <td>{{ names(row.groups) }}</td>
+  <td>
+    {% if row.service_accounts.owner %}{% trans %}Owner{% endtrans %}: {{ names(row.service_accounts.owner) }}{% endif %}
+    {% if row.service_accounts.owner and row.service_accounts.deputy %}<br>{% endif %}
+    {% if row.service_accounts.deputy %}{% trans %}Deputy{% endtrans %}: {{ names(row.service_accounts.deputy) }}{% endif %}
+    {% if not row.service_accounts.owner and not row.service_accounts.deputy %}–{% endif %}
+  </td>
+  <td>{% for client, count in row.delegations | dictsort %}<code>{{ client }}</code>: {{ count }}{% if not loop.last %}<br>{% endif %}{% else %}–{% endfor %}</td>
+  <td>
+    {% if row.separation_conflict %}{{ kit.badge(_("Separation of duties: %(roles)s", roles=row.separation_conflict | join(", ")), tone="error") }} {% endif %}
+    {% if row.breakglass %}{{ kit.badge(_("Emergency account"), tone="warning") }} {% endif %}
+    {% if not row.enabled %}{{ kit.badge(_("Disabled")) }} {% endif %}
+  </td>
+  <td>{{ confirmation(row) }}</td>
+</tr>
+{% endfor %}
+{% endcall %}
+{% else %}
+{% call kit.table(_("Permission report by connected system"), columns=[
+  {"label": _("Connected system")}, {"label": _("Clients with exchange right")},
+  {"label": _("Service accounts")}, {"label": _("Rights in the target system")},
+  {"label": _("Last confirmed")},
+]) %}
+{% for row in rows %}
+<tr data-key="{{ row.key }}">
+  <td><code>{{ row.audience }}</code></td>
+  <td>
+    {% for c in row.exchange_clients %}
+    <code>{{ c.client }}</code> {% for e in c.effects %}{{ kit.badge(titles.effect.get(e, e)) }} {% endfor %}
+    <br>{% trans requested=(c.requested_by or "–"), confirmed=(c.confirmed_by or "–") %}asked for by {{ requested }}, confirmed by {{ confirmed }}{% endtrans %}
+    {% if not loop.last %}<br>{% endif %}
+    {% else %}–{% endfor %}
+  </td>
+  <td>
+    {% for a in row.service_accounts %}
+    <code>{{ a.id }}</code>{% if a.module %} ({{ a.module }}){% endif %}{% for e in a.effects %} {{ kit.badge(titles.effect.get(e, e)) }}{% endfor %}{% if not loop.last %}<br>{% endif %}
+    {% else %}–{% endfor %}
+  </td>
+  <td>{{ row.target_rights }}</td>
+  <td>{{ confirmation(row) }}</td>
+</tr>
+{% endfor %}
+{% endcall %}
+{% endif %}
+{% endif %}
+{% endcall %}
+{% endblock %}

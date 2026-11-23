@@ -11217,3 +11217,114 @@ msgstr "Bestätigen"
 
 msgid "Waiting for the second person"
 msgstr "Wartet auf die zweite Person"
+
+msgid "Permission report"
+msgstr "Berechtigungsbericht"
+
+msgid "invalid parameter: %(name)s"
+msgstr "ungültiger Parameter: %(name)s"
+
+msgid "Your sign-in could not be passed on to the audit log service. Sign out and in again; if that does not help, the administration runs “papaia-ctl realm sync” on the host."
+msgstr "Ihre Anmeldung konnte nicht an den Audit-Log-Dienst weitergegeben werden. Melden Sie sich ab und wieder an; hilft das nicht, führt die Verwaltung auf dem Host „papaia-ctl realm sync“ aus."
+
+msgid "The audit log service does not answer. Check its state under “Monitor › Services” and reload the page afterwards."
+msgstr "Der Audit-Log-Dienst antwortet nicht. Prüfen Sie seinen Zustand unter „Überwachung › Dienste“ und laden Sie die Seite danach neu."
+
+msgid "The audit log service could not build the permission report."
+msgstr "Der Audit-Log-Dienst konnte den Berechtigungsbericht nicht erstellen."
+
+msgid "The audit log service answered with something that is not a permission report of the published format. Nothing of it is shown."
+msgstr "Der Audit-Log-Dienst hat mit etwas geantwortet, das kein Berechtigungsbericht im veröffentlichten Format ist. Davon wird nichts angezeigt."
+
+msgid "module interface"
+msgstr "Modulschnittstelle"
+
+msgid "By person"
+msgstr "Je Person"
+
+msgid "By connected system"
+msgstr "Je angebundenem System"
+
+msgid "by and format are required"
+msgstr "by und format sind erforderlich"
+
+msgid "Roles, groups, service accounts, delegations and exchange rights, built by the audit log service on every visit"
+msgstr "Rollen, Gruppen, Dienstkonten, Vollmachten und Tauschrechte, bei jedem Aufruf vom Audit-Log-Dienst erstellt"
+
+msgid "Download (CSV)"
+msgstr "Herunterladen (CSV)"
+
+msgid "Download (JSON)"
+msgstr "Herunterladen (JSON)"
+
+msgid "never"
+msgstr "nie"
+
+msgid "The audit log service says"
+msgstr "Der Audit-Log-Dienst meldet"
+
+msgid "Only rows whose confirmation is due"
+msgstr "Nur Zeilen mit fälliger Bestätigung"
+
+msgid "Rows"
+msgstr "Zeilen"
+
+msgid "confirmation due: %(count)s"
+msgstr "Bestätigung fällig: %(count)s"
+
+msgid "Recertification period"
+msgstr "Frist der Rezertifizierung"
+
+msgid "%(days)s days"
+msgstr "%(days)s Tage"
+
+msgid "Inputs written"
+msgstr "Eingaben geschrieben"
+
+msgid "The report has no rows."
+msgstr "Der Bericht hat keine Zeilen."
+
+msgid "No row is due for confirmation."
+msgstr "Keine Zeile ist zur Bestätigung fällig."
+
+msgid "Permission report by person"
+msgstr "Berechtigungsbericht je Person"
+
+msgid "Realm roles"
+msgstr "Rollen der Plattform"
+
+msgid "Module roles"
+msgstr "Rollen der Module"
+
+msgid "Groups"
+msgstr "Gruppen"
+
+msgid "Service accounts"
+msgstr "Dienstkonten"
+
+msgid "Marks"
+msgstr "Kennzeichen"
+
+msgid "Last confirmed"
+msgstr "Zuletzt bestätigt am"
+
+msgid "Separation of duties: %(roles)s"
+msgstr "Funktionstrennung: %(roles)s"
+
+msgid "Emergency account"
+msgstr "Notfallkonto"
+
+msgid "Permission report by connected system"
+msgstr "Berechtigungsbericht je angebundenem System"
+
+msgid "Connected system"
+msgstr "Angebundenes System"
+
+msgid "Clients with exchange right"
+msgstr "Clients mit Tauschrecht"
+
+msgid "Rights in the target system"
+msgstr "Rechte im Zielsystem"
+
+msgid "asked for by %(requested)s, confirmed by %(confirmed)s"
+msgstr "beantragt von %(requested)s, bestätigt von %(confirmed)s"

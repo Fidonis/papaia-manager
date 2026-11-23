@@ -152,8 +152,10 @@ class Settings(BaseSettings):
     )
     audit_tls_key_file: str = Field(default="/run/papaia/audit-tls/client.key", max_length=4096)
     # The read API of papaia-audit (same service and certificate as above): the page "Data
-    # subject requests" lists and decides the requests for information and erasure there, with
-    # the signed-in person's token. Base URL without a path; only https.
+    # subject requests" lists and decides the requests for information and erasure there, and
+    # the page "Permission report" has the report built there (`POST
+    # /v1/access-reports/build`), both with the signed-in person's token. Base URL without a
+    # path; only https.
     audit_read_url: str = Field(
         default="https://papaia-audit:8443", min_length=1, max_length=2048
     )
