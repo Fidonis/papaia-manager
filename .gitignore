@@ -37,6 +37,8 @@ Thumbs.db
 
 # Logs
 *.log
+# The audit log of the 1.6.0 data set (tests/test_upgrade_from_1_6_0.py)
+!tests/fixtures/manager-1.6.0/manager/audit.log
 
 # Static assets downloaded/built by the Docker build step
 src/app/static/app.css

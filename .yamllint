@@ -3,6 +3,8 @@ extends: default
 ignore: |
   .venv/
   .pk/
+  # Files exactly as an older release wrote them (tests/test_upgrade_from_1_6_0.py).
+  tests/fixtures/manager-1.6.0/
 
 rules:
   line-length: disable

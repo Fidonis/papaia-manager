@@ -1,0 +1,11 @@
+version: 1
+catalogs:
+- name: fidonis
+  type: git
+  enabled: true
+  url: https://github.com/Fidonis/papaia-addons.git
+  ref: main
+- name: haus
+  type: local
+  enabled: true
+  path: /srv/papaia/catalog-haus

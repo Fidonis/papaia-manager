@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 # Range of papaia core versions the manager is tested against.
 # Outside this range the manager warns but does not refuse to start —
 # the operator must not lose UI access just because the core is newer.
-SUPPORTED_CORE_MIN = (0, 9, 0)
+# 1.10.0 is the first core with papaia-docker-gate, the platform catalog and the
+# installation settings, which 1.8.0 relies on (CHANGELOG.md, 1.8.0 Notes).
+SUPPORTED_CORE_MIN = (1, 10, 0)
 SUPPORTED_CORE_MAX = (2, 0, 0)  # exclusive
 
 

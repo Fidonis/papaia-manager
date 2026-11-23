@@ -1,0 +1,7 @@
+# papaia-manager settings. Edited through the Settings page.
+branding:
+  name: Beispiel GmbH
+  tagline: IT-Betrieb
+  logo: logo-a845481d6c10.png
+host:
+  refresh_seconds: 120

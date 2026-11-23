@@ -1,0 +1,7 @@
+# papaia-manager backup schedule. Edited through the Backup page.
+enabled: true
+cron: 30 2 * * *
+timezone: Europe/Berlin
+retention_days: 14
+misfire_grace_seconds: 3600
+run_on_startup: if_missed

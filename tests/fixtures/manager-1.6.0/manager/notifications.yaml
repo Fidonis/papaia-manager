@@ -1,0 +1,16 @@
+# Written by the papAIa manager (Mail > Notifications).
+# Webhook URLs authorise whoever posts to them: keep this file private (mode 0600).
+version: 1
+settings:
+  check_interval_minutes: 10
+  debounce_minutes: 60
+  cert_lead_days: 21
+recipients:
+- id: betrieb
+  name: Betrieb
+  kind: email
+  target: betrieb@example.org
+  enabled: true
+  events:
+  - job_failed
+  - cert_expiring

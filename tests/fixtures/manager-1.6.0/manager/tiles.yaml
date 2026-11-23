@@ -1,0 +1,18 @@
+# Dashboard tiles for the papAIa manager.
+#
+# Managed from the manager UI: Dashboard -> Edit dashboard. Hand edits keep
+# working, but the next save from the UI rewrites the whole document --
+# comments and key order are not preserved.
+version: 1
+groups:
+- name: Arbeitsplatz
+  tiles:
+  - name: Wiki
+    href: https://wiki.example.org
+    description: Handbuch
+    visibility: all
+  - type: widget
+    widget: core_version
+    id: ''
+    size: s
+    visibility: admin

@@ -1,6 +1,7 @@
 """FastAPI application factory for papaia-manager."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import logging.config
 from urllib.parse import quote
@@ -15,7 +16,7 @@ from app.auth import roles
 from app.auth.csrf import get_csrf_token
 from app.auth.oidc import OIDCClaims
 from app.config import get_settings
-from app.core import installation, kit_audit, prefs
+from app.core import installation, kit_audit, migrations, prefs
 from app.core.ingest.watcher import IngestWatcher
 from app.core.jobs import JobQueue
 from app.core.notifications.service import NotificationService
@@ -71,6 +72,7 @@ _backup_scheduler: BackupScheduler | None = None
 _ingest_watcher: IngestWatcher | None = None
 _notification_service: NotificationService | None = None
 _audit_delivery: kit_audit.Delivery | None = None
+_migrations_task: asyncio.Task[None] | None = None
 
 
 def create_app() -> FastAPI:
@@ -198,7 +200,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def _startup() -> None:
         global _job_queue, _backup_scheduler, _ingest_watcher, _notification_service  # noqa: PLW0603
-        global _audit_delivery  # noqa: PLW0603
+        global _audit_delivery, _migrations_task  # noqa: PLW0603
 
         logger = logging.getLogger(__name__)
 
@@ -215,6 +217,10 @@ def create_app() -> FastAPI:
             bootstrap(settings.papaia_workspace_dir)
         except RuntimeError as exc:
             logger.warning("papaia workspace bootstrap skipped: %s", exc)
+
+        # Values an older release kept where this one no longer reads them (app.core.migrations).
+        # In the background: a migration may ask the core, and the pages must not wait for it.
+        _migrations_task = asyncio.create_task(migrations.run_at_start(settings))
 
         _job_queue = JobQueue(settings.papaia_config_dir)
         _job_queue.start()
@@ -268,6 +274,8 @@ def create_app() -> FastAPI:
 
     @app.on_event("shutdown")
     async def _shutdown() -> None:
+        if _migrations_task is not None and not _migrations_task.done():
+            _migrations_task.cancel()
         if _notification_service is not None:
             _notification_service.shutdown()
         if _ingest_watcher is not None:

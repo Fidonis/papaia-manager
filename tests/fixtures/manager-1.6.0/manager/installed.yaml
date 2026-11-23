@@ -1,0 +1,12 @@
+version: 1
+addons:
+  paperless:
+    catalog: fidonis
+    commit: 0123456789abcdef0123456789abcdef01234567
+    manifest_version: 2.0.0
+    installed_at: '2026-11-05T09:25:00+00:00'
+    managed: true
+    history:
+    - commit: 89abcdef0123456789abcdef0123456789abcdef
+      manifest_version: 1.9.0
+      installed_at: '2026-10-01T08:00:00+00:00'

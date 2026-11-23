@@ -12,6 +12,135 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+## [1.8.0] - 2026-11-23
+
+Manager 1.8.0 is the manager of papAIa core 1.10.0: the core's release pins it, and a core
+upgrade brings it along. It joins the platform's shared frame, keeps the installation's brand
+and contact point in the core, records every write as a `papaia.audit/1` row and reaches Docker
+only through the core's `papaia-docker-gate`.
+
+### Added
+- Shared frame. Every page sits inside the platform's frame from `papaia-kit` (shell contract
+  `papaia.shell-input/1`): brand, module switcher from the platform catalog
+  (`platform/services.json`, the modules the account's roles may see), navigation, footer and
+  account menu. Colours, radii and fonts are the kit's design tokens. The stack status and the
+  host, job, add-on upgrade and release hints form a status row at the top of the content. The
+  frame's assets are served under `/_kit/<kit version>/`, the platform logo under
+  `/_kit/brand/logo` (only while its SHA-256 matches the catalog), and `/_kit/specimen` shows
+  the kit's specimen to any signed-in account.
+- Language and appearance from Mein Bereich. While the platform catalog lists Mein Bereich (core
+  profile `me`), the platform's preference service `prefs` holds the interface language and the
+  appearance of every module: the manager reads them at sign-in and again before a page whenever
+  the shared cookie `pk_ui` says another module changed them, and writes the choices of the
+  frame's footer and account menu there, with the signed-in account's own token exchanged for the
+  audience `papaia-prefs`. A `prefs` that does not answer never stops a page. New optional
+  settings `PREFS_URL` (default `http://prefs:8080`) and `PREFS_COOKIE_DOMAIN` (default: the
+  manager's own host). Without Mein Bereich nothing changes.
+- Settings > Installation (papAIa core 1.10.0): the installation's name, suffix and logo (PNG,
+  JPEG or WebP up to 1 MiB) shown in every module, the contact point every module names when
+  access is denied, the four-eyes rule `approvals.four_eyes` and the delegation lifetime. The
+  manager stores none of them: each change goes through the core's `papaia-ctl settings` and
+  `papaia-ctl delegations lifetime`, which check it again, apply the security profile (in
+  `kritis` four eyes stays on and a delegation lives at most 7 days unused and 30 days in all),
+  audit it and render the platform catalog. API under `/api/v1/settings/installation`; needs the
+  manager's administrator role and the platform's administration role
+  (`MANAGER_IDENTITY_ADMIN_ROLE`).
+- Modules page at `/modules` (`GET /api/v1/modules`): the modules of the suite with the
+  versions of the core's bill of materials (`compat/suite-<version>.yaml`, its signature checked
+  when the core pins a release key), each with *Open* and, where the module has one, *Manage*.
+  The identity administrator also sees the delegations per module (counts only) and can revoke a
+  person's (`GET /api/v1/delegations`, `DELETE /api/v1/delegations/{module}/persons/{user_id}`).
+- Audit rows. Every write, send and delete of the manager is also stored as one `papaia.audit/1`
+  row in a SQLite outbox (`AUDIT_OUTBOX_PATH`, default
+  `$PAPAIA_CONFIG_DIR/manager/audit/outbox.sqlite3`, mode 0600) and delivered to the core's
+  `papaia-audit` over mutual TLS (`AUDIT_INGEST_URL`, `AUDIT_TLS_CA_FILE`, `AUDIT_TLS_CERT_FILE`,
+  `AUDIT_TLS_KEY_FILE`). A row names who acted and the correlation id, never a target, a value or
+  a token. Without the certificate files the rows wait in the outbox.
+- The interface texts follow the platform glossary, checked with the kit's word check
+  (`python -m app.i18n.export --check`, `python -m app.i18n.wordcheck`), and every manager place
+  of the kit's administration map is a navigation row.
+- A design check (CI job `design`) runs the kit's conformance check over every page in light and
+  dark.
+- Content security policy, report-only. Every HTML response carries the strict target policy as
+  `Content-Security-Policy-Report-Only` (`script-src 'self'`, `style-src 'self'`, no
+  `unsafe-inline`, no `unsafe-eval`, no report endpoint). It blocks nothing yet: the pages are
+  converted to static ES modules and JSON data islands group by group, the CI job `csp` checks
+  the reports in a browser against `tests/csp_baseline.json`, and the policy is enforced once
+  every page is converted.
+- Inventory page at `/inventory` (`GET /api/v1/inventory`, `GET /api/v1/inventory/export`) for
+  the realm role `MANAGER_AUDITOR_ROLE` (default `papaia-auditor`) alone: the work objects of
+  Studio, Flow, Data and Assistant, collected from each module's `GET /internal/inventory` over
+  mutual TLS (`INVENTORY_SOURCES`) on each visit, with flags, filters and CSV/JSON export. Every
+  export leaves an audit entry and one `inventory_exported` row; no content is carried.
+- Manager data migrations (`app.core.migrations`): a value an older release kept where 1.8.0
+  no longer reads it is moved once when the manager starts, recorded in
+  `manager/migrations.json`. 1.8.0 has one, `1.8.0-branding`; see the upgrade notes below.
+
+### Changed
+- **Docker access:** the manager mounts no Docker socket. It reaches Docker only through the
+  core's `papaia-docker-gate` (`DOCKER_GATE_URL`, default `http://papaia-docker-gate:2375`),
+  which allows the status of the installation's containers and starting and stopping them.
+  Service groups on a single host are started and stopped one container at a time; the group
+  action *Clean up* is refused. Without an answering gate the Services page says that running the
+  manager without it is not supported, and group actions answer 503. Published ports are no
+  longer shown. `docker/docker-compose.yml` drops the socket mount and `DOCKER_GID`.
+- The kit `papaia-kit` 0.2.2 is vendored (`src/vendor/papaia-kit/0.2.2/`, `src/kit.lock`, image
+  label `de.fidonis.platform-kit`).
+- Renamed for the glossary: *Dashboard* is *Overview*, the settings tab *Modules* is *Core
+  features*, *Connections* is *Vector databases*, *Catalogs* is *Add-on catalogs*, and the group
+  *Extensions* is *Modules and add-ons*.
+- With a platform catalog, the frame shows the catalog's brand; the sidebar brand of Settings >
+  Manager applies only while the core publishes no catalog.
+- The manager warns at start when the core is older than 1.10.0.
+
+### Removed
+- The Docker socket mount and the `DOCKER_GID` setting (see *Changed*).
+
+### Notes
+- **Requirements:** 1.8.0 needs papAIa core 1.10.0. Older cores have no `papaia-docker-gate`
+  (the Services page and group actions do not work), publish no platform catalog (no module
+  switcher, the old sidebar brand) and have no installation settings (the tab shows an error).
+  Studio, Data, Flow and Assistant are add-ons of core 1.10.0 and Mein Bereich is its profile
+  `me`; the module switcher and the Modules page show the ones the platform runs.
+
+### Upgrading from 1.6.0 or 1.7.0
+The manager is not upgraded on its own: the core's release pins the manager image, so the core's
+upgrade replaces it. For an installation of papAIa core 1.8.0 with manager 1.6.0 (or core 1.9.0
+with manager 1.7.0):
+
+1. Read the core's upgrade notes for 1.10.0 and check that a backup target is configured.
+2. On the host, in the core checkout: `papaia-ctl upgrade --version=1.10.0`. It takes a restore
+   point first, runs the release migrations, renders the configuration and starts the stack with
+   the manager the release pins. Upgrade the add-ons after it, for example
+   `papaia-ctl addon upgrade paperless`, or from the add-on's page.
+3. A manager run from this repository's `docker/docker-compose.yml` instead of the core's stack:
+   remove `DOCKER_GID` from `docker/.env`, set `DOCKER_GATE_URL` to an address of the gate the
+   container can reach, and for audit delivery mount the client certificate and set the
+   `AUDIT_TLS_*` files.
+
+What happens to the manager's own data (`$PAPAIA_CONFIG_DIR/manager/`):
+
+- Every file of 1.6.0 and 1.7.0 is read as it is: settings, backup schedule, dashboard, add-on
+  catalogs, installed add-ons and their versions, notification recipients, saved overlay
+  versions and the audit log, which 1.8.0 continues. None of them is rewritten on the upgrade.
+- The sidebar brand of 1.6.0 and 1.7.0 (`manager/settings.yaml`, the logo in
+  `manager/branding/`) is handed once to the core's installation settings when 1.8.0 first
+  starts on core 1.10.0: the name becomes the installation's name, the second line its suffix and
+  the logo its logo, each only where the core has no value of its own yet. The core takes no SVG:
+  an SVG logo stays with the manager, so upload a PNG, JPEG or WebP under Settings > Installation.
+  `manager/migrations.json` records what became of each value (`applied`, `kept`, `refused`,
+  `unsupported`); the audit log has one entry `migration.branding` naming the fields, not their
+  values. If the core does not answer, the move is tried again at the next start. The old values
+  stay in `manager/settings.yaml`.
+- A language an account chose in the manager (`manager/preferences.yaml`) still applies while
+  the platform has no Mein Bereich. With Mein Bereich, the account's language and appearance are
+  the ones kept there; the manager's file is not read and not copied.
+- The audit outbox `manager/audit/outbox.sqlite3` is new and starts empty.
+
+**Rollback:** `papaia-ctl rollback` returns the whole installation, including manager 1.6.0 or
+1.7.0 and its data, to the restore point the upgrade took. Manager 1.7.0 and earlier ignore
+`manager/migrations.json` and the outbox.
+
 ## [1.7.0] - 2026-11-20
 
 ### Added

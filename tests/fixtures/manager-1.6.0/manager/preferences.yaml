@@ -1,0 +1,4 @@
+# Written by the papAIa manager. Each account's own choices, keyed by its OIDC subject.
+users:
+  22222222-2222-2222-2222-222222222222:
+    locale: de

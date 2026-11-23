@@ -1,0 +1,2 @@
+{"ts": "2026-11-05T09:12:00+00:00", "user": "anna", "action": "settings.branding.update", "target": "settings", "result": "ok", "params": {"name": "Beispiel GmbH"}}
+{"ts": "2026-11-05T09:20:00+00:00", "user": "anna", "action": "addon.install", "target": "paperless", "result": "ok", "job_id": "33333333-3333-3333-3333-333333333333"}

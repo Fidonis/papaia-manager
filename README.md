@@ -187,7 +187,9 @@ frame shows a logo only from there: the uploaded logo is kept and served at
 `/brand/logo`, but not shown in the sidebar. The values are stored in
 `$PAPAIA_CONFIG_DIR/manager/settings.yaml`, one section per topic, and the logo
 in `$PAPAIA_CONFIG_DIR/manager/branding/`, so both are part of a backup.
-Without a settings file nothing changes. A second card, **Host monitoring**, sets
+Without a settings file nothing changes. On papAIa core 1.10.0 and newer the brand of an
+older manager is handed once to the installation's settings (see *Upgrades of the manager's
+data* below). A second card, **Host monitoring**, sets
 how often the Host page re-measures the machine (10 seconds to 60 minutes,
 default 60 seconds); it applies to every administrator.
 
@@ -209,6 +211,20 @@ contact point on record" ("Ansprechstelle nicht hinterlegt"). The tab needs the 
 administrator role and the platform's administration role (`MANAGER_IDENTITY_ADMIN_ROLE`);
 every change also leaves one entry in the manager's audit log, which names the settings but
 never the contact point's values.
+
+**Upgrades of the manager's data.** The files under `$PAPAIA_CONFIG_DIR/manager/` are read by
+a newer manager as an older one wrote them; the tests hold 1.8.0 to a data set written by 1.6.0.
+A value that a release moves to another owner is moved once, in the background, when the
+manager starts (`app.core.migrations`), and `manager/migrations.json` (mode 0600) records what
+became of each field: `applied`, `kept` (the new owner has a value of its own), `refused` or
+`unsupported`. A move that cannot finish, because the core does not answer or publishes no
+platform catalog yet, is tried again at the next start; a ledger that cannot be read stops every
+move rather than repeating one. Each move that writes leaves one audit entry (`migration.<topic>`,
+as `papaia-manager`) naming the fields, never their values. 1.8.0 has one move,
+`1.8.0-branding`: the sidebar name, second line and logo of 1.7.0 and earlier become the
+installation's name, suffix and logo in the core where the core has none yet (an SVG logo, which
+the core does not take, stays with the manager). The old values stay in `settings.yaml`. The
+upgrade steps are in the [changelog](CHANGELOG.md).
 
 **Modules and overlay.** Settings has four tabs: **Manager** (the cards above),
 **Installation**, **Modules** and **Overlay**. **Modules** is the one place that switches the
@@ -1316,6 +1332,7 @@ papaia-manager/
 │       │                   # job editor and schedules, runs, the Embedding page's managed
 │       │                   # jobs, jailed browsing, staged uploads, background clean-up),
 │       │                   # settings_store (settings.yaml and the logo),
+│       │                   # migrations (one-time moves of older releases' data, migrations.json),
 │       │                   # config/ (Settings > Modules and Overlay: the optional modules, the
 │       │                   # overlay files, their saved versions, the jobs that apply a change),
 │       │                   # mail/ (the mail relay: stored settings and their rules, SMTP probes,
