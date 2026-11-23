@@ -1,0 +1,287 @@
+# Pages of the manager for the page list of the consistency audit
+# (papaia.pages-part/1, contract/pages.md of papaia-kit).
+#
+# Every path is a full page of src/app/templates/ (partials and fragments loaded into a
+# page are not listed); the kit's specimen page and the state page "Kein Zugang" are
+# required in every part. The design check (scripts/design-check.sh) renders every row
+# with a path, placeholders filled from tests/design_world.py. tests/test_kit_design.py
+# checks the list against the kit's schema and the routes of the manager.
+#
+# signed_off_by: the product owner of the manager replaces this entry with name and date
+# when signing the list off; until then it names the open sign-off instead of a person.
+format: papaia.pages-part/1
+module: manager
+signed_off_by: {name: Sign-off by the product owner pending, date: "2026-11-23"}
+pages:
+  - module: manager
+    path: /
+    title_key: manager.overview
+    kinds: [liste, zustand]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /services
+    title_key: manager.services
+    nav_group: manager.monitor
+    kinds: [tabelle, zustand]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /host
+    title_key: manager.host
+    nav_group: manager.monitor
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /models
+    title_key: manager.models
+    nav_group: manager.monitor
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /jobs
+    title_key: manager.jobs
+    nav_group: manager.monitor
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: "/jobs/{job_id}"
+    title_key: manager.job
+    kinds: [zustand]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /addons
+    title_key: manager.addons
+    nav_group: manager.extensions
+    kinds: [liste]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: "/addons/{name}"
+    title_key: manager.addon
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: "/addons/{name}/upgrade"
+    title_key: manager.addon_upgrade
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /modules
+    title_key: manager.modules
+    nav_group: manager.extensions
+    kinds: [liste]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /catalogs
+    title_key: manager.catalogs
+    nav_group: manager.extensions
+    kinds: [liste, formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /connections
+    title_key: manager.connections
+    nav_group: manager.rag
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /collections
+    title_key: manager.collections
+    nav_group: manager.rag
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /embedding
+    title_key: manager.embedding
+    nav_group: manager.rag
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /ingest/jobs
+    title_key: manager.ingest_jobs
+    nav_group: manager.rag
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /ingest/new
+    title_key: manager.ingest_new
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: "/ingest/jobs/{job_id}"
+    title_key: manager.ingest_job
+    kinds: [liste]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: "/ingest/jobs/{job_id}/edit"
+    title_key: manager.ingest_job_edit
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /ingest/runs
+    title_key: manager.ingest_runs
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: "/ingest/runs/{run_id}"
+    title_key: manager.ingest_run
+    kinds: [liste]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /ingest/secrets
+    title_key: manager.ingest_secrets
+    kinds: [tabelle, formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /ingest/orphans
+    title_key: manager.ingest_orphans
+    kinds: [tabelle, zerstörend]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /ingest/catalog
+    title_key: manager.ingest_catalog
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /knowledge-map
+    title_key: manager.knowledge_map
+    nav_group: manager.knowledge
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /backup
+    title_key: manager.backup
+    nav_group: manager.system
+    kinds: [formular, zerstörend]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /upgrade
+    title_key: manager.upgrade
+    nav_group: manager.system
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /users
+    target: users
+    title_key: manager.users
+    nav_group: manager.system
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /users/roles
+    title_key: manager.roles
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /mail
+    title_key: manager.mail
+    nav_group: manager.system
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /mail/server
+    title_key: manager.mail_server
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /nodes
+    title_key: manager.nodes
+    nav_group: manager.system
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: "/nodes/{name}"
+    title_key: manager.node
+    kinds: [zustand]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /audit
+    target: audit
+    title_key: manager.audit
+    nav_group: manager.system
+    kinds: [tabelle]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /settings
+    title_key: manager.settings
+    nav_group: manager.system
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /settings/modules
+    title_key: manager.settings_modules
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /settings/overlay
+    title_key: manager.settings_overlay
+    kinds: [formular]
+    needs_neighbours: true
+    person: anna
+  - module: manager
+    path: /help
+    title_key: manager.help
+    kinds: [liste]
+    needs_neighbours: false
+    person: anna
+  - module: manager
+    path: /me
+    title_key: manager.my_area
+    kinds: [liste]
+    needs_neighbours: false
+    person: anna
+  - module: manager
+    path: /_kit/specimen
+    title_key: pk.specimen
+    kinds: [tabelle, liste, formular]
+    needs_neighbours: false
+    person: anna
+  - module: manager
+    state: no_access
+    title_key: pk.states.no_access.title
+    kinds: [zustand]
+    needs_neighbours: false
+    person: carla
+leitweg:
+  - name: install_an_addon
+    steps:
+      - {step: 1, action: „Add-ons“ in der Navigation öffnen, path: /addons}
+      - {step: 2, action: Add-on wählen und Einstellungen prüfen, path: "/addons/{name}"}
+  - name: back_up_the_installation
+    steps:
+      - {step: 1, action: „Sicherung / Wiederherstellung“ in der Navigation öffnen, path: /backup}
+  - name: read_the_audit_log
+    steps:
+      - {step: 1, action: „Audit-Log“ in der Navigation öffnen, path: /audit}

@@ -57,6 +57,35 @@ jobs:
         working-directory: src
         run: uv run --frozen pytest -q
 
+  design:
+    # The kit's visual quality gate (pk-conform --design) over every page of ui/pages.yaml,
+    # decided by scripts/check_design.py with ui/design-known.yaml. Everything it needs is
+    # vendored or locked: no checkout of another repository and no secret.
+    name: Design check (kit pk-conform --design)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install uv
+        run: pip install --user uv==0.11.28
+      - name: Sync dependencies
+        working-directory: src
+        run: uv sync --frozen
+      - name: Install the design tools and build the page assets
+        run: |
+          scripts/design-tools.sh
+          sudo node .pk/node_modules/playwright-core/cli.js install-deps chromium
+      - name: pk-conform --design
+        run: scripts/design-check.sh 57880 "${RUNNER_TEMP}/design-report.json"
+
   pr-title:
     name: Conventional Commit PR title
     if: github.event_name == 'pull_request'

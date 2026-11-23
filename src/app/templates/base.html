@@ -430,11 +430,12 @@
   {% if page_subtitle or page_actions %}
   <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
     <div class="min-w-0">{{ page_subtitle }}</div>
-    <div class="flex shrink-0 items-center gap-3">{{ page_actions }}</div>
+    <div class="flex min-w-0 flex-wrap items-center gap-3">{{ page_actions }}</div>
   </div>
   {% endif %}
 
-  <div id="toasts" class="toast toast-top toast-end z-50"></div>
+  {# A long message (a path, a job id) wraps inside the window instead of running off it. #}
+  <div id="toasts" class="toast toast-top toast-end z-50 max-w-[calc(100vw-2rem)] whitespace-normal [overflow-wrap:anywhere]"></div>
 
   {% if is_admin %}{% set locked = nodes_lock() %}{% if locked %}
   <div class="alert alert-warning mb-6"><span>{{ locked }}</span></div>

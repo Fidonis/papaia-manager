@@ -1,0 +1,16 @@
+{
+  "name": "papaia-manager-design-check",
+  "version": "0.0.0",
+  "description": "Tools of the design check: the browser tools in the versions the kit pins in contract/specimen.yaml, and the stylesheet and script builds of the image.",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "alpinejs": "3.14.9",
+    "axe-core": "4.14.1",
+    "daisyui": "4.12.23",
+    "htmx.org": "2.0.4",
+    "playwright-core": "1.65.1",
+    "sortablejs": "1.15.6",
+    "tailwindcss": "3.4.17"
+  }
+}

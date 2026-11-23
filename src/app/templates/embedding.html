@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block page_title %}{% trans %}Embedding{% endtrans %}{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Put files into a collection. The ingester reads them in the background{% endtrans %}</p>{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Put files into a collection. The ingester reads them in the background{% endtrans %}</p>{% endblock %}
 
 {# Tier 1: the page's one action is starting a run, and that button belongs to the options
    it depends on, so the header carries only the outline secondary. #}

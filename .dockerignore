@@ -18,6 +18,9 @@ docker
 !docker/tailwind.brand.css
 !docker/tailwind.app.css
 
+# The npm package of the kit's browser tools serves the design check only.
+src/vendor/papaia-kit/js
+
 # Python / uv artifacts
 **/.venv
 **/__pycache__

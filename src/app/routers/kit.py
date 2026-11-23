@@ -12,6 +12,8 @@
   (`app.core.prefs`); without it, in the session and the manager's language file.
 - `GET /help` and `GET /me`: the account menu's "Help", and "My area" for a manager that runs
   without a platform catalog (with one, the entry leads to Mein Bereich).
+- `GET /_kit/specimen`: the kit's specimen page in the manager's frame, the page the kit's
+  interface conformance measures (contract/specimen.md).
 """
 from __future__ import annotations
 
@@ -27,6 +29,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from papaia_kit import ui_dist_dir
 from papaia_kit.ui.glossary import load_glossary
+from papaia_kit.ui.specimen import TEXTS as SPECIMEN_TEXTS
+from papaia_kit.ui.specimen import specimen_body
 
 from app import shell
 from app.auth.csrf import get_csrf_token, verify_csrf
@@ -295,3 +299,19 @@ async def my_area(
     if me is not None:
         return RedirectResponse(me.public_url, status_code=status.HTTP_303_SEE_OTHER)
     return _page(request, user, "me.html", roles=shell.roles_of(user.roles))
+
+
+@router.get("/_kit/specimen", response_class=HTMLResponse, include_in_schema=False)
+async def specimen(request: Request, user: AnyUser) -> HTMLResponse:
+    """The reference content of the vendored kit, rendered by the kit in the page language.
+
+    Behind the sign-in like every other page: the kit's conformance run signs in first.
+    """
+    lang = shell.frame_language(i18n_runtime.current_locale())
+    return _page(
+        request,
+        user,
+        "kit_specimen.html",
+        specimen=specimen_body(lang),
+        specimen_title=SPECIMEN_TEXTS[lang]["title"],
+    )

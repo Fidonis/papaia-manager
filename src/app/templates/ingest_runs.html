@@ -3,7 +3,7 @@
 {% from "partials/_ingest_macros.html" import tabs %}
 
 {% block page_title %}{% trans %}Ingest Runs{% endtrans %}{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}What the ingester did, newest first{% endtrans %}</p>{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}What the ingester did, newest first{% endtrans %}</p>{% endblock %}
 
 {% block page_actions %}
 <button type="button" class="btn btn-outline btn-sm" onclick="reloadRuns()">{% trans %}Refresh{% endtrans %}</button>

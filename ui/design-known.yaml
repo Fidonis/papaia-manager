@@ -1,0 +1,164 @@
+# Known design findings of the manager (PLT-83, oberfl 3.8).
+#
+# Read by scripts/check_design.py over the report of the kit's `pk-conform --design`
+# (every page of ui/pages.yaml, both themes, widths 1440, 390 and 320 px). Same form as
+# the kit's known accessibility list: every entry has exactly the four fields check (a
+# design check of the kit: font, spacing-scale, target-gap, primary-action, measure,
+# narrow-text, outline, reflow), page (a path of ui/pages.yaml), ticket (the ticket of the
+# page rebuild that removes the finding, MGR-013, or an issue `<repo>#<number>` once it
+# exists) and reason. An entry that no longer matches a finding is stale and fails the
+# check; the rebuild removes its entries with the pages it rebuilds.
+#
+# Before the shared design layer the manager drew its pages with its own utility classes;
+# the serious and critical axe findings of those pages are listed as `axe-<rule>` so that
+# no new one joins them (scripts/check_design.py). Kit 0.1.3 reported 116 findings on these
+# pages, kit 0.2.2 reports the 37 below and no new one.
+
+- check: axe-color-contrast
+  page: /services
+  ticket: MGR-013
+  reason: small text drawn with opacity falls below 4.5 to 1; the rebuild uses the kit muted text colour
+- check: axe-color-contrast
+  page: /catalogs
+  ticket: MGR-013
+  reason: small text drawn with opacity falls below 4.5 to 1; the rebuild uses the kit muted text colour
+- check: axe-label
+  page: /catalogs
+  ticket: MGR-013
+  reason: form fields without an associated label; the rebuild builds them with the kit field macro
+- check: axe-select-name
+  page: /catalogs
+  ticket: MGR-013
+  reason: select boxes without an accessible name; the rebuild builds them with the kit field macro
+- check: target-gap
+  page: /catalogs
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: axe-color-contrast
+  page: /connections
+  ticket: MGR-013
+  reason: small text drawn with opacity falls below 4.5 to 1; the rebuild uses the kit muted text colour
+- check: axe-label
+  page: /embedding
+  ticket: MGR-013
+  reason: form fields without an associated label; the rebuild builds them with the kit field macro
+- check: target-gap
+  page: /ingest/jobs
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: axe-color-contrast
+  page: /ingest/new
+  ticket: MGR-013
+  reason: small text drawn with opacity falls below 4.5 to 1; the rebuild uses the kit muted text colour
+- check: axe-label
+  page: /ingest/new
+  ticket: MGR-013
+  reason: form fields without an associated label; the rebuild builds them with the kit field macro
+- check: axe-select-name
+  page: /ingest/new
+  ticket: MGR-013
+  reason: select boxes without an accessible name; the rebuild builds them with the kit field macro
+- check: target-gap
+  page: /ingest/new
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: target-gap
+  page: "/ingest/jobs/{job_id}"
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: target-gap
+  page: /ingest/runs
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: axe-color-contrast
+  page: /ingest/secrets
+  ticket: MGR-013
+  reason: small text drawn with opacity falls below 4.5 to 1; the rebuild uses the kit muted text colour
+- check: target-gap
+  page: /ingest/secrets
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: target-gap
+  page: /ingest/orphans
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: axe-label
+  page: /ingest/catalog
+  ticket: MGR-013
+  reason: form fields without an associated label; the rebuild builds them with the kit field macro
+- check: axe-select-name
+  page: /ingest/catalog
+  ticket: MGR-013
+  reason: select boxes without an accessible name; the rebuild builds them with the kit field macro
+- check: target-gap
+  page: /ingest/catalog
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: axe-color-contrast
+  page: /backup
+  ticket: MGR-013
+  reason: small text drawn with opacity falls below 4.5 to 1; the rebuild uses the kit muted text colour
+- check: axe-color-contrast
+  page: /upgrade
+  ticket: MGR-013
+  reason: small text drawn with opacity falls below 4.5 to 1; the rebuild uses the kit muted text colour
+- check: reflow
+  page: /upgrade
+  ticket: MGR-013
+  reason: the page scrolls sideways at 320 px; the rebuild lays it out with the kit layout primitives
+- check: target-gap
+  page: /users
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: axe-color-contrast
+  page: /users/roles
+  ticket: MGR-013
+  reason: small text drawn with opacity falls below 4.5 to 1; the rebuild uses the kit muted text colour
+- check: axe-label
+  page: /users/roles
+  ticket: MGR-013
+  reason: form fields without an associated label; the rebuild builds them with the kit field macro
+- check: target-gap
+  page: /users/roles
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: target-gap
+  page: /mail
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: target-gap
+  page: /mail/server
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: reflow
+  page: /nodes
+  ticket: MGR-013
+  reason: the page scrolls sideways at 320 px; the rebuild lays it out with the kit layout primitives
+- check: reflow
+  page: "/nodes/{name}"
+  ticket: MGR-013
+  reason: the page scrolls sideways at 320 px; the rebuild lays it out with the kit layout primitives
+- check: axe-color-contrast
+  page: /settings
+  ticket: MGR-013
+  reason: small text drawn with opacity falls below 4.5 to 1; the rebuild uses the kit muted text colour
+- check: target-gap
+  page: /settings
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: axe-color-contrast
+  page: /settings/modules
+  ticket: MGR-013
+  reason: small text drawn with opacity falls below 4.5 to 1; the rebuild uses the kit muted text colour
+- check: target-gap
+  page: /settings/modules
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components
+- check: outline
+  page: /settings/overlay
+  ticket: MGR-013
+  reason: an outline shows on an element without focus; the rebuild uses the kit form fields
+- check: target-gap
+  page: /settings/overlay
+  ticket: MGR-013
+  reason: controls of the page stand closer than 8 px; the rebuild spaces them with the kit components

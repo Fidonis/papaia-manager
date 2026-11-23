@@ -2,7 +2,7 @@
 {% from "partials/_ingest_macros.html" import tabs %}
 
 {% block page_title %}{% trans %}Leftovers{% endtrans %}{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Content the ingester holds for jobs that are no longer in the catalog{% endtrans %}</p>{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Content the ingester holds for jobs that are no longer in the catalog{% endtrans %}</p>{% endblock %}
 
 {% block page_actions %}
 <button type="button" class="btn btn-outline btn-sm" onclick="reloadOrphans()">{% trans %}Refresh{% endtrans %}</button>

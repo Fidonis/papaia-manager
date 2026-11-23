@@ -171,6 +171,23 @@ so there is no second copy to keep in step any more. The stamps remain as the ve
 change it in every file at once. `tests/test_brand_layer.py` catches a half-finished edit, that is a file
 that lost its stamp or stamps that disagree with each other.
 
+## Design check
+
+`ui/pages.yaml` lists every full page of the manager for the kit's checks. The CI job `design` runs the
+kit's `pk-conform --design` over all of them, in light and dark, at desktop and phone width, with axe.
+Locally (Node 22, uv; nothing is fetched beyond the locked npm packages and a Chromium build):
+
+```bash
+scripts/design-tools.sh                      # unpack the vendored kit tool, build app.css and the scripts
+scripts/design-check.sh 57880 /tmp/design-report.json
+```
+
+`tests/design_serve.py` serves the manager in a stand-in installation on 127.0.0.1 (no real Keycloak,
+Docker or LiteLLM) and signs a synthetic administrator in. `scripts/check_design.py` decides: a finding
+not in `ui/design-known.yaml` fails, and so does an entry that no longer matches a finding. Serious and
+critical axe findings are listed there as `axe-<rule>` so they can only go away, never come in. A new
+page goes into `ui/pages.yaml` and needs no entry. A finding is fixed in the page, not added to the list.
+
 ## License of your contributions (Inbound = Outbound)
 
 This project is published under the [MIT license](LICENSE). By submitting a pull request, comment with a code suggestion, or any other contribution to this repository, **you agree that your contribution is licensed under the same MIT license** that the project itself uses ("Inbound = Outbound"). No separate Contributor License Agreement (CLA) is required.

@@ -1,8 +1,9 @@
 # Vendored papaia-kit release used by the manager. The image installs the wheel
 # from vendor/ only; tests/test_kit_lock.py checks that pyproject.toml, uv.lock
 # and this file name the same version and that the wheel matches the SHA-256
-# below. The wheel is built reproducibly from the commit below
-# (SOURCE_DATE_EPOCH = commit time, `uv build --wheel`).
+# below. The wheel is the reproducible release build of the kit at the commit
+# below (SOURCE_DATE_EPOCH = commit time). Check by hand with:
+#   shasum -a 256 vendor/papaia-kit/0.2.2/papaia_kit-0.2.2-py3-none-any.whl
 
 version = "0.2.2"
 commit = "f45bf964422eecaa42f17c3bf2603f5099b747e2"

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block page_title %}{% trans %}Host{% endtrans %}{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Resources, disk space and certificates of the machine this deployment runs on{% endtrans %}</p>{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Resources, disk space and certificates of the machine this deployment runs on{% endtrans %}</p>{% endblock %}
 
 {# Tier 1: the one thing to do here is look again. `hx-disabled-elt` keeps a
    second click from queueing behind the first, and the route folds a repeat

@@ -3,7 +3,8 @@
 Page routes and the application-level error handlers both render templates.
 Sharing one environment keeps a single template search path and one compiled
 template cache, instead of each module standing up its own. The kit's templates
-(`pk/shell.html`, the platform's shared frame) are on the same search path.
+(`pk/shell.html`, the platform's shared frame, and `pk/components.html`, its component
+macros) are on the same search path, after the manager's own.
 
 fidonis-brand: 3 -- the asset fingerprinting below is part of the brand layer
 (CONTRIBUTING.md, "Brand layer").
@@ -13,11 +14,11 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+import papaia_kit
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
-from jinja2 import ChoiceLoader, pass_context
-from papaia_kit.ui import shell_context
-from papaia_kit.ui.shell import kit_loader
+from jinja2 import pass_context
+from papaia_kit.ui import extend_environment, shell_context
 
 from app import shell
 from app.auth.csrf import get_csrf_token
@@ -38,8 +39,10 @@ from app.i18n import runtime as i18n_runtime
 from app.i18n.jinja import install as install_i18n
 
 templates = Jinja2Templates(directory="app/templates")
-assert templates.env.loader is not None
-templates.env.loader = ChoiceLoader([templates.env.loader, kit_loader()])
+# The kit's loader after the manager's own, and the helpers of its component macros
+# (`{% import "pk/components.html" as pk with context %}`); symbols point at the sprite the
+# manager serves from the vendored wheel (routers/kit.py).
+extend_environment(templates.env, sprite=f"/_kit/{papaia_kit.__version__}/icons/sprite.svg")
 
 # Resolved from this module rather than the working directory: unlike the
 # template search path above, this is read at request time, long after

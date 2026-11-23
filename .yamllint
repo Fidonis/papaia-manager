@@ -2,6 +2,7 @@ extends: default
 
 ignore: |
   .venv/
+  .pk/
 
 rules:
   line-length: disable

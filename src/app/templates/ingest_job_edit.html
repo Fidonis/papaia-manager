@@ -3,7 +3,7 @@
 
 {% set breadcrumb = [{"label": _("Ingest Jobs") if job_id is none else job_id, "href": "/ingest/jobs" if job_id is none else "/ingest/jobs/" ~ job_id}] %}
 {% block page_title %}{% if job_id is none %}{{ _('New job') if not copy_of else _('Copy of %(job)s', job=copy_of) }}{% else %}{% trans %}Edit <span class="font-mono">{{ job_id }}</span>{% endtrans %}{% endif %}{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Where the documents are, where they go, and when to look again{% endtrans %}</p>{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Where the documents are, where they go, and when to look again{% endtrans %}</p>{% endblock %}
 
 {# Tier 1: Save is the primary action and is also at the foot of the form, where a long form
    ends. The header button only asks the form to save. #}

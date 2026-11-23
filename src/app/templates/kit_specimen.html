@@ -1,0 +1,9 @@
+{#
+  The kit's specimen page `/_kit/specimen` in the manager's frame (interface conformance of
+  papaia-kit, contract/specimen.md): the reference content of the vendored kit and nothing
+  of the manager, so no stylesheet or script of the module restyles what the kit's
+  conformance run measures.
+#}
+{% from "pk/shell.html" import shell %}
+{% set pk = pk_shell(specimen_title) %}
+{% call shell(pk) %}{{ specimen }}{% endcall %}

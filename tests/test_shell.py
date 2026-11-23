@@ -273,7 +273,8 @@ def test_without_a_catalog_the_switcher_names_the_manager_only(client: TestClien
     assert "<details" not in switcher
     assert "Manager" in switcher
     brand = _between(body, 'data-pk-zone="brand"', "</div>")
-    # The link is named by its visible text: the name and the second line (kit 0.2.2).
+    # The accessible name starts with the visible text, name and second line (kit 0.2.2,
+    # shell contract section 4, WCAG 2.5.3).
     assert '<a href="/" aria-label="papAIa manager by Fidonis, overview">' in brand
 
 

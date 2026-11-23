@@ -90,7 +90,7 @@
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans %}This installation cannot be upgraded from here{% endtrans %}</p>
-          <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
+          <p class="text-xs opacity-60 mt-1 leading-relaxed">
             {% trans %}The papaia workspace is not a git checkout, and the upgrade moves the checkout to a release tag. Re-clone the repository on the host and re-run <span class="font-mono">papaia-ctl setup</span> against the existing configuration directory.{% endtrans %}
           </p>
         </div>
@@ -98,13 +98,13 @@
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans %}The checkout could not be inspected{% endtrans %}</p>
-          <p class="text-xs opacity-60 mt-0.5 font-mono break-all">{{ checkout.error }}</p>
+          <p class="text-xs opacity-60 mt-1 font-mono break-all">{{ checkout.error }}</p>
         </div>
       {% elif not checkout.clean %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans %}The checkout has uncommitted changes{% endtrans %}</p>
-          <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
+          <p class="text-xs opacity-60 mt-1 leading-relaxed">
             {% trans %}Commit, stash or discard them on the host first &mdash; the upgrade moves the checkout to a release tag and would otherwise take these edits with it.{% endtrans %}
           </p>
           <pre class="mt-2 max-h-40 overflow-y-auto rounded bg-base-300 p-3 text-xs whitespace-pre-wrap">{{ checkout.dirty }}</pre>
@@ -113,7 +113,7 @@
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-success"></span>
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans %}The checkout is clean{% endtrans %}</p>
-          <p class="text-xs opacity-60 mt-0.5">
+          <p class="text-xs opacity-60 mt-1">
             {% trans %}No uncommitted changes to tracked files, so it can be moved to a release tag.{% endtrans %}
             {% if checkout.is_git and not checkout.tag %}
             {% trans %}It is not sitting on a tag right now, which only matters if an upgrade fails: the way back names a tag.{% endtrans %}
@@ -130,13 +130,13 @@
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-base-300"></span>
         <div class="min-w-0">
           <p class="text-sm font-medium opacity-60">{% trans %}Add-on compatibility{% endtrans %}</p>
-          <p class="text-xs opacity-60 mt-0.5">{% trans %}Checked against a release once there is one.{% endtrans %}</p>
+          <p class="text-xs opacity-60 mt-1">{% trans %}Checked against a release once there is one.{% endtrans %}</p>
         </div>
       {% elif check.gate.passed %}
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-success"></span>
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans target=check.target %}Add-ons are compatible with {{ target }}{% endtrans %}</p>
-          <p class="text-xs opacity-60 mt-0.5">
+          <p class="text-xs opacity-60 mt-1">
             {% if check.gate.results %}
             {% trans count=(check.gate.results | length) %}{{ count }} active add-on(s) checked against the target release.{% endtrans %}
             {% else %}
@@ -148,7 +148,7 @@
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-error"></span>
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans target=check.target %}Add-ons are not compatible with {{ target }}{% endtrans %}</p>
-          <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
+          <p class="text-xs opacity-60 mt-1 leading-relaxed">
             {% if check.gate.has_error %}
             {% trans %}One add-on's manifest could not be read. papaia-ctl refuses that regardless of any override &mdash; fix the add-on before upgrading.{% endtrans %}
             {% else %}
@@ -176,7 +176,7 @@
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-warning"></span>
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans %}No restore point can be written{% endtrans %}</p>
-          <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
+          <p class="text-xs opacity-60 mt-1 leading-relaxed">
             {% trans %}<span class="font-mono">PAPAIA_BACKUP_DIR</span> is not set in the stack configuration. Set it on the host, or start the upgrade without a restore point and accept that there is nothing to roll back to.{% endtrans %}
           </p>
         </div>
@@ -184,7 +184,7 @@
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-warning"></span>
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans %}The backup directory is not reachable{% endtrans %}</p>
-          <p class="text-xs opacity-60 mt-0.5">
+          <p class="text-xs opacity-60 mt-1">
             {% trans %}<span class="font-mono">{{ backup_dir }}</span> is not visible from this container, so the restore point would fail after the stack is already down.{% endtrans %}
           </p>
         </div>
@@ -192,7 +192,7 @@
         <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-success"></span>
         <div class="min-w-0">
           <p class="text-sm font-medium">{% trans %}A restore point is written first{% endtrans %}</p>
-          <p class="text-xs opacity-60 mt-0.5">
+          <p class="text-xs opacity-60 mt-1">
             {% trans %}Into <span class="font-mono">{{ backup_dir }}</span>. It is what the way back points at if a migration fails.{% endtrans %}
           </p>
         </div>
@@ -205,7 +205,7 @@
       <span class="h-2.5 w-2.5 mt-1.5 shrink-0 rounded-full bg-warning"></span>
       <div class="min-w-0">
         <p class="text-sm font-medium">{% trans %}The whole stack goes down, this panel included{% endtrans %}</p>
-        <p class="text-xs opacity-60 mt-0.5 leading-relaxed">
+        <p class="text-xs opacity-60 mt-1 leading-relaxed">
           {% trans %}Containers are removed and recreated; volumes are kept. The upgrade runs in its own container, so it finishes even once this page is gone, and the result appears here again afterwards &mdash; on the papaia-manager version that ships with the new release.{% endtrans %}
         </p>
       </div>

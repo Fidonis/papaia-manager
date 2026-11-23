@@ -2,7 +2,7 @@
 {% from "partials/_settings_tabs.html" import tabs %}
 
 {% block page_title %}{% trans %}Settings{% endtrans %}{% endblock %}
-{% block page_subtitle %}<p class="mt-0.5 text-sm opacity-50">{% trans %}Optional parts of the stack. A change recreates the affected containers and runs as a job.{% endtrans %}</p>{% endblock %}
+{% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Optional parts of the stack. A change recreates the affected containers and runs as a job.{% endtrans %}</p>{% endblock %}
 
 {% block content %}
 {{ tabs('modules') }}
