@@ -1,15 +1,37 @@
 {% extends "base.html" %}
+{% from "partials/_csp.html" import data_island %}
 {% from "partials/_settings_tabs.html" import tabs %}
 
 {% block page_title %}{% trans %}Settings{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}Your own settings on top of the stack's configuration. They survive every upgrade.{% endtrans %}</p>{% endblock %}
 
+{% block page_modules %}
+<script type="module" src="{{ asset_url('js/pages/settings-overlay.js') }}"></script>
+{% endblock %}
+
 {% block content %}
 {{ tabs('overlay') }}
 
-<script type="application/json" id="overlay-init">{{ init | tojson }}</script>
+{#- The component `overlayEditor` lives in static/js/pages/settings-overlay.js; it reads the
+    targets and its sentences from these islands. #}
+{{ data_island("overlay-init", init) }}
+{{ data_island("overlay-texts", {
+  "rollbackTitle": _('Roll back to {when}?'),
+  "applyTitle": _('Apply overlay to {label}?'),
+  "rollbackButton": _('Roll back'),
+  "applyButton": _('Apply overlay'),
+  "cannotMerge": _('The draft can\'t be merged.'),
+  "applyNoteOne": _('Apply saves the current file to Versions first, then recreates {label} ({count} service).'),
+  "applyNoteOther": _('Apply saves the current file to Versions first, then recreates {label} ({count} services).'),
+  "applyNoteOff": _('Apply saves the file. {label} is switched off, so it takes effect when it is switched on.'),
+  "applying": _('Applying the overlay …'),
+  "rollingBack": _('Rolling back the overlay …'),
+  "discarding": _('Discarding the overlay …'),
+  "done": _('Done'),
+  "failed": _('The change failed. The log is above.'),
+}) }}
 
-<div class="max-w-3xl space-y-6" x-data="overlayEditor()" x-init="start()">
+<div class="max-w-3xl space-y-6" x-data="overlayEditor" x-init="start()">
 
   <div id="config-job-status"
        hx-get="/partials/config/job-status"
@@ -54,7 +76,7 @@
     </div>
   </section>
 
-  <section class="card bg-base-100 border border-base-300" x-show="file" style="display:none">
+  <section class="card bg-base-100 border border-base-300" x-show="file" x-cloak>
     <div class="card-body gap-4">
       <div class="flex flex-wrap items-center gap-2">
         <h2 class="font-brand text-lg font-bold flex-1" x-text="fmt({{ _('Edit {label} overlay')|tojson|forceescape }}, { label: current.label })"></h2>
@@ -62,7 +84,7 @@
       </div>
 
       {# A host-side edit between page load and Apply. The draft stays; nothing was written. #}
-      <div x-show="conflict" style="display:none" class="rounded-xl border border-warning bg-warning/10 px-5 py-3 text-sm" role="alert">
+      <div x-show="conflict" x-cloak class="rounded-xl border border-warning bg-warning/10 px-5 py-3 text-sm" role="alert">
         <p class="font-semibold">{% trans %}This file changed on the host after you opened it{% endtrans %}</p>
         <p class="text-xs text-pk-text-muted">{% trans %}Your draft is kept and nothing was overwritten. Applying it saves the host's version to Versions first.{% endtrans %}</p>
         <div class="mt-2 flex flex-wrap gap-2">
@@ -71,7 +93,7 @@
         </div>
       </div>
 
-      <div x-show="restoredFrom" style="display:none" class="rounded-xl border border-info bg-info/10 px-5 py-3 text-xs">
+      <div x-show="restoredFrom" x-cloak class="rounded-xl border border-info bg-info/10 px-5 py-3 text-xs">
         <span x-text="fmt({{ _('Draft restored from the version of {when}. Review it, then apply it to make it live.')|tojson|forceescape }}, { when: restoredFrom })"></span>
       </div>
 
@@ -96,33 +118,34 @@
                     @scroll="$refs.gutter.scrollTop = $refs.editor.scrollTop"></textarea>
         </div>
 
-        <ul class="mt-2 space-y-1 text-xs text-error" x-show="problems.length" style="display:none" role="alert">
+        <ul class="mt-2 space-y-1 text-xs text-error" x-show="problems.length" x-cloak role="alert">
           <template x-for="p in problems" :key="p.message + p.line">
             <li><span x-text="p.line ? (p.column ? fmt({{ _('Line {line}, column {column}:')|tojson|forceescape }}, { line: p.line, column: p.column }) : fmt({{ _('Line {line}:')|tojson|forceescape }}, { line: p.line })) + ' ' : ''"></span><span x-text="p.message"></span></li>
           </template>
         </ul>
-        <p class="mt-2 text-xs text-success" x-show="!problems.length && summary" style="display:none" x-text="fmt({{ _('YAML valid · {summary}')|tojson|forceescape }}, { summary: summary })"></p>
+        <p class="mt-2 text-xs text-success" x-show="!problems.length && summary" x-cloak x-text="fmt({{ _('YAML valid · {summary}')|tojson|forceescape }}, { summary: summary })"></p>
 
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <button type="button" class="btn btn-primary btn-sm" :disabled="busy || problems.length > 0" @click="askApply()">{% trans %}Apply overlay{% endtrans %}</button>
           <button type="button" class="btn btn-outline btn-sm" :disabled="problems.length > 0" @click="showEffective()">{% trans %}Preview effective result{% endtrans %}</button>
           <span class="flex-1"></span>
-          <button type="button" class="btn btn-ghost btn-sm text-error" x-show="file && file.exists" style="display:none" @click="$refs.discard.showModal()">{% trans %}Discard overlay{% endtrans %}</button>
+          <button type="button" class="btn btn-ghost btn-sm text-error" x-show="file && file.exists" x-cloak @click="$refs.discard.showModal()">{% trans %}Discard overlay{% endtrans %}</button>
         </div>
         <p class="mt-2 text-xs text-pk-text-muted" x-text="applyNote()"></p>
       </div>
 
       {# --- Effective result --------------------------------------------------------- #}
-      <div x-show="tab === 'effective'" style="display:none">
+      <div x-show="tab === 'effective'" x-cloak>
         <p class="mb-2 text-xs text-pk-text-muted">
-          <span x-html="fmtHtml({{ _('What <span class="font-mono">{path}</span> renders to with this draft, against what it renders to now. The core merges the layers in memory; nothing is written.')|tojson|forceescape }}, { path: current.path })"></span>
+          {#- The sentence is rendered here, one per target, with the path escaped into it. #}
+          {% for t in init.targets %}<span x-show="key === {{ t.key|tojson|forceescape }}">{{ _('What <span class="font-mono">{path}</span> renders to with this draft, against what it renders to now. The core merges the layers in memory; nothing is written.').replace('{path}', t.path) }}</span>{% endfor %}
         </p>
         <p class="text-sm text-pk-text-muted" x-show="previewing">{% trans %}Merging …{% endtrans %}</p>
-        <p class="text-sm text-error" x-show="previewError" style="display:none" x-text="previewError"></p>
-        <p class="text-sm text-pk-text-muted" x-show="previewUnavailable" style="display:none">
+        <p class="text-sm text-error" x-show="previewError" x-cloak x-text="previewError"></p>
+        <p class="text-sm text-pk-text-muted" x-show="previewUnavailable" x-cloak>
           {% trans %}This papAIa core can't preview the effective result yet; the syntax check is all there is.{% endtrans %}
         </p>
-        <div x-show="effective" style="display:none">
+        <div x-show="effective" x-cloak>
           <p class="mb-1 text-xs">
             <span class="badge badge-sm badge-success" x-text="fmtPlural(effective ? effective.added : 0, {{ _('+{count} line')|tojson|forceescape }}, {{ _('+{count} lines')|tojson|forceescape }})"></span>
             <span class="badge badge-sm ml-1" x-text="fmt({{ _('{count} removed')|tojson|forceescape }}, { count: effective ? effective.removed : 0 })"></span>
@@ -143,7 +166,7 @@
       </div>
 
       {# --- Versions ----------------------------------------------------------------- #}
-      <div x-show="tab === 'versions'" style="display:none">
+      <div x-show="tab === 'versions'" x-cloak>
         <p class="mb-2 text-xs text-pk-text-muted">
           {% trans %}The previous file is saved here before every Apply, Discard and Roll back. The latest 20 are kept, readable by administrators only, and they are part of <code>papaia-ctl backup</code>.{% endtrans %}
         </p>
@@ -168,7 +191,7 @@
             </tbody>
           </table>
         </div>
-        <div class="mt-3" x-show="versionDiff" style="display:none">
+        <div class="mt-3" x-show="versionDiff" x-cloak>
           <p class="mb-1 text-xs text-pk-text-muted" x-text="fmt({{ _('Difference between {when} and the file now')|tojson|forceescape }}, { when: versionDiffFor ? when(versionDiffFor.when) : '' })"></p>
           <div class="max-h-72 overflow-auto rounded-lg border border-base-300 bg-base-200 py-2 font-mono text-xs leading-relaxed">
             <template x-for="(line, i) in (versionDiff || [])" :key="i">
@@ -184,7 +207,7 @@
   </section>
 
   {# Apply and roll back share one dialog; what it says depends on what is being done. #}
-  <dialog x-ref="confirm" class="modal">
+  <dialog x-ref="confirmDialog" class="modal">
     <div class="modal-box max-w-md">
       <h3 class="text-base font-bold" x-text="confirmTitle"></h3>
       <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-pk-text-muted">
@@ -197,7 +220,7 @@
         <li x-show="current.group_active">{% trans %}If the services don't start with the new file, the previous overlay is put back automatically.{% endtrans %}</li>
       </ul>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost btn-sm" @click="$refs.confirm.close()">{% trans %}Cancel{% endtrans %}</button>
+        <button type="button" class="btn btn-ghost btn-sm" @click="$refs.confirmDialog.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="button" class="btn btn-primary btn-sm" @click="confirmAction()" x-text="confirmButton"></button>
       </div>
     </div>
@@ -219,237 +242,4 @@
   </dialog>
 </div>
 
-<script>
-  function overlayEditor() {
-    const init = JSON.parse(document.getElementById("overlay-init").textContent);
-    return {
-      targets: init.targets,
-      other: init.other,
-      key: init.selected,
-      previewAvailable: init.preview_available,
-      file: null,
-      draft: "",
-      saved: "",
-      tab: "overlay",
-      problems: [],
-      summary: "",
-      versions: [],
-      effective: null,
-      previewing: false,
-      previewError: "",
-      previewUnavailable: false,
-      versionDiff: null,
-      versionDiffFor: null,
-      restoredFrom: "",
-      conflict: false,
-      busy: false,
-      confirmKind: "apply",
-      confirmVersion: null,
-      anyway: false,
-      following: false,
-
-      get current() { return this.targets.find((t) => t.key === this.key); },
-      get confirmTitle() {
-        if (this.confirmKind === "rollback") return fmt({{ _('Roll back to {when}?')|tojson }}, { when: this.when(this.confirmVersion.when) });
-        return fmt({{ _('Apply overlay to {label}?')|tojson }}, { label: this.current.label });
-      },
-      get confirmButton() { return this.confirmKind === "rollback" ? {{ _('Roll back')|tojson }} : {{ _('Apply overlay')|tojson }}; },
-
-      async start() {
-        await this.select(this.key);
-        let wasActive = false;
-        window.addEventListener("papaia-config-job", (event) => {
-          if (this.following) return;
-          if (event.detail.active) wasActive = true;
-          else if (wasActive) window.location.reload();
-        });
-      },
-
-      async select(key) {
-        this.key = key;
-        this.tab = "overlay";
-        this.effective = null;
-        this.previewError = "";
-        this.versionDiff = null;
-        this.restoredFrom = "";
-        this.conflict = false;
-        const reply = await _ragRequest("GET", "/api/v1/config/overlay/" + key);
-        if (!reply.ok) {
-          if (!reply.handled) showToast("error", _ragEscape(reply.error));
-          this.file = null;
-          return;
-        }
-        this.file = reply.data;
-        this.draft = reply.data.content;
-        this.saved = reply.data.content;
-        this.versions = reply.data.versions;
-        this.previewAvailable = reply.data.preview_available;
-        const t = this.targets.findIndex((x) => x.key === key);
-        this.targets[t] = Object.assign({}, this.targets[t], {
-          exists: reply.data.exists, lines: reply.data.lines, revision: reply.data.revision,
-        });
-        await this.runCheck();
-      },
-
-      lineNumbers() {
-        const n = Math.max(1, this.draft.split("\n").length);
-        return Array.from({ length: n }, (_, i) => i + 1).join("\n");
-      },
-
-      async runCheck() {
-        const reply = await _ragRequest("POST", "/api/v1/config/overlay/" + this.key + "/check", { content: this.draft });
-        if (!reply.ok) return;
-        this.problems = reply.data.problems;
-        this.summary = reply.data.summary;
-        this.effective = null;
-      },
-
-      async showEffective() {
-        if (this.problems.length) return;
-        this.tab = "effective";
-        this.previewing = true;
-        this.previewError = "";
-        this.previewUnavailable = false;
-        this.effective = null;
-        const reply = await _ragRequest("POST", "/api/v1/config/overlay/" + this.key + "/preview", { content: this.draft });
-        this.previewing = false;
-        if (!reply.ok) {
-          if (!reply.handled) this.previewError = reply.error;
-          return;
-        }
-        const r = reply.data;
-        if (r.ok) this.effective = r;
-        else if (r.available === false) this.previewUnavailable = true;
-        else if (r.problems && r.problems.length) this.previewError = r.problems[0].message;
-        else this.previewError = r.error || {{ _('The draft can\'t be merged.')|tojson }};
-      },
-
-      applyNote() {
-        if (!this.current) return "";
-        return this.current.group_active
-          ? fmtPlural(this.current.services,
-              {{ _('Apply saves the current file to Versions first, then recreates {label} ({count} service).')|tojson }},
-              {{ _('Apply saves the current file to Versions first, then recreates {label} ({count} services).')|tojson }},
-              { label: this.current.label })
-          : fmt({{ _('Apply saves the file. {label} is switched off, so it takes effect when it is switched on.')|tojson }}, { label: this.current.label });
-      },
-
-      when(iso) {
-        const d = new Date(iso);
-        return d.toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-      },
-
-      askApply() {
-        this.confirmKind = "apply";
-        this.anyway = false;
-        this.$refs.confirm.showModal();
-      },
-
-      // After a conflict: the same dialog, which says the host's version is saved first.
-      askApplyAnyway() {
-        this.confirmKind = "apply";
-        this.anyway = true;
-        this.$refs.confirm.showModal();
-      },
-
-      askRollback(version) {
-        this.confirmKind = "rollback";
-        this.confirmVersion = version;
-        this.$refs.confirm.showModal();
-      },
-
-      async confirmAction() {
-        this.$refs.confirm.close();
-        if (this.confirmKind === "rollback") await this.rollback(this.confirmVersion);
-        else if (this.anyway) await this.applyAnyway();
-        else await this.apply(this.file.revision);
-      },
-
-      async apply(revision) {
-        this.busy = true;
-        const reply = await _ragRequest("PUT", "/api/v1/config/overlay/" + this.key, { content: this.draft, revision: revision });
-        this.busy = false;
-        if (!reply.ok) {
-          if (reply.handled) return;
-          if (/changed after/.test(reply.error)) this.conflict = true;
-          else showToast("error", _ragEscape(reply.error));
-          return;
-        }
-        this.follow(reply.data.job_id, {{ _('Applying the overlay …')|tojson }});
-      },
-
-      async rollback(version) {
-        this.busy = true;
-        const reply = await _ragRequest("POST", "/api/v1/config/overlay/" + this.key + "/rollback", { version: version.id, revision: this.file.revision });
-        this.busy = false;
-        if (!reply.ok) {
-          if (reply.handled) return;
-          if (/changed after/.test(reply.error)) this.conflict = true;
-          else showToast("error", _ragEscape(reply.error));
-          return;
-        }
-        this.follow(reply.data.job_id, {{ _('Rolling back the overlay …')|tojson }});
-      },
-
-      async discard() {
-        this.$refs.discard.close();
-        const reply = await _ragRequest("DELETE", "/api/v1/config/overlay/" + this.key + "?revision=" + encodeURIComponent(this.file.revision));
-        if (!reply.ok) {
-          if (reply.handled) return;
-          if (/changed after/.test(reply.error)) this.conflict = true;
-          else showToast("error", _ragEscape(reply.error));
-          return;
-        }
-        this.follow(reply.data.job_id, {{ _('Discarding the overlay …')|tojson }});
-      },
-
-      // The host's file is read again for its revision only; the draft stays what it is.
-      async applyAnyway() {
-        const reply = await _ragRequest("GET", "/api/v1/config/overlay/" + this.key);
-        if (!reply.ok) {
-          if (!reply.handled) showToast("error", _ragEscape(reply.error));
-          return;
-        }
-        this.file = reply.data;
-        this.conflict = false;
-        await this.apply(reply.data.revision);
-      },
-
-      async reloadFile() { await this.select(this.key); },
-
-      async viewVersion(version) {
-        const reply = await _ragRequest("GET", "/api/v1/config/overlay/" + this.key + "/versions/" + version.id);
-        if (!reply.ok) {
-          if (!reply.handled) showToast("error", _ragEscape(reply.error));
-          return;
-        }
-        this.versionDiff = reply.data.diff;
-        this.versionDiffFor = version;
-      },
-
-      async restoreDraft(version) {
-        const reply = await _ragRequest("GET", "/api/v1/config/overlay/" + this.key + "/versions/" + version.id);
-        if (!reply.ok) {
-          if (!reply.handled) showToast("error", _ragEscape(reply.error));
-          return;
-        }
-        this.draft = reply.data.content;
-        this.restoredFrom = this.when(version.when);
-        this.tab = "overlay";
-        await this.runCheck();
-      },
-
-      follow(jobId, message) {
-        this.following = true;
-        showToast("info", message);
-        htmx.ajax("GET", "/partials/config/job-status", { target: "#config-job-status", swap: "outerHTML" });
-        _pollJob(jobId, (job) => {
-          if (job.status === "succeeded") showToast("success", {{ _('Done')|tojson }});
-          else showToast("error", {{ _('The change failed. The log is above.')|tojson }});
-          setTimeout(() => { window.location.href = "/settings/overlay?target=" + this.key; }, 900);
-        });
-      },
-    };
-  }
-</script>
 {% endblock %}

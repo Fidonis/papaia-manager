@@ -12,10 +12,12 @@
     "jobs.html",
     "kit_specimen.html",
     "knowledge_map.html",
+    "mail.html",
     "me.html",
     "settings.html",
     "settings_installation.html",
-    "settings_modules.html"
+    "settings_modules.html",
+    "settings_overlay.html"
   ],
   "templates": {
     "addon_upgrade.html": {
@@ -133,13 +135,6 @@
     "ingest_secrets.html": {
       "inline_scripts": 1,
       "on_attributes": 2,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "mail.html": {
-      "inline_scripts": 1,
-      "on_attributes": 4,
       "alpine_unsupported": 0,
       "style_blocks": 0,
       "style_attributes": 0
@@ -347,13 +342,6 @@
       "style_blocks": 0,
       "style_attributes": 2
     },
-    "partials/mail_job_status.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "partials/models_body.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
@@ -445,13 +433,6 @@
       "style_blocks": 0,
       "style_attributes": 0
     },
-    "settings_overlay.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 2,
-      "style_blocks": 0,
-      "style_attributes": 12
-    },
     "upgrade.html": {
       "inline_scripts": 1,
       "on_attributes": 2,
@@ -468,10 +449,10 @@
     }
   },
   "totals": {
-    "inline_scripts": 37,
-    "on_attributes": 104,
-    "alpine_unsupported": 98,
+    "inline_scripts": 34,
+    "on_attributes": 100,
+    "alpine_unsupported": 96,
     "style_blocks": 0,
-    "style_attributes": 253
+    "style_attributes": 241
   }
 }

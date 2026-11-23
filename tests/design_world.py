@@ -67,6 +67,31 @@ def make_world(root: Path) -> tuple[Path, Path]:
     return config, workspace
 
 
+def add_mail_relay(config: Path, workspace: Path) -> None:
+    """A core that ships the mail relay, switched on and set up with a synthetic server
+    without a stored password, so the Mail page shows its form and the test mail
+    (tests/test_settings_mail_browser.py). The relay itself is not there; its status shows
+    "unreachable"."""
+    lib = workspace / "papaia" / "tools" / "lib"
+    lib.mkdir(parents=True, exist_ok=True)
+    (lib / "smtp.py").write_text("", encoding="utf-8")
+    env = config / ".env"
+    profiles = env.read_text(encoding="utf-8")
+    profiles = profiles.replace("COMPOSE_PROFILES=rag\n", "COMPOSE_PROFILES=rag,smtp\n")
+    env.write_text(profiles, encoding="utf-8")
+    module = config / "infra" / "smtp-relay"
+    module.mkdir(parents=True, exist_ok=True)
+    (module / ".env").write_text(
+        "SMTP_RELAY_UPSTREAM_HOST=smtp.example.org\n"
+        "SMTP_RELAY_UPSTREAM_PORT=587\n"
+        "SMTP_RELAY_UPSTREAM_SECURITY=starttls\n"
+        "SMTP_RELAY_UPSTREAM_USER=mailer\n"
+        "SMTP_RELAY_FROM_ADDRESS=noreply@example.org\n"
+        "SMTP_RELAY_FROM_NAME=Example Mail\n",
+        encoding="utf-8",
+    )
+
+
 def environment(config: Path, workspace: Path, *, host: str, secret: str) -> dict[str, str]:
     """The settings of the manager for the stand-in world (never a real identity provider)."""
     return {

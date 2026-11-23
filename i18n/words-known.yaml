@@ -235,11 +235,11 @@ groups:
       - W1 i18n/export/en.json#text.f21f82758a54c9c2 login
       - W1 i18n/export/en.json#text.f683c2d61f21c806 login
       - W1 i18n/export/en.json#text.faf2cb49c2a2a738 login
-      - W1 src/app/templates/mail.html:168 login
-      - W1 src/app/templates/mail.html:169 login
-      - W1 src/app/templates/mail.html:76 login
+      - W1 src/app/templates/mail.html:175 login
+      - W1 src/app/templates/mail.html:176 login
       - W1 src/app/templates/mail.html:83 login
-      - W1 src/app/templates/mail.html:89 Login
+      - W1 src/app/templates/mail.html:90 login
+      - W1 src/app/templates/mail.html:96 Login
       - W1 src/app/templates/settings_modules.html:108 login
       - W1 src/app/templates/settings_modules.html:132 login
       - W1 src/app/templates/settings_modules.html:136 Login

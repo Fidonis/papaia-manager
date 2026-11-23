@@ -830,3 +830,57 @@ def test_the_status_strip_names_the_node_of_the_relay(
     monkeypatch.setattr(nodes, "profile_node", lambda config_dir, profile: "edge")
     text = _admin(client).get("/partials/mail/status").text
     assert "on node edge" in text
+
+
+# -- the page script (T-UI-03) ------------------------------------------------------------
+
+
+def _csp_page() -> Any:
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import csp_page
+
+    return csp_page
+
+
+def test_the_page_runs_on_the_csp_build_with_its_module(client: TestClient) -> None:
+    csp_page = _csp_page()
+    text = _admin(client).get("/mail/server").text
+    csp_page.assert_converted_page(text, "mail.js")
+    init = csp_page.island(text, "mail-init")
+    assert set(init) == {"mail", "default_ports", "texts"}
+    assert init["mail"]["host"] == "smtp.example.org"
+    assert init["default_ports"] == {"starttls": 587, "tls": 465, "none": 25}
+    assert init["texts"]["applying"] == "Applying the mail settings …"
+    assert init["texts"]["answered"] == "The mail server answered ({login}). No mail was sent."
+    assert _SECRET not in text
+    # The hooks the module finds its elements by stay as they were.
+    for hook in ('id="mail-login"', 'id="mail-probe"', 'id="mail-save"', 'id="mail-test-send"'):
+        assert hook in text
+
+
+def test_a_core_without_the_relay_loads_no_page_module(
+    config_dir: Path, tmp_path: Path, queue: JobQueue
+) -> None:
+    bare = tmp_path / "bare-workspace"
+    bare.mkdir()
+    text = _admin(_make_client(config_dir, bare)).get("/mail/server").text
+    assert "This papAIa core has no mail relay." in text
+    assert "js/pages/mail.js" not in text
+    assert 'id="mail-init"' not in text
+
+
+def test_the_job_strip_announces_its_state_without_a_script(
+    client: TestClient, queue: JobQueue
+) -> None:
+    idle = _admin(client).get("/partials/mail/job-status").text
+    assert 'data-announce="papaia-mail-job"' in idle
+    assert 'data-active="false"' in idle
+    assert "<script" not in idle
+    assert (
+        _admin(client).put(_BASE, json=_put_body(client), headers=_CSRF_HEADER).status_code == 202
+    )
+    queued = _admin(client).get("/partials/mail/job-status").text
+    assert 'data-active="true"' in queued
+    assert "<script" not in queued

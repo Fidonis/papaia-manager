@@ -43,6 +43,7 @@ CORE_MODULES = (
     "legacy.js",
     "main.js",
     "menus.js",
+    "page.js",
     "poll.js",
     "runtime.js",
     "session.js",

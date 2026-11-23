@@ -205,6 +205,16 @@
   transition: opacity 200ms ease-in;
 }
 
+/* ── Hidden until Alpine starts ───────────────────────────────────────────
+   An element whose `x-show` is false at the start carries `x-cloak`, which Alpine removes
+   once it has set the element's display itself (through the CSSOM, which the content
+   security policy allows). The rule replaces `style="display:none"`, an inline style the
+   strict policy refuses (T-UI-03). */
+
+[x-cloak] {
+  display: none !important;
+}
+
 /* ── Long values in kit messages ──────────────────────────────────────────
    A message of the core can carry a path or an address with no place to break. Inside the
    kit's alert it breaks anywhere rather than widening the page past a 320 px screen

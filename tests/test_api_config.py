@@ -1225,3 +1225,45 @@ def test_the_modules_and_the_overlays_name_their_node(
     targets = {t["key"]: t for t in _admin(client).get(f"{_BASE}/overlay").json()["targets"]}
     assert targets["litellm"]["node"] == "edge"
     assert targets["librechat"]["node"] == ""
+
+
+# -- the page script of the overlay (T-UI-03) ------------------------------------------------
+
+
+def _csp_page() -> Any:
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import csp_page
+
+    return csp_page
+
+
+def test_the_overlay_page_runs_on_the_csp_build_with_its_module(client: TestClient) -> None:
+    csp_page = _csp_page()
+    html = _admin(client).get("/settings/overlay?target=searxng").text
+    csp_page.assert_converted_page(html, "settings-overlay.js")
+    init = csp_page.island(html, "overlay-init")
+    assert init["selected"] == "searxng"
+    assert {t["key"] for t in init["targets"]} == {t.key for t in overlay.TARGETS}
+    texts = csp_page.island(html, "overlay-texts")
+    assert texts["applyTitle"] == "Apply overlay to {label}?"
+    assert texts["cannotMerge"] == "The draft can't be merged."
+    assert 'x-data="overlayEditor"' in html
+    assert "x-html" not in html
+
+
+def test_the_effective_result_names_the_path_of_each_target_as_text(client: TestClient) -> None:
+    html = _admin(client).get("/settings/overlay").text
+    for target in overlay.TARGETS:
+        assert f'x-show="key === &#34;{target.key}&#34;"' in html, target.key
+    # The sentence keeps its markup; the path inside it is escaped text.
+    assert html.count('What <span class="font-mono">') == len(overlay.TARGETS)
+    assert "{path}" not in html
+
+
+def test_the_config_job_strip_announces_its_state_without_a_script(client: TestClient) -> None:
+    html = _admin(client).get("/partials/config/job-status").text
+    assert 'data-announce="papaia-config-job"' in html
+    assert 'data-active="false"' in html
+    assert "<script" not in html

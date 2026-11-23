@@ -1087,14 +1087,28 @@ actions); `main.js` and the page modules import it from there, so a page module 
 `showToast` or `actions.ragRequest` as imports, never as globals. A fragment htmx swaps in
 announces its state without inline script: it names a window event in `data-announce`
 (`papaia-...`) and its state in `data-active`, and `announce.js` dispatches the event with
-`{active}` after every settle (the job strip `partials/config_job_status.html` announces
-`papaia-config-job`). During the transition
+`{active}` after every settle. During the transition
 `core/legacy.js` assigns the names page templates still call as globals (`showToast`,
 `addonAction`, `fmt`, ...) to `window`, listed by name; `tests/test_js_core.py` keeps the list
 equal to the names the templates use, and a page that moves into a module drops its names.
 The core modules load before htmx and Alpine, so these names exist before Alpine evaluates an
 expression; an inline page script that needs one while the page is still being parsed waits
 for `alpine:init`.
+
+**Page modules.** A converted page puts its module into the block `page_modules` of
+`base.html` (`<script type="module" src="...">`). It loads after `core/main.js` and before
+htmx and Alpine, so a component it registers with `Alpine.data` on `alpine:init` exists when
+Alpine starts. The module takes the page's toaster and actions from `core/runtime.js`, or from
+`pageCore()` of `core/page.js` on first use when unit tests import it; both are the instances
+`main.js` uses. It imports the helpers of `core/format.js` instead of reaching for the
+transition globals. Its texts and values come from data islands. An expression of the page
+calls only what the component offers, such as `fmt` and `fmtPlural`. An element that is hidden
+until Alpine starts carries `x-cloak` (a rule of `app.css`) instead of `style="display:none"`.
+The job strips of the configuration and mail pages (`partials/config_job_status.html`,
+`partials/mail_job_status.html`) announce `papaia-config-job` and `papaia-mail-job` through
+`data-announce` and `data-active`. Converted this way, among others: Settings › Overlay
+(`pages/settings-overlay.js`, component `overlayEditor`) and Mail › Server (`pages/mail.js`,
+listeners on the form instead of `on*` attributes).
 
 **Messages.** Toasts go to the frame's live regions `#pk-toasts` (one `role="status"`, one
 `role="alert"`, both present before the first message) and are the kit's toasts. Success,

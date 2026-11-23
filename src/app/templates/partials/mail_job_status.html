@@ -2,12 +2,18 @@
    in flight, because it holds this page's change behind itself, and otherwise a mail job
    that finished within the last few minutes. The wrapper polls in every state, so a job
    started in another tab shows up here too; the fast tick exists only while there is
-   something to follow. #}
+   something to follow.
+
+   It announces its state instead of reloading from here: core/announce.js dispatches the
+   window event `papaia-mail-job` with {active} after every swap, and the page decides what a
+   change of it means (a job that ended in another tab changes what the form should show). #}
 <div
   id="mail-job-status"
   hx-get="/partials/mail/job-status"
   hx-trigger="{% if job_active %}every 2s{% else %}every 10s{% endif %}"
   hx-swap="outerHTML"
+  data-announce="papaia-mail-job"
+  data-active="{{ 'true' if (job_active and job_is_mail) else 'false' }}"
 >
 {% if job and (job_active or job_is_mail) %}
   <div class="rounded-xl border px-5 py-3
@@ -52,12 +58,4 @@
     {% endif %}
   </div>
 {% endif %}
-
-{# Announces the state instead of reloading from here: the page decides what a change of
-   it means (a job that ended in another tab changes what the form should show). #}
-<script>
-  window.dispatchEvent(new CustomEvent("papaia-mail-job", { detail: {
-    active: {{ "true" if (job_active and job_is_mail) else "false" }},
-  }}));
-</script>
 </div>

@@ -1,8 +1,15 @@
 {% extends "base.html" %}
+{% from "partials/_csp.html" import data_island %}
 {% from "partials/_mail_tabs.html" import tabs %}
 
 {% block page_title %}{% trans %}Mail{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}The mail server this deployment sends its mail through{% endtrans %}</p>{% endblock %}
+
+{% block page_modules %}
+{% if mail_supported %}
+<script type="module" src="{{ asset_url('js/pages/mail.js') }}"></script>
+{% endif %}
+{% endblock %}
 
 {% block content %}
 {{ tabs('server') }}
@@ -47,7 +54,7 @@
       </div>
       {% endif %}
 
-      <form id="mail-form" class="space-y-4" onsubmit="saveMail(event)" novalidate>
+      <form id="mail-form" class="space-y-4" novalidate>
         <div class="grid gap-4 sm:grid-cols-[1fr_9rem_7rem]">
           <div class="form-control w-full">
             <label for="mail-host" class="label-text mb-1 text-sm font-medium">{% trans %}Mail Server{% endtrans %}</label>
@@ -79,7 +86,7 @@
         <div class="form-control">
           <label class="flex cursor-pointer items-center gap-3">
             <input id="mail-login" type="checkbox" class="checkbox checkbox-sm"
-                   onchange="syncMailLogin()" {% if login_on %}checked{% endif %}>
+                   {% if login_on %}checked{% endif %}>
             <span class="text-sm font-medium">{% trans %}The mail server needs a login{% endtrans %}</span>
           </label>
         </div>
@@ -122,7 +129,7 @@
           <button id="mail-save" type="submit" class="btn btn-primary btn-sm">
             {% if mail.enabled %}{% trans %}Save and apply{% endtrans %}{% else %}{% trans %}Save{% endtrans %}{% endif %}
           </button>
-          <button id="mail-probe" type="button" class="btn btn-ghost btn-sm" onclick="probeMail()">
+          <button id="mail-probe" type="button" class="btn btn-ghost btn-sm">
             {% trans %}Test mail server{% endtrans %}
           </button>
         </div>
@@ -138,7 +145,7 @@
           {% trans %}Sends one message through the relay. “Sent” means the relay took it; it is delivered, or retried for a day, from there.{% endtrans %}
         </p>
       </div>
-      <form class="flex flex-wrap items-end gap-2" onsubmit="sendTestMail(event)" novalidate>
+      <form class="flex flex-wrap items-end gap-2" novalidate>
         <div class="form-control min-w-0 flex-1">
           <label for="mail-test-to" class="label-text mb-1 text-sm font-medium">{% trans %}Send to{% endtrans %}</label>
           <input id="mail-test-to" type="email" class="input input-bordered w-full"
@@ -173,132 +180,25 @@
   </section>
 </div>
 
-<script>
-  const MAIL = {{ mail | tojson }};
-  const MAIL_DEFAULT_PORTS = {{ default_ports | tojson }};
-  let mailRevision = MAIL.revision;
-
-  function mailEl(id) { return document.getElementById(id); }
-
-  // A login makes no sense without encryption, and without a login there is nothing to
-  // type in the two fields.
-  function syncMailLogin() {
-    const none = mailEl("mail-security").value === "none";
-    const box = mailEl("mail-login");
-    if (none) box.checked = false;
-    box.disabled = none;
-    mailEl("mail-user").disabled = !box.checked;
-    mailEl("mail-password").disabled = !box.checked;
-  }
-
-  mailEl("mail-security").addEventListener("change", () => {
-    const port = mailEl("mail-port");
-    const mode = mailEl("mail-security").value;
-    // 587, 465 and 25 belong to their mode: follow it unless a port was typed on purpose.
-    if (port.value === "" || Number(port.value) === MAIL_DEFAULT_PORTS[port.dataset.mode]) {
-      port.value = MAIL_DEFAULT_PORTS[mode];
-    }
-    port.dataset.mode = mode;
-    syncMailLogin();
-  });
-  syncMailLogin();
-
-  function mailValues() {
-    const login = mailEl("mail-login").checked;
-    const port = mailEl("mail-port").value.trim();
-    const values = {
-      host: mailEl("mail-host").value.trim(),
-      port: port === "" ? null : Number(port),
-      security: mailEl("mail-security").value,
-      user: login ? mailEl("mail-user").value.trim() : "",
-    };
-    const password = mailEl("mail-password").value;
-    if (login && password) values.password = password;
-    return values;
-  }
-
-  function showResult(id, ok, text) {
-    const el = mailEl(id);
-    el.textContent = text;
-    el.classList.remove("hidden", "border-success", "bg-success/10", "border-error", "bg-error/10");
-    if (id === "mail-probe-result") el.classList.add(ok ? "border-success" : "border-error", ok ? "bg-success/10" : "bg-error/10");
-    else el.classList.toggle("text-error", !ok);
-  }
-
-  async function saveMail(event) {
-    event.preventDefault();
-    const button = mailEl("mail-save");
-    button.disabled = true;
-    const reply = await _ragRequest("PUT", "/api/v1/mail", Object.assign(
-      { revision: mailRevision, from_address: mailEl("mail-from").value.trim(),
-        from_name: mailEl("mail-from-name").value.trim() },
-      mailValues(),
-    ));
-    if (!reply.ok) {
-      button.disabled = false;
-      if (!reply.handled) showToast("error", _ragEscape(reply.error));
-      return;
-    }
-    // The password has done its job; it does not stay in the field while the job runs.
-    mailEl("mail-password").value = "";
-    showToast("info", MAIL.enabled ? {{ _('Applying the mail settings …')|tojson }} : {{ _('Saving the mail settings …')|tojson }});
-    htmx.ajax("GET", "/partials/mail/job-status", { target: "#mail-job-status", swap: "outerHTML" });
-    followMailJob(reply.data.job_id);
-  }
-
-  // The job strip shows the progress; this only waits for the end to show the new state.
-  let mailFollowing = false;
-  function followMailJob(jobId) {
-    mailFollowing = true;
-    _pollJob(jobId, (job) => {
-      if (job.status === "succeeded") showToast("success", MAIL.enabled ? {{ _('Mail settings applied')|tojson }} : {{ _('Mail settings saved')|tojson }});
-      else showToast("error", {{ _('Applying the mail settings failed. The log is above.')|tojson }});
-      setTimeout(() => window.location.reload(), 900);
-    });
-  }
-
-  async function probeMail() {
-    const button = mailEl("mail-probe");
-    button.disabled = true;
-    showResult("mail-probe-result", true, {{ _('Connecting …')|tojson }});
-    const reply = await _ragRequest("POST", "/api/v1/mail/probe", mailValues());
-    button.disabled = false;
-    if (!reply.ok) {
-      if (reply.handled) return;
-      showResult("mail-probe-result", false, reply.error);
-      return;
-    }
-    const r = reply.data;
-    if (r.ok) {
-      const login = r.login === "ok" ? {{ _('login accepted')|tojson }} : {{ _('no login needed')|tojson }};
-      showResult("mail-probe-result", true, fmt({{ _('The mail server answered ({login}). No mail was sent.')|tojson }}, { login: login }));
-    } else {
-      showResult("mail-probe-result", false, fmt({{ _('Stopped at {stage}: {reason}')|tojson }}, { stage: r.stage, reason: r.reason }));
-    }
-  }
-
-  async function sendTestMail(event) {
-    event.preventDefault();
-    const button = mailEl("mail-test-send");
-    button.disabled = true;
-    const reply = await _ragRequest("POST", "/api/v1/mail/test-message", { to: mailEl("mail-test-to").value.trim() });
-    button.disabled = false;
-    if (!reply.ok) {
-      if (!reply.handled) showResult("mail-test-result", false, reply.error);
-      return;
-    }
-    if (reply.data.ok) showResult("mail-test-result", true, {{ _('The relay accepted the message. It may take a moment to arrive; the status above shows it while it waits.')|tojson }});
-    else showResult("mail-test-result", false, reply.data.reason);
-  }
-
-  // A job started in another tab, or before this page was opened, changes what the form
-  // shows: reload once when the strip sees it end.
-  let mailJobWasActive = false;
-  window.addEventListener("papaia-mail-job", (event) => {
-    if (mailFollowing) return;
-    if (event.detail.active) mailJobWasActive = true;
-    else if (mailJobWasActive) window.location.reload();
-  });
-</script>
+{#- The page's module (static/js/pages/mail.js) adds the listeners of the form and reads the
+    stored settings, the default port of each mode and its sentences from this island. The
+    password is never part of it. #}
+{{ data_island("mail-init", {
+  "mail": mail,
+  "default_ports": default_ports,
+  "texts": {
+    "applying": _('Applying the mail settings …'),
+    "saving": _('Saving the mail settings …'),
+    "applied": _('Mail settings applied'),
+    "saved": _('Mail settings saved'),
+    "applyFailed": _('Applying the mail settings failed. The log is above.'),
+    "connecting": _('Connecting …'),
+    "loginAccepted": _('login accepted'),
+    "loginNotNeeded": _('no login needed'),
+    "answered": _('The mail server answered ({login}). No mail was sent.'),
+    "stopped": _('Stopped at {stage}: {reason}'),
+    "accepted": _('The relay accepted the message. It may take a moment to arrive; the status above shows it while it waits.'),
+  },
+}) }}
 {% endif %}
 {% endblock %}
