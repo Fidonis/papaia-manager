@@ -470,8 +470,32 @@
 </div>
 
 {% include "partials/_ingest_credential_dialog.html" %}
-{% include "partials/_ingest_js.html" %}
 <script>
+{#- The request helpers the editor shares with the ingest lists, until the editor moves into a
+    page module as well (static/js/pages/ingest-components.js holds the lists' copy). #}
+const _ING = '/api/v1/rag/ingest';
+
+function _ingJob(id) { return _ING + '/jobs/' + encodeURIComponent(id); }
+
+// What a save did, in a sentence for a toast.
+function ingestOutcome(result, what) {
+  let text = what;
+  let level = 'success';
+  if (!result.verified) {
+    level = 'warning';
+    text = result.note
+      ? fmt({{ _('{what} (the ingester could not be asked: {note})')|tojson }}, { what: what, note: _ragEscape(result.note) })
+      : fmt({{ _('{what} (the ingester could not be asked)')|tojson }}, { what: what });
+  } else if (!result.applied) {
+    level = 'warning';
+    text = fmt({{ _('{what}. It is saved but not active yet: {why}')|tojson }}, {
+      what: what,
+      why: result.elsewhere.length ? _ragEscape(result.elsewhere.join('; ')) : {{ _('the ingester did not apply the catalog')|tojson }},
+    });
+  }
+  return { level: level, text: text };
+}
+
 const _SCHEDULE_MODES = [
   { value: 'manual', label: {{ _('Only when started')|tojson }} },
   { value: 'interval', label: {{ _('Every…')|tojson }} },

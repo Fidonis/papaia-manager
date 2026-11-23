@@ -35,12 +35,12 @@
           <button type="button" class="badge badge-sm {{ 'badge-neutral' if selected_status == key else 'badge-outline' }}"
                   hx-get="/partials/ingest/jobs/{{ row.id }}/files?rows=1&status={{ key }}"
                   hx-target="#files-table" hx-swap="innerHTML"
-                  onclick="document.getElementById('files-status').value = '{{ key }}'">{{ text }} {{ result.counts[key] }}</button>
+                  data-ingest-action="files-status" data-files-status="{{ key }}">{{ text }} {{ result.counts[key] }}</button>
           {% endif %}
         {% endfor %}
       </div>
 
-      <form class="flex flex-wrap items-center gap-2" onsubmit="return false"
+      <form class="flex flex-wrap items-center gap-2" data-ingest-no-submit
             hx-get="/partials/ingest/jobs/{{ row.id }}/files?rows=1" hx-target="#files-table" hx-swap="innerHTML"
             hx-trigger="input changed delay:400ms from:#files-q, change from:#files-status">
         <input id="files-q" name="q" type="search" value="{{ query }}" placeholder="{{ _('Search by path') }}"
@@ -54,7 +54,7 @@
         {% if selected_run %}
         <input type="hidden" name="run" value="{{ selected_run }}">
         <span class="badge badge-sm gap-1">{% trans selected_run=(selected_run | short_id) %}Touched by run {{ selected_run }}{% endtrans %}
-          <a href="#files" onclick="jobTab('files')" aria-label="{{ _('Show all files') }}">✕</a></span>
+          <a href="#files" data-ingest-action="tab" data-tab-name="files" aria-label="{{ _('Show all files') }}">✕</a></span>
         {% endif %}
       </form>
 

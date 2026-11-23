@@ -1,0 +1,78 @@
+{#
+  What the ingest pages hand their page module (static/js/pages/ingest.js): which page this is,
+  its values, and the sentences of the shared verbs and dialogs in the language of the page. A
+  JSON data island, which the browser never executes (partials/_csp.html, T-UI-03).
+
+  Every sentence is whole, `{name}` marks a value; a sentence with markup is filled by the
+  module with the values escaped. A counted noun comes as [one, other].
+
+  `failure` is the panel a list shows when it cannot be loaded: the page renders it once as a
+  <template> with its own title, and the module fills the reason in as text.
+#}
+{% from "partials/_csp.html" import data_island %}
+
+{% macro ingest_island(page, values={}) -%}
+{{ data_island("ingest-page", {
+  "page": page,
+  "values": values,
+  "texts": {
+    "outcomeNotAskedNote": _('{what} (the ingester could not be asked: {note})'),
+    "outcomeNotAsked": _('{what} (the ingester could not be asked)'),
+    "outcomeNotActive": _('{what}. It is saved but not active yet: {why}'),
+    "outcomeNotApplied": _('the ingester did not apply the catalog'),
+    "jobEnabled": _('Job <b>{id}</b> enabled'),
+    "jobDisabled": _('Job <b>{id}</b> disabled'),
+    "resumed": _('Scheduling of <b>{id}</b> resumed'),
+    "reloadRefused": _('The ingester read jobs.yaml and found problems'),
+    "reloaded": _('The ingester read jobs.yaml'),
+    "abortRequested": _('Abort requested. The run stops after the file it is working on.'),
+    "modeAsSetUp": _('As the job is set up: {mode}'),
+    "noFinishedRuns": _('The job has no finished runs.'),
+    "runsWillBeDeleted": [_('{count} run will be deleted.'), _('{count} runs will be deleted.')],
+    "jobDeleted": _('Job <b>{id}</b> deleted'),
+    "runsDeleted": [_('{count} run deleted'), _('{count} runs deleted')],
+    "pointsRemoved": _('{count} points removed from the collection'),
+    "firstAfterLast": _('The first day is after the last day.'),
+    "counting": _('Counting the runs ...'),
+    "noRunInPeriod": _('No finished run in this period.'),
+    "willBeDeleted": _('{runs} ({events}) will be deleted.'),
+    "runCount": [_('{count} run'), _('{count} runs')],
+    "logLines": [_('{count} log line'), _('{count} log lines')],
+    "stillWorking": [_('{count} run is still working and will be kept.'), _('{count} runs are still working and will be kept.')],
+    "deleteCount": [_('Delete {count} run'), _('Delete {count} runs')],
+    "delete": _('Delete'),
+    "runsOfJobDeleted": [_('{count} run of <b>{jobId}</b> deleted'), _('{count} runs of <b>{jobId}</b> deleted')],
+    "runKept": _('A run that is still working was kept'),
+    "orphanRemoved": _('Removed {points} points and {rows} records of <b>{job}</b>'),
+    "defaultsSaved": _('Defaults saved'),
+    "fileSaved": _('jobs.yaml saved'),
+    "problems": [_('{count} problem'), _('{count} problems')],
+  },
+}) }}
+{%- endmacro %}
+
+{#- The module loaded in base.html's block `page_modules`, before Alpine starts. #}
+{% macro ingest_module() -%}
+<script type="module" src="{{ asset_url('js/pages/ingest.js') }}"></script>
+{%- endmacro %}
+
+{#- The panel of a list that cannot be loaded; `fallback` is the reason when the answer has none. #}
+{% macro failure_panel(fallback, title=none, pad="py-24") -%}
+<template id="ingest-failure" data-fallback="{{ fallback }}">
+  {%- if pad == "py-16" %}
+  <div class="flex flex-col items-center py-16 gap-3 text-pk-text-muted text-center">
+  {%- else %}
+  <div class="flex flex-col items-center py-24 gap-3 text-pk-text-muted text-center">
+  {%- endif %}
+    {%- if title %}<p class="text-lg font-semibold">{{ title }}</p>{% endif %}
+    <p class="max-w-xl text-sm" data-reason></p>
+  </div>
+</template>
+{%- endmacro %}
+
+{#- A sentence of the catalogue with markup, rendered here, whose value `{name}` Alpine fills in as
+    text from `expr` (an expression of the component). Instead of `x-html`, which the CSP build
+    of Alpine does not run: the markup is the translator's, the value never becomes markup. #}
+{% macro filled(sentence, name, expr) -%}
+{{ sentence|replace("{" ~ name ~ "}", ('<span x-text="' ~ expr ~ '"></span>')|safe) }}
+{%- endmacro %}

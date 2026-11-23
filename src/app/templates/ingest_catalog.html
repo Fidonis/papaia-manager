@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% from "partials/_ingest_macros.html" import tabs %}
+{% from "partials/_ingest_texts.html" import ingest_island, ingest_module %}
 
+{% block page_modules %}{{ ingest_module() }}{% endblock %}
 {% block page_title %}{% trans %}Job file{% endtrans %}{% endblock %}
 {% block page_subtitle %}<p class="mt-0.5 text-sm text-pk-text-muted">{% trans %}The defaults every job inherits, and <span class="font-mono">jobs.yaml</span> itself{% endtrans %}</p>{% endblock %}
 
@@ -21,7 +23,7 @@
   {% endif %}
 
   {# ---- the defaults ---- #}
-  <section class="card bg-base-100 border border-base-300" x-data='catalogDefaults({{ defaults|tojson }})'>
+  <section class="card bg-base-100 border border-base-300" x-data="catalogDefaults()">
     <div class="card-body gap-4 p-5">
       <div>
         <h2 class="font-semibold">{% trans %}Defaults{% endtrans %}</h2>
@@ -71,10 +73,10 @@
           <input id="catalog-safety-max-delete-ratio" type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm" x-model="d.safety.max_delete_ratio" placeholder="0.25">
         </div>
       </div>
-      <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="text-sm text-error" x-text="error"></p>
       <div class="flex items-center gap-2">
         <button type="button" class="btn btn-primary btn-sm" :disabled="busy" @click="save()"{% if not raw.writable %} disabled{% endif %}>
-          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
           {% trans %}Save defaults{% endtrans %}
         </button>
         <span class="text-xs text-pk-text-muted">{% trans %}Every job is checked against the new defaults before anything is written.{% endtrans %}</span>
@@ -83,7 +85,7 @@
   </section>
 
   {# ---- the file ---- #}
-  <section class="card bg-base-100 border border-base-300" x-data='rawEditor({{ {"text": raw.text, "revision": raw.revision}|tojson }})'>
+  <section class="card bg-base-100 border border-base-300" x-data="rawEditor()">
     <div class="card-body gap-3 p-5">
       <div>
         <h2 class="font-semibold" id="catalog-file-heading">{% trans %}jobs.yaml{% endtrans %}</h2>
@@ -93,106 +95,29 @@
       </div>
       <textarea rows="22" aria-labelledby="catalog-file-heading" class="textarea textarea-bordered w-full font-mono text-xs leading-relaxed" x-model="text"
                 spellcheck="false" :readonly="!writable" @input="checked = false"></textarea>
-      <div style="display:none" x-show="issues.length" class="alert alert-error text-sm" role="alert">
+      <div x-cloak x-show="issues.length" class="alert alert-error text-sm" role="alert">
         <div>
-          <p class="font-semibold" x-text="fmtPlural(issues.length, {{ _('{count} problem')|tojson|forceescape }}, {{ _('{count} problems')|tojson|forceescape }})"></p>
+          <p class="font-semibold" x-text="problemsText()"></p>
           <ul class="mt-1 list-disc pl-5">
-            <template x-for="i in issues.slice(0, 12)" :key="i.field + i.message + String(i.job_id)">
+            <template x-for="i in shownIssues()" :key="issueKey(i)">
               <li><span x-show="i.job_id" class="font-mono" x-text="i.job_id + ': '"></span><span class="font-mono" x-text="i.field"></span>: <span x-text="i.message"></span></li>
             </template>
           </ul>
         </div>
       </div>
-      <p style="display:none" x-show="ok" class="text-sm text-success">{% trans %}This would load.{% endtrans %}</p>
-      <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="ok" class="text-sm text-success">{% trans %}This would load.{% endtrans %}</p>
+      <p x-cloak x-show="error" class="text-sm text-error" x-text="error"></p>
       <div class="flex flex-wrap items-center gap-2">
         <button type="button" class="btn btn-outline btn-sm" :disabled="busy" @click="check()">{% trans %}Check{% endtrans %}</button>
         <button type="button" class="btn btn-primary btn-sm" :disabled="busy || !writable" @click="save()">
-          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
           {% trans %}Save{% endtrans %}
         </button>
-        <a href="/ingest/catalog" class="btn btn-ghost btn-sm" x-show="stale" style="display:none">{% trans %}Reload the file{% endtrans %}</a>
+        <a href="/ingest/catalog" class="btn btn-ghost btn-sm" x-show="stale" x-cloak>{% trans %}Reload the file{% endtrans %}</a>
       </div>
     </div>
   </section>
 </div>
 
-{% include "partials/_ingest_js.html" %}
-<script>
-function catalogDefaults(stored) {
-  const pick = (section, key) => (stored[section] && stored[section][key] !== undefined && stored[section][key] !== null) ? stored[section][key] : '';
-  const exclude = (stored.filters && stored.filters.exclude) ? stored.filters.exclude.join('\n') : '';
-  return {
-    d: {
-      embedding: { model: pick('embedding', 'model'), batch_size: pick('embedding', 'batch_size') },
-      chunking: { strategy: pick('chunking', 'strategy'), words: pick('chunking', 'words'), overlap: pick('chunking', 'overlap') },
-      filters: { exclude: exclude },
-      schedule: { timezone: pick('schedule', 'timezone') },
-      safety: { max_delete_ratio: pick('safety', 'max_delete_ratio') },
-    },
-    // What is not in the form is not touched: the catalog may carry settings of its own.
-    base: JSON.parse(JSON.stringify(stored)),
-    busy: false, error: '',
-    build() {
-      const out = JSON.parse(JSON.stringify(this.base));
-      const set = (section, key, value, numeric) => {
-        const empty = value === '' || value === null || value === undefined;
-        out[section] = out[section] || {};
-        if (empty) delete out[section][key]; else out[section][key] = numeric ? Number(value) : value;
-        if (!Object.keys(out[section]).length) delete out[section];
-      };
-      set('embedding', 'model', String(this.d.embedding.model).trim(), false);
-      set('embedding', 'batch_size', this.d.embedding.batch_size, true);
-      set('chunking', 'strategy', this.d.chunking.strategy, false);
-      set('chunking', 'words', this.d.chunking.words, true);
-      set('chunking', 'overlap', this.d.chunking.overlap, true);
-      const lines = String(this.d.filters.exclude).split('\n').map((l) => l.trim()).filter((l) => l);
-      set('filters', 'exclude', lines.length ? lines : '', false);
-      set('schedule', 'timezone', String(this.d.schedule.timezone).trim(), false);
-      set('safety', 'max_delete_ratio', this.d.safety.max_delete_ratio, true);
-      return out;
-    },
-    async save() {
-      this.error = ''; this.busy = true;
-      const res = await _ragRequest('PUT', '/api/v1/rag/ingest/catalog/defaults', { defaults: this.build() });
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) { this.error = res.error; return; }
-      this.base = JSON.parse(JSON.stringify(res.data.defaults));
-      const out = ingestOutcome(res.data, {{ _('Defaults saved')|tojson }});
-      showToast(out.level, out.text);
-    },
-  };
-}
-
-function rawEditor(initial) {
-  return {
-    text: initial.text, revision: initial.revision, writable: {{ 'true' if raw.writable else 'false' }},
-    issues: [], ok: false, error: '', busy: false, checked: false, stale: false,
-    async check() {
-      this.error = ''; this.ok = false; this.busy = true;
-      const res = await _ragRequest('POST', '/api/v1/rag/ingest/catalog/validate', { text: this.text });
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) { this.error = res.error; return; }
-      this.issues = res.data.issues; this.ok = res.data.ok; this.checked = true;
-    },
-    async save() {
-      this.error = ''; this.ok = false; this.busy = true; this.stale = false;
-      const res = await _ragRequest('PUT', '/api/v1/rag/ingest/catalog/raw', { text: this.text, revision: this.revision });
-      this.busy = false;
-      if (res.handled) return;
-      if (!res.ok) {
-        this.error = res.error;
-        this.stale = /changed since|changed while/.test(res.error);
-        await this.check();
-        return;
-      }
-      this.issues = []; this.revision = res.data.raw.revision;
-      const out = ingestOutcome(res.data, {{ _('jobs.yaml saved')|tojson }});
-      showToast(out.level, out.text);
-    },
-  };
-}
-</script>
+{{ ingest_island("catalog", {"defaults": defaults, "raw": {"text": raw.text, "revision": raw.revision, "writable": raw.writable}}) }}
 {% endblock %}

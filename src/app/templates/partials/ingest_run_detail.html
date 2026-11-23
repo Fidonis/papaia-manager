@@ -31,7 +31,7 @@
       <span class="text-sm text-pk-text-muted">{{ view.job_mode_label }}</span>
       <span class="text-sm text-pk-text-muted">{{ {'cron': _('on schedule'), 'manual_rest': _('started by hand'), 'manual_ui': _('started by hand'), 'manual_mcp': _('started by an assistant'), 'startup': _('at start of the ingester')}.get(view.trigger, view.trigger) }}</span>
       {% if view.active %}
-      <button type="button" class="btn btn-outline btn-xs ml-auto" onclick="ingestAbort('{{ view.run_id }}', reloadRun)">{% trans %}Abort{% endtrans %}</button>
+      <button type="button" class="btn btn-outline btn-xs ml-auto" data-ingest-action="abort" data-run-id="{{ view.run_id }}">{% trans %}Abort{% endtrans %}</button>
       {% endif %}
     </div>
     <p class="mt-1 text-sm text-pk-text-muted">

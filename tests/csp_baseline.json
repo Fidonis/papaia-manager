@@ -11,6 +11,12 @@
     "dashboard.html",
     "error.html",
     "help.html",
+    "ingest_catalog.html",
+    "ingest_job.html",
+    "ingest_jobs.html",
+    "ingest_orphans.html",
+    "ingest_run.html",
+    "ingest_runs.html",
     "inventory.html",
     "job_log.html",
     "jobs.html",
@@ -63,54 +69,12 @@
       "style_blocks": 0,
       "style_attributes": 8
     },
-    "ingest_catalog.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 1,
-      "style_blocks": 0,
-      "style_attributes": 7
-    },
-    "ingest_job.html": {
-      "inline_scripts": 1,
-      "on_attributes": 7,
-      "alpine_unsupported": 4,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "ingest_job_edit.html": {
       "inline_scripts": 1,
       "on_attributes": 1,
       "alpine_unsupported": 1,
       "style_blocks": 0,
       "style_attributes": 37
-    },
-    "ingest_jobs.html": {
-      "inline_scripts": 1,
-      "on_attributes": 2,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "ingest_orphans.html": {
-      "inline_scripts": 1,
-      "on_attributes": 1,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "ingest_run.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "ingest_runs.html": {
-      "inline_scripts": 1,
-      "on_attributes": 3,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
     },
     "ingest_secrets.html": {
       "inline_scripts": 1,
@@ -168,20 +132,6 @@
       "style_blocks": 0,
       "style_attributes": 3
     },
-    "partials/_ingest_dialogs.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 8,
-      "style_blocks": 0,
-      "style_attributes": 25
-    },
-    "partials/_ingest_js.html": {
-      "inline_scripts": 1,
-      "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
     "partials/addon_detail_content.html": {
       "inline_scripts": 0,
       "on_attributes": 0,
@@ -234,41 +184,6 @@
     "partials/host_list.html": {
       "inline_scripts": 1,
       "on_attributes": 0,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/ingest_job_files.html": {
-      "inline_scripts": 0,
-      "on_attributes": 3,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/ingest_job_list.html": {
-      "inline_scripts": 0,
-      "on_attributes": 10,
-      "alpine_unsupported": 4,
-      "style_blocks": 0,
-      "style_attributes": 1
-    },
-    "partials/ingest_job_overview.html": {
-      "inline_scripts": 0,
-      "on_attributes": 2,
-      "alpine_unsupported": 0,
-      "style_blocks": 0,
-      "style_attributes": 0
-    },
-    "partials/ingest_orphan_list.html": {
-      "inline_scripts": 0,
-      "on_attributes": 0,
-      "alpine_unsupported": 2,
-      "style_blocks": 0,
-      "style_attributes": 2
-    },
-    "partials/ingest_run_detail.html": {
-      "inline_scripts": 0,
-      "on_attributes": 1,
       "alpine_unsupported": 0,
       "style_blocks": 0,
       "style_attributes": 0
@@ -352,10 +267,10 @@
     }
   },
   "totals": {
-    "inline_scripts": 24,
-    "on_attributes": 61,
-    "alpine_unsupported": 68,
+    "inline_scripts": 17,
+    "on_attributes": 32,
+    "alpine_unsupported": 49,
     "style_blocks": 0,
-    "style_attributes": 163
+    "style_attributes": 128
   }
 }

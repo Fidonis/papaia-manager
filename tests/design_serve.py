@@ -17,6 +17,8 @@ A FILE without a person is Anna's. --mail-relay serves a core with the mail rela
 and set up (design_world.add_mail_relay), for the browser check of the Mail page.
 --with-backups adds the restore points of design_world.BACKUPS (the browser path of the
 backup page, tests/backup_browser.mjs).
+--with-ingest puts the fake ingester of tests/design_ingest.py behind the manager (the browser
+path of the ingest lists, tests/ingest_browser.mjs).
 """
 
 from __future__ import annotations
@@ -115,6 +117,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--rag-catalog", action="store_true", help="make the connection store writable"
     )
+    parser.add_argument(
+        "--with-ingest", action="store_true", help="answer the ingest pages from a fake ingester"
+    )
     args = parser.parse_args(argv)
     if args.list_persons:
         print("\n".join(design_persons()))
@@ -144,6 +149,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     app = create_app()
     design_world.stand_ins(app)
+    if args.with_ingest:
+        # Imported here: its fakes import the application, which needs the settings above.
+        import design_ingest
+
+        design_ingest.seed(config)
+        design_ingest.stand_ins(app, config)
     for person, state in args.storage_state:
         write_storage_state(state, port=args.port, secret=secret, person=person)
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")

@@ -1035,15 +1035,17 @@ below collects the reports. A response with a policy of its own keeps it (the lo
   `visibilitychange from:document` instead of an htmx trigger filter; `js/core/poll.js`
   cancels its requests while the page is hidden.
 - Buttons of a page and of the partials htmx swaps into it name what they do in a data
-  attribute (for example `data-backup-action`), and one listener of the page module on the
-  document runs it, so a swapped row needs nothing run for it. The values of a row are
-  `data-*` attributes. A dialog's cancel button names its dialog in `data-dialog-close`.
+  attribute (for example `data-backup-action` or `data-ingest-action`), and one listener of
+  the page module on the document runs it, so a swapped row needs nothing run for it. The
+  values of a row are `data-*` attributes. A dialog's cancel button names its dialog in `data-dialog-close`.
 - What a page module shares with the page script (texts, toaster, report, actions) it imports
   from `js/core/runtime.js`.
 - A sentence that carries markup and a value is rendered by the server instead of `x-html`:
   `bound(_('Roles of <span class="font-mono">{username}</span>'), username='username')`
   (`src/app/csp.py`) writes each value as `<span x-text="...">`, so the browser fills it in as
-  text. The expression is a property path or a method call without arguments.
+  text. The expression is a property path or a method call without arguments. The ingest
+  pages do the same for one value with the macro `filled` of
+  `templates/partials/_ingest_texts.html`.
 - An element that `x-show` hides at the start carries `x-cloak` instead of
   `style="display:none"`; the rule is in `docker/tailwind.app.css`.
 
@@ -1108,6 +1110,23 @@ colour schemes (start a backup and follow its job, change the schedule, list and
 points, select and clear them, start and confirm a restore) in the stand-in world with
 restore points (`tests/design_serve.py --with-backups`) and fails on any report of the
 policy, refused Alpine expression or script error.
+
+The ingest lists: `ingest_jobs.html` (`/ingest/jobs`), `ingest_job.html`
+(`/ingest/jobs/{id}`), `ingest_runs.html` (`/ingest/runs`), `ingest_run.html`
+(`/ingest/runs/{id}`), `ingest_orphans.html` (`/ingest/orphans`) and `ingest_catalog.html`
+(`/ingest/catalog`), with their dialogs (`partials/_ingest_dialogs.html`) and the partials
+htmx swaps into them. Their script is `js/pages/ingest.js`; the verbs and dialogs are in
+`js/pages/ingest-components.js` with unit tests in `tests/js/ingest.test.mjs`. Each page hands
+its module the data island `ingest-page` (macro `ingest_island` of
+`partials/_ingest_texts.html`): which page it is, its values and the sentences of the verbs.
+Buttons name their verb in `data-ingest-action`; a row opens a dialog with `$dispatch` and what
+the dialog needs to know. `tests/test_ingest_browser.py` walks the pages in Chromium in both
+colour schemes (filter the jobs, disable and enable one, start a run and abort it, delete runs,
+switch the tabs of a job, delete a job, remove a leftover, save the defaults and check the job
+file, a list that cannot be loaded) against the fake ingester of the page tests
+(`tests/design_serve.py --with-ingest`) and fails on any report of the policy, refused Alpine
+expression or script error. The job editor (`ingest_job_edit.html`) and the credentials page
+are not converted yet.
 
 **Ratchet.** `tests/test_csp_ratchet.py` counts per template the executable inline scripts,
 `on*` attributes, Alpine attributes the CSP build rejects, `<style>` blocks and `style`

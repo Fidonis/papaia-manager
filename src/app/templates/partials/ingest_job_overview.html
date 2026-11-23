@@ -34,7 +34,7 @@
   {% if row.paused_in_ingester %}
   <div class="alert alert-warning text-sm" role="status">
     <span>{% trans %}Scheduling is paused in the ingester's memory. A restart or a reload of the catalog lifts it.{% endtrans %}</span>
-    <button type="button" class="btn btn-sm" onclick="ingestResume('{{ row.id }}', function () { jobTab('overview'); })">{% trans %}Resume scheduling{% endtrans %}</button>
+    <button type="button" class="btn btn-sm" data-ingest-action="resume" data-job-id="{{ row.id }}" data-ingest-after="overview">{% trans %}Resume scheduling{% endtrans %}</button>
   </div>
   {% endif %}
 
@@ -71,7 +71,7 @@
         </div>
         {% if run.error %}<p class="text-sm text-error">{{ run.error }}</p>{% endif %}
         {% if run.counters.docs_failed %}
-        <p class="text-sm"><a class="link" href="#files" onclick="jobTab('files', '?status=failed_extract')">{% trans %}See the files that failed{% endtrans %}</a></p>
+        <p class="text-sm"><a class="link" href="#files" data-ingest-action="tab" data-tab-name="files" data-tab-query="?status=failed_extract">{% trans %}See the files that failed{% endtrans %}</a></p>
         {% endif %}
       {% else %}
         <p class="text-sm text-pk-text-muted">{% trans %}This job has not run yet.{% endtrans %}</p>

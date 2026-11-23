@@ -50,6 +50,16 @@ from tests.fake_qdrant import API_KEY, FakeQdrant, Fleet  # noqa: E402
 from tests.shell_nav import current_rows, nav_groups, nav_section  # noqa: E402
 
 _CSRF = "test-csrf-token-value"
+_PAGES_JS = Path(__file__).resolve().parents[1] / "src" / "app" / "static" / "js" / "pages"
+
+
+def _ingest_module() -> str:
+    """The page module of the ingest lists; the pages load it instead of an inline script."""
+    return (_PAGES_JS / "ingest.js").read_text(encoding="utf-8")
+
+
+def _ingest_components() -> str:
+    return (_PAGES_JS / "ingest-components.js").read_text(encoding="utf-8")
 
 
 class Deployment:
@@ -393,9 +403,11 @@ def test_the_answer_to_a_deleted_job_is_shown_on_the_page_it_goes_to(
     deployment.write_catalog(_job())
 
     body = _body(client, "/ingest/jobs")
+    module = _ingest_module()
 
-    assert "sessionStorage.setItem('ingestToast'" in body
-    assert "sessionStorage.getItem('ingestToast')" in body
+    assert "/static/js/pages/ingest.js" in body
+    assert "env.store.setItem(WAITING_TOAST" in _ingest_components()
+    assert "showWaitingToast(storage" in module
 
 
 def test_the_job_page_offers_to_delete_the_runs(client: TestClient, deployment: Deployment) -> None:
@@ -414,10 +426,11 @@ def test_the_runs_page_deletes_runs_of_the_job_in_its_filter_and_lets_a_gone_job
 
     body = _body(client, "/ingest/runs?job=ghost")
 
-    assert "openDeleteRuns()" in body and "Delete runs…" in body
+    assert 'data-ingest-action="delete-runs"' in body and "Delete runs…" in body
     assert 'id="ingest-delete-runs"' in body
     assert 'list="ingest-delete-runs-jobs"' in body, "an id that is not listed can be typed"
-    assert "choose: true" in body and '["handbook"]' in body
+    assert '"job_choices": ["handbook"]' in body
+    assert "choose: true" in _ingest_module()
 
 
 def test_an_ingester_that_cannot_delete_runs_gets_no_such_menu_item_and_a_dialog_that_says_so(
@@ -432,7 +445,7 @@ def test_an_ingester_that_cannot_delete_runs_gets_no_such_menu_item_and_a_dialog
 
     assert '$dispatch("ingest-delete-runs"' not in rows
     assert '"can_delete_runs": false' in rows
-    assert 'onclick="ingestCloseMenu(); openDeleteRuns()"' not in runs_page
+    assert 'data-ingest-action="delete-runs"' not in runs_page
     assert "Delete runs…" not in runs_page and "Delete runs…" not in job_page
     assert "This ingester cannot delete runs" in _body(client, "/ingest/jobs")
 
@@ -464,7 +477,7 @@ def test_the_job_page_has_its_tabs_and_loads_the_first(
     for tab in ("overview", "runs", "files", "config"):
         assert f'data-tab="{tab}"' in body
     assert 'href="/ingest/jobs/handbook/edit"' in body and "Duplicate" in body
-    assert "const _JOB = &#34;handbook&#34;" in body or 'const _JOB = "handbook"' in body
+    assert '"page": "job"' in body and '"values": {"job": "handbook"}' in body
 
 
 def test_the_first_tab_starts_after_the_deferred_htmx_script_has_run(
@@ -476,9 +489,11 @@ def test_the_first_tab_starts_after_the_deferred_htmx_script_has_run(
     body = _body(client, "/ingest/jobs/handbook")
 
     assert re.search(r'<script src="[^"]*htmx[^"]*" defer>', body)
-    start = body.index("document.addEventListener('DOMContentLoaded'")
-    assert body.index("jobTab(hash || 'overview'") > start
-    assert "\njobTab(" not in body, "a bare call would run before htmx exists"
+    assert body.index("/static/js/pages/ingest.js") < body.index("htmx.min.js")
+    module = _ingest_module()
+    start = module.index('document.addEventListener("DOMContentLoaded"')
+    assert module.index('jobTab(hash || "overview"') > start
+    assert "\njobTab(" not in module, "a bare call would run before htmx exists"
 
 
 def test_an_unknown_job_is_a_page_that_says_so(client: TestClient) -> None:
@@ -781,7 +796,8 @@ def test_a_working_run_shows_progress_the_file_in_hand_and_an_abort(
 
     assert f'hx-get="/partials/ingest/runs/{run_id}"' in body and 'hx-trigger="every 2s"' in body
     assert "10 of 40 files" in body and "a/b.md" in body
-    assert f"ingestAbort('{run_id}'" in body and "takes effect between two files" in body
+    assert f'data-ingest-action="abort" data-run-id="{run_id}"' in body
+    assert "takes effect between two files" in body
 
 
 def test_an_ingester_without_progress_says_when_the_figures_arrive(
@@ -915,7 +931,9 @@ def test_a_poll_waits_while_a_row_menu_is_open_and_a_wide_table_cannot_widen_the
     jobs = _body(client, "/ingest/jobs")
 
     # The list swaps itself every few seconds while a run works; that must not close a menu.
-    assert "htmx:beforeSwap" in jobs and "shouldSwap = false" in jobs
+    module = _ingest_module()
+    assert "/static/js/pages/ingest.js" in jobs
+    assert "htmx:beforeSwap" in module and "shouldSwap = false" in module
     # The frame's content column has `min-width: 0` (kit stylesheet), so a table in
     # `overflow-x-auto` scrolls in its wrapper instead of widening the page; the page sits in it.
     assert '<div class="pk-content">' in jobs and '<main id="pk-main"' in jobs

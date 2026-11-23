@@ -4,7 +4,7 @@
    It polls itself only while a run is working (the trigger is rendered only then), so the
    polling ends when the last run does. The whole root is swapped, so everything that has to
    survive a refresh (the search text, the chosen chip) lives outside it or in
-   `window.ingestFilter`, and is applied again after the swap.
+   the page module (static/js/pages/ingest.js), and is applied again after the swap.
 
    A job the ingester dropped is listed with the reason, because the ingester's own list shows
    only what it loaded, and the jobs that matter most when something is wrong are the ones it
@@ -84,7 +84,7 @@
       {% endif %}
       <p class="mt-1">
         <a class="link" href="/ingest/catalog">{% trans %}Edit jobs.yaml{% endtrans %}</a> <span class="text-pk-text-muted"> · </span>
-        <button type="button" class="link" onclick="ingestReloadCatalog(reloadJobs)">{% trans %}Read it again now{% endtrans %}</button>
+        <button type="button" class="link" data-ingest-action="reload-catalog">{% trans %}Read it again now{% endtrans %}</button>
       </p>
     </div>
   </div>
@@ -109,10 +109,10 @@
   {% else %}
 
   <div class="flex flex-wrap items-center gap-2" role="group" aria-label="{{ _('Filter') }}">
-    <button type="button" class="btn btn-xs btn-active" data-chip="all" onclick="pickGroup('all')">{% trans %}All{% endtrans %} <span class="text-pk-text-muted">{{ (rows | length) }}</span></button>
-    <button type="button" class="btn btn-xs" data-chip="attention" onclick="pickGroup('attention')">{% trans %}Needs attention{% endtrans %} <span class="text-pk-text-muted">{{ counts.attention }}</span></button>
-    <button type="button" class="btn btn-xs" data-chip="active" onclick="pickGroup('active')">{% trans %}Active{% endtrans %} <span class="text-pk-text-muted">{{ counts.active }}</span></button>
-    <button type="button" class="btn btn-xs" data-chip="disabled" onclick="pickGroup('disabled')">{% trans %}Disabled{% endtrans %} <span class="text-pk-text-muted">{{ counts.disabled }}</span></button>
+    <button type="button" class="btn btn-xs btn-active" data-chip="all" data-ingest-action="chip">{% trans %}All{% endtrans %} <span class="text-pk-text-muted">{{ (rows | length) }}</span></button>
+    <button type="button" class="btn btn-xs" data-chip="attention" data-ingest-action="chip">{% trans %}Needs attention{% endtrans %} <span class="text-pk-text-muted">{{ counts.attention }}</span></button>
+    <button type="button" class="btn btn-xs" data-chip="active" data-ingest-action="chip">{% trans %}Active{% endtrans %} <span class="text-pk-text-muted">{{ counts.active }}</span></button>
+    <button type="button" class="btn btn-xs" data-chip="disabled" data-ingest-action="chip">{% trans %}Disabled{% endtrans %} <span class="text-pk-text-muted">{{ counts.disabled }}</span></button>
   </div>
 
   <div class="overflow-x-auto rounded-xl border border-base-300 bg-base-100">
@@ -173,13 +173,13 @@
               {# The Embedding page's jobs cannot be edited or paused, but they can be deleted with their runs. #}
               {% if can_delete_runs or (row.in_file and view.editable) %}
               {% call overflow_menu(size='xs', label=_('More actions for job %(name)s', name=row.id), float=True) %}
-                <li><a href="/ingest/jobs/{{ row.id }}" onclick="ingestCloseMenu()">{% trans %}Details{% endtrans %}</a></li>
+                <li><a href="/ingest/jobs/{{ row.id }}">{% trans %}Details{% endtrans %}</a></li>
                 {% if can_delete_runs %}
-                <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>{% trans %}Delete runs…{% endtrans %}</a></li>
+                <li><a @click='$dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>{% trans %}Delete runs…{% endtrans %}</a></li>
                 {% endif %}
                 {% if row.in_file and view.editable %}
                 <li><a class="text-error"
-                       @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ delete_detail|tojson }})'>{% trans %}Delete{% endtrans %}</a></li>
+                       @click='$dispatch("ingest-delete", {{ delete_detail|tojson }})'>{% trans %}Delete{% endtrans %}</a></li>
                 {% endif %}
               {% endcall %}
               {% endif %}
@@ -193,21 +193,21 @@
               {% endif %}
               {% if row.in_file and view.editable %}
               {% call overflow_menu(size='xs', label=_('More actions for job %(name)s', name=row.id), float=True) %}
-                <li><a href="/ingest/jobs/{{ row.id }}" onclick="ingestCloseMenu()">{% trans %}Details{% endtrans %}</a></li>
+                <li><a href="/ingest/jobs/{{ row.id }}">{% trans %}Details{% endtrans %}</a></li>
                 <li><a href="/ingest/new?duplicate={{ row.id }}">{% trans %}Duplicate{% endtrans %}</a></li>
                 {% if row.enabled %}
-                <li><a onclick="ingestCloseMenu(); ingestToggle('{{ row.id }}', false, reloadJobs)">{% trans %}Disable{% endtrans %}</a></li>
+                <li><a data-ingest-action="disable" data-job-id="{{ row.id }}">{% trans %}Disable{% endtrans %}</a></li>
                 {% else %}
-                <li><a onclick="ingestCloseMenu(); ingestToggle('{{ row.id }}', true, reloadJobs)">{% trans %}Enable{% endtrans %}</a></li>
+                <li><a data-ingest-action="enable" data-job-id="{{ row.id }}">{% trans %}Enable{% endtrans %}</a></li>
                 {% endif %}
                 {% if row.paused_in_ingester %}
-                <li><a onclick="ingestCloseMenu(); ingestResume('{{ row.id }}', reloadJobs)">{% trans %}Resume scheduling{% endtrans %}</a></li>
+                <li><a data-ingest-action="resume" data-job-id="{{ row.id }}">{% trans %}Resume scheduling{% endtrans %}</a></li>
                 {% endif %}
                 {% if can_delete_runs %}
-                <li><a @click='ingestCloseMenu(); $dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>{% trans %}Delete runs…{% endtrans %}</a></li>
+                <li><a @click='$dispatch("ingest-delete-runs", {{ runs_detail|tojson }})'>{% trans %}Delete runs…{% endtrans %}</a></li>
                 {% endif %}
                 <li><a class="text-error"
-                       @click='ingestCloseMenu(); $dispatch("ingest-delete", {{ delete_detail|tojson }})'>{% trans %}Delete{% endtrans %}</a></li>
+                       @click='$dispatch("ingest-delete", {{ delete_detail|tojson }})'>{% trans %}Delete{% endtrans %}</a></li>
               {% endcall %}
               {% endif %}
               {% endif %}
@@ -217,7 +217,7 @@
         {% endfor %}
       </tbody>
     </table>
-    <p id="ingest-none" style="display:none" class="p-6 text-center text-sm text-pk-text-muted">{% trans %}No job matches.{% endtrans %}</p>
+    <p id="ingest-none" hidden class="p-6 text-center text-sm text-pk-text-muted">{% trans %}No job matches.{% endtrans %}</p>
   </div>
 
   <p class="text-xs text-pk-text-muted">

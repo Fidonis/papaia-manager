@@ -305,7 +305,7 @@ groups:
       - W1 i18n/export/en.json#text.ff8b555d818f0b25 Update
       - W1 src/app/templates/notifications.html:155 updates
       - W1 src/app/templates/notifications.html:204 updates
-      - W1 src/app/templates/partials/_ingest_dialogs.html:29 update
+      - W1 src/app/templates/partials/_ingest_dialogs.html:30 update
       - W1 src/app/templates/partials/embedding_body.html:180 update
       - W1 src/app/templates/partials/upgrade_status.html:155 Update
   - ticket: MGR-014
@@ -558,9 +558,6 @@ groups:
       - W5 i18n/export/de.json#text.45859f45c0e270af <
       - W5 i18n/export/de.json#text.45859f45c0e270af >
       - W5 i18n/export/de.json#text.45859f45c0e270af s="
-      - W5 i18n/export/de.json#text.47a63ee889e227ef <
-      - W5 i18n/export/de.json#text.47a63ee889e227ef >
-      - W5 i18n/export/de.json#text.47a63ee889e227ef s="
       - W5 i18n/export/de.json#text.47fa5f239d7517c8 <
       - W5 i18n/export/de.json#text.47fa5f239d7517c8 >
       - W5 i18n/export/de.json#text.47fa5f239d7517c8 f="
@@ -582,9 +579,6 @@ groups:
       - W5 i18n/export/de.json#text.57d965348cd10aee <
       - W5 i18n/export/de.json#text.57d965348cd10aee >
       - W5 i18n/export/de.json#text.57d965348cd10aee s="
-      - W5 i18n/export/de.json#text.5b5bd6fdef09d00e <
-      - W5 i18n/export/de.json#text.5b5bd6fdef09d00e >
-      - W5 i18n/export/de.json#text.5b5bd6fdef09d00e s="
       - W5 i18n/export/de.json#text.5c9f16b3534f532f [
       - W5 i18n/export/de.json#text.5c9f16b3534f532f ]
       - W5 i18n/export/de.json#text.5c9f16b3534f532f {
@@ -610,9 +604,6 @@ groups:
       - W5 i18n/export/de.json#text.6d72cdf5ed462342 <
       - W5 i18n/export/de.json#text.6d72cdf5ed462342 >
       - W5 i18n/export/de.json#text.6d72cdf5ed462342 s="
-      - W5 i18n/export/de.json#text.6df2289809ea237a <
-      - W5 i18n/export/de.json#text.6df2289809ea237a >
-      - W5 i18n/export/de.json#text.6df2289809ea237a s="
       - W5 i18n/export/de.json#text.7140a418403d2b85 <
       - W5 i18n/export/de.json#text.7140a418403d2b85 >
       - W5 i18n/export/de.json#text.7140a418403d2b85 s="
@@ -766,9 +757,6 @@ groups:
       - W5 i18n/export/de.json#text.de9ebf3455e76b8f <
       - W5 i18n/export/de.json#text.de9ebf3455e76b8f >
       - W5 i18n/export/de.json#text.de9ebf3455e76b8f s="
-      - W5 i18n/export/de.json#text.deba2fbc92a25780 <
-      - W5 i18n/export/de.json#text.deba2fbc92a25780 >
-      - W5 i18n/export/de.json#text.deba2fbc92a25780 s="
       - W5 i18n/export/de.json#text.e3b65767ee00341f <
       - W5 i18n/export/de.json#text.e3b65767ee00341f >
       - W5 i18n/export/de.json#text.e3b65767ee00341f s="
@@ -989,9 +977,6 @@ groups:
       - W5 i18n/export/en.json#text.45859f45c0e270af <
       - W5 i18n/export/en.json#text.45859f45c0e270af >
       - W5 i18n/export/en.json#text.45859f45c0e270af s="
-      - W5 i18n/export/en.json#text.47a63ee889e227ef <
-      - W5 i18n/export/en.json#text.47a63ee889e227ef >
-      - W5 i18n/export/en.json#text.47a63ee889e227ef s="
       - W5 i18n/export/en.json#text.47fa5f239d7517c8 <
       - W5 i18n/export/en.json#text.47fa5f239d7517c8 >
       - W5 i18n/export/en.json#text.47fa5f239d7517c8 f="
@@ -1013,9 +998,6 @@ groups:
       - W5 i18n/export/en.json#text.57d965348cd10aee <
       - W5 i18n/export/en.json#text.57d965348cd10aee >
       - W5 i18n/export/en.json#text.57d965348cd10aee s="
-      - W5 i18n/export/en.json#text.5b5bd6fdef09d00e <
-      - W5 i18n/export/en.json#text.5b5bd6fdef09d00e >
-      - W5 i18n/export/en.json#text.5b5bd6fdef09d00e s="
       - W5 i18n/export/en.json#text.5c9f16b3534f532f [
       - W5 i18n/export/en.json#text.5c9f16b3534f532f ]
       - W5 i18n/export/en.json#text.5c9f16b3534f532f {
@@ -1041,9 +1023,6 @@ groups:
       - W5 i18n/export/en.json#text.6d72cdf5ed462342 <
       - W5 i18n/export/en.json#text.6d72cdf5ed462342 >
       - W5 i18n/export/en.json#text.6d72cdf5ed462342 s="
-      - W5 i18n/export/en.json#text.6df2289809ea237a <
-      - W5 i18n/export/en.json#text.6df2289809ea237a >
-      - W5 i18n/export/en.json#text.6df2289809ea237a s="
       - W5 i18n/export/en.json#text.7140a418403d2b85 <
       - W5 i18n/export/en.json#text.7140a418403d2b85 >
       - W5 i18n/export/en.json#text.7140a418403d2b85 s="
@@ -1197,9 +1176,6 @@ groups:
       - W5 i18n/export/en.json#text.de9ebf3455e76b8f <
       - W5 i18n/export/en.json#text.de9ebf3455e76b8f >
       - W5 i18n/export/en.json#text.de9ebf3455e76b8f s="
-      - W5 i18n/export/en.json#text.deba2fbc92a25780 <
-      - W5 i18n/export/en.json#text.deba2fbc92a25780 >
-      - W5 i18n/export/en.json#text.deba2fbc92a25780 s="
       - W5 i18n/export/en.json#text.e3b65767ee00341f <
       - W5 i18n/export/en.json#text.e3b65767ee00341f >
       - W5 i18n/export/en.json#text.e3b65767ee00341f s="

@@ -1,3 +1,4 @@
+{% from "partials/_ingest_texts.html" import filled %}
 {# The body of the Leftovers page.
 
    An entry whose job is still in jobs.yaml is not a leftover: the ingester did not load the job
@@ -52,20 +53,20 @@
 
 <dialog id="orphan-delete" class="modal" x-data="deleteOrphan()" @orphan-delete.window="open($event.detail)">
   <div class="modal-box">
-    <h3 class="mb-2 text-lg font-bold"><span x-html="fmtHtml({{ _('Remove what <span class="font-mono">{job_id}</span> left?')|tojson|forceescape }}, { job_id: item.job_id })"></span></h3>
+    <h3 class="mb-2 text-lg font-bold"><span>{{ filled(_('Remove what <span class="font-mono">{job_id}</span> left?'), 'job_id', "item.job_id") }}</span></h3>
     <p class="mb-3 text-sm">
-      <span x-html="fmtHtml({{ _('This deletes its points ({points}) from <span class="font-mono">{collection}</span> and the ingester\'s records of its files. It cannot be undone.')|tojson|forceescape }}, { points: (item.points || 0).toLocaleString(), collection: item.collection })"></span>
+      <span>{{ filled(filled(_('This deletes its points ({points}) from <span class="font-mono">{collection}</span> and the ingester\'s records of its files. It cannot be undone.'), 'points', "pointsText()"), 'collection', "item.collection") }}</span>
     </p>
     <form @submit.prevent="submit()" class="flex flex-col gap-3">
       <div class="form-control">
         <label class="label py-1" for="orphan-typed"><span class="label-text">{% trans %}Type the id of the job to confirm{% endtrans %}</span></label>
         <input id="orphan-typed" type="text" class="input input-bordered input-sm font-mono" x-model="typed" autocomplete="off" :placeholder="item.job_id">
       </div>
-      <p style="display:none" x-show="error" class="text-sm text-error" x-text="error"></p>
+      <p x-cloak x-show="error" class="text-sm text-error" x-text="error"></p>
       <div class="modal-action mt-1">
         <button type="button" class="btn btn-ghost" @click="$root.close()">{% trans %}Cancel{% endtrans %}</button>
         <button type="submit" class="btn btn-error" :disabled="busy || typed !== item.job_id">
-          <span x-show="busy" style="display:none" class="loading loading-spinner loading-xs"></span>
+          <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
           {% trans %}Remove{% endtrans %}
         </button>
       </div>
