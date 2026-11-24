@@ -288,6 +288,25 @@ test("a configuration job that ends elsewhere reloads the page once it was seen 
   assert.equal(t.reloads(), 1);
 });
 
+test("a job announced while the first file is still loading is not missed", async () => {
+  let release;
+  const pending = new Promise((resolve) => {
+    release = resolve;
+  });
+  const t = setup(async (method, url, body) => {
+    await pending;
+    return files(method, url, body);
+  });
+  const started = t.editor.start();
+  const announce = t.listeners["papaia-config-job"];
+  assert.equal(typeof announce, "function");
+  announce({ detail: { active: true } });
+  release();
+  await started;
+  announce({ detail: { active: false } });
+  assert.equal(t.reloads(), 1);
+});
+
 test("while the page follows its own job, the strip's announcements are left alone", async () => {
   const answer = (method, url, body) => (method === "PUT" ? { ok: true, data: { job_id: "job-5" } } : files(method, url, body));
   const t = setup(answer);

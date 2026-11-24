@@ -54,13 +54,15 @@ export function overlayEditor({ init, texts, request, show, pollJob, refreshStri
     get confirmButton() { return this.confirmKind === "rollback" ? texts.rollbackButton : texts.applyButton; },
 
     async start() {
-      await this.select(this.key);
+      // Listen before the first file is loaded: a job strip that announces a running job
+      // while the file is still on its way must not be missed, or its end never reloads.
       let wasActive = false;
       events.addEventListener("papaia-config-job", (event) => {
         if (this.following) return;
         if (event.detail.active) wasActive = true;
         else if (wasActive) reload();
       });
+      await this.select(this.key);
     },
 
     async select(key) {
