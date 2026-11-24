@@ -84,7 +84,7 @@ def _bom(modules: dict[str, str] = _MODULES) -> dict[str, Any]:
             _repo("papaia", "core", _SUITE),
             _repo("papaia-manager", "manager", "1.8.0"),
             *(_repo(name, "module", version) for name, version in modules.items()),
-            _repo("papaia-kit", "kit", "0.1.3"),
+            _repo("papaia-kit", "kit", "0.1.0"),
         ],
         "totals": {"containers": 7, "images": 0},
     }

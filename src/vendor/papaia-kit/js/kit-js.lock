@@ -1,15 +1,16 @@
 # The kit's browser tools (pk-conform) for the design check, scripts/design-tools.sh.
 #
-# The kit has no npm registry yet. The package is `npm pack` (npm 11.19.0) of the
-# kit's js/ folder at the commit of kit.lock, with the kit's LICENSE copied into
-# js/ first; it is not part of the server image (.dockerignore). Rebuild with:
-#   git archive <commit> js LICENSE | tar -x -C <dir>
-#   cp <dir>/LICENSE <dir>/js/ && (cd <dir>/js && npm pack)
-#   shasum -a 256 vendor/papaia-kit/js/papaia-kit-0.2.2.tgz
+# The kit has no npm registry yet. The tarball is the npm package of the kit's reproducible
+# release build of the commit of kit.lock (`make release TAG=v0.1.0` in the kit,
+# release/kit_release.py: js/ with the kit's LICENSE and THIRD_PARTY_LICENSES.md, as
+# `npm pack` lays it out), copied unchanged; it is not part of the server image
+# (.dockerignore). scripts/design-tools.sh checks the sha256 below before it unpacks the
+# package. Check by hand with:
+#   shasum -a 256 vendor/papaia-kit/js/papaia-kit-0.1.0.tgz
 
-version = "0.2.2"
-commit = "f45bf964422eecaa42f17c3bf2603f5099b747e2"
+version = "0.1.0"
+commit = "0ce412759e840ce6f8dfce0c6ad14e7180ac8a55"
 
 [[files]]
-path = "vendor/papaia-kit/js/papaia-kit-0.2.2.tgz"
-sha256 = "e91a2dd05a11b138c0328badb325f7ae0ab5a72791aeeac89e3dd4bb67330862"
+path = "vendor/papaia-kit/js/papaia-kit-0.1.0.tgz"
+sha256 = "4925ab93bfe883623cd37ac314dff00dc655d2944dbc10ebc70d540f287e9c5d"

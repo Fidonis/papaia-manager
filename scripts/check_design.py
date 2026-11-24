@@ -42,7 +42,7 @@ from typing import Any
 MAX_FILE = 256 * 1024
 MAX_REPORT = 16 * 1024 * 1024
 
-# The design checks of pk-conform --design in kit 0.2.2 (contract/design-review.md).
+# The design checks of pk-conform --design in kit 0.1.0 (contract/design-review.md).
 CHECKS = frozenset(
     {
         "font",

@@ -1,15 +1,18 @@
-# Vendored papaia-kit release used by the manager. The image installs the wheel
-# from vendor/ only; tests/test_kit_lock.py checks that pyproject.toml, uv.lock
-# and this file name the same version and that the wheel matches the SHA-256
-# below. The wheel is the reproducible release build of the kit at the commit
-# below (SOURCE_DATE_EPOCH = commit time). Check by hand with:
-#   shasum -a 256 vendor/papaia-kit/0.2.2/papaia_kit-0.2.2-py3-none-any.whl
+# Vendored papaia-kit release used by the manager: kit 0.1.0, the kit's first public
+# release (MIT; the kit ships no NOTICE). The image installs the wheel from vendor/ only;
+# tests/test_kit_lock.py checks that pyproject.toml, uv.lock and this file name the same
+# version and that the wheel matches the SHA-256 below. The wheel is the kit's reproducible
+# release build of the commit below (`make release TAG=v0.1.0` in the kit,
+# release/kit_release.py, SOURCE_DATE_EPOCH = commit time), copied unchanged. Check by hand
+# with:
+#   shasum -a 256 vendor/papaia-kit/0.1.0/papaia_kit-0.1.0-py3-none-any.whl
+# or, in a kit checkout, `make release-verify TAG=v0.1.0 REGISTRY=<release>`.
 
-version = "0.2.2"
-commit = "f45bf964422eecaa42f17c3bf2603f5099b747e2"
-source_date_epoch = 1795392036
+version = "0.1.0"
+commit = "0ce412759e840ce6f8dfce0c6ad14e7180ac8a55"
+source_date_epoch = 1795451882
 
 [[files]]
-name = "papaia_kit-0.2.2-py3-none-any.whl"
-path = "vendor/papaia-kit/0.2.2/papaia_kit-0.2.2-py3-none-any.whl"
-sha256 = "9e54c6db9d7ec8bcef5e9e5548e9cde81ecda40065677dae351875bcb575a250"
+name = "papaia_kit-0.1.0-py3-none-any.whl"
+path = "vendor/papaia-kit/0.1.0/papaia_kit-0.1.0-py3-none-any.whl"
+sha256 = "6ce3870703605ec0a710256abe74d94c29e2f8bbac681294477471ef36419299"

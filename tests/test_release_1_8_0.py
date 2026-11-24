@@ -82,8 +82,8 @@ def test_the_entry_names_every_change_of_the_release() -> None:
         # MGR-010 Docker access
         "papaia-docker-gate",
         "DOCKER_GATE_URL",
-        # MGR-012 kit 0.2.2 and the design check
-        "0.2.2",
+        # MGR-012 and MGR-030 kit 0.1.0, the first public kit release, and the design check
+        "papaia-kit` 0.1.0",
         "/_kit/specimen",
         # MGR-003 and MGR-028 content security policy, enforced
         "Content-Security-Policy",

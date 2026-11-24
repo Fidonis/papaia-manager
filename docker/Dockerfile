@@ -90,7 +90,7 @@ RUN cat tailwind.brand.css tailwind.app.css > tailwind.input.css \
 FROM python:3.12-slim AS runtime
 
 # Version of the vendored platform kit in this image (src/kit.lock).
-LABEL de.fidonis.platform-kit="0.2.2"
+LABEL de.fidonis.platform-kit="0.1.0"
 
 # Install Docker CE CLI + Compose plugin and runtime system deps. `openssl` is
 # for the core's `doctor`, which reads certificate expiry with the CLI; it is

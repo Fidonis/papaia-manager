@@ -459,7 +459,7 @@ def _main(text: str) -> str:
 def test_the_page_is_built_from_the_kit_components(
     client: TestClient, modules: FakeModules
 ) -> None:
-    """Kit 0.2.2 patterns: table, badge, alert, form fields and buttons; no own markup rules."""
+    """Kit 0.1.0 patterns: table, badge, alert, form fields and buttons; no own markup rules."""
     modules.answers["flow"] = work_inventory.SourceUnavailable("flow")
     main = _main(_auditor(client).get("/inventory").text)
     assert '<table class="pk-table">' in main

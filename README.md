@@ -1731,6 +1731,10 @@ by at [fidonis.de](https://fidonis.de).
   name "Fidonis" and the project name `papaia-manager`.
 - See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the licenses
   of the third-party Python dependencies bundled with this project.
+- The platform kit `papaia-kit` 0.1.0 is vendored under `src/vendor/papaia-kit/`
+  (wheel, its `LICENSE` and the npm package of the design check, pinned by
+  SHA-256 in `src/kit.lock` and `src/vendor/papaia-kit/js/kit-js.lock`). It is
+  MIT-licensed and ships no `NOTICE`.
 - See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the *Inbound = Outbound (MIT)*
   rule and the list of license categories that contributions may not
   introduce without prior approval.

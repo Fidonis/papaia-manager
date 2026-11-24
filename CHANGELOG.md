@@ -87,8 +87,9 @@ only through the core's `papaia-docker-gate`.
   action *Clean up* is refused. Without an answering gate the Services page says that running the
   manager without it is not supported, and group actions answer 503. Published ports are no
   longer shown. `docker/docker-compose.yml` drops the socket mount and `DOCKER_GID`.
-- The kit `papaia-kit` 0.2.2 is vendored (`src/vendor/papaia-kit/0.2.2/`, `src/kit.lock`, image
-  label `de.fidonis.platform-kit`).
+- The kit `papaia-kit` 0.1.0, its first public release (MIT), is vendored
+  (`src/vendor/papaia-kit/0.1.0/`, `src/kit.lock`, image label `de.fidonis.platform-kit`). Numeric
+  table cells (`.pk-num`) are end-aligned; the kit ships no `NOTICE` file any more.
 - Renamed for the glossary: *Dashboard* is *Overview*, the settings tab *Modules* is *Core
   features*, *Connections* is *Vector databases*, *Catalogs* is *Add-on catalogs*, and the group
   *Extensions* is *Modules and add-ons*.

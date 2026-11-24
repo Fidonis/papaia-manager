@@ -10,6 +10,6 @@
 # check; the rebuild removes its entries with the pages it rebuilds.
 #
 # The page rebuild (MGR-013) drew every page with the kit's components and removed the 37
-# findings kit 0.2.2 reported on the pages of the manager's own utility classes; the list is
+# findings the kit reported on the pages of the manager's own utility classes; the list is
 # empty and a new finding fails the check. Serious and critical axe findings are never
 # listed as known (scripts/check_design.py).

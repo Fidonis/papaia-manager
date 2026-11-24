@@ -1,4 +1,4 @@
-"""Kit 0.2.2 in the manager: version stamp, specimen, brand label, kit files and design gate.
+"""Kit 0.1.0 in the manager: version stamp, specimen, brand label, kit files and design gate.
 
 PLT-83 (A5: meta `papaia-kit` on every page; the design check of the kit), PLT-24-A2 (no own
 value for a kit variable, stamp equal to the bill of materials), PLT-25 (brand, Ä-30),
@@ -63,7 +63,7 @@ from app.core.settings_store import (  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.templating import templates  # noqa: E402
 
-VERSION = "0.2.2"
+VERSION = "0.1.0"
 STYLESHEET = f"/_kit/{VERSION}/css/papaia-kit.css"
 PAGES_FILE = REPO / "ui" / "pages.yaml"
 KNOWN_FILE = REPO / "ui" / "design-known.yaml"
