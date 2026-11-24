@@ -359,7 +359,9 @@ function syncOffButton() {
     deleting && offEl("module-off-confirm-input").value.trim() !== offTarget;
 }
 
-// Also runs when the dialog is closed with Escape (its close event).
+// Runs for Cancel, Escape (the cancel event) and the backdrop, before the dialog is closed, so
+// the toggle shows the module as on again the moment the dialog is gone. The close event,
+// which the browser queues after the dialog has closed, only catches any other way out.
 function cancelOff() {
   const name = offTarget;
   offTarget = null;
@@ -482,8 +484,16 @@ if (mailFormElement) {
   offEl("om-probe").addEventListener("click", probeOnMail);
 }
 
-// The switch-off dialog. Its close event also comes from Escape and from the backdrop.
-offEl("module-off-dialog").addEventListener("close", () => {
+// The switch-off dialog. Escape fires its cancel event and the backdrop is a button of its own;
+// both cancel at once. The close event comes after the dialog has closed and stays the fallback.
+const offDialog = offEl("module-off-dialog");
+offDialog.addEventListener("cancel", () => {
+  if (offTarget) cancelOff();
+});
+offDialog.querySelector(".modal-backdrop button").addEventListener("click", () => {
+  if (offTarget) cancelOff();
+});
+offDialog.addEventListener("close", () => {
   if (offTarget) cancelOff();
 });
 offEl("module-off-operator-input").addEventListener("change", (event) => {
