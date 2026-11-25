@@ -61,21 +61,54 @@
 
 {% if addon.actions %}
 {# Maintenance actions the add-on declares. The request carries only the action name;
-   papaia-ctl looks it up in the manifest and runs it. Destructive ones ask first. #}
-<div class="mb-6" x-data="{ busy: false, activeVerb: '' }">
+   papaia-ctl looks it up in the manifest and runs it. A destructive one asks first, in a
+   dialog of the page like Remove and Uninstall (the browser's own confirm() can be switched
+   off or answered by the browser), and only that dialog sends `confirmed`, which the API
+   demands for it. The outcome of the last run is rendered below from its job, so it stays on
+   the page after the panel is refreshed, with its exit status and output. #}
+{% set run = addon.get("last_action") %}
+{% set running = run is not none and run.status in ("queued", "running") %}
+<div class="mb-6"
+     x-data="{ busy: {{ 'true' if running else 'false' }}, activeVerb: {{ (run.action if running else '') | tojson | forceescape }}, refused: '' }">
   <h2 class="text-sm font-semibold opacity-70 mb-2">{% trans %}Maintenance actions{% endtrans %}</h2>
   <div class="flex flex-wrap gap-2">
     {% for a in addon.actions %}
-    {% set confirm_text = _('Run "%(action)s" on %(name)s? This cannot be undone.', action=a.name, name=addon.name) %}
-    <button class="btn btn-sm {% if a.destructive %}btn-outline btn-error{% else %}btn-outline{% endif %}"
+    {% if a.destructive %}
+    <button class="btn btn-sm btn-outline btn-error"
             :disabled="busy"
             title="{{ a.description }}"
-            @click="if ({{ 'true' if a.destructive else 'false' }} && !confirm({{ confirm_text | tojson | forceescape }})) return;
-                    busy = true; activeVerb = {{ a.name | tojson | forceescape }};
-                    addonMaintenanceAction('{{ addon.name }}', '{{ a.name }}').then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
+            @click="$refs.confirmAction{{ loop.index }}.showModal()">
       <span style="display:none" x-show="activeVerb === {{ a.name | tojson | forceescape }}" class="loading loading-dots loading-xs"></span>
       <span>{{ a.name }}</span>
     </button>
+    <dialog x-ref="confirmAction{{ loop.index }}" class="modal">
+      <div class="modal-box max-w-sm">
+        <h3 class="font-bold text-base mb-1">{% trans action=a.name, name=addon.name %}Run {{ action }} on {{ name }}{% endtrans %}</h3>
+        {% if a.description %}
+        <p class="text-sm opacity-60 mb-3">{{ a.description }}</p>
+        {% endif %}
+        <p class="text-sm text-error mb-5">{% trans %}This action cannot be undone.{% endtrans %}</p>
+        <div class="modal-action mt-0">
+          <button class="btn btn-ghost btn-sm" @click="$refs.confirmAction{{ loop.index }}.close()">{% trans %}Cancel{% endtrans %}</button>
+          <button class="btn btn-error btn-sm"
+                  @click="$refs.confirmAction{{ loop.index }}.close(); busy = true; activeVerb = {{ a.name | tojson | forceescape }}; refused = '';
+                          addonMaintenanceAction('{{ addon.name }}', '{{ a.name }}', true, detail => { refused = detail }).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
+            {% trans action=a.name %}Run {{ action }}{% endtrans %}
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
+    </dialog>
+    {% else %}
+    <button class="btn btn-sm btn-outline"
+            :disabled="busy"
+            title="{{ a.description }}"
+            @click="busy = true; activeVerb = {{ a.name | tojson | forceescape }}; refused = '';
+                    addonMaintenanceAction('{{ addon.name }}', '{{ a.name }}', false, detail => { refused = detail }).then(ok => { if (!ok) { busy = false; activeVerb = '' } })">
+      <span style="display:none" x-show="activeVerb === {{ a.name | tojson | forceescape }}" class="loading loading-dots loading-xs"></span>
+      <span>{{ a.name }}</span>
+    </button>
+    {% endif %}
     {% endfor %}
   </div>
   {% set described = addon.actions | selectattr('description') | list %}
@@ -83,6 +116,43 @@
   <ul class="text-xs opacity-60 mt-2 space-y-0.5">
     {% for a in described %}<li><span class="font-mono">{{ a.name }}</span> — {{ a.description }}</li>{% endfor %}
   </ul>
+  {% endif %}
+
+  {# A request the API refused (409 while the stack is locked, 422, 404) never becomes a job. #}
+  <div style="display:none" x-show="refused" role="alert" class="alert alert-error mt-3 py-2 text-sm">
+    <span x-text="refused"></span>
+  </div>
+
+  {% if run %}
+  <div id="addon-action-outcome" role="status"
+       class="mt-3 rounded-box border p-3 text-sm {% if running %}border-info{% elif run.status == 'succeeded' %}border-success{% else %}border-error{% endif %}">
+    <div class="flex items-center gap-2 flex-wrap">
+      {% if running %}
+        <span class="loading loading-spinner loading-xs text-info"></span>
+        <span>{% trans action=run.action %}The action "{{ action }}" is running.{% endtrans %}</span>
+      {% elif run.status == "succeeded" %}
+        <span class="badge badge-success badge-sm">{% trans %}succeeded{% endtrans %}</span>
+        <span>{% trans action=run.action, code=run.exit_code %}The action "{{ action }}" finished with exit status {{ code }}.{% endtrans %}</span>
+      {% else %}
+        <span class="badge badge-error badge-sm">{% trans %}failed{% endtrans %}</span>
+        {% if run.exit_code is not none %}
+        <span>{% trans action=run.action, code=run.exit_code %}The action "{{ action }}" failed with exit status {{ code }}.{% endtrans %}</span>
+        {% else %}
+        <span>{% trans action=run.action %}The action "{{ action }}" failed.{% endtrans %}</span>
+        {% endif %}
+      {% endif %}
+      {% if run.finished_at %}<span class="text-xs opacity-60">{{ run.finished_at | ingest_when }}</span>{% endif %}
+      <a class="link text-xs ml-auto" href="/jobs/{{ run.job_id }}">{% trans %}Open the job log{% endtrans %}</a>
+    </div>
+    {% if run.output and not running %}
+    <details class="mt-2"{% if run.status == "failed" %} open{% endif %}>
+      <summary class="cursor-pointer text-xs opacity-70">
+        {% if run.truncated %}{% trans %}Output (the end of it){% endtrans %}{% else %}{% trans %}Output{% endtrans %}{% endif %}
+      </summary>
+      <pre class="mt-1 max-h-80 overflow-auto bg-base-200 rounded p-2 text-xs whitespace-pre-wrap break-all">{{ run.output }}</pre>
+    </details>
+    {% endif %}
+  </div>
   {% endif %}
 </div>
 {% endif %}

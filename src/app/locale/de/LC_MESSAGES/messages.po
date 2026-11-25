@@ -9761,8 +9761,38 @@ msgid "Maintenance actions"
 msgstr "Wartungsaktionen"
 
 #, python-format
-msgid "Run \"%(action)s\" on %(name)s? This cannot be undone."
-msgstr "„%(action)s“ für %(name)s ausführen? Das lässt sich nicht rückgängig machen."
+msgid "Run %(action)s on %(name)s"
+msgstr "%(action)s für %(name)s ausführen"
+
+#, python-format
+msgid "Run %(action)s"
+msgstr "%(action)s ausführen"
+
+#, python-format
+msgid "The action \"%(action)s\" is running."
+msgstr "Die Aktion „%(action)s“ läuft."
+
+#, python-format
+msgid "The action \"%(action)s\" finished with exit status %(code)s."
+msgstr "Die Aktion „%(action)s“ ist mit dem Exit-Status %(code)s beendet."
+
+#, python-format
+msgid "The action \"%(action)s\" failed with exit status %(code)s."
+msgstr "Die Aktion „%(action)s“ ist mit dem Exit-Status %(code)s fehlgeschlagen."
+
+#, python-format
+msgid "The action \"%(action)s\" failed."
+msgstr "Die Aktion „%(action)s“ ist fehlgeschlagen."
+
+msgid "Open the job log"
+msgstr "Job-Log öffnen"
+
+msgid "Output (the end of it)"
+msgstr "Ausgabe (das Ende)"
+
+#, python-format
+msgid "The action %(action)s cannot be undone and has to be confirmed."
+msgstr "Die Aktion %(action)s lässt sich nicht rückgängig machen und muss bestätigt werden."
 
 #, python-format
 msgid "Add-on %(name)s declares no action %(action)s"

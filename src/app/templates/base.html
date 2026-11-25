@@ -199,7 +199,9 @@
     // _pollJob:   polls /api/v1/jobs/{id} every 2 s and calls onDone() on completion.
     // addonAction:   reloads the detail panel after the job finishes.
     // galleryAction: reloads the dashboard gallery after the job finishes.
-    function _addonPost(name, verb, body) {
+    // onRefused (optional) gets the API's reason when the request is refused; without it the
+    // reason goes to an alert().
+    function _addonPost(name, verb, body, onRefused) {
       return fetch("/api/v1/addons/" + name + "/" + verb, {
         method: "POST",
         headers: {
@@ -215,7 +217,8 @@
             const e = await r.json();
             detail = e.detail || JSON.stringify(e);
           } catch (_) {}
-          alert(fmt(I18N.addonFailed, { detail: detail }));
+          if (onRefused) onRefused(fmt(I18N.addonFailed, { detail: detail }));
+          else alert(fmt(I18N.addonFailed, { detail: detail }));
           return null;
         }
         return r.json();
@@ -249,13 +252,19 @@
       });
     }
 
-    // addonMaintenanceAction: run an action the add-on declares, refresh the panel when the job
-    // ends and say how it went, with a link to the log: the output is often the point.
-    function addonMaintenanceAction(name, action) {
-      return _addonPost(name, "actions/" + action, {}).then(data => {
+    // addonMaintenanceAction: run an action the add-on declares. `confirmed` is true only from
+    // the confirmation dialog of a destructive action; the API refuses one without it. The
+    // panel is refreshed at once, so it shows the run as running, and again when the job ends,
+    // when it shows the outcome with exit status and output; a toast says so too, with a link
+    // to the log: the output is often the point. A refused request goes to onRefused.
+    function addonMaintenanceAction(name, action, confirmed, onRefused) {
+      return _addonPost(name, "actions/" + action, { confirmed: !!confirmed }, onRefused).then(data => {
         if (!data) return false;
-        _pollJob(data.job_id, job => {
+        const refresh = () =>
           htmx.ajax("GET", "/partials/addons/" + name, { target: "#addon-detail", swap: "innerHTML" });
+        refresh();
+        _pollJob(data.job_id, job => {
+          refresh();
           const values = { action: action, href: "/jobs/" + job.id };
           if (job.status === "failed") {
             showToast("error", fmtHtml(I18N.maintenanceActionFailed, values));
