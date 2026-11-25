@@ -480,6 +480,23 @@ class UsersService:
         await self._client.send_password_email(user_id)
         return _text(user.get("username"))
 
+    # -- chat history ---------------------------------------------------------------------
+
+    async def chat_identity(self, user_id: str) -> tuple[str, str]:
+        """The username and the e-mail address LibreChat knows the account by.
+
+        LibreChat signs its users in through Keycloak and finds them by e-mail address, so an
+        account without one has no history the core could find."""
+        user = await self._client.get_user(user_id)
+        email = _text(user.get("email"))
+        if not email:
+            raise InvalidInput(
+                gettext(
+                    "This account has no email address, so LibreChat cannot find its chats."
+                )
+            )
+        return _text(user.get("username")), email
+
     # -- roles ----------------------------------------------------------------------------
 
     async def _known_roles(self) -> dict[str, dict[str, Any]]:

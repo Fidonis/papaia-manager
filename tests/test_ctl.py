@@ -16,6 +16,7 @@ from app.core.ctl import (
     ALLOWED_PY_COMMANDS,
     ALLOWED_PY_WRITE_COMMANDS,
     ALLOWED_VERBS,
+    HISTORY_COUNT_TIMEOUT_SECONDS,
     MAX_SELECTORS,
     MODULE_URL_FLAGS,
     PURGE_MODULES,
@@ -24,6 +25,8 @@ from app.core.ctl import (
     CtlError,
     ModuleSetup,
     SmtpSetup,
+    clear_chat_history,
+    count_chat_history,
     module_setup_flags,
     profiles_flag,
     run_addon_action,
@@ -165,6 +168,88 @@ async def test_an_add_on_action_name_that_could_be_more_is_refused(action: str) 
 def test_run_is_not_a_general_add_on_verb() -> None:
     # `addon run` takes one action name; the generic verb path accepts extra flags.
     assert "run" not in ALLOWED_VERBS
+
+
+# ---------------------------------------------------------------------------
+# librechat clear-history
+# ---------------------------------------------------------------------------
+
+
+async def test_the_chat_history_count_is_always_a_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    async def run_py(**kwargs: Any) -> tuple[int, str, str]:
+        seen.update(kwargs)
+        return 0, "", ""
+
+    monkeypatch.setattr("app.core.ctl._run_py", run_py)
+
+    await count_chat_history(email=" jane@example.com ", workspace_dir="/w", config_dir="/c")
+
+    assert seen["command"] == "librechat-clear-history"
+    assert seen["extra_flags"] == ["--email=jane@example.com", "--dry-run"]
+    assert seen["limit"] == HISTORY_COUNT_TIMEOUT_SECONDS
+
+
+async def test_the_chat_history_deletion_passes_the_address_and_yes_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    def spawn(cmd: list[str], env: dict[str, str]) -> None:
+        seen["cmd"] = cmd
+        seen["env"] = env
+
+    monkeypatch.setattr("app.core.ctl._stream_subprocess", spawn)
+
+    await clear_chat_history(email="jane@example.com", workspace_dir="/w", config_dir="/c")
+
+    assert seen["cmd"][0] == "bash"
+    assert seen["cmd"][2:] == [
+        "librechat",
+        "clear-history",
+        "jane@example.com",
+        "-y",
+        "--config-dir=/c",
+    ]
+    assert seen["env"]["PAPAIA_CONFIG_DIR"] == "/c"
+
+
+@pytest.mark.parametrize(
+    "email",
+    [
+        "",
+        "   ",
+        "jane",
+        "-y@x",
+        "--before=2020-01-01@x",
+        "jane doe@x",
+        "jane@x\n-y",
+        "a@" + "b" * 260,
+    ],
+)
+async def test_an_address_that_could_be_more_is_refused_before_anything_forks(
+    email: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def spawn(*_: Any, **__: Any) -> None:
+        raise AssertionError("nothing may fork")
+
+    monkeypatch.setattr("app.core.ctl._stream_subprocess", spawn)
+    monkeypatch.setattr("app.core.ctl._run_py", spawn)
+    with pytest.raises(ValueError, match="not an e-mail address"):
+        await clear_chat_history(email=email, workspace_dir="/w", config_dir="/c")
+    with pytest.raises(ValueError, match="not an e-mail address"):
+        await count_chat_history(email=email, workspace_dir="/w", config_dir="/c")
+
+
+def test_the_chat_history_command_is_in_no_allowlist() -> None:
+    # The same command without `--dry-run` deletes: it is reachable only through the two
+    # functions above, never through the generic runners.
+    for allowed in (ALLOWED_PY_COMMANDS, ALLOWED_PY_WRITE_COMMANDS, ALLOWED_CORE_VERBS):
+        assert "librechat-clear-history" not in allowed
+        assert "librechat" not in allowed
 
 
 # ---------------------------------------------------------------------------

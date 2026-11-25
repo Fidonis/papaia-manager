@@ -2,7 +2,8 @@
 
    The dialogs are not part of this partial. The list is replaced after every change and on
    every search, and a dialog that holds a password must survive that. The rows reach them
-   through window events (`user-roles`, `user-sessions`, `user-password`, `user-toggle`): a
+   through window events (`user-roles`, `user-sessions`, `user-password`, `user-toggle`,
+   `user-chats`): a
    row cannot reach the scope of a dialog that is not its parent.
 
    The marker element tells the dialogs what the list knows -- whether the realm can send
@@ -146,6 +147,15 @@
               <li><a @click='$dispatch("user-toggle", {{ {"id": u.id, "username": u.username, "enabled": false}|tojson }})'>{% trans %}Enable account{% endtrans %}</a></li>
               {% elif not u.is_self %}
               <li><a class="text-error" @click='$dispatch("user-toggle", {{ {"id": u.id, "username": u.username, "enabled": true}|tojson }})'>{% trans %}Disable account…{% endtrans %}</a></li>
+              {% endif %}
+              {# The dialog runs the core's dry run first and deletes only after it was
+                 confirmed. A core without the command gets the entry disabled, with why. #}
+              {% if chat_history_supported %}
+              <li><a class="text-error" @click='$dispatch("user-chats", {{ {"id": u.id, "username": u.username}|tojson }})'>{% trans %}Clear chats…{% endtrans %}</a></li>
+              {% else %}
+              <li class="disabled"><a title="{{ chat_history_requirement }}">
+                <span>{% trans %}Clear chats…{% endtrans %}<span class="block text-xs opacity-70">{{ chat_history_requirement }}</span></span>
+              </a></li>
               {% endif %}
             {% endcall %}
           {% endcall %}

@@ -6,6 +6,8 @@ take no target, `run_py_cli` for the core's own read-only Python
 sub-commands, and the writers of the core's Python entry point: `run_smtp_setup` /
 `run_module_setup` (the core's `setup`, restricted to the mail relay's or one optional
 module's options) and `run_module_purge` (delete one switched-off module's data or settings).
+`count_chat_history` and `clear_chat_history` run the core's `librechat clear-history` for one
+e-mail address, the first always as a dry run.
 Keeping the sets apart is what makes it
 impossible for an addon name to be dispatched as a stack operation, or the
 other way round.
@@ -223,6 +225,17 @@ TIMEOUT_EXIT_CODE = 124
 MAX_LINE_BYTES = 1024 * 1024
 TRUNCATION_MARKER = "... [truncated]"
 
+# `librechat clear-history` (papAIa core 1.9.0) removes one LibreChat user's conversations,
+# messages, files and shared links. It is neither a core verb nor a read-only command: the
+# dry run goes through `count_chat_history`, which always passes `--dry-run`, and the deletion
+# through `clear_chat_history`, which the Users page queues only after the dry run was
+# confirmed. Each takes an e-mail address and nothing else.
+#
+# The dry run counts documents in LibreChat's database; it answers within seconds even for a
+# long history, so a minute is ample and still ends a request that hangs on a paused container.
+HISTORY_COUNT_TIMEOUT_SECONDS = 60.0
+MAX_HISTORY_EMAIL_LENGTH = 254
+
 _ADDON_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
 # Restore selectors, mirroring the grammar in the core's tools/lib/backup.py.
@@ -274,6 +287,72 @@ async def run_addon_action(
         "run",
         name,
         action,
+        f"--config-dir={config_dir}",
+    ]
+    env = dict(os.environ)
+    env["PAPAIA_CONFIG_DIR"] = config_dir
+    return _stream_subprocess(cmd, env)
+
+
+def history_email(email: str) -> str:
+    """The e-mail address `librechat clear-history` is given, or ValueError.
+
+    The core checks it again; this keeps anything that would read as an option (a leading
+    `-`) or as a second argument (whitespace) from ever reaching the command line."""
+    value = email.strip()
+    if (
+        not value
+        or len(value) > MAX_HISTORY_EMAIL_LENGTH
+        or "@" not in value
+        or value.startswith("-")
+        or any(c.isspace() or not c.isprintable() for c in value)
+    ):
+        raise ValueError(_("%(email)r is not an e-mail address") % {"email": email})
+    return value
+
+
+async def count_chat_history(
+    *,
+    email: str,
+    workspace_dir: str,
+    config_dir: str,
+    limit: float = HISTORY_COUNT_TIMEOUT_SECONDS,
+) -> tuple[int, str, str]:
+    """What `librechat clear-history --dry-run` would remove for one LibreChat user.
+
+    The core's Python entry point with `--dry-run` always set, so this cannot delete anything,
+    and kept out of ALLOWED_PY_COMMANDS: the same command without the flag is the deletion.
+    Returns the exit code, stdout (the counts) and stderr (an `ERROR:` line); a child that
+    outlives `limit` is killed (CtlError, exit code `TIMEOUT_EXIT_CODE`)."""
+    address = history_email(email)
+    return await _run_py(
+        command="librechat-clear-history",
+        workspace_dir=workspace_dir,
+        config_dir=config_dir,
+        extra_flags=[f"--email={address}", "--dry-run"],
+        limit=limit,
+    )
+
+
+async def clear_chat_history(
+    *,
+    email: str,
+    workspace_dir: str,
+    config_dir: str,
+) -> AsyncGenerator[str, None]:
+    """Yield output lines from ``papaia-ctl librechat clear-history <email> -y``.
+
+    The deletion itself, without the core's own prompt: the caller has had the dry run
+    confirmed. CtlError carries papaia-ctl's exit code (1 also when some files could not be
+    removed from storage; the counts are printed all the same)."""
+    address = history_email(email)
+    cmd: list[str] = [
+        "bash",
+        str(papaia_ctl_path(workspace_dir)),
+        "librechat",
+        "clear-history",
+        address,
+        "-y",
         f"--config-dir={config_dir}",
     ]
     env = dict(os.environ)

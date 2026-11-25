@@ -8,13 +8,16 @@ response that creates it.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
 import os
 import tempfile
 import time
-from collections.abc import Iterator
+import uuid
+from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,9 +40,14 @@ for _key, _value in {
 from fastapi.testclient import TestClient  # noqa: E402
 from itsdangerous import TimestampSigner  # noqa: E402
 
+from app import main as app_main  # noqa: E402
 from app.config import get_settings  # noqa: E402
+from app.core import chat_history  # noqa: E402
 from app.core.audit import audit_path  # noqa: E402
+from app.core.ctl import CtlError  # noqa: E402
+from app.core.jobs import Job, JobCallback, JobContext, JobStatus  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.routers import api_users  # noqa: E402
 from app.routers.users_deps import get_keycloak_transport, get_user_token  # noqa: E402
 from tests.fake_keycloak import TOKEN, FakeKeycloak  # noqa: E402
 
@@ -123,6 +131,8 @@ _READS = [
     "/api/v1/users/roles",
     f"/api/v1/users/{_ME}/roles",
     f"/api/v1/users/{_ME}/sessions",
+    f"/api/v1/users/{_ME}/chat-history",
+    f"/api/v1/users/{_ME}/chat-history/jobs/{_ME}",
 ]
 _PAGES = ["/users", "/partials/users"]
 _WRITES = [
@@ -133,6 +143,7 @@ _WRITES = [
     ("post", f"/api/v1/users/{_ME}/password/email", None),
     ("delete", f"/api/v1/users/{_ME}/sessions", None),
     ("delete", f"/api/v1/users/{_ME}/sessions/{_ME}", None),
+    ("post", f"/api/v1/users/{_ME}/chat-history/clear", {"confirmed": True}),
 ]
 
 
@@ -661,6 +672,7 @@ _AUDITED = {
     ("POST", "/api/v1/users/{user_id}/password/email"): "user.password.reset-email",
     ("DELETE", "/api/v1/users/{user_id}/sessions/{session_id}"): "user.session.revoke",
     ("DELETE", "/api/v1/users/{user_id}/sessions"): "user.session.revoke-all",
+    ("POST", "/api/v1/users/{user_id}/chat-history/clear"): "user.chat-history.clear",
 }
 
 
@@ -763,3 +775,314 @@ def test_the_partial_pages_with_prev_and_next(client: TestClient, keycloak: Fake
     text = _admin(client).get("/partials/users").text
     assert "1–25 of 31" in text
     assert '"first": 25' in text
+
+
+# -- clearing an account's chat history ----------------------------------------------
+
+_JANE = "22222222-2222-2222-2222-222222222222"
+_DRY_RUN = """\
+Would remove from jane@example.com's history:
+  conversations      4 (including 2 sub-threads)
+  messages           10
+  files              3
+  shared links       1
+  tool call records  0
+Nothing was changed (dry run).
+"""
+_REMOVED = _DRY_RUN.replace("Would remove", "Removed").replace(
+    "Nothing was changed (dry run).\n", ""
+)
+
+
+class _FakeQueue:
+    """The job queue's surface the chat history routes use; `run` is the worker's part."""
+
+    def __init__(self, jobs_dir: Path) -> None:
+        self.jobs_dir = jobs_dir
+        self.jobs: dict[str, Job] = {}
+        self.callbacks: dict[str, JobCallback] = {}
+
+    async def enqueue(
+        self,
+        *,
+        action: str,
+        target: str,
+        user: str,
+        params: dict[str, Any] | None = None,
+        callback: JobCallback,
+    ) -> Job:
+        job = Job(
+            id=str(uuid.uuid4()),
+            action=action,
+            target=target,
+            user=user,
+            created_at=datetime.now(tz=UTC),
+            params=params or {},
+        )
+        self.jobs[job.id] = job
+        self.callbacks[job.id] = callback
+        return job
+
+    def get_job(self, job_id: str) -> Job | None:
+        return self.jobs.get(job_id)
+
+    def read_log(self, job_id: str, offset: int = 0) -> str:
+        path = self.jobs_dir / f"{job_id}.log"
+        return path.read_text(encoding="utf-8") if path.exists() else ""
+
+    def run(self, job_id: str) -> None:
+        job = self.jobs[job_id]
+        ctx = JobContext(job=job, log_path=self.jobs_dir / f"{job_id}.log")
+        try:
+            asyncio.run(self.callbacks.pop(job_id)(ctx))
+            job.status = JobStatus.SUCCEEDED
+        except Exception as exc:
+            ctx.log(f"--- ERROR: {exc} ---")
+            job.status = JobStatus.FAILED
+
+
+@pytest.fixture
+def queue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _FakeQueue:
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    fake = _FakeQueue(jobs)
+    monkeypatch.setattr(app_main, "_job_queue", fake)
+    return fake
+
+
+def _core_with_clear_history(workspace: Path) -> Path:
+    lib = workspace / "papaia" / "tools" / "lib"
+    (lib / "sh").mkdir(parents=True)
+    (lib / "sh" / "librechat.sh").write_text("cmd_librechat_clear_history() {\n}\n", "utf-8")
+    (lib / "cli.py").write_text('sub.add_parser("librechat-clear-history")\n', "utf-8")
+    return workspace
+
+
+@pytest.fixture
+def chats(
+    tmp_path: Path, config_dir: Path, keycloak: FakeKeycloak, queue: _FakeQueue
+) -> Iterator[TestClient]:
+    keycloak.add_user("jane", user_id=_JANE, email="jane@example.com")
+    workspace = _core_with_clear_history(tmp_path / "workspace")
+    yield _admin(_make_client(config_dir, keycloak, papaia_workspace_dir=str(workspace)))
+    get_settings.cache_clear()
+
+
+def _dry_run(
+    monkeypatch: pytest.MonkeyPatch, result: tuple[int, str, str] = (0, _DRY_RUN, "")
+) -> list[str]:
+    asked: list[str] = []
+
+    async def count(*, email: str, **_: Any) -> tuple[int, str, str]:
+        asked.append(email)
+        return result
+
+    monkeypatch.setattr(chat_history, "count_chat_history", count)
+    return asked
+
+
+def _deletion(
+    monkeypatch: pytest.MonkeyPatch, lines: list[str], *, exit_code: int = 0
+) -> list[str]:
+    asked: list[str] = []
+
+    async def clear(*, email: str, **_: Any) -> AsyncIterator[str]:
+        asked.append(email)
+
+        async def output() -> AsyncIterator[str]:
+            for line in lines:
+                yield line
+            if exit_code:
+                raise CtlError(f"papaia-ctl exited with code {exit_code}", exit_code)
+
+        return output()
+
+    monkeypatch.setattr(api_users, "clear_chat_history", clear)
+    return asked
+
+
+def _clear(client: TestClient, body: Any = None) -> Any:
+    return client.post(
+        f"{_BASE}/{_JANE}/chat-history/clear",
+        json={"confirmed": True} if body is None else body,
+        headers=_CSRF_HEADER,
+    )
+
+
+def _outcome(client: TestClient, job_id: str) -> dict[str, Any]:
+    response = client.get(f"{_BASE}/{_JANE}/chat-history/jobs/{job_id}")
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def test_the_dry_run_counts_what_would_go_for_the_accounts_address(
+    chats: TestClient, monkeypatch: pytest.MonkeyPatch, config_dir: Path
+) -> None:
+    asked = _dry_run(monkeypatch)
+    response = chats.get(f"{_BASE}/{_JANE}/chat-history")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert asked == ["jane@example.com"], "the address is Keycloak's, never the browser's"
+    assert body["username"] == "jane"
+    assert body["counts"]["conversations"] == 4
+    assert body["counts"]["sub_threads"] == 2
+    assert body["counts"]["empty"] is False
+    assert _audit(config_dir) == [], "a dry run changes nothing and is not a change"
+
+
+def test_an_account_without_an_address_is_told_so(
+    chats: TestClient, keycloak: FakeKeycloak, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _dry_run(monkeypatch)
+    nobody = keycloak.add_user("kiosk")
+    response = chats.get(f"{_BASE}/{nobody}/chat-history")
+    assert response.status_code == 422
+    assert "no email address" in response.json()["detail"]
+    assert asked == []
+
+
+def test_a_user_librechat_does_not_know_is_the_cores_reason(
+    chats: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reason = "LibreChat has no user with the e-mail address 'jane@example.com'."
+    _dry_run(monkeypatch, (1, "", f"ERROR: {reason}\n"))
+    response = chats.get(f"{_BASE}/{_JANE}/chat-history")
+    assert response.status_code == 422
+    assert response.json()["detail"] == reason
+
+
+def test_an_older_core_gets_a_refusal_and_nothing_runs(
+    client: TestClient, keycloak: FakeKeycloak, queue: _FakeQueue, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The default workspace of `client` has no core with the command.
+    keycloak.add_user("jane", user_id=_JANE, email="jane@example.com")
+    asked = _dry_run(monkeypatch)
+    _admin(client)
+    preview = client.get(f"{_BASE}/{_JANE}/chat-history")
+    clear = _clear(client)
+    for response in (preview, clear):
+        assert response.status_code == 409
+        assert "1.9.0" in response.json()["detail"]
+    assert asked == []
+    assert queue.jobs == {}
+
+
+def test_the_row_menu_offers_clearing_chats_only_with_a_core_that_can(
+    client: TestClient, chats: TestClient
+) -> None:
+    text = chats.get("/partials/users").text
+    assert "Clear chats…" in text
+    assert "user-chats" in text
+    assert "1.9.0" not in text
+
+    older = _admin(client).get("/partials/users").text
+    assert "Clear chats…" in older
+    assert "user-chats" not in older, "an older core gets the entry disabled"
+    assert 'class="disabled"' in older and "1.9.0" in older
+
+
+def test_the_page_has_the_clear_chats_dialog(chats: TestClient) -> None:
+    text = chats.get("/users").text
+    assert 'id="user-chats-modal"' in text
+    assert "confirmed: true" in text, "only the dialog's button sends the confirmation"
+
+
+@pytest.mark.parametrize("body", [{}, {"confirmed": False}, None])
+def test_the_deletion_is_refused_without_a_confirmation(
+    chats: TestClient,
+    queue: _FakeQueue,
+    config_dir: Path,
+    keycloak: FakeKeycloak,
+    body: Any,
+) -> None:
+    keycloak.calls.clear()
+    response = chats.post(f"{_BASE}/{_JANE}/chat-history/clear", json=body, headers=_CSRF_HEADER)
+    assert response.status_code == 422
+    assert "confirmed" in response.json()["detail"]
+    assert queue.jobs == {}
+    assert keycloak.calls == []
+    assert _audit(config_dir) == []
+
+
+def test_the_deletion_needs_the_csrf_token(
+    chats: TestClient, queue: _FakeQueue, config_dir: Path
+) -> None:
+    response = chats.post(f"{_BASE}/{_JANE}/chat-history/clear", json={"confirmed": True})
+    assert response.status_code == 403
+    assert queue.jobs == {}
+
+
+def test_a_confirmed_deletion_runs_as_a_job_and_is_audited_with_the_counts(
+    chats: TestClient, queue: _FakeQueue, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _deletion(monkeypatch, _REMOVED.splitlines())
+    response = _clear(chats)
+    assert response.status_code == 202, response.text
+    job_id = response.json()["job_id"]
+    job = queue.jobs[job_id]
+    assert job.action == "user.chat-history.clear"
+    assert job.target == "jane"
+    assert _audit(config_dir) == [], "nothing is recorded before the job has run"
+
+    assert _outcome(chats, job_id)["status"] == "queued"
+    queue.run(job_id)
+
+    assert asked == ["jane@example.com"]
+    (entry,) = _audit(config_dir)
+    assert entry["action"] == "user.chat-history.clear"
+    assert entry["target"] == "jane"
+    assert entry["result"] == "ok"
+    assert entry["job_id"] == job_id
+    assert entry["params"]["conversations"] == 4
+    assert entry["params"]["messages"] == 10
+    outcome = _outcome(chats, job_id)
+    assert outcome["status"] == "succeeded"
+    assert outcome["error"] is None
+    assert outcome["counts"]["files"] == 3
+
+
+def test_files_that_stayed_make_a_partial_entry_and_a_failed_job(
+    chats: TestClient, queue: _FakeQueue, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lines = [
+        *_REMOVED.splitlines(),
+        "  1 file(s) could not be removed from storage and were kept: a.png",
+    ]
+    _deletion(monkeypatch, lines, exit_code=1)
+    job_id = _clear(chats).json()["job_id"]
+    queue.run(job_id)
+
+    (entry,) = _audit(config_dir)
+    assert entry["result"] == "partial"
+    assert entry["params"]["files_failed"] == 1
+    outcome = _outcome(chats, job_id)
+    assert outcome["status"] == "failed"
+    assert outcome["counts"]["files_failed"] == 1
+    assert outcome["error"]
+
+
+def test_a_failed_deletion_shows_the_cores_reason(
+    chats: TestClient, queue: _FakeQueue, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reason = "LibreChat is not running. Clearing a history needs the running stack."
+    _deletion(monkeypatch, [f"ERROR: {reason}"], exit_code=1)
+    job_id = _clear(chats).json()["job_id"]
+    queue.run(job_id)
+
+    # The queue's worker records a failed job itself; the callback adds nothing.
+    assert _audit(config_dir) == []
+    outcome = _outcome(chats, job_id)
+    assert outcome["status"] == "failed"
+    assert outcome["counts"] is None
+    assert outcome["error"] == reason
+
+
+def test_the_outcome_is_only_found_for_its_own_account(
+    chats: TestClient, queue: _FakeQueue, keycloak: FakeKeycloak, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _deletion(monkeypatch, _REMOVED.splitlines())
+    job_id = _clear(chats).json()["job_id"]
+    other = keycloak.add_user("joe", email="joe@example.com")
+    assert chats.get(f"{_BASE}/{other}/chat-history/jobs/{job_id}").status_code == 404
+    assert chats.get(f"{_BASE}/{_JANE}/chat-history/jobs/{uuid.uuid4()}").status_code == 404
