@@ -59,6 +59,17 @@ jobs:
           sbom: true
           provenance: mode=max
 
+      # The Debian security fixes pinned in the Dockerfile (ARG FIXED_*) must be in the
+      # image on every platform; a digest that misses one is not signed.
+      - name: Check the fixed Debian packages on both platforms
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            docker/check-fixed-packages.sh docker/Dockerfile "${IMAGE,,}@${DIGEST}" "${platform}"
+          done
+
       - name: Sign image digest
         env:
           DIGEST: ${{ steps.push.outputs.digest }}

@@ -34,6 +34,13 @@ This builds the image from `docker/Dockerfile` and publishes the UI on
 `127.0.0.1:8120`, with a `/health` health check. Every variable is documented
 in [`docker/.env.example`](docker/.env.example).
 
+Debian security fixes that the base image does not carry yet are pinned in the runtime stage
+of `docker/Dockerfile` as `ARG FIXED_<PACKAGE>=<version>`; only these packages are upgraded,
+to exactly that version from the Debian archive. `docker/check-fixed-packages.sh <Dockerfile>
+<image> <linux/amd64|linux/arm64>` checks a built image for them, and the release workflow runs
+it on both platforms before the image is signed. A pin is dropped once the base image ships
+the fixed version.
+
 The manager mounts **no Docker socket**. It reaches Docker only through the
 core's `papaia-docker-gate` (see *Docker access* below). It mounts the papAIa
 workspace, config and backup directories **at their host paths** (path parity — required so that

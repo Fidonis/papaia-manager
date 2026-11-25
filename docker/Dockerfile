@@ -92,11 +92,23 @@ FROM python:3.12-slim AS runtime
 # Version of the vendored platform kit in this image (src/kit.lock).
 LABEL de.fidonis.platform-kit="0.1.0"
 
+# Debian security fixes the base image does not carry yet: each package is upgraded to
+# exactly this version from the Debian archive (signatures checked by apt), and nothing
+# else is upgraded. docker/check-fixed-packages.sh asserts them in the built image.
+# Drop a pin once the base image ships the fixed version.
+# libzstd1: CVE-2026-124851 (fixed in Debian 13 security update 1.5.7+dfsg-1+deb13u1).
+ARG FIXED_LIBZSTD1=1.5.7+dfsg-1+deb13u1
+# zlib1g: CVE-2026-85091 (fixed in Debian 13 security update 1:1.3.dfsg+really1.3.1-1+deb13u1).
+ARG FIXED_ZLIB1G=1:1.3.dfsg+really1.3.1-1+deb13u1
+
 # Install Docker CE CLI + Compose plugin and runtime system deps. `openssl` is
 # for the core's `doctor`, which reads certificate expiry with the CLI; it is
 # listed rather than left to arrive with ca-certificates.
 # The Docker APT repo is the only source that provides docker-compose-plugin.
 RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade \
+        "libzstd1=${FIXED_LIBZSTD1}" \
+        "zlib1g=${FIXED_ZLIB1G}" \
     && apt-get install -y --no-install-recommends \
         bash \
         git \

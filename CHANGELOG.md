@@ -12,6 +12,12 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+### Security
+- Runtime image: `libzstd1` is upgraded to 1.5.7+dfsg-1+deb13u1 (CVE-2026-124851, HIGH) and
+  `zlib1g` is pinned to 1:1.3.dfsg+really1.3.1-1+deb13u1 (CVE-2026-85091, HIGH), the fixed Debian 13
+  versions; no other package is upgraded. The release workflow checks both platforms of the
+  pushed digest for these versions before it signs the image (`docker/check-fixed-packages.sh`).
+
 ## [1.8.0] - 2026-11-23
 
 Manager 1.8.0 is the manager of papAIa core 1.10.0: the core's release pins it, and a core
