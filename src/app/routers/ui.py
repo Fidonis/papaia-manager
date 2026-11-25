@@ -27,7 +27,7 @@ from app.core import (
     upgrade,
 )
 from app.core import requirements as addon_requirements
-from app.core.actions import actions_at
+from app.core.actions import actions_at, last_run
 from app.core.addon_upgrades import (
     core_requirement_message,
     core_supports_upgrades,
@@ -2009,6 +2009,9 @@ async def _get_addon(
         and st in (AddonStatus.INSTALLED, AddonStatus.RUNNING)
         and not nodes.is_distributed(settings.papaia_config_dir)
         else [],
+        # The outcome of the last of them, so a run that ended while nobody watched, or whose
+        # notice was missed, is still on the page with its exit status and output.
+        "last_action": last_run(_queue(), name) if variant_inst else None,
         **addon_requirements.view(
             manifest,
             deployment_addons_by_name(deployment),

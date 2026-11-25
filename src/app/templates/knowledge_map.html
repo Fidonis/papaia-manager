@@ -7,7 +7,7 @@
 {% block content %}
 {% if not km_active %}
 <div class="alert max-w-3xl">
-  <span>{% trans %}The AI map is not switched on. It is the core profile knowledge-map; switch it on with papaia-ctl setup.{% endtrans %}</span>
+  <span>{% trans %}The AI map is not switched on.{% endtrans %} <a href="/settings/modules" class="link link-secondary">{% trans %}Switch it on in the Modules tab of Settings.{% endtrans %}</a></span>
 </div>
 {% else %}
 

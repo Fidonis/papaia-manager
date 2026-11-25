@@ -46,6 +46,7 @@ from itsdangerous import TimestampSigner  # noqa: E402
 
 from app import main as app_main  # noqa: E402
 from app.config import get_settings  # noqa: E402
+from app.core.catalogs import Catalog, CatalogRegistry, save_registry  # noqa: E402
 from app.core.ctl import CtlError  # noqa: E402
 from app.core.jobs import Job, JobCallback, JobContext  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -100,6 +101,7 @@ def client(monkeypatch: pytest.MonkeyPatch, queue: _FakeQueue) -> Iterator[TestC
 def _fresh_state() -> None:
     Path(_CONFIG_DIR, "manager", "audit.log").unlink(missing_ok=True)
     Path(_CONFIG_DIR, "deployment.yaml").unlink(missing_ok=True)
+    Path(_CONFIG_DIR, "manager", "catalogs.yaml").unlink(missing_ok=True)
 
 
 def _install(path: str, *, compose_in: Path | None) -> None:
@@ -369,3 +371,82 @@ def test_the_job_stops_nothing_when_a_dependent_appeared_meanwhile(
 
     assert refused.value.status_code == 409
     assert calls == []
+
+
+def test_the_uninstall_job_stops_nothing_when_a_dependent_appeared_meanwhile(
+    client: TestClient,
+    queue: _FakeQueue,
+    monkeypatch: pytest.MonkeyPatch,
+    addon_dir: Path,
+    tmp_path: Path,
+) -> None:
+    calls = _record_verbs(monkeypatch)
+
+    assert _uninstall(client).status_code == 202
+    _add_dependent(tmp_path)
+    with pytest.raises(HTTPException) as refused:
+        _run_callback(queue, tmp_path / "job.log")
+
+    assert refused.value.status_code == 409
+    assert calls == []
+
+
+def _required_world(tmp_path: Path) -> None:
+    """n8n from a local catalog, `store` only in deployment.yaml, and `flows` requiring both."""
+    catalog = tmp_path / "catalog"
+    (catalog / "n8n").mkdir(parents=True)
+    (catalog / "n8n" / "papaia-app.yaml").write_text(
+        yaml.safe_dump({"name": "n8n", "version": "1.0.0"}), encoding="utf-8"
+    )
+    registry = CatalogRegistry(catalogs=[Catalog(name="cat", type="local", path=str(catalog))])
+    save_registry(_CONFIG_DIR, registry)
+    store = tmp_path / "store"
+    store.mkdir()
+    flows = tmp_path / "flows"
+    flows.mkdir()
+    (flows / "papaia-app.yaml").write_text(
+        yaml.safe_dump(
+            {"name": "flows", "version": "1.0.0", "requires": {"addons": ["n8n", "store"]}}
+        ),
+        encoding="utf-8",
+    )
+    Path(_CONFIG_DIR, "deployment.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "addons": [
+                    {"name": "n8n", "path": str(tmp_path / "n8n"), "active": True},
+                    {"name": "store", "path": str(store), "active": True},
+                    {"name": "flows", "path": str(flows), "active": True},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_the_add_on_list_carries_who_requires_each_add_on(
+    client: TestClient, tmp_path: Path
+) -> None:
+    _required_world(tmp_path)
+
+    response = _as(client, "admin").get("/api/v1/addons")
+
+    assert response.status_code == 200
+    required_by = {a["name"]: a["required_by"] for a in response.json()}
+    # n8n comes from the catalog, store only from deployment.yaml: both paths of the route.
+    assert required_by["n8n"] == ["flows"]
+    assert required_by["store"] == ["flows"]
+    assert required_by["flows"] == []
+
+
+def test_the_gallery_holds_remove_for_each_required_add_on(
+    client: TestClient, tmp_path: Path
+) -> None:
+    _required_world(tmp_path)
+
+    html = _as(client, "admin").get("/partials/addons").text
+
+    # Remove of n8n and of store; neither was installed by the manager, so no Uninstall entry.
+    assert html.count("Required by flows; remove those first") == 2
+    assert "More actions for n8n" in html
+    assert "More actions for store" in html
