@@ -245,6 +245,54 @@ def test_a_file_below_a_directory_target_is_used_only_if_the_core_ships_it(
     assert found["ai/localai/models/extra.yaml"] == "used by the render, not editable here"
 
 
+def test_an_own_localai_model_is_used_although_the_core_ships_none_of_that_name(
+    config: str, tmp_path: Path
+) -> None:
+    # The core renders the top-level `*.yaml` below ai/localai/models that only the overlay
+    # has (an operator's own model); everything else there needs a shipped file.
+    workspace = tmp_path / "workspace"
+    shipped = workspace / "papaia" / "src" / "ai" / "localai" / "models"
+    shipped.mkdir(parents=True)
+    (shipped / "qwen2.5-1.5b-instruct.yaml").write_text("name: q\n", encoding="utf-8")
+    models = Path(config) / "overlay" / "ai" / "localai" / "models"
+    (models / "sub").mkdir(parents=True)
+    for name in (
+        "qwen2.5-1.5b-instruct.yaml",
+        "my-own-model.yaml",
+        "my.yml",
+        "notes.txt",
+        "my-own-model.yaml.bak",
+        ".hidden.yaml",
+        "sub/x.yaml",
+    ):
+        (models / name).write_text("name: x\n", encoding="utf-8")
+    found = {
+        item["path"]: item["note"] for item in overlay.other_files(config, str(workspace))
+    }
+    used = "used by the render, not editable here"
+    ignored = "ignored by the render: the core ships no file of that name"
+    assert found == {
+        "ai/localai/models/qwen2.5-1.5b-instruct.yaml": used,
+        "ai/localai/models/my-own-model.yaml": used,
+        "ai/localai/models/my.yml": ignored,
+        "ai/localai/models/notes.txt": ignored,
+        "ai/localai/models/my-own-model.yaml.bak": ignored,
+        "ai/localai/models/sub/x.yaml": ignored,
+    }
+
+
+def test_the_own_model_rule_is_only_for_the_localai_models(config: str, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    (workspace / "papaia" / "src" / "infra" / "keycloak" / "themes" / "papaia").mkdir(
+        parents=True
+    )
+    theme = Path(config) / "overlay" / "infra" / "keycloak" / "themes" / "papaia"
+    theme.mkdir(parents=True)
+    (theme / "extra.yaml").write_text("x: 1\n", encoding="utf-8")
+    [item] = overlay.other_files(config, str(workspace))
+    assert item["note"].startswith("ignored by the render:")
+
+
 def test_no_overlay_directory_is_no_files(config: str) -> None:
     assert overlay.other_files(config) == []
 

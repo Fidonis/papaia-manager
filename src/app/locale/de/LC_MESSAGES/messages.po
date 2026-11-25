@@ -3,7 +3,7 @@
 
 msgid ""
 msgstr ""
-"Project-Id-Version: papaia-manager 1.6.0\n"
+"Project-Id-Version: papaia-manager 1.7.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-10-21 00:00+0000\n"
 "PO-Revision-Date: 2026-10-21 00:00+0000\n"
@@ -9800,6 +9800,24 @@ msgstr "der doctor des Nodes gab keine lesbare Antwort"
 msgid "earlier than the part of the log shown"
 msgstr "vor dem angezeigten Teil des Logs"
 
+msgid "LocalAI (native)"
+msgstr "LocalAI (nativ)"
+
+msgid "not checked yet"
+msgstr "noch nicht geprüft"
+
+msgid "LocalAI runs natively on the Mac, outside Docker, and is switched and started there: run `papaia-ctl setup` on the Mac (`--localai-runtime=container` moves it back into its container)."
+msgstr "LocalAI läuft nativ auf dem Mac, außerhalb von Docker, und wird dort geschaltet und gestartet: Führen Sie `papaia-ctl setup` auf dem Mac aus (`--localai-runtime=container` holt es in seinen Container zurück)."
+
+msgid "· native on the Mac"
+msgstr "· nativ auf dem Mac"
+
+msgid "not running"
+msgstr "läuft nicht"
+
+msgid "Runs on the Mac outside Docker. Not part of the host verdict; the Services page lists it with LocalAI."
+msgstr "Läuft auf dem Mac außerhalb von Docker. Zählt nicht zum Urteil über den Host; die Seite Dienste führt es bei LocalAI."
+
 #, python-format
 msgid "%(message)s A node that only runs its hooks did not take part either; once it answers, run: %(value)s"
 msgstr "%(message)s Ein Node, der nur ihre Hooks ausführt, war ebenfalls nicht dabei; sobald er antwortet, führen Sie aus: %(value)s"
@@ -9963,8 +9981,11 @@ msgstr "KI-Landkarte — %(branding)s"
 msgid "Which data the AI reaches, for whom, over which path and with which model"
 msgstr "Welche Daten die KI erreicht – für wen, über welchen Weg und mit welchem Modell"
 
-msgid "The AI map is not switched on. It is the core profile knowledge-map; switch it on with papaia-ctl setup."
-msgstr "Die KI-Landkarte ist nicht eingeschaltet. Sie ist das Kernprofil knowledge-map; einschalten mit papaia-ctl setup."
+msgid "The AI map is not switched on."
+msgstr "Die KI-Landkarte ist nicht eingeschaltet."
+
+msgid "Switch it on in the Modules tab of Settings."
+msgstr "Einschalten unter Einstellungen im Reiter „Module“."
 
 msgid "Topics"
 msgstr "Themen"
@@ -10867,3 +10888,30 @@ msgstr "Der erste Start lädt mehrere GB an Modellen herunter. Das Einschalten i
 
 msgid "Default voice and generation settings of the speech synthesis."
 msgstr "Standardstimme und Generierungseinstellungen der Sprachausgabe."
+
+msgid "A directory of the installation's knowledge sources for the chat: where knowledge lives, trimmed to the roles of each user, with governance checks."
+msgstr "Ein Verzeichnis der Wissensquellen dieser Installation für den Chat: wo welches Wissen liegt, beschränkt auf die Rollen der jeweiligen Person, mit Governance-Prüfungen."
+
+msgid "Open the AI map"
+msgstr "KI-Landkarte öffnen"
+
+msgid "module %(name)r keeps no operator files"
+msgstr "Das Modul %(name)r hat keine eigenen Dateien"
+
+msgid "This module keeps no files of its own to delete."
+msgstr "Dieses Modul hat keine eigenen Dateien, die gelöscht werden könnten."
+
+msgid "Your own files"
+msgstr "Eigene Dateien"
+
+msgid "Written for this module by an administrator. Neither choice above deletes them, so switching it on again finds them as they were."
+msgstr "Von einer Administratorin oder einem Administrator für dieses Modul geschrieben. Keine der Optionen oben löscht sie; beim erneuten Einschalten sind sie unverändert da."
+
+msgid "Also delete these files"
+msgstr "Diese Dateien ebenfalls löschen"
+
+msgid "Can't be undone: their edit history and the map built from them go too."
+msgstr "Lässt sich nicht rückgängig machen: Ihr Bearbeitungsverlauf und die daraus erzeugte Landkarte werden mitgelöscht."
+
+msgid "LibreChat is recreated without the tools of the map, and the AI map page is hidden while the module is off."
+msgstr "LibreChat wird ohne die Werkzeuge der Landkarte neu erstellt, und die Seite „KI-Landkarte“ ist ausgeblendet, solange das Modul aus ist."

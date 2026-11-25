@@ -48,15 +48,18 @@ def describe(job: Job) -> tuple[str, str, str]:
                 f"{title} is on",
                 f"Switching {title} on failed",
             )
-        scope = job.params.get("scope")
-        also = {
-            modules.SCOPE_DATA: " and deleting its data",
-            modules.SCOPE_ALL: " and deleting its data and settings",
-        }.get(str(scope), "")
-        done = {
-            modules.SCOPE_DATA: ", its data is deleted",
-            modules.SCOPE_ALL: ", its data and settings are deleted",
-        }.get(str(scope), "")
+        scope = str(job.params.get("scope"))
+        gone = [
+            *(["data"] if scope in (modules.SCOPE_DATA, modules.SCOPE_ALL) else []),
+            *(["settings"] if scope == modules.SCOPE_ALL else []),
+            *(["operator files"] if job.params.get("operator_files") else []),
+        ]
+        listed = (
+            " and ".join(gone) if len(gone) < 3 else f"{', '.join(gone[:-1])} and {gone[-1]}"
+        )
+        also = f" and deleting its {listed}" if gone else ""
+        verb = "is" if gone == ["data"] else "are"
+        done = f", its {listed} {verb} deleted" if gone else ""
         return (
             f"Switching {title} off{also}",
             f"{title} is off{done}",

@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import tempfile
 import time
 from collections.abc import Iterator
@@ -635,6 +636,51 @@ def test_there_is_no_settings_only_state(
     assert queue.list_jobs() == []
 
 
+def test_the_operator_files_of_the_map_go_only_when_asked_and_confirmed(
+    client: TestClient, queue: JobQueue, config_dir: Path
+) -> None:
+    _on(config_dir, "knowledge-map")
+    response = _off(client, "knowledge-map", operator_files=True)
+    assert response.status_code == 422
+    assert "Type the module name (knowledge-map)" in response.json()["detail"]
+    assert queue.list_jobs() == []
+    response = _off(client, "knowledge-map", operator_files=True, confirm="knowledge-map")
+    assert response.status_code == 202
+    [job] = queue.list_jobs()
+    assert job.params == {"module": "knowledge-map", "scope": "keep", "operator_files": True}
+
+
+def test_without_the_choice_the_operator_files_stay(
+    client: TestClient, queue: JobQueue, config_dir: Path
+) -> None:
+    _on(config_dir, "knowledge-map")
+    assert _off(client, "knowledge-map", scope="all", confirm="knowledge-map").status_code == 202
+    [job] = queue.list_jobs()
+    assert job.params == {"module": "knowledge-map", "scope": "all"}
+
+
+def test_a_module_without_operator_files_refuses_the_choice(
+    client: TestClient, queue: JobQueue, config_dir: Path
+) -> None:
+    _on(config_dir, "rag")
+    response = _off(client, "rag", scope="data", operator_files=True, confirm="rag")
+    assert response.status_code == 422
+    assert "no files of its own" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+def test_the_dialog_offers_the_operator_files_unticked(client: TestClient) -> None:
+    html = _admin(client).get("/settings/modules").text
+    dialog = html.split('id="module-off-operator"')[1].split("</fieldset>")[0]
+    assert 'id="module-off-operator-input" type="checkbox"' in dialog
+    tag = dialog.split('id="module-off-operator-input"')[1].split(">")[0]
+    # No `checked` attribute (the handler reads `this.checked`).
+    assert not re.search(r"\schecked[\s=]|\schecked$", tag)
+    assert "Also delete these files" in dialog
+    # Hidden until the core names files that exist.
+    assert 'class="mt-4 hidden' in html.split('id="module-off-operator"')[1][:40]
+
+
 def test_a_core_that_cannot_delete_refuses_a_deletion_but_not_a_plain_switch_off(
     client: TestClient, queue: JobQueue, workspace: Path, config_dir: Path
 ) -> None:
@@ -1177,3 +1223,58 @@ def test_the_modules_and_the_overlays_name_their_node(
     targets = {t["key"]: t for t in _admin(client).get(f"{_BASE}/overlay").json()["targets"]}
     assert targets["litellm"]["node"] == "edge"
     assert targets["librechat"]["node"] == ""
+
+
+# -- LocalAI running natively on a Mac ------------------------------------------------
+
+
+def _native(config_dir: Path, *profiles: str) -> None:
+    (config_dir / ".env").write_text(
+        "COMPOSE_PROFILES=" + ",".join(["nginx", "librechat", *profiles]) + "\n"
+        "LOCALAI_RUNTIME=native\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize("profiles", [("localai",), ()])
+def test_a_native_localai_is_neither_switched_on_nor_off_here(
+    client: TestClient, queue: JobQueue, config_dir: Path, profiles: tuple[str, ...]
+) -> None:
+    _native(config_dir, *profiles)
+    verb = "disable" if profiles else "enable"
+    body = {"scope": "keep"} if profiles else {"variant": "cpu"}
+    response = _admin(client).post(
+        f"{_BASE}/modules/localai/{verb}",
+        json={"revision": _modules_revision(client), **body},
+        headers=_CSRF_HEADER,
+    )
+    assert response.status_code == 422
+    assert "papaia-ctl setup" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+def test_the_modules_document_has_the_native_row(client: TestClient, config_dir: Path) -> None:
+    _native(config_dir, "localai")
+    body = _admin(client).get(f"{_BASE}/modules").json()
+    localai = next(m for m in body["modules"] if m["name"] == "localai")
+    assert localai["runtime"] == "native"
+    assert localai["switchable"] is False
+    assert (localai["services"], localai["modules"]) == (1, 1)
+
+
+def test_the_native_localai_row_is_read_only_and_asks_nothing(
+    client: TestClient, config_dir: Path
+) -> None:
+    _native(config_dir, "localai")
+    html = _admin(client).get("/settings/modules").text
+    row = html.split('data-module-row="localai"')[1].split("data-module-row=")[0]
+    assert "disabled>" in row
+    assert 'onchange="moduleToggled(this)"' not in row
+    assert 'id="localai-variant"' not in html
+    assert 'id="panel-localai"' not in html
+    assert "native on the Mac" in row
+    assert "papaia-ctl setup" in row
+    # The other four still switch, the voice module with its own variant picker.
+    assert html.count('onchange="moduleToggled(this)"') == 4
+    assert 'id="panel-voice"' in html
+    assert 'id="voice-variant"' in html

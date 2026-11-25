@@ -89,6 +89,23 @@ refused if the catalog changed since. Values the new version asks for reach
 through an argument. Only keys the plan asks about are accepted, and the audit
 entry names the keys, never a value.
 
+**Add-on maintenance actions:** An action is a service of the add-on's own compose
+file with fixed arguments, declared in its manifest. `POST
+/api/v1/addons/{name}/actions/{action}` takes the action's name only, never a
+command or an argument, and accepts only an action that the manifest of the
+installed, active add-on declares (404 otherwise); `papaia-ctl addon run` looks it up
+again. `run` is not in the add-on allowlist, because the generic verb path accepts
+extra options: the call is built from two validated names and the configuration
+directory and nothing else. The route requires the admin role and the CSRF token,
+answers 409 while the stack is locked and in a distributed installation, and is
+audited. The confirmation before a destructive action is the page's; the API does
+not ask for one.
+
+**Add-on requirements:** Removing or uninstalling an add-on that an active add-on
+requires is refused (409) in every compatibility mode, as `papaia-ctl` refuses it,
+and the job checks again before it stops anything, so a refused remove cannot leave
+the required add-on stopped. The manager never passes `--force`.
+
 **Nodes:** The routes of a distributed installation exist only when
 `deployment.yaml` has a topology (404 otherwise). Adding and removing a node,
 handing it its bundle and trusting a host key need, on top of the admin role and
@@ -111,6 +128,22 @@ master key is read from `ai/litellm/.env` when a request needs it and goes into 
 request header: never into a log line, a message, an error text or a page.
 The page and its API are admin-only.
 
+**AI map:** The AI map page and its API (`/api/v1/knowledge-map/`) are
+admin-only, and every change needs the CSRF token and is audited. The page reads
+the rendered map from the configuration directory and asks the map server's admin
+API at `KNOWLEDGE_MAP_URL` for the rest, with the bearer `KM_ADMIN_TOKEN`, which is
+read from `ai/knowledge-map/.env` when a request needs it and goes into that request
+header only: never into a log line, a message, a response or a page. Nothing a request
+says becomes part of a URL except a suggestion id, which is checked against its fixed
+shape first; a routing test is not recorded by the server. The operator files under
+`overlay/knowledge-map/` are written by a queued job with compare-and-swap on their
+revision, refuse a symbolic link, are written with mode 0600 and their content never
+reaches a log or an audit entry; the previous version is kept in
+`manager/knowledge-map-history/` (owner-only, the latest 20 per file). A file the
+core's render refuses is put back. Switching the module off deletes them only on a
+separate, unticked choice with the module's name typed back, and then drops their
+history as well. The map and the page document access; they do not restrict it.
+
 **Configuration writers:** The core's own commands that write, `setup` and
 `module-purge`, have an allowlist of their own and are reachable only through
 typed requests. They pass nothing but the options of the mail relay or of one
@@ -123,7 +156,7 @@ change is refused with a 409 while a restore, an upgrade or a stack action runs.
 **Token handling:** OIDC client secrets and catalog tokens never appear
 in logs, process arguments, or HTTP responses. The same holds for the mail
 server's password, the webhook URLs of notification recipients, LiteLLM's master
-key and the secrets of the RAG system described below.
+key, the AI map's `KM_ADMIN_TOKEN` and the secrets of the RAG system described below.
 
 **Sign-out:** `POST /auth/logout` requires the session-bound CSRF token and ends
 the Keycloak session with the session's refresh token before the manager's own

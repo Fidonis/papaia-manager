@@ -612,8 +612,8 @@ def _spawn_recorder(monkeypatch: pytest.MonkeyPatch, seen: dict[str, Any]) -> No
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
 
 
-def test_the_purge_modules_are_the_five_optional_ones() -> None:
-    assert {"localai", "web-search", "rag", "voice", "mail"} == PURGE_MODULES
+def test_the_purge_modules_are_the_six_optional_ones() -> None:
+    assert {"localai", "web-search", "rag", "voice", "mail", "knowledge-map"} == PURGE_MODULES
 
 
 async def test_module_info_asks_the_core_for_one_named_module(
@@ -662,6 +662,50 @@ async def test_module_purge_deleting_nothing_is_refused_before_anything_forks() 
         await run_module_purge(
             "rag", data=False, config=False, workspace_dir="/w", config_dir="/c"
         )
+
+
+@pytest.mark.parametrize(
+    ("data", "config", "flags"),
+    [
+        (False, False, ["--operator-files"]),
+        (True, False, ["--data", "--operator-files"]),
+        (True, True, ["--data", "--config", "--operator-files"]),
+    ],
+)
+async def test_module_purge_passes_the_operator_files_switch_for_the_knowledge_map(
+    monkeypatch: pytest.MonkeyPatch, data: bool, config: bool, flags: list[str]
+) -> None:
+    seen: dict[str, Any] = {}
+    _spawn_recorder(monkeypatch, seen)
+
+    await run_module_purge(
+        "knowledge-map",
+        data=data,
+        config=config,
+        operator_files=True,
+        workspace_dir="/w",
+        config_dir="/c",
+    )
+
+    argv = seen["argv"]
+    assert argv[argv.index("module-purge") :] == [
+        "module-purge",
+        "--module=knowledge-map",
+        *flags,
+    ]
+
+
+@pytest.mark.parametrize("name", ["rag", "voice", "mail", "localai", "web-search"])
+async def test_operator_files_of_a_module_without_any_are_refused_before_anything_forks(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    seen: dict[str, Any] = {}
+    _spawn_recorder(monkeypatch, seen)
+    with pytest.raises(ValueError, match="keeps no operator files"):
+        await run_module_purge(
+            name, data=True, config=False, operator_files=True, workspace_dir="/w", config_dir="/c"
+        )
+    assert "argv" not in seen
 
 
 # ---------------------------------------------------------------------------
