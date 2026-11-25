@@ -46,7 +46,7 @@ from app.core import nodes  # noqa: E402
 from app.core.actions import addon_actions  # noqa: E402
 from app.core.ctl import CtlError  # noqa: E402
 from app.core.jobs import Job, JobCallback, JobContext  # noqa: E402
-from app.core.snapshots import record_installed  # noqa: E402
+from app.core.snapshots import managed_snapshot_path, record_installed  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.routers import api_addons  # noqa: E402
 from app.templating import templates  # noqa: E402
@@ -309,6 +309,28 @@ def test_a_distributed_installation_refuses_actions(
     assert response.status_code == 409
     assert "distributed" in response.json()["detail"]
     assert queue.enqueued == []
+
+
+@pytest.mark.parametrize(
+    ("topology", "offered"),
+    [(None, True), ({"mode": "single"}, True), ({"mode": "distributed"}, False)],
+)
+def test_the_add_on_page_offers_actions_only_outside_a_distributed_installation(
+    client: TestClient, topology: dict[str, str] | None, offered: bool
+) -> None:
+    # Below `_managed`, so the page reads the add-on as installed and not as unmanaged.
+    _install(managed_snapshot_path(_WORKSPACE_DIR, "cat", "n8n", "abcdefabcdef"))
+    if topology is not None:
+        path = Path(_CONFIG_DIR, "deployment.yaml")
+        deployment = yaml.safe_load(path.read_text(encoding="utf-8"))
+        deployment["topology"] = topology
+        path.write_text(yaml.safe_dump(deployment), encoding="utf-8")
+
+    response = _as(client, "admin").get("/partials/addons/n8n")
+
+    assert response.status_code == 200
+    assert ("Maintenance actions" in response.text) is offered
+    assert ("addonMaintenanceAction('n8n', 'check')" in response.text) is offered
 
 
 def test_the_page_runs_an_action_through_the_helper_that_reports_its_outcome() -> None:
