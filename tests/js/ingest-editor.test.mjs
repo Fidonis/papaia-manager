@@ -389,3 +389,43 @@ test("a failure that was told already leaves the dialogs as they are", async () 
   assert.deepEqual(told, []);
   assert.equal(dialog.$root.open, true);
 });
+
+test("an unavailable collection list shows its reason, and an answered one clears it", async () => {
+  let answer = { ok: true, data: { available: false, reason: "Qdrant did not answer within 20 seconds.", collections: [] } };
+  const { env } = setup({ "GET /api/v1/rag/ingest/collections?connection=default": () => answer });
+  const editor = component(createJobEditor(env, boot()));
+  assert.equal(editor.collectionsReason, "");
+  await editor.loadCollections();
+  assert.equal(editor.collectionsReason, "Qdrant did not answer within 20 seconds.");
+  assert.deepEqual(editor.collections, []);
+  answer = { ok: true, data: { available: true, reason: null, collections: [{ name: "kb", points: 1, embedding_model: null }] } };
+  await editor.loadCollections();
+  assert.equal(editor.collectionsReason, "");
+  assert.equal(editor.collections.length, 1);
+});
+
+test("a validation without the ingester's verdict says why, next to the problems", async () => {
+  let answer = { ok: true, data: { ok: true, issues: [], reason: "The ingester did not answer within 20 seconds." } };
+  const { env } = setup({ "POST /api/v1/rag/ingest/jobs/validate": () => answer });
+  const editor = component(createJobEditor(env, boot()));
+  await editor.validate();
+  assert.equal(editor.checkReason, "The ingester did not answer within 20 seconds.");
+  answer = { ok: true, data: { ok: true, issues: [] } };
+  await editor.validate();
+  assert.equal(editor.checkReason, "");
+});
+
+test("the editor sends its start requests once and nothing more until the job changes", async () => {
+  const { env, sent } = setup();
+  const watchers = [];
+  const editor = component(createJobEditor(env, boot()));
+  editor.$watch = (what, fn) => watchers.push([what, fn]);
+  editor.init();
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  assert.deepEqual(sent.map((s) => `${s.method} ${s.url}`), [
+    "GET /api/v1/rag/ingest/collections?connection=default",
+    "POST /api/v1/rag/ingest/schedule/preview",
+  ]);
+  // The answers changed nothing a watcher looks at: no validation, no second preview.
+  assert.equal(editor.dirty, false);
+});

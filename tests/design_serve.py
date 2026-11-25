@@ -11,7 +11,18 @@ of the Upgrade page, the container calls of the runner -- reaches the stand-in a
 Docker daemon of the host. The stand-in answers the image report from a small synthetic image
 set (the Upgrade page lists its outdated images) and every other call like an unreachable
 daemon. Each call is logged to PAPAIA_FAKE_DOCKER_LOG (default: docker.log in the world's
-temporary directory). A test tool, never part of the image.
+temporary directory).
+
+The world never leaves 127.0.0.1 either (tests/design_net.py): every address of a service the
+manager calls -- the default Qdrant connection, the ingester, LiteLLM, the knowledge map, the
+preference service, papaia-audit, Keycloak's token and key endpoints -- points at one stand-in
+on 127.0.0.1 that closes each connection at once, so those pages show their "unreachable"
+state at once on every host, whatever its name service does with the service names. A guard in
+this process refuses every other name lookup and connection at once and logs each to
+PAPAIA_DESIGN_NET_LOG (default: net.log in the world's temporary directory); the file starts
+empty. The server runs on the asyncio event loop, whose sockets the guard sees. With
+--with-ingest, Qdrant and the ingester keep their names: the fake ingester answers them in the
+process. A test tool, never part of the image.
 
 Usage (from the repository root):
   uv run --project src python tests/design_serve.py --port PORT \
@@ -49,6 +60,7 @@ REPO = TESTS.parent
 SRC = REPO / "src"
 sys.path.insert(0, str(TESTS))
 
+import design_net  # noqa: E402
 import design_world  # noqa: E402
 
 PAGES_FILE = REPO / "ui" / "pages.yaml"
@@ -203,6 +215,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     secret = secrets.token_urlsafe(32)
     host = f"http://127.0.0.1:{args.port}"
     os.environ.update(design_world.environment(config, workspace, host=host, secret=secret))
+    # Before the application reads its settings: every service is the stand-in, and nothing
+    # this process does reaches beyond the loopback.
+    stand_in = design_net.stand_in()
+    design_net.point_services_at(os.environ, stand_in.port, with_ingest=args.with_ingest)
+    design_net.guard(Path(os.environ.setdefault("PAPAIA_DESIGN_NET_LOG", str(root / "net.log"))))
     # Before the application exists: nothing it starts may find the host's docker.
     use_fake_docker(
         os.environ, log=root / "docker.log", delay=args.docker_delay, images=args.docker_images
@@ -225,7 +242,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         design_ingest.stand_ins(app, config)
     for person, state in args.storage_state:
         write_storage_state(state, port=args.port, secret=secret, person=person)
-    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    # The asyncio loop: uvloop resolves and connects past Python's socket layer and the guard.
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning", loop="asyncio")
     return 0
 
 

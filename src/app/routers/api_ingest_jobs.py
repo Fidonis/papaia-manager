@@ -16,6 +16,7 @@ dotted form (`source.bucket`), which is what the editor puts next to the input.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from typing import Annotated, Any, Literal
 
@@ -45,6 +46,24 @@ from app.routers.rag_deps import JobsServiceDep, RagAdmin, get_store
 from app.routers.rag_deps import translated as _translated
 
 router = APIRouter(prefix="/api/v1/rag/ingest")
+
+# Seconds one request the job editor makes on its own (the collections of a connection, the
+# validation while the person types) may take in all, name resolution and every call to
+# Qdrant or the ingester included. Below the 30 s a browser check gives a page step: a slow
+# or silent service shows its reason in the editor instead of keeping the page waiting.
+EDITOR_LIMIT = 20.0
+
+
+def _limit_reason(service: str) -> str:
+    """Why an answer is missing: the limit only, never a host or an address."""
+    if service == "qdrant":
+        return gettext("Qdrant did not answer within %(seconds)d seconds.") % {
+            "seconds": EDITOR_LIMIT
+        }
+    return gettext(
+        "The ingester did not answer within %(seconds)d seconds; only the manager's own "
+        "checks ran."
+    ) % {"seconds": EDITOR_LIMIT}
 
 
 def _user_id(user: OIDCClaims) -> str:
@@ -249,8 +268,17 @@ async def collections_of_connection(
     What the editor offers when a job chooses its collection: an existing one carries its
     model with it, and a job that writes to it has to use that model.
     """
-    with _translated():
-        view = await store.snapshot()
+    try:
+        async with asyncio.timeout(EDITOR_LIMIT):
+            with _translated():
+                view = await store.snapshot()
+    except TimeoutError:
+        return {
+            "available": False,
+            "reason": _limit_reason("qdrant"),
+            "connection": store.connection,
+            "collections": [],
+        }
     return {
         "available": view.available,
         "reason": view.reason,
@@ -306,12 +334,28 @@ async def schedule_preview(
 async def validate_job(
     request: Request, body: ValidateBody, user: RagAdmin, service: JobsServiceDep
 ) -> dict[str, Any]:
-    """The problems with an edit, field by field. Writes nothing."""
+    """The problems with an edit, field by field. Writes nothing.
+
+    A `reason` is added when the ingester did not answer within the limit: it says why the
+    ingester's own verdict is missing; the manager's own checks are there either way.
+    """
     verify_csrf(request)
-    with _translated():
-        issues = await service.validate(
-            body.job, create=body.create, original_id=body.original_id
-        )
+    try:
+        async with asyncio.timeout(EDITOR_LIMIT):
+            with _translated():
+                issues = await service.validate(
+                    body.job, create=body.create, original_id=body.original_id
+                )
+    except TimeoutError:
+        with _translated():
+            issues = await service.validate(
+                body.job, create=body.create, original_id=body.original_id, ask_ingester=False
+            )
+        return {
+            "ok": not issues,
+            "issues": issues_payload(issues),
+            "reason": _limit_reason("ingester"),
+        }
     return {"ok": not issues, "issues": issues_payload(issues)}
 
 

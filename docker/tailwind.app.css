@@ -234,3 +234,18 @@
 :where(#pk-main) .pk-message-text {
   overflow-wrap: anywhere;
 }
+
+/* ── Closed sections ──────────────────────────────────────────────────────
+   The hidden part of a closed <details> is not rendered, and the browser does not advance an
+   animation there: one that starts inside -- the checkmark of a box Alpine ticks after the
+   load, in the closed section "Processing" of the job editor -- never finishes, and whoever
+   waits for the page's animations (the kit's design check) waits for ever. Nothing in there
+   animates or transitions while the section is closed; opened, it renders as before. */
+
+details:not([open]) > :not(summary),
+details:not([open]) > :not(summary) *,
+details:not([open]) > :not(summary) *::before,
+details:not([open]) > :not(summary) *::after {
+  animation: none !important;
+  transition: none !important;
+}

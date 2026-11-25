@@ -1250,7 +1250,8 @@ attributes.
 
 **Browser check.** `scripts/csp-check.sh PORT REPORT [SUMMARY [LABEL=FILE ...]]` (CI job
 `csp`, after `scripts/design-tools.sh`) serves the manager in the stand-in world of the tests
-(its `docker` is the stand-in command of `tests/fake_docker.py`, never the host's daemon),
+(its `docker` is the stand-in command of `tests/fake_docker.py`, never the host's daemon, and
+every service address points at a stand-in on 127.0.0.1, `tests/design_net.py`),
 signed in as the test person of each page, and opens every page of `ui/pages.yaml` in
 Chromium, in the light and the dark colour scheme. A page fails on any violation of the
 policy (`securitypolicyviolation`), refused Alpine expression or script error, and when it

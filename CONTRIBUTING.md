@@ -186,7 +186,13 @@ scripts/design-check.sh 57880 /tmp/design-report.json
 Docker or LiteLLM) and signs a synthetic administrator in. Its `docker` is the stand-in command of
 `tests/fake_docker.py` (first on `PATH` of the server): the image report of the Upgrade page reads a
 small synthetic image set, every other call answers like an unreachable daemon, and the Docker of the
-host running the checks is never asked. `scripts/check_design.py` decides: a finding
+host running the checks is never asked. Nor its network: every service address of the manager (Qdrant,
+the ingester, LiteLLM, the knowledge map, prefs, papaia-audit, Keycloak's endpoints) points at one
+stand-in on 127.0.0.1 that closes each connection at once, so those pages show "unreachable" at once
+on every host, and a guard refuses and logs every other name lookup or connection of the server
+(`tests/design_net.py`, log in `PAPAIA_DESIGN_NET_LOG`). A page settles for the check: nothing in a
+closed `<details>` animates, since the browser never finishes an animation there and the kit's
+check waits for every one (`tests/test_settle_browser.py`). `scripts/check_design.py` decides: a finding
 not in `ui/design-known.yaml` fails, and so does an entry that no longer matches a finding. Serious and
 critical axe findings are listed there as `axe-<rule>` so they can only go away, never come in. A new
 page goes into `ui/pages.yaml` and needs no entry. A finding is fixed in the page, not added to the list.

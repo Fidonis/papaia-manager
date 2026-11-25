@@ -557,6 +557,18 @@ msgid "Qdrant is not reachable at %(where)s (%(__name__)s)"
 msgstr "Qdrant ist unter %(where)s nicht erreichbar (%(__name__)s)"
 
 #, python-format
+msgid "Qdrant did not answer within %(seconds)d seconds."
+msgstr "Qdrant hat nicht innerhalb von %(seconds)d Sekunden geantwortet."
+
+#, python-format
+msgid ""
+"The ingester did not answer within %(seconds)d seconds; only the manager's"
+" own checks ran."
+msgstr ""
+"Der Ingester hat nicht innerhalb von %(seconds)d Sekunden geantwortet; nur "
+"die eigenen Prüfungen des Managers liefen."
+
+#, python-format
 msgid "Qdrant refused the api-key. %(_refused_hint)s"
 msgstr "Qdrant hat den API-Key abgelehnt. %(_refused_hint)s"
 

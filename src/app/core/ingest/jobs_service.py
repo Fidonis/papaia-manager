@@ -707,22 +707,31 @@ class JobsService:
             jobs.append(entry)
         return _Candidate(entry, document, defaults, issues, spec is not None)
 
-    async def _problems(self, candidate: _Candidate) -> list[Issue]:
+    async def _problems(self, candidate: _Candidate, *, ask_ingester: bool = True) -> list[Issue]:
         """Everything wrong with a candidate: the schema, the loader's rules, the ingester."""
         issues = list(candidate.issues)
         job_id = str(candidate.entry.get("id") or "")
         if candidate.schema_ok:
             issues.extend(jobspec.check_one(candidate.document, job_id, self._rules()))
-        if not issues:
+        if not issues and ask_ingester:
             issues.extend(await self._ask_ingester(candidate.document, job_id))
         return issues
 
     async def validate(
-        self, state: Mapping[str, Any], *, create: bool, original_id: str | None = None
+        self,
+        state: Mapping[str, Any],
+        *,
+        create: bool,
+        original_id: str | None = None,
+        ask_ingester: bool = True,
     ) -> list[Issue]:
-        """The problems with an edit, field by field. Nothing is written."""
+        """The problems with an edit, field by field. Nothing is written.
+
+        Without `ask_ingester` only the manager's own checks run (the ingester did not answer
+        in time)."""
         return await self._problems(
-            self._candidate(state, create=create, original_id=original_id)
+            self._candidate(state, create=create, original_id=original_id),
+            ask_ingester=ask_ingester,
         )
 
     async def _ask_ingester(self, document: Mapping[str, Any], job_id: str) -> list[Issue]:

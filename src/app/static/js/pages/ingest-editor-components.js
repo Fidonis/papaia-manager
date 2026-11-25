@@ -36,7 +36,7 @@ export function createJobEditor(env, boot) {
     text: { rclone: lines(boot.state.source.rclone_flags), acl: lines(boot.state.target.acl_tags), include: lines(boot.state.filters.include), exclude: lines(boot.state.filters.exclude) },
     maxMb: boot.state.filters.max_file_bytes ? boot.state.filters.max_file_bytes / 1048576 : "",
     errors: {}, summary: [], busy: false, saveError: "", dirty: false, validating: false, saving: false,
-    advancedSource: false, collections: [], preview: null, pendingKey: "",
+    advancedSource: false, collections: [], collectionsReason: "", checkReason: "", preview: null, pendingKey: "",
     pick: { path: "", entries: [], loading: false, error: "" },
     timers: { validate: null, preview: null }, leaving: "",
 
@@ -135,10 +135,12 @@ export function createJobEditor(env, boot) {
     },
 
     // -- target
+    // An unavailable list says why (Qdrant down or slow, the key missing): the server's text.
     async loadCollections() {
       this.collections = [];
       const res = await env.request("GET", ING + "/collections?connection=" + encodeURIComponent(this.job.target.connection));
       if (res.handled || !res.ok) return;
+      this.collectionsReason = res.data.available === false ? String(res.data.reason || "") : "";
       this.collections = res.data.collections || [];
       this.syncModel();
     },
@@ -210,6 +212,8 @@ export function createJobEditor(env, boot) {
       const res = await env.request("POST", ING + "/jobs/validate", { job: this.payload(), create: this.isNew, original_id: this.originalId || null });
       this.validating = false;
       if (res.handled || !res.ok) return;
+      // Set when the ingester's own verdict is missing because it did not answer in time.
+      this.checkReason = String(res.data.reason || "");
       this.setIssues(res.data.issues);
     },
     async save(thenRun) {

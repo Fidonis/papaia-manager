@@ -19,6 +19,17 @@ based on merged pull requests; this file mirrors the published releases.
   for minutes): its calls are ended and the page says that Docker did not answer within 20 s,
   without offering a removal. `GET /api/v1/upgrade/images` answers the same way. The removal
   itself keeps its per-call limits.
+- Ingest job editor: the collections of a connection and the check of a job while it is typed
+  get 20 seconds each, name resolution and every call to Qdrant or the ingester included. A
+  slow or silent Qdrant no longer keeps the editor waiting: it says that Qdrant did not answer
+  within 20 s, and shows the reason of an unavailable collection list under the collection. A
+  silent ingester leaves the manager's own checks of the job and a note that its verdict is
+  missing. `GET /api/v1/rag/ingest/collections` and `POST /api/v1/rag/ingest/jobs/validate`
+  (new field `reason`) answer the same way.
+- Closed sections (`<details>`) start no animation or transition while they are closed. The
+  browser never ran one there to its end, so a check box ticked inside the closed section
+  "Processing" of the job editor left an animation behind that never finished; the kit's
+  design check, which waits for every animation of a page, hung on `/ingest/new`.
 
 ### Security
 - Runtime image: `libzstd1` is upgraded to 1.5.7+dfsg-1+deb13u1 (CVE-2026-124851, HIGH) and

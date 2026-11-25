@@ -190,6 +190,7 @@
           <template x-for="c in collections" :key="c.name"><option :value="c.name"></option></template>
         </datalist>
         <p class="mt-1 text-xs text-pk-text-muted" x-show="collectionNote()" x-cloak x-text="collectionNote()"></p>
+        <p class="mt-1 text-xs text-pk-text-muted" x-show="collectionsReason" x-cloak x-text="collectionsReason"></p>
         {% endcall %}
       </div>
       <div class="grid gap-4 sm:grid-cols-2">
@@ -425,6 +426,7 @@
     <a href="{{ '/ingest/jobs' if job_id is none else '/ingest/jobs/' ~ job_id }}" class="btn btn-ghost btn-sm">{% trans %}Cancel{% endtrans %}</a>
     <span class="ml-auto text-xs text-pk-text-muted" x-show="validating" x-cloak>{% trans %}Checking…{% endtrans %}</span>
     <span class="ml-auto text-xs text-pk-text-muted" x-show="!validating && dirty && !summary.length" x-cloak>{% trans %}Unsaved changes{% endtrans %}</span>
+    <p class="w-full text-xs text-pk-text-muted" x-show="checkReason" x-cloak x-text="checkReason"></p>
   </div>
 
   {# ---- leaving with unsaved changes (the browser's own prompt cannot be styled or worded) ---- #}
