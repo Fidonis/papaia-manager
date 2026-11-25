@@ -156,6 +156,7 @@ MODULE_SETUP_FLAGS: dict[str, str] = {
     "web-search": "--enable-web-search",
     "rag": "--enable-rag",
     "voice": "--enable-voice",
+    "knowledge-map": "--enable-knowledge-map",
 }
 
 # The module whose `setup` asks for a public URL when it is switched on, and the option that
@@ -168,7 +169,13 @@ MODULE_URL_FLAGS: dict[str, str] = {
 MAX_URL_LENGTH = 253
 
 # The modules `module-info` and `module-purge` know, by the core's names.
-PURGE_MODULES: frozenset[str] = frozenset({"localai", "web-search", "rag", "mail", "voice"})
+PURGE_MODULES: frozenset[str] = frozenset(
+    {"localai", "web-search", "rag", "mail", "voice", "knowledge-map"}
+)
+
+# The modules whose operator files (what the administrator wrote by hand for them) the core
+# deletes on their own request, `module-purge --operator-files`.
+OPERATOR_FILE_MODULES: frozenset[str] = frozenset({"knowledge-map"})
 
 # LocalAI image variants the manager offers. `vulkan` is left out on purpose: the core
 # decides its device list by looking at /dev while it renders, and from inside this
@@ -754,21 +761,27 @@ async def run_module_purge(
     config: bool,
     workspace_dir: str,
     config_dir: str,
+    operator_files: bool = False,
     limit: float | None = SETUP_TIMEOUT_SECONDS,
 ) -> tuple[int, str, str]:
-    """Delete the module's data and/or reset its settings. At least one of the two.
+    """Delete the module's data, reset its settings and/or delete its operator files. At least
+    one of them; operator files only for a module in `OPERATOR_FILE_MODULES`.
 
     Exit 3 with `ERROR: ...` on stderr is the core refusing (the module is still on, or its
     settings were asked for without its data); nothing is deleted then."""
     if "module-purge" not in ALLOWED_PY_WRITE_COMMANDS:  # pragma: no cover - the set is a constant
         raise ValueError(_("module-purge is not an allowed write command"))
-    if not (data or config):
+    if not (data or config or operator_files):
         raise ValueError(_("name what to delete: the data, the settings or both"))
     flags = [f"--module={_purge_module(name)}"]
+    if operator_files and name not in OPERATOR_FILE_MODULES:
+        raise ValueError(_("module %(name)r keeps no operator files") % {"name": name})
     if data:
         flags.append("--data")
     if config:
         flags.append("--config")
+    if operator_files:
+        flags.append("--operator-files")
     return await _run_py(
         command="module-purge",
         workspace_dir=workspace_dir,

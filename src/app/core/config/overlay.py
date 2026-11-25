@@ -47,6 +47,11 @@ OTHER_RENDER_TARGETS: tuple[str, ...] = (
     "infra/keycloak/themes/papaia",
 )
 
+# The one directory target the core also renders files of that only the overlay has: an
+# operator's own LocalAI model, the top-level `*.yaml` files the model init job copies
+# (`render_core._localai_model_files`; Fidonis/papaia#373, core 1.9.0).
+LOCALAI_MODELS_DIR = "ai/localai/models"
+
 _LOCK = threading.Lock()
 
 
@@ -275,10 +280,12 @@ def other_files(config_dir: str, workspace_dir: str | None = None) -> list[dict[
     useful thing to tell an operator who wonders why an edit did nothing.
 
     Below a directory target (`ai/localai/models`, the Keycloak theme) the core renders the
-    files of its own copy of the directory and nothing else (`render_core._render_dir`), so a
-    file there is only used when the core ships one of that name. With `workspace_dir` that
-    is looked up in the core's checkout; without it, or without the directory there, every
-    file below the target counts as used."""
+    files of its own copy of the directory (`render_core._render_dir`), so a file there is
+    used when the core ships one of that name. The exception is an operator's own LocalAI
+    model: a top-level `*.yaml` below `ai/localai/models` (not `.yml`, not in a
+    subdirectory) is rendered without a shipped file too. With `workspace_dir` the shipped
+    names are looked up in the core's checkout; without it, or without the directory there,
+    every file below the target counts as used."""
     base = overlay_dir(config_dir)
     if not base.is_dir():
         return []
@@ -294,7 +301,7 @@ def other_files(config_dir: str, workspace_dir: str | None = None) -> list[dict[
             continue
         directory = next((t for t in rendered if rel.startswith(f"{t}/")), None)
         if directory is not None and core_src is not None and (core_src / directory).is_dir():
-            if (core_src / rel).is_file():
+            if (core_src / rel).is_file() or _own_localai_model(rel):
                 found.append({"path": rel, "note": _("used by the render, not editable here")})
             else:
                 found.append({"path": rel, "note": _(
@@ -306,3 +313,14 @@ def other_files(config_dir: str, workspace_dir: str | None = None) -> list[dict[
         else:
             found.append({"path": rel, "note": _("ignored by the render")})
     return found
+
+
+def _own_localai_model(rel: str) -> bool:
+    """A model YAML the core renders although it ships none of that name: directly below
+    `ai/localai/models`, named `*.yaml`. Dotfiles never get here (`other_files` skips them,
+    as the init job's shell glob does)."""
+    prefix = f"{LOCALAI_MODELS_DIR}/"
+    if not rel.startswith(prefix):
+        return False
+    name = rel[len(prefix):]
+    return "/" not in name and name.endswith(".yaml") and not name.startswith(".")

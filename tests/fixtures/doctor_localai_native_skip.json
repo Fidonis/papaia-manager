@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-18T09:00:00Z",
+  "platform_version": "1.8.0",
+  "checks": [
+    {
+      "name": "gpu",
+      "status": "skip",
+      "summary": "LocalAI is not enabled",
+      "details": {}
+    },
+    {
+      "name": "localai_native",
+      "status": "skip",
+      "summary": "LocalAI is not enabled",
+      "details": {}
+    }
+  ],
+  "summary": {
+    "pass": 0,
+    "warn": 0,
+    "fail": 0,
+    "skip": 2
+  },
+  "ok": true
+}

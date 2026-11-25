@@ -147,7 +147,6 @@ def _require_compose_file(name: str, settings: Settings) -> None:
         ) % {"name": name, "path": str(path)})
 
 
-
 def _refuse_while_required(name: str, settings: Settings) -> None:
     """409 while another active add-on requires `name` (`requires.addons`), as
     `addon remove`/`uninstall` would refuse. papaia-ctl refuses in warn mode too (only

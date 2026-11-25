@@ -592,7 +592,7 @@ def _full_window(monkeypatch: pytest.MonkeyPatch, *, no_backup: bool = False) ->
     log = _DONE_LOG.replace("Starting the stack...\n", "Starting the stack...\n" + pull)
     _finished(monkeypatch, log=log, exit_code=0, no_backup=no_backup)
 
-    async def cut(name: str, *, tail: int = 0) -> str:
+    async def cut(name: str, *, tail: int = runner.LOG_TAIL_LINES) -> str:
         return "".join(log.splitlines(keepends=True)[-tail:])
 
     monkeypatch.setattr(runner, "runner_log", cut)

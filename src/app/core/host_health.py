@@ -18,7 +18,11 @@ Five decisions here are load-bearing:
   new check means *not* skipping it, and an older core simply leaves it out. The
   one exception is `docker_usage`, which costs the daemon real work: it has a
   `doctor` and a cache of its own in `app.core.docker_usage`, and is skipped here
-  only once the core is seen to have it.
+  only once the core is seen to have it. `localai_native` (a Mac with the
+  native LocalAI runtime) is read too, but it is no check of the host: it says
+  whether a service answers, so it is shown apart and counts towards no verdict
+  (see `HostHealth.localai`). The core runs it whenever it has it; for the
+  container runtime it is a `skip` without a probe.
 * The core's verdict is taken as is. Its disk thresholds are free bytes, not a
   percentage, and the percentage shown here is arithmetic for the eye only: it
   never decides a colour. The same goes for memory, CPU and VRAM, where the
@@ -57,8 +61,9 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from app.core import docker_usage, nodes
+from app.core import docker_usage, localai_runtime, nodes
 from app.core.ctl import CtlError, run_py_cli
+from app.core.localai_runtime import NativeCheck
 from app.core.services import ServiceHealth
 from app.core.settings_store import refresh_interval
 from app.i18n import N_, current_locale, ngettext
@@ -255,6 +260,10 @@ class HostHealth:
     checked_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     # `nodes` and `links` of a distributed installation; they say nothing about this host.
     cluster_checks: tuple[ClusterCheck, ...] = ()
+    # The native LocalAI of a Mac (doctor's `localai_native`), None for the container runtime.
+    # A service, not a part of the machine: it is not in `checks`, so it moves no count and
+    # no verdict, and the Services page takes its state from here.
+    localai: NativeCheck | None = None
 
     @property
     def checks(self) -> tuple[HostCheck, ...]:
@@ -681,6 +690,7 @@ def parse_doctor(stdout: str, *, checked_at: datetime | None = None) -> HostHeal
         notes=notes,
         checked_at=checked_at or datetime.now(UTC),
         cluster_checks=_cluster_checks(by_name),
+        localai=localai_runtime.find_check(entries),
     )
 
 
