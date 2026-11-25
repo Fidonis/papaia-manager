@@ -1629,7 +1629,7 @@ async def partial_upgrade_images(
     for the core and every installed add-on, which costs seconds. The page asks
     for it on load, and again after every removal.
     """
-    report = await images.gather_report(
+    report = await images.gather_report_within(
         settings.papaia_config_dir, settings.papaia_workspace_dir
     )
     resp = _templates.TemplateResponse(

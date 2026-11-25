@@ -88,6 +88,16 @@ def make_world(root: Path, *, rag_catalog: bool = False) -> tuple[Path, Path]:
     return config, workspace
 
 
+def add_core_compose(workspace: Path) -> Path:
+    """The core's Compose file, so the image report of the Upgrade page reads what the core
+    declares from `docker compose config --images` (answered by tests/fake_docker.py). It
+    includes no fragment: the inventory of the core stays empty, as without the file."""
+    path = workspace / "papaia" / "src" / "docker-compose.yml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("include: []\n", encoding="utf-8")
+    return path
+
+
 def add_mail_relay(config: Path, workspace: Path) -> None:
     """A core that ships the mail relay, switched on and set up with a synthetic server
     without a stored password, so the Mail page shows its form and the test mail

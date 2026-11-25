@@ -465,6 +465,10 @@ msgid "deployment.yaml could not be read: %(exc)s"
 msgstr "deployment.yaml konnte nicht gelesen werden: %(exc)s"
 
 #, python-format
+msgid "Docker did not answer within %(limit).0f s; the list is not shown"
+msgstr "Docker hat nicht innerhalb von %(limit).0f s geantwortet; die Liste wird nicht angezeigt"
+
+#, python-format
 msgid "add-on %(name)s: %(path)s/docker-compose.yml does not exist"
 msgstr "Add-on %(name)s: %(path)s/docker-compose.yml existiert nicht"
 

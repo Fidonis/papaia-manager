@@ -1739,6 +1739,7 @@
 {"key": "text.8506775ac799664b", "text": "How to get back", "kind": "text"},
 {"key": "text.850b41c78a53ab2f", "text": "Edit widget", "kind": "text"},
 {"key": "text.850d2d59eb33d0cd", "text": "No node answered the host check.", "kind": "text"},
+{"key": "text.85338656903b7105", "text": "Docker did not answer within %(limit).0f s; the list is not shown", "kind": "text"},
 {"key": "text.8533f4aa3f7db368", "text": ", its record in the meta collection and all roles listed for it. It cannot be undone.", "kind": "text"},
 {"key": "text.853da43ffcb87fe7", "text": "%(value)r is not a valid role name.", "kind": "text"},
 {"key": "text.854bd43d54e4e59c", "text": "Embed files", "kind": "button"},

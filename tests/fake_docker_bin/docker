@@ -1,0 +1,4 @@
+#!/bin/sh
+# The stand-in `docker` of the test world (tests/fake_docker.py); never a real Docker.
+# tests/design_serve.py puts this directory first on PATH and names the interpreter.
+exec "${PAPAIA_FAKE_DOCKER_PYTHON:-python3}" -I "$(dirname "$0")/../fake_docker.py" "$@"

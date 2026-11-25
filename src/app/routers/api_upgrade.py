@@ -335,7 +335,7 @@ async def read_images(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
     """The outdated images, or why none can be offered."""
-    report = await images.gather_report(
+    report = await images.gather_report_within(
         settings.papaia_config_dir, settings.papaia_workspace_dir
     )
     return _report_to_dict(report)

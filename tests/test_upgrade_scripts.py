@@ -44,6 +44,7 @@ sys.path.insert(0, str(REPO / "tests"))
 
 import csp_scan  # noqa: E402
 import design_world  # noqa: E402
+import fake_docker  # noqa: E402
 
 _WORLD = Path(tempfile.mkdtemp(prefix="papaia-upgrade-scripts-"))
 _CONFIG, _WORKSPACE = _WORLD / "config", _WORLD / "workspace"
@@ -511,9 +512,18 @@ def _free_port() -> int:
 
 @pytest.fixture(scope="module")
 def served(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, Path]]:
-    """The manager of the stand-in world on 127.0.0.1, with Anna's storage state."""
+    """The manager of the stand-in world on 127.0.0.1, with Anna's storage state.
+
+    The inherited PATH starts with a host `docker` that sleeps a minute on every call: the page
+    must not depend on the Docker of the host, so the manager has to ask the stand-in of
+    tests/fake_docker.py, whose log is `docker.log` next to the storage state."""
     folder = tmp_path_factory.mktemp("upgrade-browser")
     state, log = folder / "storage-state.json", folder / "server.log"
+    host = folder / "host-bin"
+    fake_docker.write_slow_host_docker(host)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PAPAIA_FAKE_DOCKER")}
+    env["PATH"] = os.pathsep.join([str(host), env.get("PATH", "")])
+    env[fake_docker.ENV_LOG] = str(folder / "docker.log")
     port = _free_port()
     log_file = log.open("wb")
     server = subprocess.Popen(  # noqa: S603 -- fixed argv, the interpreter of this run
@@ -526,6 +536,7 @@ def served(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, Path
             str(state),
         ],
         cwd=SRC,
+        env=env,
         stdout=log_file,
         stderr=subprocess.STDOUT,
     )
@@ -595,6 +606,11 @@ def test_the_browser_sees_no_report_and_no_alpine_error(
         assert result["alpine"] == [], result
         assert result["errors"] == [], result
         assert result["alpine_version"] is not None, result
+    # The page asked the stand-in for its images, and nothing reached the host's docker.
+    calls = [entry["argv"][:2] for entry in fake_docker.read_log(state.parent / "docker.log")]
+    assert ["image", "ls"] in calls, calls
+    assert ["image", "inspect"] in calls, calls
+    assert not (state.parent / "host-bin" / "host-docker.log").exists()
 
 
 def _fixtures(folder: Path) -> Path:

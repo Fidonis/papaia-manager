@@ -12,6 +12,14 @@ based on merged pull requests; this file mirrors the published releases.
 
 <!-- Updated automatically by release-drafter as PRs are merged to `main`. -->
 
+### Fixed
+- Upgrade page: the list of outdated Docker images gets 20 seconds for all its Docker calls
+  together, and the images are inspected four chunks at a time instead of one after another. A
+  daemon that takes longer no longer keeps the page waiting (on a host with hundreds of images,
+  for minutes): its calls are ended and the page says that Docker did not answer within 20 s,
+  without offering a removal. `GET /api/v1/upgrade/images` answers the same way. The removal
+  itself keeps its per-call limits.
+
 ### Security
 - Runtime image: `libzstd1` is upgraded to 1.5.7+dfsg-1+deb13u1 (CVE-2026-124851, HIGH) and
   `zlib1g` is pinned to 1:1.3.dfsg+really1.3.1-1+deb13u1 (CVE-2026-85091, HIGH), the fixed Debian 13

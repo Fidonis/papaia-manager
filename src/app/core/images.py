@@ -56,7 +56,9 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import re
+import signal
 import sys
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
@@ -84,6 +86,17 @@ _REMOVE_TIMEOUT = 120.0
 # `docker image inspect` and `docker container inspect` take their ids as argv;
 # chunked so a host with hundreds of images stays clear of the argument limit.
 _INSPECT_CHUNK = 50
+
+# How many of those chunks are inspected at once. One after another, a host with
+# a thousand images took longer than the page waits; all at once would put
+# dozens of CLI processes on the daemon.
+_INSPECT_PARALLELISM = 4
+
+# One limit for every Docker call of a report together, as the Upgrade page and
+# the API ask for it (`gather_report_within`). Below the 30 s a browser waits for
+# a page to settle: a slow daemon shows a reason instead of a page that never
+# finishes loading. The removal path keeps the per-call limits only.
+REPORT_LIMIT = 20.0
 
 # How many `docker compose config` processes run at once. The core plus a handful
 # of add-ons, each a second of YAML work -- enough to overlap, not enough to
@@ -316,11 +329,14 @@ async def _run(args: list[str], *, limit: float, node: str | None = None) -> str
             "docker cannot run on node %(node)s; use its node verbs"
         ) % {"node": node})
     try:
+        # A session of its own, so a kill reaches what the CLI started too (the
+        # compose plugin is a child process of `docker`).
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.DEVNULL,
+            start_new_session=True,
         )
     except (FileNotFoundError, OSError) as exc:
         raise ImagesError(gettext("cannot invoke docker: %(exc)s") % {"exc": exc}) from exc
@@ -328,19 +344,54 @@ async def _run(args: list[str], *, limit: float, node: str | None = None) -> str
         async with asyncio.timeout(limit):
             raw_out, raw_err = await proc.communicate()
     except TimeoutError as exc:
-        proc.kill()
+        await _kill(proc)
         raise ImagesError(gettext(
             "%(value)s timed out after %(limit).0fs"
         ) % {"value": ' '.join(args[:3]), "limit": limit}) from exc
+    except asyncio.CancelledError:
+        # The report's overall limit (or a client that went away): nothing of
+        # this call may outlive it.
+        await _kill(proc)
+        raise
     if proc.returncode != 0:
         detail = raw_err.decode(errors="replace").strip() or f"exit code {proc.returncode}"
         raise ImagesError(detail)
     return raw_out.decode(errors="replace")
 
 
+async def _kill(proc: asyncio.subprocess.Process) -> None:
+    """Kill the process and everything in its session, then reap it."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        if proc.returncode is None:
+            proc.kill()
+    await proc.wait()
+
+
 def _chunks(items: list[str]) -> Iterable[list[str]]:
     for start in range(0, len(items), _INSPECT_CHUNK):
         yield items[start : start + _INSPECT_CHUNK]
+
+
+async def _inspect_all(command: list[str], ids: list[str]) -> list[str]:
+    """`command` over `ids` in chunks, a few at a time; the outputs in chunk order.
+
+    The first failure stops the rest, as it did when the chunks ran one after
+    another: the calls still running are cancelled, which kills their processes.
+    """
+    gate = asyncio.Semaphore(_INSPECT_PARALLELISM)
+
+    async def one(chunk: list[str]) -> str:
+        async with gate:
+            return await _run([*command, *chunk], limit=_DOCKER_TIMEOUT)
+
+    try:
+        async with asyncio.TaskGroup() as group:
+            tasks = [group.create_task(one(chunk)) for chunk in _chunks(ids)]
+    except* ImagesError as failed:
+        raise failed.exceptions[0] from None
+    return [task.result() for task in tasks]
 
 
 async def local_images() -> list[LocalImage]:
@@ -364,11 +415,8 @@ async def local_images() -> list[LocalImage]:
         sizes[str(entry.get("ID", ""))] = parse_size(str(entry.get("Size", "")))
     ids = sorted(i for i in sizes if i)
     images: list[LocalImage] = []
-    for chunk in _chunks(ids):
-        output = await _run(
-            ["docker", "image", "inspect", "--format", "{{json .}}", *chunk],
-            limit=_DOCKER_TIMEOUT,
-        )
+    outputs = await _inspect_all(["docker", "image", "inspect", "--format", "{{json .}}"], ids)
+    for output in outputs:
         for line in output.splitlines():
             if not line.strip():
                 continue
@@ -408,11 +456,10 @@ async def used_image_ids() -> set[str]:
     )
     containers = [line.strip() for line in listing.splitlines() if line.strip()]
     used: set[str] = set()
-    for chunk in _chunks(containers):
-        output = await _run(
-            ["docker", "container", "inspect", "--format", "{{.Image}}", *chunk],
-            limit=_DOCKER_TIMEOUT,
-        )
+    outputs = await _inspect_all(
+        ["docker", "container", "inspect", "--format", "{{.Image}}"], containers
+    )
+    for output in outputs:
         used.update(line.strip() for line in output.splitlines() if line.strip())
     return used
 
@@ -537,6 +584,26 @@ async def gather_report(config_dir: str, workspace_dir: str) -> ImageReport:
     except ImagesError as exc:
         return ImageReport(errors=[str(exc)])
     return build_report(declared, local, used, errors)
+
+
+async def gather_report_within(
+    config_dir: str, workspace_dir: str, limit: float | None = None
+) -> ImageReport:
+    """`gather_report` with one time limit for all its Docker calls together.
+
+    What the Upgrade page and the API show. When the limit (`REPORT_LIMIT` unless
+    given) is reached, every running `docker` of the report is killed and the
+    report carries the limit as its reason -- and no candidate, so nothing is
+    offered for removal from an incomplete reading.
+    """
+    bound = REPORT_LIMIT if limit is None else limit
+    try:
+        async with asyncio.timeout(bound):
+            return await gather_report(config_dir, workspace_dir)
+    except TimeoutError:
+        return ImageReport(errors=[gettext(
+            "Docker did not answer within %(limit).0f s; the list is not shown"
+        ) % {"limit": bound}])
 
 
 async def prune(

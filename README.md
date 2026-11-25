@@ -980,6 +980,11 @@ stack and the installed add-ons — so it can be removed later. An image counts 
 outdated only if no container uses it, the installed release does not declare it,
 and it belongs to a repository the stack declares; unrelated images are never
 touched, and nothing is offered while the declared images cannot be resolved.
+Reading the list gets 20 seconds for all its Docker calls together (the images
+are inspected in chunks of 50, four chunks at a time). A daemon that takes longer
+is stopped there: its calls are ended and the page says that Docker did not answer
+in time instead of waiting, with no removal offered from the incomplete reading.
+The removal after an upgrade and the **Remove** buttons keep their per-call limits.
 
 **Upgrades.** An add-on is offered an upgrade when a catalog on disk has a
 higher version than the one installed (SemVer precedence; a version that is not
@@ -1244,7 +1249,8 @@ attributes, 109 Alpine attributes the CSP build rejects, 1 `<style>` block and 2
 attributes.
 
 **Browser check.** `scripts/csp-check.sh PORT REPORT [SUMMARY [LABEL=FILE ...]]` (CI job
-`csp`, after `scripts/design-tools.sh`) serves the manager in the stand-in world of the tests,
+`csp`, after `scripts/design-tools.sh`) serves the manager in the stand-in world of the tests
+(its `docker` is the stand-in command of `tests/fake_docker.py`, never the host's daemon),
 signed in as the test person of each page, and opens every page of `ui/pages.yaml` in
 Chromium, in the light and the dark colour scheme. A page fails on any violation of the
 policy (`securitypolicyviolation`), refused Alpine expression or script error, and when it

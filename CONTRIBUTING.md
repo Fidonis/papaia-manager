@@ -183,7 +183,10 @@ scripts/design-check.sh 57880 /tmp/design-report.json
 ```
 
 `tests/design_serve.py` serves the manager in a stand-in installation on 127.0.0.1 (no real Keycloak,
-Docker or LiteLLM) and signs a synthetic administrator in. `scripts/check_design.py` decides: a finding
+Docker or LiteLLM) and signs a synthetic administrator in. Its `docker` is the stand-in command of
+`tests/fake_docker.py` (first on `PATH` of the server): the image report of the Upgrade page reads a
+small synthetic image set, every other call answers like an unreachable daemon, and the Docker of the
+host running the checks is never asked. `scripts/check_design.py` decides: a finding
 not in `ui/design-known.yaml` fails, and so does an entry that no longer matches a finding. Serious and
 critical axe findings are listed there as `axe-<rule>` so they can only go away, never come in. A new
 page goes into `ui/pages.yaml` and needs no entry. A finding is fixed in the page, not added to the list.
