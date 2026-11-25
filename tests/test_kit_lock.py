@@ -1,9 +1,11 @@
 """The vendored papaia-kit wheel is the one kit.lock, pyproject.toml and uv.lock name.
 
-The manager vendors kit 0.1.0, the kit's first public release (PLT-37). Its release record
-(the kit's reproducible release build of the commit below, `make release TAG=v0.1.0` with
-SOURCE_DATE_EPOCH set to the commit time) gives the commit, the epoch and the digests this
-file pins; every vendored file must hash to them.
+The manager vendors the final kit 0.1.0, the kit's first public release (PLT-37). Its release
+record (the kit's reproducible release build of the commit below, `make release TAG=v0.1.0`
+with SOURCE_DATE_EPOCH set to the commit time) gives the commit, the epoch and the digests
+this file pins; every vendored file must hash to them. An earlier build of the same version
+number from an older kit commit was superseded by this one; only commit and digests tell
+the two apart, so no file may name the earlier build.
 """
 from __future__ import annotations
 
@@ -21,14 +23,23 @@ from typing import Any
 SRC = Path(__file__).resolve().parent.parent / "src"
 ROOT = SRC.parent
 
-# The kit 0.1.0 release record.
+# The release record of the final kit 0.1.0.
 RELEASE = "0.1.0"
-RELEASE_COMMIT = "0ce412759e840ce6f8dfce0c6ad14e7180ac8a55"
-RELEASE_EPOCH = 1795451882
+RELEASE_COMMIT = "849e344064472d94a5c934170f58162ef296c94c"
+RELEASE_EPOCH = 1795592298
 RELEASE_WHEEL = "papaia_kit-0.1.0-py3-none-any.whl"
-RELEASE_WHEEL_SHA256 = "6ce3870703605ec0a710256abe74d94c29e2f8bbac681294477471ef36419299"
+RELEASE_WHEEL_SHA256 = "7ecccf90d47cce795a5b07712f9f4806839dcd0211aba71bf2f16eb6e7b1211e"
 RELEASE_NPM = "papaia-kit-0.1.0.tgz"
-RELEASE_NPM_SHA256 = "4925ab93bfe883623cd37ac314dff00dc655d2944dbc10ebc70d540f287e9c5d"
+RELEASE_NPM_SHA256 = "775af0d2b0d3332a67dbd91595a508401ba475177502f03d54403758735e23e6"
+
+# The superseded build of 0.1.0: the start of its commit, its epoch and the start of its
+# wheel and npm digests. Built from parts so this file names none of them itself.
+_SUPERSEDED = (
+    "0ce" + "4127",
+    "17954" + "51882",
+    "6ce3" + "870703",
+    "4925" + "ab93bf",
+)
 
 
 def _toml(name: str) -> dict[str, Any]:
@@ -80,8 +91,8 @@ def test_image_installs_the_vendored_wheel_and_carries_the_kit_label() -> None:
     assert f'LABEL de.fidonis.platform-kit="{lock["version"]}"' in dockerfile
 
 
-def test_kit_lock_is_the_kit_0_1_0_release_record() -> None:
-    """Version, commit, epoch and digest are those of the kit 0.1.0 release record."""
+def test_kit_lock_is_the_final_kit_0_1_0_release_record() -> None:
+    """Version, commit, epoch and digests are those of the final kit 0.1.0 release record."""
     lock = _toml("kit.lock")
     assert lock["version"] == RELEASE
     assert lock["commit"] == RELEASE_COMMIT
@@ -213,3 +224,31 @@ def test_no_file_names_an_internal_kit_version() -> None:
         if lines := _kit_version_mentions(text):
             found[name] = lines
     assert not found, f"internal kit versions named in: {found}"
+
+
+def _tracked_text_files() -> list[tuple[str, str]]:
+    files = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True
+    ).stdout.decode("utf-8").split("\0")
+    texts = []
+    for name in filter(None, files):
+        path = ROOT / name
+        if not path.is_file():
+            continue
+        try:
+            texts.append((name, path.read_text(encoding="utf-8")))
+        except UnicodeDecodeError:
+            continue
+    return texts
+
+
+def test_no_file_names_the_superseded_kit_build() -> None:
+    """Commit, epoch and digests of the earlier 0.1.0 build appear nowhere but in history."""
+    assert RELEASE_COMMIT[:7] not in _SUPERSEDED
+    found = {
+        name: [marker for marker in _SUPERSEDED if marker in text]
+        for name, text in _tracked_text_files()
+        if name != "CHANGELOG.md"
+    }
+    found = {name: markers for name, markers in found.items() if markers}
+    assert not found, f"the superseded kit build is named in: {found}"

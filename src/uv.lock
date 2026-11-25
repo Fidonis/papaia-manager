@@ -654,7 +654,7 @@ dependencies = [
     { name = "referencing" },
 ]
 wheels = [
-    { filename = "papaia_kit-0.1.0-py3-none-any.whl", hash = "sha256:6ce3870703605ec0a710256abe74d94c29e2f8bbac681294477471ef36419299" },
+    { filename = "papaia_kit-0.1.0-py3-none-any.whl", hash = "sha256:7ecccf90d47cce795a5b07712f9f4806839dcd0211aba71bf2f16eb6e7b1211e" },
 ]
 
 [package.metadata]

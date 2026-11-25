@@ -2,11 +2,11 @@
 """Gate over the report of the kit's design check (`pk-conform --design`).
 
 `pk-conform --design` checks pages of a running manager against the kit's design rules
-(font, spacing scale, target gap, primary action, measure, narrow text, outline, reflow)
-and axe in both themes; it accepts known axe findings below "serious" through `--known`
-but no known design findings. This gate reads its report (`papaia.pk-design/1`) and
-`ui/design-known.yaml`, which lists the design findings that only the page rebuild
-removes, each with its ticket:
+(font, spacing scale, target gap, primary action, measure, narrow text, outline,
+appearance label, reflow) and axe in both themes; it accepts known axe findings below
+"serious" through `--known` but no known design findings. This gate reads its report
+(`papaia.pk-design/1`) and `ui/design-known.yaml`, which lists the design findings that
+only the page rebuild removes, each with its ticket:
 
 - a design finding passes only when an entry names its check and page (the page as in
   ui/pages.yaml; `{name}` stands for one path segment);
@@ -52,6 +52,7 @@ CHECKS = frozenset(
         "measure",
         "narrow-text",
         "outline",
+        "appearance-label",
         "reflow",
     }
 )

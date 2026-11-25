@@ -79,7 +79,9 @@ read this page.
 **Language and appearance.** The interface is available in English and German. Every account
 chooses its own language in the account menu at the bottom of the sidebar (**Language**:
 **Automatic**, **Deutsch** or **English**) and its appearance with the button above it (light or
-dark; the system setting until one is chosen). Neither is kept in the browser's storage.
+dark; the system setting until one is chosen). The button names the appearance it turns on:
+**Dark mode** while the page is light, **Light mode** while it is dark, also while the system
+setting is followed. Neither is kept in the browser's storage.
 
 - *On a platform with Mein Bereich* (the platform catalog lists `me`), both come from the
   platform's preference service `prefs`, the one place every module reads them from. The manager

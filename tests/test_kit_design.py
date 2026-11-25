@@ -373,6 +373,17 @@ def test_design_known_list_is_well_formed() -> None:
         assert re.fullmatch(r"MGR-013|Fidonis/papaia-manager#[0-9]+", entry.ticket), entry.ticket
 
 
+def test_the_gate_knows_every_design_check_of_the_vendored_kit() -> None:
+    """The checks of contract/design-review.md, the table `pk-conform --design` runs."""
+    from papaia_kit._resources import contract_dir
+
+    review = (contract_dir() / "design-review.md").read_text(encoding="utf-8")
+    table = review.split("## Automatic design checks", 1)[1].split("\n## ", 1)[0]
+    named = set(re.findall(r"^\| `([a-z0-9-]+)` \|", table, flags=re.MULTILINE))
+    assert "appearance-label" in named
+    assert named == check_design.CHECKS
+
+
 def test_the_design_check_covers_every_page_of_the_list() -> None:
     assert design_serve.design_pages() == [design_world.sample_path(p) for p in page_paths()]
     by_person = [

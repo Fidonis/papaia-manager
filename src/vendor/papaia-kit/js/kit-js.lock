@@ -9,8 +9,8 @@
 #   shasum -a 256 vendor/papaia-kit/js/papaia-kit-0.1.0.tgz
 
 version = "0.1.0"
-commit = "0ce412759e840ce6f8dfce0c6ad14e7180ac8a55"
+commit = "849e344064472d94a5c934170f58162ef296c94c"
 
 [[files]]
 path = "vendor/papaia-kit/js/papaia-kit-0.1.0.tgz"
-sha256 = "4925ab93bfe883623cd37ac314dff00dc655d2944dbc10ebc70d540f287e9c5d"
+sha256 = "775af0d2b0d3332a67dbd91595a508401ba475177502f03d54403758735e23e6"

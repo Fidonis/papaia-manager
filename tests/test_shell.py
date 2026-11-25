@@ -385,6 +385,67 @@ def test_the_appearance_form_switches_the_theme(client: TestClient, config_dir: 
     assert _audit_actions(config_dir) == ["kit.appearance"]
 
 
+def _appearance_button(body: str) -> Any:
+    [button] = BeautifulSoup(body, "html.parser").select('button[name="appearance"]')
+    return button
+
+
+@pytest.mark.parametrize(
+    ("language", "stored", "label", "value", "dark", "light"),
+    [
+        ("en", None, "Dark mode", "dark", "Dark mode", "Light mode"),
+        ("en", "light", "Dark mode", "dark", "Dark mode", "Light mode"),
+        ("en", "dark", "Light mode", "light", "Dark mode", "Light mode"),
+        ("de", None, "Dunkler Modus", "dark", "Dunkler Modus", "Heller Modus"),
+        ("de", "dark", "Heller Modus", "light", "Dunkler Modus", "Heller Modus"),
+    ],
+)
+def test_the_appearance_switch_names_the_appearance_it_turns_on(
+    client: TestClient,
+    language: str,
+    stored: str | None,
+    label: str,
+    value: str,
+    dark: str,
+    light: str,
+) -> None:
+    """Kit 0.1.0 (final): the label is the action, also while the system setting is followed.
+
+    The server renders the stored choice (none renders like light); both labels ride on the
+    button so the kit's shell.js can name the shown appearance under a dark system setting.
+    """
+    admin = _as(client, "admin")
+    if language != "en":
+        admin.post("/_kit/language", data={"language": language, "pk_csrf": _CSRF})
+    if stored:
+        admin.post("/_kit/appearance", data={"appearance": stored, "pk_csrf": _CSRF})
+    button = _appearance_button(admin.get("/").text)
+    assert button.select_one(".pk-label").get_text(strip=True) == label
+    assert button["value"] == value
+    assert button["data-pk-label-dark"] == dark
+    assert button["data-pk-label-light"] == light
+    assert not button.has_attr("aria-label")
+    icon = "sun" if value == "light" else "moon"
+    assert button.select_one("svg use")["href"].endswith(f"#pk-icon-{icon}")
+
+
+@pytest.mark.parametrize(("language", "label"), [("en", "Menu"), ("de", "Menü")])
+def test_the_menu_button_reads_menu_with_its_symbol(
+    client: TestClient, language: str, label: str
+) -> None:
+    admin = _as(client, "admin")
+    if language != "en":
+        admin.post("/_kit/language", data={"language": language, "pk_csrf": _CSRF})
+    soup = BeautifulSoup(admin.get("/").text, "html.parser")
+    [button] = soup.select("a.pk-menu-button")
+    icon, text = button.select_one("svg"), button.select_one(".pk-label")
+    assert icon is not None and text is not None
+    assert icon["aria-hidden"] == "true"
+    assert icon.select_one("use")["href"] == f"/_kit/{KIT}/icons/sprite.svg#pk-icon-menu"
+    assert text.get_text(strip=True) == label
+    assert button.get_text(" ", strip=True) == label
+
+
 def test_the_language_form_stores_the_choice(client: TestClient, config_dir: Path) -> None:
     admin = _as(client, "admin")
     response = admin.post("/_kit/language", data={"language": "de", "pk_csrf": _CSRF})

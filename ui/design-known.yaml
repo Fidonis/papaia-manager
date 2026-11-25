@@ -4,10 +4,10 @@
 # (every page of ui/pages.yaml, both themes, widths 1440, 390 and 320 px). Same form as
 # the kit's known accessibility list: every entry has exactly the four fields check (a
 # design check of the kit: font, spacing-scale, target-gap, primary-action, measure,
-# narrow-text, outline, reflow), page (a path of ui/pages.yaml), ticket (the ticket of the
-# page rebuild that removes the finding, MGR-013, or an issue `<repo>#<number>` once it
-# exists) and reason. An entry that no longer matches a finding is stale and fails the
-# check; the rebuild removes its entries with the pages it rebuilds.
+# narrow-text, outline, appearance-label, reflow), page (a path of ui/pages.yaml),
+# ticket (the ticket of the page rebuild that removes the finding, MGR-013, or an issue
+# `<repo>#<number>` once it exists) and reason. An entry that no longer matches a finding
+# is stale and fails the check; the rebuild removes its entries with the pages it rebuilds.
 #
 # The page rebuild (MGR-013) drew every page with the kit's components and removed the 37
 # findings the kit reported on the pages of the manager's own utility classes; the list is

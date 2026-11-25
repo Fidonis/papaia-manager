@@ -90,6 +90,11 @@ only through the core's `papaia-docker-gate`.
 - The kit `papaia-kit` 0.1.0, its first public release (MIT), is vendored
   (`src/vendor/papaia-kit/0.1.0/`, `src/kit.lock`, image label `de.fidonis.platform-kit`). Numeric
   table cells (`.pk-num`) are end-aligned; the kit ships no `NOTICE` file any more.
+- The kit is the final 0.1.0 (commit `849e344`). Quotes are indented with a start border; the
+  appearance button names the appearance it turns on (**Dark mode** while light shows, **Light
+  mode** while dark shows, also under the system setting); the menu button below 1024 px reads
+  **Menu** next to the menu symbol. The design check knows the kit's new check
+  `appearance-label`.
 - Renamed for the glossary: *Dashboard* is *Overview*, the settings tab *Modules* is *Core
   features*, *Connections* is *Vector databases*, *Catalogs* is *Add-on catalogs*, and the group
   *Extensions* is *Modules and add-ons*.
