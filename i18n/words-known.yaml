@@ -207,7 +207,7 @@ groups:
       - W1 src/app/templates/partials/models_body.html:283 LLM
       - W1 src/app/templates/partials/models_body.html:310 LLM
       - W1 src/app/templates/partials/models_body.html:348 LLM
-      - W1 src/app/templates/settings_modules.html:181 LLM
+      - W1 src/app/templates/settings_modules.html:183 LLM
   - ticket: MGR-014
     reason: login in operator texts (sign-in names for Keycloak, the mail relay and SSH); reworded
       to Anmelden / Sign in where the person's sign-in is meant.
@@ -240,9 +240,9 @@ groups:
       - W1 src/app/templates/mail.html:83 login
       - W1 src/app/templates/mail.html:90 login
       - W1 src/app/templates/mail.html:96 Login
-      - W1 src/app/templates/settings_modules.html:108 login
-      - W1 src/app/templates/settings_modules.html:132 login
-      - W1 src/app/templates/settings_modules.html:136 Login
+      - W1 src/app/templates/settings_modules.html:110 login
+      - W1 src/app/templates/settings_modules.html:134 login
+      - W1 src/app/templates/settings_modules.html:138 Login
   - ticket: MGR-014
     reason: logout in operator texts about the identity provider's end-session address; reworded with
       the sign-in texts.
@@ -511,6 +511,12 @@ groups:
       - W5 i18n/export/de.json#text.30fc5755613b6472 <
       - W5 i18n/export/de.json#text.30fc5755613b6472 >
       - W5 i18n/export/de.json#text.30fc5755613b6472 s="
+      - W5 i18n/export/de.json#text.dd1503cd1649f8b0 <
+      - W5 i18n/export/de.json#text.dd1503cd1649f8b0 >
+      - W5 i18n/export/de.json#text.dd1503cd1649f8b0 f="
+      - W5 i18n/export/de.json#text.dd1503cd1649f8b0 s="
+      - W5 i18n/export/de.json#text.f6f6d489ed69b65d <
+      - W5 i18n/export/de.json#text.f6f6d489ed69b65d >
       - W5 i18n/export/de.json#text.fedc240e74207b20 <
       - W5 i18n/export/de.json#text.fedc240e74207b20 >
       - W5 i18n/export/de.json#text.fedc240e74207b20 s="
@@ -930,6 +936,12 @@ groups:
       - W5 i18n/export/en.json#text.30fc5755613b6472 <
       - W5 i18n/export/en.json#text.30fc5755613b6472 >
       - W5 i18n/export/en.json#text.30fc5755613b6472 s="
+      - W5 i18n/export/en.json#text.dd1503cd1649f8b0 <
+      - W5 i18n/export/en.json#text.dd1503cd1649f8b0 >
+      - W5 i18n/export/en.json#text.dd1503cd1649f8b0 f="
+      - W5 i18n/export/en.json#text.dd1503cd1649f8b0 s="
+      - W5 i18n/export/en.json#text.f6f6d489ed69b65d <
+      - W5 i18n/export/en.json#text.f6f6d489ed69b65d >
       - W5 i18n/export/en.json#text.fedc240e74207b20 <
       - W5 i18n/export/en.json#text.fedc240e74207b20 >
       - W5 i18n/export/en.json#text.fedc240e74207b20 s="
@@ -1346,6 +1358,7 @@ groups:
       - W5 i18n/export/de.json#text.b88387d7a2662196 id_token
       - W5 i18n/export/de.json#text.b8c78c471ce9c9ed backup.log
       - W5 i18n/export/de.json#text.bc8f019d4a49c792 secrets.yaml
+      - W5 i18n/export/de.json#text.bcfd9b8f2e1b002c e=c
       - W5 i18n/export/de.json#text.be1ff780c54ff18a INGEST_MAX_UPLOAD_MB
       - W5 i18n/export/de.json#text.be8317b29f93c9b1 QI_API_TOKEN
       - W5 i18n/export/de.json#text.bf6c9bf29c655356 connections.yaml
@@ -1516,6 +1529,7 @@ groups:
       - W5 i18n/export/en.json#text.b88387d7a2662196 id_token
       - W5 i18n/export/en.json#text.b8c78c471ce9c9ed backup.log
       - W5 i18n/export/en.json#text.bc8f019d4a49c792 secrets.yaml
+      - W5 i18n/export/en.json#text.bcfd9b8f2e1b002c e=c
       - W5 i18n/export/en.json#text.be1ff780c54ff18a INGEST_MAX_UPLOAD_MB
       - W5 i18n/export/en.json#text.be8317b29f93c9b1 QI_API_TOKEN
       - W5 i18n/export/en.json#text.bf6c9bf29c655356 connections.yaml

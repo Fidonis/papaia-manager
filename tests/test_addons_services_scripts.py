@@ -448,7 +448,10 @@ def test_the_detail_panel_runs_on_the_add_on_component() -> None:
     # each, so `busy` stays per area as before.
     assert html.count('x-data="addonControls"') == 4
     assert "run('detail', 'demo', 'stop')" in html
-    assert "maintain('demo', &#34;reset&#34;, true, " in html
+    # A destructive action runs from its own dialog, which sends the confirmation.
+    assert "$refs.confirmAction1.showModal()" in html
+    assert "confirmMaintain('confirmAction1', 'demo', &#34;reset&#34;)" in html
+    assert 'x-init="resumeAction($el)"' in html
     assert 'x-show="activeVerb === &#34;reset&#34;"' in html
     assert '@click="openRollback()"' in html and "rollback('demo')" in html
     assert 'x-data="addonControls" @input="noteInput($event)"' in html

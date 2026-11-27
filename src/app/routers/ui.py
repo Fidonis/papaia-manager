@@ -16,6 +16,7 @@ from app.auth.roles import is_admin, is_identity_admin
 from app.config import Settings, get_settings
 from app.core import (
     backups,
+    chat_history,
     docker_usage,
     host_health,
     images,
@@ -26,7 +27,7 @@ from app.core import (
     upgrade,
 )
 from app.core import requirements as addon_requirements
-from app.core.actions import actions_at
+from app.core.actions import actions_at, last_run
 from app.core.addon_upgrades import (
     core_requirement_message,
     core_supports_upgrades,
@@ -790,6 +791,7 @@ async def partial_users(
     request: Request,
     user: UsersAdmin,
     service: UsersServiceDep,
+    settings: Annotated[Settings, Depends(get_settings)],
     search: Annotated[str, Query(max_length=100)] = "",
     first: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = PAGE_SIZE,
@@ -803,7 +805,17 @@ async def partial_users(
     resp = _templates.TemplateResponse(
         request,
         "partials/user_list.html",
-        _ctx(request, user, view=view),
+        _ctx(
+            request,
+            user,
+            view=view,
+            # "Clear chats" needs `librechat clear-history` in the core (1.9.0); an older
+            # one gets the entry disabled with the reason, and nothing else changes.
+            chat_history_supported=chat_history.core_supports_clear_history(
+                settings.papaia_workspace_dir
+            ),
+            chat_history_requirement=chat_history.core_requirement_message(),
+        ),
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -2022,6 +2034,9 @@ async def _get_addon(
         and st in (AddonStatus.INSTALLED, AddonStatus.RUNNING)
         and not nodes.is_distributed(settings.papaia_config_dir)
         else [],
+        # The outcome of the last of them, so a run that ended while nobody watched, or whose
+        # notice was missed, is still on the page with its exit status and output.
+        "last_action": last_run(_queue(), name) if variant_inst else None,
         **addon_requirements.view(
             manifest,
             deployment_addons_by_name(deployment),

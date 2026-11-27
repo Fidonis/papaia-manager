@@ -32,6 +32,7 @@ from app.core import (
     backups,
     ctl,
     inventory,
+    localai_runtime,
     nodes,
     restore_scope,
     runner,
@@ -266,11 +267,12 @@ async def restore_point_selectors(
         )
     manifest = backups.snapshot_manifest(backup_dir, restore_point_id)
     groups = restore_scope.build_groups(
-        manifest, controller=nodes.controller_name(settings.papaia_config_dir)
+        manifest,
+        controller=nodes.controller_name(settings.papaia_config_dir),
+        localai_native=localai_runtime.is_native(settings.papaia_config_dir),
     )
-    expected = inventory.core_inventory(
-        settings.papaia_workspace_dir,
-        inventory.active_profiles(settings.papaia_config_dir),
+    expected = inventory.expected_core(
+        settings.papaia_config_dir, settings.papaia_workspace_dir
     )
     return {
         # The configuration on its own does not make a snapshot selectable: it
@@ -643,7 +645,9 @@ async def start_scoped_restore(
 
     manifest = backups.snapshot_manifest(backup_dir, point.id)
     groups = restore_scope.build_groups(
-        manifest, controller=nodes.controller_name(settings.papaia_config_dir)
+        manifest,
+        controller=nodes.controller_name(settings.papaia_config_dir),
+        localai_native=localai_runtime.is_native(settings.papaia_config_dir),
     )
     if not restore_scope.has_selectable_groups(groups):
         raise HTTPException(

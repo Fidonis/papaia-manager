@@ -159,9 +159,11 @@ def test_the_users_page_names_its_sentences(client: TestClient) -> None:
         "listFailed", "listUnavailable", "reloadPage", "justNow", "mailNoServer",
         "mailNoAddress", "userCreatedLinkSent", "userCreatedMailFailed", "userCreated",
         "rolesSaved", "sessionEnded", "sessionsEnded", "linkSent", "accountEnabled",
-        "accountDisabled",
+        "accountDisabled", "chatsCleared", "chatsClearFailed", "subThreadsOne",
+        "subThreadsOther", "filesFailedOne", "filesFailedOther",
     }  # fmt: skip
     assert texts["userCreated"] == "User <b>{username}</b> created."
+    assert texts["chatsCleared"] == "The chats of <b>{username}</b> were cleared."
 
 
 def test_the_roles_page_names_its_sentences(client: TestClient) -> None:

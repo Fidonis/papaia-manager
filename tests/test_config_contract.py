@@ -133,6 +133,62 @@ def test_the_overlay_targets_are_all_of_the_cores_render_targets(
     assert mine == set(core["render_core"].BASE_RENDER_TARGETS)
 
 
+def test_a_file_below_a_directory_target_is_listed_as_used_exactly_when_the_core_renders_it(
+    core: dict[str, ModuleType], checkout_copy: Path, tmp_path: Path
+) -> None:
+    """The Overlay tab's "used" or "ignored" below `ai/localai/models` and the Keycloak theme
+    against the core's own `_render_dir`: a shipped name, an operator's own model YAML, and the
+    names the core leaves alone."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "papaia").symlink_to(checkout_copy, target_is_directory=True)
+    src = checkout_copy / "src"
+    models = "ai/localai/models"
+    theme = "infra/keycloak/themes/papaia"
+    shipped_model = min(p.name for p in (src / models).glob("*.yaml"))
+    shipped_theme = min(
+        p.relative_to(src).as_posix() for p in (src / theme).rglob("*.properties")
+    )
+    config = tmp_path / "config"
+    overlay_files = {
+        f"{models}/{shipped_model}": "x-contract: shipped\n",
+        f"{models}/my-own-model.yaml": "name: my-own-model\nx-contract: own\n",
+        f"{models}/my.yml": "name: my\n",
+        f"{models}/notes.txt": "notes\n",
+        f"{models}/sub/x.yaml": "name: x\n",
+        f"{models}/.hidden.yaml": "name: hidden\n",
+        shipped_theme: "contract=shipped\n",
+        f"{theme}/login/resources/img/customer-logo.svg": "<svg/>\n",
+    }
+    for rel, text in overlay_files.items():
+        path = config / "overlay" / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    for target in (models, theme):
+        core["render_core"]._render_dir(target, checkout_copy, config, [])
+
+    listed = {
+        item["path"]: item["note"]
+        for item in overlay.other_files(str(config), str(workspace))
+        if item["path"].startswith((f"{models}/", f"{theme}/"))
+    }
+    # Dotfiles are not listed at all; the core does not render them either.
+    assert set(listed) == {rel for rel in overlay_files if "/." not in rel}
+    assert not (config / models / ".hidden.yaml").exists()
+    for rel, note in listed.items():
+        rendered = config / rel
+        if note == "used by the render, not editable here":
+            assert rendered.is_file(), rel
+            assert "contract" not in overlay_files[rel] or "contract" in rendered.read_text(
+                encoding="utf-8"
+            ), rel
+        else:
+            assert note.startswith("ignored by the render"), rel
+            assert not rendered.exists(), rel
+    assert listed[f"{models}/my-own-model.yaml"] == "used by the render, not editable here"
+
+
 def test_the_profiles_of_the_overlay_targets_and_the_modules_exist_in_the_compose_files(
     checkout_copy: Path, tmp_path: Path
 ) -> None:
@@ -371,6 +427,40 @@ async def test_switching_localai_off_removes_the_profile_and_keeps_the_variant(
     assert code == 0, err
     assert deployment.profiles() == before
     assert deployment.env(".env")["LOCALAI_IMAGE_VARIANT"] == "nvidia-cuda-12"
+
+
+async def test_switching_localai_changes_what_litellm_reads(deployment: _Deployment) -> None:
+    """Why the LocalAI switch recreates LiteLLM: the core renders LocalAI's models into LiteLLM's
+    `model_list` while the profile is on (papAIa 1.9.0 and newer)."""
+    example = deployment.repo / "src" / "ai" / "litellm" / ".env.example"
+    if "LOCALAI_API_KEY" not in example.read_text(encoding="utf-8"):
+        pytest.skip("this core does not generate LocalAI's entries of LiteLLM's model_list")
+    shipped = sorted((deployment.repo / "src" / "ai" / "localai" / "models").glob("*.yaml"))[0]
+    model = yaml.safe_load(shipped.read_text(encoding="utf-8"))
+    downloads = deployment.config / "overlay" / "ai" / "localai" / "models.txt"
+    downloads.parent.mkdir(parents=True, exist_ok=True)
+    downloads.write_text(f"https://models.test/{model['parameters']['model']}\n", encoding="utf-8")
+
+    async def listed() -> set[str]:
+        result = await preview.run(
+            workspace_dir=str(deployment.workspace),
+            config_dir=str(deployment.config),
+            target_path="ai/litellm/config.yaml",
+            draft="",
+        )
+        assert result.ok, result.error
+        rendered = yaml.safe_load(result.current) or {}
+        return {entry["model_name"] for entry in rendered.get("model_list") or []}
+
+    assert model["name"] not in await listed()
+    code, _, err = await _apply(deployment, ModuleSetup("localai", True, "cpu"))
+    assert code == 0, err
+    assert model["name"] in await listed()
+    assert deployment.env("ai/litellm/.env")["LOCALAI_API_KEY"]
+    assert modules.SWITCHABLE["localai"].recreate == ("litellm",)
+    code, _, err = await _apply(deployment, ModuleSetup("localai", False))
+    assert code == 0, err
+    assert model["name"] not in await listed()
 
 
 async def test_web_search_is_one_profile_and_touches_no_other(deployment: _Deployment) -> None:

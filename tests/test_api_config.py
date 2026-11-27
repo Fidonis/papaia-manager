@@ -1267,3 +1267,60 @@ def test_the_config_job_strip_announces_its_state_without_a_script(client: TestC
     assert 'data-announce="papaia-config-job"' in html
     assert 'data-active="false"' in html
     assert "<script" not in html
+
+
+# -- LocalAI running natively on a Mac ------------------------------------------------
+
+
+def _native(config_dir: Path, *profiles: str) -> None:
+    (config_dir / ".env").write_text(
+        "COMPOSE_PROFILES=" + ",".join(["nginx", "librechat", *profiles]) + "\n"
+        "LOCALAI_RUNTIME=native\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize("profiles", [("localai",), ()])
+def test_a_native_localai_is_neither_switched_on_nor_off_here(
+    client: TestClient, queue: JobQueue, config_dir: Path, profiles: tuple[str, ...]
+) -> None:
+    _native(config_dir, *profiles)
+    verb = "disable" if profiles else "enable"
+    body = {"scope": "keep"} if profiles else {"variant": "cpu"}
+    response = _admin(client).post(
+        f"{_BASE}/modules/localai/{verb}",
+        json={"revision": _modules_revision(client), **body},
+        headers=_CSRF_HEADER,
+    )
+    assert response.status_code == 422
+    assert "papaia-ctl setup" in response.json()["detail"]
+    assert queue.list_jobs() == []
+
+
+def test_the_modules_document_has_the_native_row(client: TestClient, config_dir: Path) -> None:
+    _native(config_dir, "localai")
+    body = _admin(client).get(f"{_BASE}/modules").json()
+    localai = next(m for m in body["modules"] if m["name"] == "localai")
+    assert localai["runtime"] == "native"
+    assert localai["switchable"] is False
+    assert (localai["services"], localai["modules"]) == (1, 1)
+
+
+def test_the_native_localai_row_is_read_only_and_asks_nothing(
+    client: TestClient, config_dir: Path
+) -> None:
+    _native(config_dir, "localai")
+    html = _admin(client).get("/settings/modules").text
+    row = html.split('data-module-row="localai"')[1].split("data-module-row=")[0]
+    toggle = row.split("<input", 1)[1].split(">", 1)[0]
+    assert 'data-module="localai"' in toggle
+    assert "disabled" in toggle
+    assert 'id="localai-variant"' not in html
+    assert 'id="panel-localai"' not in html
+    assert "native on the Mac" in row
+    assert "papaia-ctl setup" in row
+    # The other four still switch, the voice module with its own variant picker.
+    toggles = [t.split(">", 1)[0] for t in html.split('class="toggle toggle-sm mt-1"')[1:]]
+    assert sum("disabled" not in t for t in toggles) == 4
+    assert 'id="panel-voice"' in html
+    assert 'id="voice-variant"' in html

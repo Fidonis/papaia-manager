@@ -133,3 +133,70 @@ test("a refused catalog refresh is reported in three parts, not as a text of its
   assert.equal(reported[0].correlationId, "0190f3a2-0000-7000-8000-0000000000fe");
   assert.deepEqual(shown, []);
 });
+
+// A maintenance action (partials/addon_detail_content.html): the confirmation goes with the
+// request, the panel is redrawn at once (it shows the run as running) and again when the job
+// ends, and a refusal goes to the section that asked when it has its own place for it.
+function maintenance(answer) {
+  const sent = [];
+  const reported = [];
+  const shown = [];
+  const swaps = [];
+  const actions = createActions({
+    texts: { maintenanceActionFailed: "{action} failed", maintenanceActionFinished: "{action} finished" },
+    toaster: { show: (type, html) => shown.push([type, html]) },
+    report: (failure) => reported.push(failure),
+    fetchImpl: async (url, options) => {
+      sent.push({ url, options });
+      return answer(url, options);
+    },
+    htmx: () => ({ ajax: (...args) => swaps.push(args) }),
+    doc,
+    clock: { setTimeout: () => 0 },
+    newId: () => "0190f3a2-0000-7000-8000-000000000001",
+  });
+  return { actions, sent, reported, shown, swaps };
+}
+
+test("a maintenance action sends whether it was confirmed and redraws the panel twice", async () => {
+  const { actions, sent, reported, shown, swaps } = maintenance((url) =>
+    url.startsWith("/api/v1/jobs/")
+      ? reply(200, { id: "j-9", status: "failed" }, "x")
+      : reply(202, { job_id: "j-9" }, "x"),
+  );
+  assert.equal(await actions.addonMaintenanceAction("wiki", "purge", true, () => {}), true);
+  assert.equal(sent[0].url, "/api/v1/addons/wiki/actions/purge");
+  assert.equal(sent[0].options.body, JSON.stringify({ confirmed: true }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(swaps.length, 2);
+  assert.deepEqual(swaps[0], ["GET", "/partials/addons/wiki", { target: "#addon-detail", swap: "innerHTML" }]);
+  assert.deepEqual(shown, [["error", "purge failed"]]);
+  assert.equal(reported.length, 0);
+
+  const plain = maintenance(() => reply(202, { job_id: "j-1" }, "x"));
+  await plain.actions.addonMaintenanceAction("wiki", "check");
+  assert.equal(plain.sent[0].options.body, JSON.stringify({ confirmed: false }));
+});
+
+test("a refused maintenance action goes to the section; a session end is reported", async () => {
+  const refused = [];
+  const { actions, reported, swaps } = maintenance(() =>
+    reply(422, { detail: "Confirm it first." }, "0190f3a2-0000-7000-8000-0000000000fd"),
+  );
+  assert.equal(await actions.addonMaintenanceAction("wiki", "purge", false, (f) => refused.push(f)), false);
+  assert.equal(refused.length, 1);
+  assert.equal(refused[0].status, 422);
+  assert.equal(refused[0].correlationId, "0190f3a2-0000-7000-8000-0000000000fd");
+  assert.equal(reported.length, 0);
+  assert.equal(swaps.length, 0);
+
+  const ended = maintenance(() => reply(401, null, "x"));
+  const none = [];
+  assert.equal(await ended.actions.addonMaintenanceAction("wiki", "purge", true, (f) => none.push(f)), false);
+  assert.equal(none.length, 0);
+  assert.equal(ended.reported.length, 1);
+
+  const without = maintenance(() => reply(409, { detail: "Locked." }, "x"));
+  assert.equal(await without.actions.addonMaintenanceAction("wiki", "check"), false);
+  assert.equal(without.reported.length, 1);
+});

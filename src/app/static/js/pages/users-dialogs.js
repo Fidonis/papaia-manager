@@ -1,13 +1,15 @@
 // The dialogs of the Users page (users.html), as Alpine components: create an account, show a
 // temporary password once, change the roles of an account, list and end its sessions, reset
-// its password, enable or disable it. Built by createUserDialogs() from what they talk to, so
+// its password, enable or disable it, clear its chats. Built by createUserDialogs() from what they talk to, so
 // the tests can hand in stand-ins; pages/users.js registers them with Alpine.
 //
 // `request` is the JSON request of the shared actions (core/actions.js, ragRequest), `toast`
 // shows a message that carries markup, `reload` reloads the list, `announce` sends a window
 // event to another dialog, `smtp` tells whether the realm can send mail, `texts` are the
-// sentences of the page's data island in the language of the page.
-import { escapeHtml, fmtHtml } from "../core/format.js";
+// sentences of the page's data island in the language of the page, `later` runs a function
+// after a delay (the job of a chat deletion is asked again until it ends), `lang` is the
+// language of the page for the plural forms.
+import { escapeHtml, fmtHtml, fmtPlural } from "../core/format.js";
 
 const USERS_API = "/api/v1/users";
 
@@ -27,7 +29,12 @@ export function usersAgo(iso, now, justNow) {
   return justNow;
 }
 
-export function createUserDialogs({ request, toast, reload, announce, smtp, texts, copyText, now }) {
+export const CHAT_POLL_MS = 2000;
+
+export function createUserDialogs({
+  request, toast, reload, announce, smtp, texts, copyText, now,
+  later = (fn, ms) => globalThis.setTimeout(fn, ms), lang,
+}) {
   const userUrl = (id, rest) => USERS_API + "/" + encodeURIComponent(id) + (rest || "");
 
   function mailBlocked(hasSmtp, email) {
@@ -267,5 +274,83 @@ export function createUserDialogs({ request, toast, reload, announce, smtp, text
     };
   }
 
-  return { newUser, secretDialog, editUserRoles, userSessions, resetPassword, toggleUser };
+  // Clearing chats is two requests: the core's dry run for the counts, then, after the button
+  // in the dialog, the deletion as a queued job, which is asked about until it ends. Closing
+  // the dialog does not stop the job; the outcome is then only a toast. `run` tells the
+  // answers of an earlier opening apart from the current one.
+  function clearChats() {
+    return {
+      id: "", username: "", phase: "idle", counts: null, error: "", busy: false, jobId: "", run: 0,
+      async open(detail) {
+        this.run += 1;
+        const run = this.run;
+        this.id = detail.id; this.username = detail.username;
+        this.counts = null; this.error = ""; this.busy = false; this.jobId = "";
+        this.phase = "loading";
+        this.$root.showModal();
+        const res = await request("GET", userUrl(this.id, "/chat-history"));
+        if (run !== this.run || res.handled) return;
+        if (!res.ok) { this.phase = "failed"; this.error = res.error; return; }
+        this.counts = res.data.counts;
+        this.phase = "confirm";
+      },
+      closed() {
+        // A job that is still running reports itself with a toast when it ends.
+        if (this.phase !== "running") this.run += 1;
+      },
+      async submit() {
+        this.error = "";
+        this.busy = true;
+        const res = await request("POST", userUrl(this.id, "/chat-history/clear"), { confirmed: true });
+        this.busy = false;
+        if (res.handled) return;
+        if (!res.ok) { this.error = res.error; return; }
+        this.jobId = res.data.job_id;
+        this.phase = "running";
+        await this.poll(this.run, this.id, this.username, this.jobId);
+      },
+      async poll(run, id, username, jobId) {
+        const res = await request("GET", userUrl(id, "/chat-history/jobs/" + encodeURIComponent(jobId)));
+        if (res.handled) return;
+        if (!res.ok || res.data.status === "queued" || res.data.status === "running") {
+          later(() => this.poll(run, id, username, jobId), CHAT_POLL_MS);
+          return;
+        }
+        const job = res.data;
+        const failed = job.status === "failed";
+        const values = { username, href: "/jobs/" + jobId };
+        toast(failed ? "error" : "success", fmtHtml(failed ? texts.chatsClearFailed : texts.chatsCleared, values));
+        if (run !== this.run) return;
+        if (job.counts) this.counts = job.counts;
+        this.error = failed ? (job.error || "") : "";
+        this.phase = failed ? "failed" : "done";
+      },
+      // The counted sentences of the table, in the plural form of the page's language.
+      subThreads() {
+        const count = this.counts ? this.counts.sub_threads : 0;
+        return count ? fmtPlural(count, texts.subThreadsOne, texts.subThreadsOther, null, false, lang) : "";
+      },
+      filesFailed() {
+        const count = this.counts ? this.counts.files_failed : 0;
+        return count ? fmtPlural(count, texts.filesFailedOne, texts.filesFailedOther, null, false, lang) : "";
+      },
+      showCounts() {
+        return !!this.counts && ["confirm", "done", "failed"].includes(this.phase);
+      },
+      canDelete() {
+        return this.phase === "confirm" && !!this.counts && !this.counts.empty;
+      },
+      nothingToClear() {
+        return this.phase === "confirm" && !!this.counts && !!this.counts.empty;
+      },
+      ended() {
+        return this.phase === "done" || this.phase === "failed";
+      },
+      jobHref() {
+        return "/jobs/" + encodeURIComponent(this.jobId);
+      },
+    };
+  }
+
+  return { newUser, secretDialog, editUserRoles, userSessions, resetPassword, toggleUser, clearChats };
 }

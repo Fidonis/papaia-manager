@@ -65,6 +65,7 @@ def audit(
     target: str,
     params: dict[str, Any] | None = None,
     result: str = "ok",
+    job_id: str | None = None,
 ) -> None:
     """Record a change of the Users or Roles page: who, what, on what, never a secret."""
     write_audit_entry(
@@ -73,6 +74,7 @@ def audit(
         action=action,
         target=target,
         params=redact_params(params) if params else None,
+        job_id=job_id,
         result=result,
     )
 

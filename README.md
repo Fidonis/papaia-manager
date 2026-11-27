@@ -46,8 +46,12 @@ core's `papaia-docker-gate` (see *Docker access* below). It mounts the papAIa
 workspace, config and backup directories **at their host paths** (path parity — required so that
 bind-mount sources in add-on compose files resolve identically whether
 `docker compose` is invoked by the manager or by an operator on the host
-directly). Because of this, the `manager` profile is **Linux-only**;
-Windows/macOS Docker Desktop hosts don't preserve host-path parity through
+directly). Because of this, the `manager` profile needs a **Linux host or
+Docker Desktop on macOS**. Docker Desktop on macOS shares `/Users`, `/Volumes`,
+`/private`, `/tmp` and `/var/folders` with its VM under the same paths, so the
+mounts resolve as long as the workspace, config and backup directories lie in
+one of these folders (or another one added under Settings > Resources > File
+sharing). Docker Desktop on Windows does not preserve host-path parity through
 the VM boundary.
 
 ## How it works
@@ -308,11 +312,13 @@ Switching a module on stores the choice with the core's own `setup`
 `--enable-knowledge-map`, `--enable-smtp`, and for LocalAI and voice the accelerator variant, which is chosen on
 the page because GPU detection cannot see the host from inside the container; voice
 offers CPU, NVIDIA with a driver for CUDA 12.8 or newer, and AMD ROCm) and starts the
-module's profile; the RAG system and the AI map also recreate LibreChat, whose
-configuration lists their tools, and voice recreates LiteLLM and LibreChat, which route speech to its
-engines and offer it in the speech panel. Voice downloads several GB of models on its
-first start, which takes longer than a switch waits: the switch finishes while they
-load, and the Services page shows when voice is ready. The
+module's profile. Switching on or off also recreates the services that read the change:
+LiteLLM for LocalAI, whose models it lists (papAIa 1.9.0 and newer), LibreChat for the RAG
+system and the AI map, whose tools its configuration lists, and both for voice, as they route
+speech to its engines and offer it in the speech panel. The chat is unavailable for a short
+while during that; a service that is switched off is left alone. Voice downloads several
+GB of models on its first start, which takes longer than a switch waits: the switch
+finishes while they load, and the Services page shows when voice is ready. The
 RAG pages and the Mail page hold those modules' settings and no longer switch
 anything. Switching a module on asks the questions `papaia-ctl setup` asks, inline under
 its row (no dialog, so it reads the same on a phone), but only when the answers are missing (the module is new to this installation, or its settings
@@ -336,7 +342,23 @@ edited on the AI map page) are neither data nor settings: no choice above delete
 The dialog lists the ones that exist under **Your own files** with a separate,
 unticked **Also delete these files**, which also removes their edit history and the map
 built from them (papAIa 1.9.0 and newer). Deleting needs a core with the module operations (papAIa 1.6.0); an older
-core still switches modules off and keeps everything. **Overlay** edits the customer overlay, the files under
+core still switches modules off and keeps everything.
+
+**Native LocalAI on a Mac.** On an Apple Silicon Mac the core can run LocalAI as a
+process on the Mac's GPU instead of in its container (`LOCALAI_RUNTIME=native` in the
+root `.env`, set with `papaia-ctl setup --localai-runtime=native`). The manager runs in a
+container and cannot start, stop or switch that process, so it reads the stored runtime
+and the core's doctor check `localai_native`, which probes the process at
+`host.docker.internal`. The LocalAI row of **Modules** is then read-only and names the
+command to run on the Mac (no variant, no URL question; a switch through the API is
+refused). **Services** expects no `localai` container and lists *LocalAI (native)* as
+running or stopped according to the check, next to the model download job, which still
+runs; the check's state does not hold up a job waiting for the `localai` group. **Host**
+shows the check apart from its counts: a LocalAI that does not run is no verdict on the
+machine, and the GPU check, which the core skips for the native runtime, has no row. The
+**Upgrade** page offers no LocalAI image for removal and a restore offers neither
+`localai-data` nor `localai-models`, which the native runtime does not use. The check
+needs a core that ships it; without it the process reads as *not checked yet*. **Overlay** edits the customer overlay, the files under
 `$PAPAIA_CONFIG_DIR/overlay/` that the core merges last into the LibreChat,
 LiteLLM, Chatterbox (the speech synthesis of voice) and SearXNG configuration. The editor checks the YAML while you type,
 shows the effective result (the core merges the draft in memory and the page
@@ -418,7 +440,7 @@ administrators:
   visibility: admin    # all | admin
 ```
 
-**Users.** A third tier sits above the admin role: `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`, which already includes the admin role) opens **Users**, where accounts of the bundled Keycloak are managed without the Admin Console. The list shows each account's status and roles, with search and paging. From it an administrator creates an account (with the roles to start from, the dashboard role ticked, and a first password: a temporary one shown once, or a mailed link), enables or disables it (disabling also ends its sessions), changes its roles, resets its password, and views and ends its sessions. The **Roles** tab manages the roles themselves: it lists every realm role with what it contains, creates a role, changes its description and the roles it contains, and deletes it after showing which accounts hold it. The roles the stack ships (and the three the manager is configured with) are shown but not changed or deleted, because services refer to them by name; a role cannot be renamed, and cannot contain itself, directly or through another role. A temporary password makes Keycloak ask for a new one at the first sign-in. The mailed link needs a mail server on the realm and is offered only when there is one. Nobody can disable their own account, take the identity role from themselves or end all of their own sessions here, so the page cannot lock its last administrator out. There is no service account behind it: the manager calls Keycloak's Admin API with the access token of the signed-in account, obtained from the session's refresh token and kept in memory only, so Keycloak applies that account's own rights. The identity role therefore has to carry `manage-users`, `view-users`, `query-users`, `view-realm` and `manage-realm` of the realm's `realm-management` client (the last is what Keycloak asks for to create, change or delete a role); where it does not (yet), the page says so. A session ended in Keycloak stops working in the manager when its token is next renewed, within a few minutes. Every change is audited and no password is ever written to the log. The page does not exist where the accounts live in an external identity provider (`AUTH_PROVIDER=external_oidc`).
+**Users.** A third tier sits above the admin role: `MANAGER_IDENTITY_ADMIN_ROLE` (default `papaia-admin`, which already includes the admin role) opens **Users**, where accounts of the bundled Keycloak are managed without the Admin Console. The list shows each account's status and roles, with search and paging. From it an administrator creates an account (with the roles to start from, the dashboard role ticked, and a first password: a temporary one shown once, or a mailed link), enables or disables it (disabling also ends its sessions), changes its roles, resets its password, views and ends its sessions, and clears its LibreChat chats (with papAIa core 1.9.0 or newer): "Clear chats…" first shows what would be removed (conversations, messages, files, shared links), deletes only after that is confirmed, and keeps the account, its agents and its prompts. The **Roles** tab manages the roles themselves: it lists every realm role with what it contains, creates a role, changes its description and the roles it contains, and deletes it after showing which accounts hold it. The roles the stack ships (and the three the manager is configured with) are shown but not changed or deleted, because services refer to them by name; a role cannot be renamed, and cannot contain itself, directly or through another role. A temporary password makes Keycloak ask for a new one at the first sign-in. The mailed link needs a mail server on the realm and is offered only when there is one. Nobody can disable their own account, take the identity role from themselves or end all of their own sessions here, so the page cannot lock its last administrator out. There is no service account behind it: the manager calls Keycloak's Admin API with the access token of the signed-in account, obtained from the session's refresh token and kept in memory only, so Keycloak applies that account's own rights. The identity role therefore has to carry `manage-users`, `view-users`, `query-users`, `view-realm` and `manage-realm` of the realm's `realm-management` client (the last is what Keycloak asks for to create, change or delete a role); where it does not (yet), the page says so. A session ended in Keycloak stops working in the manager when its token is next renewed, within a few minutes. Every change is audited and no password is ever written to the log. The page does not exist where the accounts live in an external identity provider (`AUTH_PROVIDER=external_oidc`).
 
 **Mail.** Administrators open **Mail** (System), which has two tabs: **Notifications** (the page the menu entry opens) and **Mail Server**.
 
@@ -1568,6 +1590,9 @@ POST   /api/v1/users/{id}/password/email     # mail the account Keycloak's updat
 GET    /api/v1/users/{id}/sessions           # where the account is signed in
 DELETE /api/v1/users/{id}/sessions/{sid}     # end one session
 DELETE /api/v1/users/{id}/sessions           # end all of them
+GET    /api/v1/users/{id}/chat-history       # what clearing the LibreChat chats would remove (dry run)
+POST   /api/v1/users/{id}/chat-history/clear # {confirmed: true}; clears them in a job
+GET    /api/v1/users/{id}/chat-history/jobs/{job_id}  # that job's status and counts
 
 GET    /api/v1/roles                         # every realm role with what it contains
 GET    /api/v1/roles/{name}                  # one role, with the accounts that hold it

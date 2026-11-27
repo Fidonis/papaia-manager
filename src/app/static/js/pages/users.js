@@ -47,6 +47,8 @@ const dialogs = createUserDialogs({
   texts,
   copyText,
   now: () => Date.now(),
+  later: (fn, ms) => window.setTimeout(fn, ms),
+  lang: document.documentElement.lang || undefined,
 });
 
 document.addEventListener("alpine:init", () => {

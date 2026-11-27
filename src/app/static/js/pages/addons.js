@@ -14,6 +14,7 @@
 // card); the component maps it to the action of core/actions.js that redraws that view and
 // refuses any other value. Everything the components talk to comes in as an
 // argument; the bottom of this file wires up the page.
+import { describeFailure } from "../core/errors.js";
 import { pageCore } from "../core/page.js";
 
 // The values of the install form worth sending: a secret or marker field only when filled,
@@ -71,7 +72,7 @@ export function catalogRefresh(deps) {
   };
 }
 
-export function addonControls({ actions, htmx, confirm }) {
+export function addonControls({ actions, htmx, describe }) {
   // The views a macro may name (its `fn` argument) and the action that redraws each.
   const VERB_ACTIONS = {
     detail: actions.addonAction,
@@ -87,6 +88,10 @@ export function addonControls({ actions, htmx, confirm }) {
     activeVerb: "",
     // The rollback dialog: "code" or "data".
     mode: "",
+    // A refused maintenance action, in three parts.
+    refused: "",
+    refusedTodo: "",
+    refusedReference: "",
     // The configuration editor.
     editMode: false,
     dirty: false,
@@ -118,17 +123,49 @@ export function addonControls({ actions, htmx, confirm }) {
       return this.run(fn, name, "install", { catalog, env, start });
     },
 
-    // A maintenance action the add-on declares; a destructive one asks first.
-    maintain(name, action, destructive, question) {
-      if (destructive && !confirm(question)) return Promise.resolve();
+    // A maintenance action the add-on declares. A destructive one runs only from its dialog
+    // (confirmMaintain), which is what sends `confirmed`; the browser's confirm() is not used,
+    // since a browser can switch it off or answer it on its own. A refusal is shown in the
+    // section in three parts (`refused`, `refusedTodo`, `refusedReference`).
+    maintain(name, action, confirmed) {
       this.busy = true;
       this.activeVerb = action;
-      return actions.addonMaintenanceAction(name, action).then((ok) => {
-        if (!ok) {
-          this.busy = false;
-          this.activeVerb = "";
-        }
-      });
+      this.clearRefusal();
+      return actions.addonMaintenanceAction(name, action, confirmed, (failure) => this.showRefusal(failure))
+        .then((ok) => {
+          if (!ok) {
+            this.busy = false;
+            this.activeVerb = "";
+          }
+        });
+    },
+
+    // The run button of the confirmation dialog `ref` of a destructive action.
+    confirmMaintain(ref, name, action) {
+      this.$refs[ref].close();
+      return this.maintain(name, action, true);
+    },
+
+    // The panel was redrawn while an action runs (`data-running-action`): keep its buttons
+    // locked until the redraw at the end of the job.
+    resumeAction(el) {
+      const action = el.dataset.runningAction || "";
+      if (!action) return;
+      this.busy = true;
+      this.activeVerb = action;
+    },
+
+    clearRefusal() {
+      this.refused = "";
+      this.refusedTodo = "";
+      this.refusedReference = "";
+    },
+
+    showRefusal(failure) {
+      const parts = describe(failure);
+      this.refused = parts.consequence ? parts.what + " " + parts.consequence : parts.what;
+      this.refusedTodo = parts.todo;
+      this.refusedReference = parts.referenceLabel + ": " + parts.correlationId;
     },
 
     openRollback() {
@@ -181,11 +218,11 @@ export function addonControls({ actions, htmx, confirm }) {
 // (base.html loads page modules before Alpine).
 if (globalThis.document) {
   document.addEventListener("alpine:init", () => {
-    const { actions } = pageCore();
+    const { actions, core } = pageCore();
     const htmx = () => window.htmx;
     window.Alpine.data("catalogRefresh", () =>
       catalogRefresh({ actions, fetchImpl: (...args) => window.fetch(...args), htmx }));
     window.Alpine.data("addonControls", () =>
-      addonControls({ actions, htmx, confirm: (text) => window.confirm(text) }));
+      addonControls({ actions, htmx, describe: (failure) => describeFailure(failure, core.errors) }));
   });
 }

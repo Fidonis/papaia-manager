@@ -133,18 +133,62 @@ test("install sends the catalog, the fields and the start choice", async () => {
   assert.equal(component.activeVerb, "install");
 });
 
-test("a destructive maintenance action asks first and stops on no", async () => {
-  const declined = setup({ confirmAnswer: false });
-  await declined.component.maintain("wiki", "reset", true, "Run reset?");
-  assert.deepEqual(declined.asked, ["Run reset?"]);
-  assert.deepEqual(declined.calls, []);
-  assert.equal(declined.component.busy, false);
+test("a destructive maintenance action runs only from its dialog, confirmed", async () => {
+  const { component, calls, asked } = setup();
+  component.$refs.confirmAction2 = dialog();
+  await component.confirmMaintain("confirmAction2", "wiki", "reset");
+  assert.equal(component.$refs.confirmAction2.closed, 1);
+  // The browser's confirm() is never the question: a browser can switch it off.
+  assert.deepEqual(asked, []);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].slice(0, 4), ["addonMaintenanceAction", "wiki", "reset", true]);
+  assert.equal(typeof calls[0][4], "function");
+  assert.equal(component.busy, true);
+  assert.equal(component.activeVerb, "reset");
+});
 
-  const plain = setup();
-  await plain.component.maintain("wiki", "check", false, "Run check?");
-  assert.deepEqual(plain.asked, []);
-  assert.deepEqual(plain.calls, [["addonMaintenanceAction", "wiki", "check"]]);
-  assert.equal(plain.component.activeVerb, "check");
+test("an action that is not destructive runs at once, unconfirmed", async () => {
+  const { component, calls } = setup();
+  await component.maintain("wiki", "check", false);
+  assert.deepEqual(calls[0].slice(0, 4), ["addonMaintenanceAction", "wiki", "check", false]);
+  assert.equal(component.activeVerb, "check");
+});
+
+test("a refused maintenance action frees the buttons and says why in the section", async () => {
+  const failure = { status: 409, body: { detail: "Locked." }, network: false, correlationId: "c-1" };
+  const actions = {
+    addonMaintenanceAction: (name, action, confirmed, onRefused) => {
+      onRefused(failure);
+      return Promise.resolve(false);
+    },
+  };
+  const component = addonControls({
+    actions,
+    htmx: () => ({ ajax: () => {} }),
+    describe: (f) => ({
+      what: "Locked.", consequence: "", todo: "Try again later.", referenceLabel: "Reference", correlationId: f.correlationId,
+    }),
+  });
+  await component.maintain("wiki", "check", false);
+  assert.equal(component.busy, false);
+  assert.equal(component.activeVerb, "");
+  assert.equal(component.refused, "Locked.");
+  assert.equal(component.refusedTodo, "Try again later.");
+  assert.equal(component.refusedReference, "Reference: c-1");
+  // The next run starts without the old refusal.
+  actions.addonMaintenanceAction = () => Promise.resolve(true);
+  await component.maintain("wiki", "check", false);
+  assert.equal(component.refused, "");
+});
+
+test("a run that is still going keeps the buttons locked after the panel is redrawn", () => {
+  const { component } = setup();
+  component.resumeAction({ dataset: { runningAction: "reset" } });
+  assert.equal(component.busy, true);
+  assert.equal(component.activeVerb, "reset");
+  const idle = setup().component;
+  idle.resumeAction({ dataset: { runningAction: "" } });
+  assert.equal(idle.busy, false);
 });
 
 test("the rollback opens without a choice and sends whether the data goes back", async () => {

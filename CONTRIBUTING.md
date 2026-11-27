@@ -92,7 +92,9 @@ latest release whenever either schema changes. `tests/test_mail_contract.py` and
 `tests/test_config_contract.py` do the same for the mail relay and the optional modules against the papAIa
 core (the real `setup` and `render-preview` run in a copy of the checkout): they are skipped unless
 `PAPAIA_SRC` points at a checkout of the core that has them (papAIa 1.6.0 or newer), so run them when
-either side's options or rules change. The tests that need a symbolic link or read a file mode are skipped
+either side's options or rules change. `tests/test_chat_history_contract.py` reads the summary of the
+core's `librechat clear-history` the same way and needs a core that has the command (papAIa 1.9.0 or
+newer). The tests that need a symbolic link or read a file mode are skipped
 where the platform cannot provide one (run them on Linux).
 
 Run `ruff` from the repository root, not from `src/`: `tests/` sits next to `src/`, and

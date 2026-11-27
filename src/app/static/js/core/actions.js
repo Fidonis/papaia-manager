@@ -96,19 +96,29 @@ export function createActions({
     });
   }
 
-  // Runs an action the add-on declares, refreshes the panel when the job ends and says how it
-  // went, with a link to the log: the output is often the point.
-  function addonMaintenanceAction(name, action) {
-    return addonPost(name, "actions/" + action, {}).then((data) => {
-      if (!data) return false;
-      poll(data.job_id, (job) => {
-        addonPanel(name);
-        const values = { action, href: "/jobs/" + job.id };
-        if (job.status === "failed") toaster.show("error", fmtHtml(texts.maintenanceActionFailed, values));
-        else toaster.show("success", fmtHtml(texts.maintenanceActionFinished, values));
-      });
-      return true;
+  // Runs an action the add-on declares. `confirmed` is true only from the confirmation dialog
+  // of a destructive action; the API refuses one without it. The panel is redrawn at once, so
+  // it shows the run as running, and again when the job ends, when it shows the outcome with
+  // exit status and output; a toast says so too, with a link to the log: the output is often
+  // the point. A refusal goes to onRefused (the section shows it) when there is one; a session
+  // end and a request without an answer are told like any other.
+  async function addonMaintenanceAction(name, action, confirmed, onRefused) {
+    const result = await send("POST", "/api/v1/addons/" + name + "/actions/" + action, { confirmed: !!confirmed });
+    if (!result.ok) {
+      const { failure } = result;
+      if (onRefused && !failure.network && failure.status !== SESSION_STATUS) onRefused(failure);
+      else report(failure);
+      return false;
+    }
+    const data = await result.response.json();
+    addonPanel(name);
+    poll(data.job_id, (job) => {
+      addonPanel(name);
+      const values = { action, href: "/jobs/" + job.id };
+      if (job.status === "failed") toaster.show("error", fmtHtml(texts.maintenanceActionFailed, values));
+      else toaster.show("success", fmtHtml(texts.maintenanceActionFinished, values));
     });
+    return true;
   }
 
   // Reloads the dashboard gallery after the job finishes.

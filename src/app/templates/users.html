@@ -371,6 +371,72 @@
   <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
 </dialog>
 
+<!-- Clear the chat history of an account -->
+<dialog id="user-chats-modal" class="modal" x-data="clearChats()"
+        @user-chats.window="open($event.detail)" @close="closed()">
+  <div class="modal-box max-w-lg">
+    <h3 class="text-lg font-bold"><span>{{ bound(_('Clear the chats of <span class="font-mono">{username}</span>'), username='username') }}</span></h3>
+    <p class="mb-3 text-sm text-pk-text-muted">{% trans %}Removes the account's LibreChat conversations with their messages, files and shared links. The account, its sign-in, its agents and its prompts stay. Memories are not removed.{% endtrans %}</p>
+
+    <div x-cloak x-show="phase === 'loading'" class="flex flex-col items-center gap-2 py-8">
+      <span class="loading loading-spinner loading-md text-primary"></span>
+      <p class="text-sm text-pk-text-muted">{% trans %}Counting what would be removed…{% endtrans %}</p>
+    </div>
+
+    <div x-cloak x-show="phase === 'running'" class="flex flex-col items-center gap-2 py-8">
+      <span class="loading loading-spinner loading-md text-error"></span>
+      <p class="text-sm text-pk-text-muted">{% trans %}Clearing the chats. A long history can take a while.{% endtrans %}</p>
+    </div>
+
+    <div x-cloak x-show="showCounts()">
+      <p class="mb-2 text-sm font-medium" x-cloak x-show="phase === 'confirm'">{% trans %}This would be removed:{% endtrans %}</p>
+      <p class="mb-2 text-sm font-medium" x-cloak x-show="phase !== 'confirm'">{% trans %}Removed:{% endtrans %}</p>
+      <div class="overflow-x-auto rounded-xl border border-base-300">
+        <table class="table table-sm">
+          <tbody>
+            <tr>
+              <td>{% trans %}Conversations{% endtrans %}</td>
+              <td class="text-right font-mono">
+                <span x-text="counts ? counts.conversations : ''"></span>
+                <span class="block text-xs text-pk-text-muted" x-cloak x-show="subThreads()" x-text="subThreads()"></span>
+              </td>
+            </tr>
+            <tr><td>{% trans %}Messages{% endtrans %}</td><td class="text-right font-mono" x-text="counts ? counts.messages : ''"></td></tr>
+            <tr><td>{% trans %}Files{% endtrans %}</td><td class="text-right font-mono" x-text="counts ? counts.files : ''"></td></tr>
+            <tr><td>{% trans %}Shared links{% endtrans %}</td><td class="text-right font-mono" x-text="counts ? counts.shared_links : ''"></td></tr>
+            <tr><td>{% trans %}Function call records{% endtrans %}</td><td class="text-right font-mono" x-text="counts ? counts.tool_calls : ''"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-3 text-sm text-pk-text-muted" x-cloak x-show="nothingToClear()">
+        {% trans %}There are no chats to clear.{% endtrans %}
+      </p>
+      <div class="alert alert-warning mt-3 text-sm" role="alert" x-cloak x-show="canDelete()">
+        <span>{% trans %}This cannot be undone. Only restoring a backup brings the chats back, and that restores the chats of every user. Ask the user to stop chatting first: a reply that is still being written can be left behind.{% endtrans %}</span>
+      </div>
+      <div class="alert alert-warning mt-3 text-sm" role="alert" x-cloak x-show="filesFailed()">
+        <span x-text="filesFailed()"></span>
+      </div>
+    </div>
+
+    <p x-cloak x-show="error" class="mt-3 text-sm text-error" x-text="error"></p>
+    <p x-cloak x-show="jobId && ended()" class="mt-2 text-xs">
+      <a class="link" :href="jobHref()">{% trans %}View the job log{% endtrans %}</a>
+    </p>
+
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost" @click="$root.close()"
+              x-text="phase === 'confirm' ? {{ _('Cancel')|tojson|forceescape }} : {{ _('Close')|tojson|forceescape }}"></button>
+      <button type="button" class="btn btn-error" x-cloak
+              x-show="canDelete()" :disabled="busy" @click="submit()">
+        <span x-show="busy" x-cloak class="loading loading-spinner loading-xs"></span>
+        {% trans %}Delete chats{% endtrans %}
+      </button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>{% trans %}close{% endtrans %}</button></form>
+</dialog>
+
 {#- The page's script is static/js/pages/users.js (T-UI-03): no inline script, no event
     attribute. Its sentences come from this island, in the language of the page. #}
 {{ data_island("users-page", {
@@ -390,6 +456,12 @@
     "linkSent": _('A link to set a new password was sent to <b>{username}</b>.'),
     "accountEnabled": _('Account <b>{username}</b> enabled.'),
     "accountDisabled": _('Account <b>{username}</b> disabled.'),
+    "chatsCleared": _('The chats of <b>{username}</b> were cleared.'),
+    "chatsClearFailed": _('The chats of <b>{username}</b> could not be cleared. <a class="underline" href="{href}">View log</a>'),
+    "subThreadsOne": _('including {count} sub-thread'),
+    "subThreadsOther": _('including {count} sub-threads'),
+    "filesFailedOne": _('{count} file could not be removed from storage and was kept. The job log names it.'),
+    "filesFailedOther": _('{count} files could not be removed from storage and were kept. The job log names them.'),
   },
 }) }}
 {% endblock %}

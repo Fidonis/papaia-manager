@@ -23,10 +23,17 @@ const TEXTS = {
   linkSent: "A link was sent to <b>{username}</b>.",
   accountEnabled: "Account <b>{username}</b> enabled.",
   accountDisabled: "Account <b>{username}</b> disabled.",
+  chatsCleared: "The chats of <b>{username}</b> were cleared.",
+  chatsClearFailed: 'The chats of <b>{username}</b> could not be cleared. <a href="{href}">View log</a>',
+  subThreadsOne: "including {count} sub-thread",
+  subThreadsOther: "including {count} sub-threads",
+  filesFailedOne: "{count} file could not be removed.",
+  filesFailedOther: "{count} files could not be removed.",
 };
 
 function setup(answers = {}, { smtp = true } = {}) {
   const sent = [];
+  const timers = [];
   const shown = [];
   const events = [];
   let reloads = 0;
@@ -45,8 +52,10 @@ function setup(answers = {}, { smtp = true } = {}) {
     texts: TEXTS,
     copyText: async () => {},
     now: () => Date.parse("2026-11-23T12:00:00Z"),
+    later: (fn, ms) => timers.push([fn, ms]),
+    lang: "en",
   });
-  return { dialogs, sent, shown, events, reloads: () => reloads };
+  return { dialogs, sent, shown, events, timers, reloads: () => reloads };
 }
 
 // A component as Alpine would hold it, with a dialog that records whether it is open.
@@ -238,4 +247,101 @@ test("times are told in the reader's words", () => {
   const twoHours = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(-2, "hour");
   assert.equal(usersAgo("2026-11-23T10:00:00Z", now, "just now"), twoHours);
   assert.notEqual(usersWhen("2026-11-23T10:00:00Z"), "—");
+});
+
+// Clearing the chats of an account (the core's `librechat clear-history`): the dry run first,
+// the deletion only from the dialog's button, confirmed, then the job until it ends.
+const COUNTS = { conversations: 3, sub_threads: 1, messages: 40, files: 2, shared_links: 0, tool_calls: 0, files_failed: 0, empty: false };
+const CHATS = "/api/v1/users/u%201/chat-history";
+
+test("clearing chats shows the dry run, deletes only when confirmed and follows the job", async () => {
+  const { dialogs, sent, shown, timers } = setup({
+    [`GET ${CHATS}`]: { ok: true, data: { counts: COUNTS } },
+    [`POST ${CHATS}/clear`]: { ok: true, data: { job_id: "j-5" } },
+    [`GET ${CHATS}/jobs/j-5`]: { ok: true, data: { status: "running" } },
+  });
+  const dialog = mount(dialogs.clearChats());
+  await dialog.open({ id: "u 1", username: "anna" });
+  assert.equal(dialog.$root.open, true);
+  assert.equal(dialog.phase, "confirm");
+  assert.equal(dialog.counts.messages, 40);
+  assert.equal(dialog.subThreads(), "including 1 sub-thread");
+  assert.deepEqual(sent.map((r) => [r.method, r.url]), [["GET", CHATS]]);
+
+  await dialog.submit();
+  assert.deepEqual(sent[1], { method: "POST", url: `${CHATS}/clear`, body: { confirmed: true } });
+  assert.equal(dialog.phase, "running");
+  assert.equal(dialog.jobId, "j-5");
+  // Still running: asked again later.
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0][1], 2000);
+  assert.deepEqual(shown, []);
+});
+
+test("a cleared history is told; a failed one keeps its counts and links the log", async () => {
+  const done = setup({
+    [`GET ${CHATS}`]: { ok: true, data: { counts: COUNTS } },
+    [`POST ${CHATS}/clear`]: { ok: true, data: { job_id: "j-5" } },
+    [`GET ${CHATS}/jobs/j-5`]: { ok: true, data: { status: "succeeded", counts: { ...COUNTS, files_failed: 2 } } },
+  });
+  const ok = mount(done.dialogs.clearChats());
+  await ok.open({ id: "u 1", username: "anna" });
+  await ok.submit();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(ok.phase, "done");
+  assert.equal(ok.filesFailed(), "2 files could not be removed.");
+  assert.deepEqual(done.shown, [["success", "The chats of <b>anna</b> were cleared."]]);
+
+  const bad = setup({
+    [`GET ${CHATS}`]: { ok: true, data: { counts: COUNTS } },
+    [`POST ${CHATS}/clear`]: { ok: true, data: { job_id: "j-6" } },
+    [`GET ${CHATS}/jobs/j-6`]: { ok: true, data: { status: "failed", error: "LibreChat is not running." } },
+  });
+  const failed = mount(bad.dialogs.clearChats());
+  await failed.open({ id: "u 1", username: "<b>x</b>" });
+  await failed.submit();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(failed.phase, "failed");
+  assert.equal(failed.error, "LibreChat is not running.");
+  assert.equal(failed.counts.messages, 40);
+  assert.equal(bad.shown[0][0], "error");
+  assert.ok(bad.shown[0][1].includes("&lt;b&gt;x&lt;/b&gt;"));
+  assert.ok(bad.shown[0][1].includes('href="/jobs/j-6"'));
+});
+
+test("a refused dry run or deletion is shown in the dialog, and nothing is deleted", async () => {
+  const { dialogs, sent } = setup({
+    [`GET ${CHATS}`]: { ok: false, error: "This account has no email address." },
+  });
+  const dialog = mount(dialogs.clearChats());
+  await dialog.open({ id: "u 1", username: "anna" });
+  assert.equal(dialog.phase, "failed");
+  assert.equal(dialog.error, "This account has no email address.");
+  assert.equal(sent.length, 1);
+
+  const refused = setup({
+    [`GET ${CHATS}`]: { ok: true, data: { counts: COUNTS } },
+    [`POST ${CHATS}/clear`]: { ok: false, error: "Busy." },
+  });
+  const other = mount(refused.dialogs.clearChats());
+  await other.open({ id: "u 1", username: "anna" });
+  await other.submit();
+  assert.equal(other.phase, "confirm");
+  assert.equal(other.error, "Busy.");
+  assert.equal(other.busy, false);
+});
+
+test("a dialog opened again ignores the answer meant for the one before", async () => {
+  let release;
+  const { dialogs } = setup({
+    [`GET ${CHATS}`]: new Promise((resolve) => { release = resolve; }),
+    ["GET /api/v1/users/u2/chat-history"]: { ok: true, data: { counts: { ...COUNTS, messages: 7 } } },
+  });
+  const dialog = mount(dialogs.clearChats());
+  const first = dialog.open({ id: "u 1", username: "anna" });
+  await dialog.open({ id: "u2", username: "ben" });
+  release({ ok: true, data: { counts: COUNTS } });
+  await first;
+  assert.equal(dialog.username, "ben");
+  assert.equal(dialog.counts.messages, 7);
 });

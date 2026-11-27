@@ -38,3 +38,6 @@ map:
   pruefen:
     - text.6293da9979b07171  # Review upgrade
     - nav.group.review  # navigation group of auditors (inventory)
+  chat:
+    - text.0df62a6b184af290  # Delete chats
+    - title.clear-the-chats-of-span-class-font-mono-username-span  # Clear the chats of {username}

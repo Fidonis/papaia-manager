@@ -553,6 +553,24 @@ async def test_the_info_is_the_cores_document_marked_available(
     assert info["volumes"][0]["name"] == "p_q"
 
 
+async def test_the_directories_of_a_later_core_are_passed_through(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # papAIa 1.9.0 adds `directories`: empty for every module but a native LocalAI, which lists
+    # its folders on the Mac there and has no volumes. The document is handed on as it is.
+    _core(tmp_path / "w")
+    document = (
+        '{"module": "localai", "volumes": [], "directories": [{"path": '
+        '"/Users/operator/workspace/localai/papaia/models", "exists": true}], '
+        '"settings": {"dirs": ["ai/localai"]}}'
+    )
+    _answer(monkeypatch, 0, document)
+    info = await modules.module_info("localai", workspace_dir=str(tmp_path / "w"), config_dir="/c")
+    assert info["available"] is True
+    assert info["volumes"] == []
+    assert info["directories"][0]["path"].endswith("/models")
+
+
 @pytest.mark.parametrize(
     ("code", "out", "err", "reason"),
     [
